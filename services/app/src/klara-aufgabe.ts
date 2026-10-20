@@ -525,7 +525,7 @@ export class KlaraAufgabeDienst {
         );
       }
       // Auch der normale Als-Aufgabe-Caller erbt den Schutz der tatsächlich gelesenen Quelle.
-      // Clientfelder und ein fehlender interner Parameter dürfen Besprechungsherkunft nicht lösen.
+      // Clientfelder und ein fehlender interner Parameter dürfen gespeicherte Quellherkunft nicht lösen.
       const besprechung = notiz.wissensHerkunft?.besprechung;
       if (besprechung?.verarbeitung && besprechung.verarbeitung.stand !== "abgeschlossen") {
         throw new KlaraAufgabeFehler(
@@ -534,7 +534,7 @@ export class KlaraAufgabeDienst {
           "Teiltranskript vor der Aufgabenübernahme vollständig verarbeiten.",
         );
       }
-      quellengebunden ||= !!besprechung;
+      quellengebunden ||= !!notiz.wissensHerkunft;
       titel =
         eingabe.titel === undefined ? kurz(notiz.titel || notiz.inhalt) : titelAus(eingabe.titel);
       if (titel.length === 0) {

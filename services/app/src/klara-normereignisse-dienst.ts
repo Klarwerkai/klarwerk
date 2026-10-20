@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { AuditService } from "../../audit";
 import type { AuthService } from "../../auth";
@@ -38,6 +39,7 @@ import {
   vereinigeNormgeschichten,
 } from "./klara-normereignisse";
 import type { KlaraNotizDienst, NotizSchreibbedingung } from "./klara-notiz";
+import type { KlaraWissensHerkunft } from "./klara-wissensuebernahme";
 
 export interface NormBetroffenheit {
   koId: string;
@@ -430,22 +432,47 @@ export class KlaraNormereignisDienst {
           inkrafttreten: "Inkrafttreten",
           uebergangsfrist: "Übergangsfrist",
         }[bezug.e.art];
+        const kopierteBelege = bezug.e.belege.filter((b) => b.aktuell).slice(0, 1);
+        const belegQuellen = kopierteBelege.map((b) => {
+          const fassung = Number(b.quelle.fassung);
+          if (b.quelle.art !== "wissensobjekt" || !Number.isSafeInteger(fassung) || fassung < 1)
+            throw new NormereignisFehler(409, "Die kopierte Normquellfassung ist nicht gebunden.");
+          return { id: b.quelle.id, fassung };
+        });
         const inhalt = [
           "Automatisch vorbereitete persönliche Normprüfung aus dem ausdrücklich bestellten Quellenwatch.",
           `Norm ${bezug.n.kennung} v${bezug.n.ausgabe}: ${art} am ${bezug.e.datum}; Geltung: ${bezug.e.geltung}.`,
           "Bekanntmachung und Kalenderdatum sind keine fachliche Annahme einer Anleitung.",
-          ...bezug.e.belege
-            .filter((b) => b.aktuell)
-            .slice(0, 1)
-            .map(
-              (b) =>
-                `Begrenzter Originalbeleg (${b.quelle.id}, Fassung ${b.quelle.fassung}):\n${b.norm.wortlaut}\n${b.ereignis.wortlaut}\n${b.geltung?.wortlaut ?? ""}`,
-            ),
+          ...kopierteBelege.map(
+            (b) =>
+              `Begrenzter Originalbeleg (${b.quelle.id}, Fassung ${b.quelle.fassung}):\n${b.norm.wortlaut}\n${b.ereignis.wortlaut}\n${b.geltung?.wortlaut ?? ""}`,
+          ),
           ...kandidat.betroffen.map(
             (b) =>
               `Gespeicherte Normzuordnung: ${b.titel.slice(0, 200)} (KO ${b.koId}, Fassung ${b.fassung}).`,
           ),
         ].join("\n");
+        // Dieselbe persistierte F08-Herkunft schützt die Kopie auch NACH der Schreibwirkung:
+        // normale Notiz-/Aufgabenleser und weitere Übernahmen prüfen die heutigen Originalrechte.
+        const herkunft: KlaraWissensHerkunft = {
+          projekt: "Persönliche Normprüfung",
+          abschnitt: `${bezug.n.kennung} v${bezug.n.ausgabe} · ${bezug.e.art}`,
+          antwortFassung: bezug.e.pruefVorgang,
+          anbieter: null,
+          modell: null,
+          vorherigeNotiz: null,
+          textAbdruck: createHash("sha256").update(inhalt).digest("hex"),
+          aussagen: [
+            {
+              text: inhalt,
+              art: "empfehlung",
+              quellen: [
+                ...belegQuellen,
+                ...kandidat.betroffen.map((b) => ({ id: b.koId, fassung: b.fassung })),
+              ],
+            },
+          ],
+        };
         await versuch.pruefeAktuell();
         const notiz = (
           await notizen.lege(
@@ -463,9 +490,14 @@ export class KlaraNormereignisDienst {
               },
             },
             folgeBedingung(lauf, grund.bedingungen),
+            herkunft,
           )
         ).notiz;
-        if (notiz.titel !== titel || notiz.inhalt !== inhalt)
+        if (
+          notiz.titel !== titel ||
+          notiz.inhalt !== inhalt ||
+          !isDeepStrictEqual(notiz.wissensHerkunft, herkunft)
+        )
           throw new NormereignisFehler(
             409,
             "Die eigene ursprüngliche Prüfungsnotiz wurde geändert; kein Ersatzoriginal.",

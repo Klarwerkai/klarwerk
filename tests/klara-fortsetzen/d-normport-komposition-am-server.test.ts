@@ -191,3 +191,139 @@ it("DG-D2 · tatsächlicher unveränderter Belegwatch ohne neue Bestellung errei
   expect(eingang).not.toHaveBeenCalled();
   expect(aus).not.toHaveBeenCalled();
 });
+
+it.each([
+  { quelle: "Normquelle", aenderung: "Rechteentzug" },
+  { quelle: "Anleitung", aenderung: "Rechteentzug" },
+  { quelle: "Normquelle", aenderung: "Entfernung" },
+  { quelle: "Anleitung", aenderung: "Entfernung" },
+])(
+  "DG-1 · $aenderung der kopierten $quelle schützt normale Notiz-/Aufgabenleser und Kopiercaller, erhält Originale und unabhängige eigene Notiz",
+  async (fall) => {
+    const q = await quelle();
+    const guide = await s.ko.create({
+      title: "Fiktive quellengebundene Anleitung",
+      statement: "Fiktive unveränderte Regel mit geschütztem Namen.",
+      type: "technik",
+      category: "Kompositionsprobe",
+      author: kid,
+      confidentiality: "intern",
+    });
+    await s.lifecycle.couple("Norm N-17", guide.id, kid);
+    await einrichten(q.id, true);
+    vi.setSystemTime(new Date("2026-10-20T07:01:00Z"));
+    await lauf();
+    const tasks = await aufgaben();
+    expect(tasks).toHaveLength(1);
+    const task = tasks[0];
+    const notizId = task.bezug.notizId;
+    const lesen = await auf("GET", `/api/me/klara/notizen/${notizId}`);
+    expect(lesen.statusCode, lesen.body).toBe(200);
+    const notiz = lesen.json().notiz;
+    expect(notiz.inhalt).toContain(guide.title);
+    expect(notiz.inhalt).toContain("Norm N-17 v2");
+    expect(notiz.wissensHerkunft).toMatchObject({ anbieter: null, modell: null });
+    expect(notiz.wissensHerkunft.aussagen[0].quellen).toEqual([
+      { id: q.id, fassung: (await s.ko.get(q.id))?.version },
+      { id: guide.id, fassung: (await s.ko.get(guide.id))?.version },
+    ]);
+    expect((await auf("GET", `/api/me/klara/aufgaben/${task.id}`)).statusCode).toBe(200);
+    expect(
+      (await auf("POST", `/api/me/klara/notizen/${notizId}/wissen/pruefen`, {})).statusCode,
+    ).toBe(200);
+    const ziel = {
+      art: "artikel",
+      confidentiality: "intern",
+      type: "technik",
+      category: "Wartung",
+      conditions: ["Nur bei Stillstand", "Nur durch Fachpersonal"],
+    };
+    expect(
+      (
+        await auf("POST", `/api/me/klara/notizen/${notizId}/wissen/vorschau`, {
+          fassung: notiz.fassung,
+          ziel,
+        })
+      ).statusCode,
+    ).toBe(200);
+    // Normaler öffentlicher Als-Aufgabe-Caller: kein interner D-Parameter und kein Client-Grant.
+    const kopie = await auf("POST", "/api/me/klara/aufgaben", {
+      vorgang: `dg-kopie-${crypto.randomUUID()}`,
+      weg: "notiz",
+      quelle: { notizId },
+      notizFassung: notiz.fassung,
+    });
+    expect(kopie.statusCode, kopie.body).toBe(201);
+    const kopieId = kopie.json().aufgabe.id;
+    expect((await auf("GET", `/api/me/klara/aufgaben/${kopieId}`)).statusCode).toBe(200);
+    const frei = await auf("POST", "/api/me/klara/notizen", {
+      vorgang: `dg-unabhaengig-${crypto.randomUUID()}`,
+      weg: "geschrieben",
+      titel: "Unabhängige eigene Notiz",
+      inhalt: "Eigener Text ohne Norm- oder Anleitungsquelle.",
+      objektbezug: { pfad: "/aufgaben", seitenName: "Meine Aufgaben", objekt: "Eigener Text" },
+    });
+    expect(frei.statusCode, frei.body).toBe(201);
+    const freieNotiz = frei.json().notiz;
+    expect(freieNotiz.wissensHerkunft).toBeUndefined();
+    const freieAufgabe = await auf("POST", "/api/me/klara/aufgaben", {
+      vorgang: `dg-frei-${crypto.randomUUID()}`,
+      weg: "notiz",
+      quelle: { notizId: freieNotiz.id },
+    });
+    expect(freieAufgabe.statusCode, freieAufgabe.body).toBe(201);
+    const freiId = freieAufgabe.json().aufgabe.id;
+    const fristenVorher = await s.klaraFristen.hole(kid);
+    const ref = fristenVorher?.normereignisse?.[0]?.ereignisse[0]?.pruefauftrag;
+    if (!ref) throw new Error("Tatsächlicher Originalauftrag fehlt.");
+    const journalVorher = await s.klaraGespraeche.hole(kid, ref.gespraechId);
+    const notizenRoh = s.klaraNotizenRoh;
+    if (!notizenRoh) throw new Error("Die unveränderte Originalnotizablage fehlt.");
+    const notizVorher = await notizenRoh.hole(kid, notizId);
+    const entzogen = fall.quelle === "Normquelle" ? q.id : guide.id;
+    if (fall.aenderung === "Rechteentzug")
+      await s.ko.setQuellrechte(entzogen, { stufe: "intern", leser: [] }, kid);
+    else await s.ko.delete(entzogen, kid);
+    expect((await auf("GET", `/api/kos/${entzogen}`)).statusCode).toBe(404);
+    expect((await auf("GET", `/api/me/klara/notizen/${notizId}`)).statusCode).toBe(404);
+    for (const id of [task.id, kopieId])
+      expect((await auf("GET", `/api/me/klara/aufgaben/${id}`)).statusCode).toBe(404);
+    const notizenListe = await auf("GET", "/api/me/klara/notizen");
+    expect(notizenListe.json().notizen.map((n: { id: string }) => n.id)).toEqual([freieNotiz.id]);
+    expect((await aufgaben()).map((a: { id: string }) => a.id)).toEqual([freiId]);
+    expect((await auf("GET", `/api/me/klara/notizen/${freieNotiz.id}`)).json().notiz).toEqual(
+      freieNotiz,
+    );
+    expect((await auf("GET", `/api/me/klara/aufgaben/${freiId}`)).statusCode).toBe(200);
+    expect(
+      (await auf("POST", `/api/me/klara/notizen/${notizId}/wissen/pruefen`, {})).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await auf("POST", `/api/me/klara/notizen/${notizId}/wissen/vorschau`, {
+          fassung: notiz.fassung,
+          ziel,
+        })
+      ).statusCode,
+    ).toBe(404);
+    const spaeteKopie = await auf("POST", "/api/me/klara/aufgaben", {
+      vorgang: `dg-spaet-${crypto.randomUUID()}`,
+      weg: "notiz",
+      quelle: { notizId },
+    });
+    expect(spaeteKopie.statusCode, spaeteKopie.body).toBe(404);
+    expect((await normen()).normen).toEqual([]);
+    // Verborgene Wirkung ist nicht gelöscht: Originalnotiz, Tasks und D/G-Journale bleiben erhalten.
+    expect(await notizenRoh.hole(kid, notizId)).toEqual(notizVorher);
+    expect((await s.klaraAufgaben.hole(kid, task.id))?.id).toBe(task.id);
+    expect((await s.klaraAufgaben.hole(kid, kopieId))?.id).toBe(kopieId);
+    expect(await s.klaraFristen.hole(kid)).toEqual(fristenVorher);
+    expect(await s.klaraGespraeche.hole(kid, ref.gespraechId)).toEqual(journalVorher);
+    if (fall.aenderung === "Rechteentzug") {
+      await s.ko.setQuellrechte(entzogen, { stufe: "intern", leser: [kid] }, kid);
+      expect((await auf("GET", `/api/me/klara/notizen/${notizId}`)).json().notiz.id).toBe(notizId);
+      for (const id of [task.id, kopieId])
+        expect((await auf("GET", `/api/me/klara/aufgaben/${id}`)).json().aufgabe.id).toBe(id);
+    }
+  },
+);
