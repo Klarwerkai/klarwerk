@@ -1,4 +1,81 @@
-# PP-07 · Änderungsvorschau am PowerPoint-Anhang
+# PP-07 · Änderungen bewusst übernehmen und Dateifassungen speichern
+
+Original `produkt:20261015:klara-powerpoint-aenderungen-fassungen`, Revision 2 bleibt offen.
+
+## Fortsetzung des festen Vorschaukerns 61dad8ec
+
+Die nachfolgend erhaltenen Abschnitte dokumentieren die früheren Lieferstufen. Der neue Nachfolger
+verwendet Ns feste PP05-Stände `ae10cc6b` und `ccfb8759` über normale Zusammenführung. Die
+bestehende AppShell-Korrektur von `fc7ff5cc` wird ausschließlich als unveränderte einzelne Datei
+übernommen; keine weitere Shell-/Office-Hostimplementierung.
+
+In derselben Artikel-Anhangfläche folgt nach der schreibfreien Datenvorschau nun **Übernahme
+vorbereiten**. Erst diese zweite Vorschau liest die tatsächlichen Folien, Diagramme, Arbeitsmappen,
+Prüf-/Belegfolien und Notizstellen. **Diese Vorschau übernehmen** speichert bewusst. Veränderte
+Formulare und verworfene oder verspätete Antworten verwenden keine frühere Vorschau weiter.
+
+Der neue Dateischreiber nutzt W06s ZIP-/Folien-/Notizleser und Textlaufersetzung. Eindeutig gebundene
+Werte und abgeleitete PP02-Daten werden an vorhandenen Text-/Tabellenstellen aktualisiert. PP05-
+Diagramme erhalten neue native Caches, Beschriftungen, Null einschließende Skalen und dieselbe
+Änderung in der eingebetteten Arbeitsmappe. Manuell veränderte Kategorien, Zahlen oder Skalen
+werden als konkrete Konflikte erhalten. Einheiten, Zeiträume und Währungen bleiben durch den
+bestehenden PP05-Planer auf Vergleichbarkeit geprüft. Quellen-/Prüftexte erzeugt allein Ns Schreiber;
+zusätzliche Herkunftsseiten werden bei Bedarf als Detailfolien angefügt. Unabhängige Formen,
+Folien, Vorlagen und übrige ZIP-Teile bleiben erhalten.
+
+Manuelle abweichende Werte, ungebundene gleichlautende Text-/Tabellenstellen, weitere lesbare
+Dateibindungen und tatsächliche Notizabsätze werden ausdrücklich benannt. PP05-v1 hat keine
+Notizbindung: solche Notizen werden erhalten und konkret zur Klärung geführt. Jeder weiche
+Dateikonflikt muss einzeln bewusst als offen bestätigt werden. Widersprüchliche Datenherkunft
+sowie nicht sicher aktualisierbare Prüfstatus-/Belegtexte sperren die Übernahme; eine Bestätigung
+überspringt diese Sperre nicht. Es gibt keine globale Suche über alle Decks oder frei formulierten
+semantischen Aussagen.
+
+Alle neuen Schreibwege verlangen `ko.create` und benutzen dieselbe bestehende Office-Rechte-,
+Editor-, Artikelversions- und Anhangauswahlprüfung sowie denselben Serialisierungsrahmen. Die
+Vorschau bindet Artikel-/Dateifassung, erwartete Datenstände, vollständige lesbare Herkunft,
+Quellmetadaten und die tatsächlichen Wirkungen. Vor dem Speichern wird neu geplant und geprüft.
+W10 übernimmt die Datei mit erwarteter Artikelversion. Daten folgen in Abhängigkeitsreihenfolge
+mit den bestehenden einzelnen `DatenpunktAblage.ersetzen`-CAS-Schritten. Datei, mehrere Datenpunkte
+und zwei Exportobjekte sind **keine gemeinsame Transaktion**. Tatsächliche Teilwirkungen liefern
+`PP07_TEILWIRKUNG` bzw. `PP07_FASSUNGEN_TEILWIRKUNG` mit dem realen gespeicherten Teilstand.
+Wiederholte Übernahmen desselben eingebetteten Belegs schreiben keine zweite Dateifassung.
+
+**Fassungen und Rücknahme** zeigt den realen Stand und die rückzunehmenden Werte. Eine Rücknahme
+prüft die dokumentierte ursprüngliche Datei aus der vorhandenen W10-Historie und schützt später
+geänderte oder geprüfte Datenstände. Sie speichert neue Datei-/Datenfassungen und erhält alle
+Historien. Neue Klärungsprüfungen verhindern, dass eine alte fachliche Freigabe durch den wieder
+gleichen Inhaltsfingerabdruck aktiv wird. Der Übernahmebeleg liegt im bestehenden PPTX-Transport;
+keine neue Datenbank, Deckablage oder Berechnungs-/Validierungsengine.
+
+Zwei tatsächliche private PPTX-Objekte entstehen aus genau derselben geprüften Daten-/Quellbasis.
+**Kurz** zeigt Hauptfolien und blendet Einzel-/Belegfolien aus; **Ausführlich** zeigt alle zugeordneten
+Folien. Unabhängige Originalfolien werden nicht umgeschaltet. Ausgeblendete Details verbleiben im
+Dokument; dies ist eine Vortragstiefe, keine Vertraulichkeitsentfernung. Beide gespeicherten Dateien
+werden erneut geöffnet. Downloadlinks erscheinen nur für bestätigte Dateien, auch bei einem
+Fehler des zweiten Speicherns. Die Quellenbasis ist eine Momentaufnahme, keine Live-Verbindung.
+
+Ns vorhandenes `snapshotLesbar` bleibt das zusätzliche UND am normalen Objekttor. Nur PP07-
+Varianten-/Übernahmezweige sind ergänzt: tatsächliche gespeicherte Datenfassungen, Fingerabdrücke,
+Bindungen und heutige transitive Herkunftsrechte müssen passen. Private Objekt-/Zielrechte gelten
+zusätzlich. Dasselbe Tor schützt die öffentliche PP02-Datei-/Datenausgabe. Interne Planung verwendet
+weiter den vorhandenen lesenden Kontext und muss neue Bindungen erst nach dem Dateischritt speichern.
+
+Neue fokussierte Belege liegen in `pp07-uebernahme-ruecknahme.test.ts`, `pp07-fassungen-download.test.ts`,
+`pp07-konflikte-teilwirkung.test.ts`, `pp07-snapshot-abweisung.test.ts` und der tatsächlich montierten
+`pp07-uebernahme-flaeche.test.tsx`. `pp07-browser.test.ts` ist genau ein vorbereiteter neuer H04-Fall;
+Ausführung nur nach frischer zentraler Ressourcenzuteilung durch den unveränderten Browserdeckel.
+Tatsächliche Ausführungsstände, Fehlerkorrekturen, Quellbindungen und Grenzen stehen in der
+separaten Nachfolgerübergabe. Frühere positive Belege werden nicht als neue Läufe ausgegeben.
+
+H01 native PowerPoint-App, H02 PowerPoint-Web, H03 eigener Importpfad, H05 Vortrag/Besprechung,
+Screenreader, PostgreSQL-Dauerhaftigkeit dieser Mehrfachschritte, unabhängiger Ben und zentrale
+Integration/Version/Push/Deploy/Live-Abnahme sind nicht durch InMemory-/Komponententests belegt.
+Das bisherige eng begrenzte H04/H06-Ergebnis ist keine vollständige Annahme der sieben
+Originalkriterien. Die Führung übernimmt Integration und Veröffentlichungen.
+
+## Erhaltene Liefergeschichte
+
 
 Original `produkt:20261015:klara-powerpoint-aenderungen-fassungen`, Revision 2.
 Implementierter Teilkern: schreibfreie Wirkungsvorschau im bestehenden H04-Anhangweg.

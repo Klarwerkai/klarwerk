@@ -110,9 +110,7 @@ describe("PP-07 · Vorschau in der bestehenden Anhangfläche", () => {
     expect(host.textContent).toContain("300 T€ → 200 T€");
     expect(host.textContent).toContain("Frühere Freigaben gelten dafür nicht");
     expect(host.querySelectorAll("[data-datenkontrolle]")).toHaveLength(2);
-    expect(host.textContent).toContain(
-      "Übernahme in Folien und Daten ist noch nicht angeschlossen",
-    );
+    expect(host.textContent).toContain("Diese reine Datenvorschau verändert noch keine Datei");
     expect(host.textContent).toContain("Sprechernotizen");
     expect(anfragen).toEqual([`POST /api/kos/${b.koId}/office/${b.anhangId}/aenderungsvorschau`]);
     expect((await rufe(w, "anna", "GET", `/api/datenpunkte/${b.ids.ergebnis}`)).body).toMatchObject(

@@ -346,7 +346,8 @@ export async function aenderungsVorschau(
     // Keine Attrappe eines Übernehmen-Knopfs: PP-05 muss tatsächlich schreibbar angebunden sein.
     uebernahme: {
       verfuegbar: false as const,
-      grund: "Die gemeinsame Übernahme in Folien und Daten ist noch nicht angeschlossen.",
+      grund:
+        "Diese reine Datenvorschau verändert noch keine Datei. Die bewusste Dateiübernahme hat einen weiteren eigenen Prüfschritt.",
     },
     grenzen: [
       "Suchraum: Datenpunkte dieses Artikels, an diesen Anhang gebundene Datenpunkte und ihre Eingaben. Kein globaler Nachfolgerindex.",

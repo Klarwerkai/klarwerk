@@ -49,6 +49,7 @@ import { readPptxRich } from "../../lib/files";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { DatenKontrolle, DatenLage } from "./DatenKontrolle";
 import { FolienAenderungen } from "./FolienAenderungen";
+import { FolienFassungen } from "./FolienFassungen";
 
 const ZUSTANDSFARBE: Record<DatenpunktSicht["pruefstand"]["zustand"], string> = {
   erfasst: "text-muted",
@@ -136,6 +137,11 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
   const [pfad, setPfad] = useState<{ id: string; fassung?: number }[]>([]);
   const [erfassenAn, setErfassenAn] = useState<string | null>(null);
   const offenePunkte = useOffenePunkteWahl();
+  const [dateiMeldung, setDateiMeldung] = useState<{
+    koId: string;
+    anhangId: string;
+    text: string;
+  } | null>(null);
   // UI-06 (Risiko R13): ein Einstieg aus der Datenlage oder an der Zahl setzt den Fokus auf die
   // Herkunft — auch wenn genau diese Zahl schon offen ist (sonst bliebe der Fokus im Schmalformat
   // weit oben, die Herkunft weit unten).
@@ -151,6 +157,12 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
   const neuLaden = () => {
     void qc.invalidateQueries({ queryKey: schluessel });
     void qc.invalidateQueries({ queryKey: ["datenpunkt"] });
+  };
+  const dateiGespeichert = (text: string) => {
+    setDateiMeldung({ koId, anhangId, text });
+    void qc.invalidateQueries({ queryKey: ["ko", koId] });
+    void qc.invalidateQueries({ queryKey: ["datenpunkt"] });
+    bereich.current?.focus();
   };
 
   // UI-05/06 (R2, R18): Schließen gibt den Fokus an den Einstieg zurück. Ist der Datenlage-Eintrag
@@ -175,11 +187,20 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
   const d = lage.data;
   const aktiv = pfad.at(-1) ?? null;
   return (
-    <section ref={bereich} data-folien-daten={anhangId} aria-labelledby={titelId} className="mt-3">
+    <section
+      ref={bereich}
+      tabIndex={-1}
+      data-folien-daten={anhangId}
+      aria-labelledby={titelId}
+      className="mt-3"
+    >
       <h5 id={titelId} className="text-[12.5px] font-semibold text-text">
         {t("praesentationdaten.titel")}
       </h5>
       <p className="mt-0.5 text-[12px] text-muted">{t("praesentationdaten.hinweis")}</p>
+      <output className="block text-[12px]" aria-live="polite">
+        {dateiMeldung?.koId === koId && dateiMeldung.anhangId === anhangId ? dateiMeldung.text : ""}
+      </output>
       {lage.isLoading ? (
         <output className="mt-1 block text-[12px] text-muted">
           {t("praesentationdaten.laedt")}
@@ -196,7 +217,17 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
       {d && d.datenpunkte.length > 0 ? (
         <FolienAenderungen
           lage={d}
+          gespeichert={dateiGespeichert}
           key={`${koId}:${anhangId}:${d.artikelFassung}:${d.dateiFassung}:${d.datenpunkte.map((p) => `${p.id}@${p.fassung}:${p.pruefungen.length}`).join(",")}`}
+        />
+      ) : null}
+      {d ? (
+        <FolienFassungen
+          koId={koId}
+          anhangId={anhangId}
+          darfSpeichern={d.darfErfassen}
+          gespeichert={dateiGespeichert}
+          key={`fassungen:${koId}:${anhangId}:${d.artikelFassung}:${d.dateiFassung}`}
         />
       ) : null}
       {d ? (

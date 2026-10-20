@@ -36,6 +36,7 @@ import {
 import { type WopiSitzungsablage, erstelleWopiHost } from "../office-wopi-host";
 import type { DatenpunktAblage } from "../praesentation-daten-ablage";
 import { darfSehen } from "../sichtbarkeit";
+import { registriereDatenAenderungsRouten } from "./praesentation-aenderungs-routes";
 import { registriereAufbauRouten } from "./praesentation-aufbau-routes";
 
 // ================================================================================================
@@ -603,6 +604,13 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
     }
 
     if (deps.datenpunkte) {
+      registriereDatenAenderungsRouten(
+        app,
+        { ...deps, datenpunkte: deps.datenpunkte },
+        guards,
+        vorFassungsschritt,
+        nacheinander,
+      );
       registriereAufbauRouten(
         app,
         { ...deps, datenpunkte: deps.datenpunkte },

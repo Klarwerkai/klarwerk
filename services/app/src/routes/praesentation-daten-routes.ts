@@ -44,6 +44,7 @@ import {
   type KontrollierteSicht,
   kontrollAnschluss,
 } from "../praesentation-pruefung-anschluss";
+import { snapshotLesbar } from "../praesentation-snapshot-recht";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -153,7 +154,29 @@ export function praesentationDatenRoutes(
   const jetzt = deps.jetzt ?? Date.now;
   const kennung = deps.kennung ?? (() => randomUUID());
 
-  const umgebung = (user: SessionUser) => datenUmgebung(deps, user);
+  // Derselbe Snapshot-Rechteprüfer wie am Objektdownload, auch bevor Folientext oder
+  // Bindungsabweichungen die öffentliche PP02-API verlassen. Interne Office-Schreibschritte
+  // verwenden weiter datenUmgebung und ihre eigenen Rechte-/CAS-Tore (keine Vorab-Bindungsfiktion).
+  const snapshotVerweigert = new WeakSet<DatenUmgebung>();
+  const umgebung = (user: SessionUser): DatenUmgebung => {
+    const u = datenUmgebung(deps, user);
+    const geschuetzt: DatenUmgebung = {
+      ...u,
+      async folien(koId, anhangId) {
+        const f = await u.folien(koId, anhangId);
+        if (!f) return;
+        const obj = await deps.objekte.read(f.objectId);
+        const bytes = obj ? decodeDataUrl(obj.data)?.bytes : undefined;
+        const pruefung = bytes ? await snapshotLesbar(bytes, f.objectId, u) : undefined;
+        if (pruefung && !pruefung.sichtbar) {
+          snapshotVerweigert.add(geschuetzt);
+          return undefined;
+        }
+        return f;
+      },
+    };
+    return geschuetzt;
+  };
 
   // Der große Körper des Hostabgleichs wird erst gelesen, wenn das Leserecht feststeht (Muster
   // `requireKoCreateBeforeParse`, ko-routes.ts). Benannter Helfer, damit der Routenscanner im
@@ -397,6 +420,10 @@ export function praesentationDatenRoutes(
         }
         const datei = await u.folien(ko.id, anhang.id);
         if (!datei) {
+          if (snapshotVerweigert.has(u)) {
+            nichtGefunden(reply, "Anhang");
+            return;
+          }
           reply.code(400).send({
             error: "KEINE_PRAESENTATION",
             message: "Dieser Anhang ist keine lesbare PowerPoint-Datei (.pptx).",

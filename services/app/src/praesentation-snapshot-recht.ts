@@ -9,6 +9,7 @@ import {
   type FoliensatzDaten,
   MAX_FOLIEN,
   elementBefund,
+  fingerabdruck,
   inFassung,
   leseFolienDaten,
   vollLesbar,
@@ -18,6 +19,8 @@ import { type AnhangUrteil, schutzrang } from "./sichtbarkeit";
 const NEIN: AnhangUrteil = { sichtbar: false, vertraulich: true };
 const PREFIX = "ppt/klara/pp05-";
 const MANIFEST = /^ppt\/klara\/pp05-[^/]+\.json$/;
+const PP07_VARIANTE = "ppt/klara/pp07-variante.json";
+const PP07_UEBERNAHME = "ppt/klara/pp07-uebernahme.json";
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const objekt = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -72,7 +75,9 @@ export async function snapshotLesbar(
   if (bytes.length < 4 || bytes.readUInt32LE(0) !== 0x04034b50) return undefined;
   // ZIP-Namen stehen im Zentralverzeichnis unkomprimiert. Gewöhnliche Dateien erhalten
   // keinen neuen Parser-/Entpacklauf. Für PP05 gelten die unveränderten bestehenden Grenzen.
-  if (!bytes.includes(Buffer.from(PREFIX))) return undefined;
+  const pp07Marker = bytes.includes(Buffer.from(PP07_VARIANTE));
+  const pp07Uebernahme = bytes.includes(Buffer.from(PP07_UEBERNAHME));
+  if (!bytes.includes(Buffer.from(PREFIX)) && !pp07Marker && !pp07Uebernahme) return undefined;
   if (await pruefeAbgleichKoerper(bytes, FOLIEN_ABGLEICH_GRENZEN)) return NEIN;
   let zip: JSZip;
   try {
@@ -81,7 +86,7 @@ export async function snapshotLesbar(
     return NEIN;
   }
   const namen = Object.keys(zip.files).filter((n) => n.startsWith(PREFIX) && !zip.files[n]?.dir);
-  if (namen.length === 0) return undefined;
+  if (namen.length === 0 && !pp07Uebernahme) return pp07Marker ? NEIN : undefined;
   if (!u || namen.length > MAX_FOLIEN || namen.some((n) => !MANIFEST.test(n))) return NEIN;
   let vertraulich = false;
   const quelle = u;
@@ -103,10 +108,40 @@ export async function snapshotLesbar(
       if (!deck) return NEIN;
       decks.push(deck);
     }
+    // PP07-Dateitiefen ändern nur Sichtbarkeit. Ihr Manifest verleiht keine Rechte:
+    // dieselben PP05-Fakten und eine tatsächlich gespeicherte Bindung der Ausgangsdatei sind nötig.
+    let variantenBasis: string | undefined;
+    const varText = await zip.file(PP07_VARIANTE)?.async("string");
+    if (varText !== undefined) {
+      if (varText.length > 128 * 1024) return NEIN;
+      const v: unknown = JSON.parse(varText);
+      if (
+        !objekt(v) ||
+        v.vertrag !== "klara-pp07-variante-v1" ||
+        !["kurz", "ausfuehrlich"].includes(String(v.tiefe)) ||
+        typeof v.basis !== "string" ||
+        !/^[0-9a-f]{64}$/.test(v.basis) ||
+        !Array.isArray(v.datenbasis) ||
+        v.datenbasis.length > MAX_FOLIEN ||
+        !v.datenbasis.every((p) => objekt(p) && kennung(p.id) && fassung(p.fassung))
+      )
+        return NEIN;
+      const erwartet = new Set(
+        decks.flatMap((d) => d.plan.fakten.map((p) => `${p.id}@${p.fassung}`)),
+      );
+      const deklariert = new Set(v.datenbasis.map((p) => `${p.id}@${p.fassung}`));
+      if (erwartet.size !== deklariert.size || [...erwartet].some((p) => !deklariert.has(p)))
+        return NEIN;
+      variantenBasis = v.basis;
+    }
     const dateiFassung = hash(bytes);
     // Beim erneuten Aufbau bleiben frühere Folien und Manifeste erhalten. Ihre schon vorhandenen
     // PP02-Bindungen dürfen auf eine unveränderte Vorgängerdatei der tatsächlichen Deckkette zeigen.
-    const dateifassungen = new Set([dateiFassung, ...decks.map((d) => d.plan.basis.dateiFassung)]);
+    const dateifassungen = new Set([
+      dateiFassung,
+      ...decks.map((d) => d.plan.basis.dateiFassung),
+      ...(variantenBasis ? [variantenBasis] : []),
+    ]);
     const geprueft = new Map<string, Datenpunkt>();
     async function datenfassung(
       id: string,
@@ -162,8 +197,48 @@ export async function snapshotLesbar(
           if (elementBefund(dp, gespeichert, satz).lage !== "passt") return NEIN;
           if (gespeichert.objectId === objectId && gespeichert.dateiFassung === dateiFassung)
             inDieserDateiGebunden = true;
+          if (variantenBasis && passend.some((g) => g.dateiFassung === variantenBasis))
+            inDieserDateiGebunden = true;
         }
       }
+    }
+    if (pp07Uebernahme) {
+      const text = await zip.file(PP07_UEBERNAHME)?.async("string");
+      if (!text || text.length > 1024 * 1024) return NEIN;
+      const b: unknown = JSON.parse(text);
+      if (
+        !objekt(b) ||
+        b.vertrag !== "klara-pp07-uebernahme-v1" ||
+        !objekt(b.basis) ||
+        !kennung(b.basis.koId) ||
+        !kennung(b.basis.anhangId) ||
+        !Array.isArray(b.punkte) ||
+        b.punkte.length > 80
+      )
+        return NEIN;
+      const koId = b.basis.koId;
+      const anhangId = b.basis.anhangId;
+      const ziel = await lesend.artikel(koId);
+      if (!ziel?.attachments.some((a) => a.id === anhangId)) return NEIN;
+      for (const p of b.punkte) {
+        if (
+          !objekt(p) ||
+          !kennung(p.id) ||
+          !fassung(p.nachherFassung) ||
+          typeof p.nachherAbdruck !== "string"
+        )
+          return NEIN;
+        const dp = await datenfassung(p.id, p.nachherFassung);
+        if (!dp || fingerabdruck(dp) !== p.nachherAbdruck) return NEIN;
+      }
+      // Ein Übernahmebeleg verleiht kein zusätzliches Leserecht. Ohne PP05 nur das bereits
+      // normale erlaubte aktuelle Zielobjekt oder eine tatsächlich gespeicherte Dateibindung.
+      if (!decks.length)
+        inDieserDateiGebunden =
+          ziel.attachments.some((a) => a.id === anhangId && a.objectId === objectId) ||
+          [...geprueft.values()].some((p) =>
+            p.bindungen.some((g) => g.objectId === objectId && g.dateiFassung === dateiFassung),
+          );
     }
     return inDieserDateiGebunden ? { sichtbar: true, vertraulich } : NEIN;
   } catch {

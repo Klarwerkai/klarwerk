@@ -232,7 +232,7 @@ export function DatenKontrolle({
             {d.befunde.length > 0 ? (
               <ul className="pl-3">
                 {d.befunde.map((b) => (
-                  <Befund key={b.id} b={b} />
+                  <Befund key={JSON.stringify([b.id, b.hier, b.grund])} b={b} />
                 ))}
               </ul>
             ) : null}
