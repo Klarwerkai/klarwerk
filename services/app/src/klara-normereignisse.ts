@@ -36,6 +36,14 @@ export interface NormEreignis {
   zuerstGelesenAm: string;
   /** Stabil je tatsächlichem Sachereignis, unabhängig von Kopie, Polling und Zustellversuch. */
   pruefVorgang: string;
+  /** Nur der Verweis auf das vorhandene Auftragsjournal, kein zweiter Ausführungsstand. */
+  pruefauftrag?: NormPruefauftragRef;
+}
+export interface NormPruefauftragRef {
+  gespraechId: string;
+  auftragId: string;
+  nr: 1;
+  schluessel: string;
 }
 export interface NormAbloesung {
   id: string;

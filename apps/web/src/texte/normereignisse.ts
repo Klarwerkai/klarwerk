@@ -3,6 +3,25 @@ export default {
   praefix: "normereignisse.",
   legacySchluessel: [],
   de: {
+    "normereignisse.annahmeUngeprueft": "Ein fachlicher Annahmebeleg lässt sich mit den heutigen Anleitungsrechten nicht prüfen.",
+    "normereignisse.pruefauftrag": "Prüfauftrag am Original",
+    "normereignisse.pruefauftragHilfe":
+      "Verknüpfe einen bewusst beauftragten eigenen Notizauftrag aus dem aktuellen Klara-Gespräch. Seine Originalnotiz muss den Ereignisbeleg enthalten. Ausführung und Wiederaufnahme bleiben im vorhandenen Auftrag.",
+    "normereignisse.pruefauftragAuswahl": "Vorhandener eigener Notizauftrag",
+    "normereignisse.auftragWaehlen": "Auftrag auswählen",
+    "normereignisse.auftragFehlt":
+      "Der gebundene Originalauftrag fehlt. Es wird kein Ersatzauftrag angelegt.",
+    "normereignisse.keinAuftrag":
+      "Kein passender eigener Notizauftrag im aktuellen Gespräch. Lege ihn dort mit der tatsächlichen Originalnotiz bewusst fest.",
+    "normereignisse.auftragsquelleGeaendert":
+      "Die Originalnotiz wurde geändert oder ist nicht mehr verfügbar. Neue Wirkungen bleiben gesperrt; vorhandene Ergebnisse bleiben erhalten.",
+    "normereignisse.auftragUnklar":
+      "Der Schreibausgang ist ungeklärt. Nur das Original unter derselben Kennung nachlesen.",
+    "normereignisse.aufgabeEntfernt":
+      "Die ursprüngliche Aufgabe wurde entfernt. Keine Neuerstellung dieses Ereignisses.",
+    "normereignisse.aufgabeOeffnen": "Originalaufgabe öffnen",
+    "normereignisse.pruefschritt": "Originalprüfschritt ausführen oder nachlesen",
+    "normereignisse.auftragVerknuepfen": "Diesen Originalauftrag verknüpfen",
     "normereignisse.titel": "Normbekanntmachungen und fachliche Ablösung",
     "normereignisse.hilfe":
       "Begrenzte Bekanntmachungen aus ausgewählten Wissensobjekten mit getrennten Ereignissen, Terminen und Geltungsbereichen erfassen.",
@@ -20,7 +39,7 @@ export default {
     "normereignisse.aktualisieren": "Aktuellen Stand lesen",
     "normereignisse.fehler":
       "Der aktuelle Stand konnte nicht bestätigt werden. Eingaben und Quellen bitte prüfen und erneut versuchen.",
-    "normereignisse.leer": "Noch keine Normereignisbelege erfasst.",
+    "normereignisse.leer": "Keine aktuell lesbaren Normereignisbelege verfügbar.",
     "normereignisse.keinSuchtreffer": "Keine lesbare Quelle gefunden.",
     "normereignisse.norm": "Norm {{kennung}} · Ausgabe {{ausgabe}}",
     "normereignisse.datumOffen": "Datum offen",
@@ -62,6 +81,25 @@ export default {
       "Angezeigt werden nur heute lesbare, ausdrücklich zugeordnete Einträge. Ähnlichkeit wurde nicht als Abhängigkeit übernommen.",
   },
   en: {
+    "normereignisse.annahmeUngeprueft": "An acceptance record cannot be checked under current instruction access rights.",
+    "normereignisse.pruefauftrag": "Review at the original task",
+    "normereignisse.pruefauftragHilfe":
+      "Link an explicitly commissioned personal note task from the current Klara conversation. Its original note must contain the event evidence. Execution and resumption remain in the existing order.",
+    "normereignisse.pruefauftragAuswahl": "Existing personal note order",
+    "normereignisse.auftragWaehlen": "Select order",
+    "normereignisse.auftragFehlt":
+      "The linked original order is missing. No replacement order will be created.",
+    "normereignisse.keinAuftrag":
+      "No matching personal note order in the current conversation. Explicitly commission it there using the actual original note.",
+    "normereignisse.auftragsquelleGeaendert":
+      "The original note changed or is unavailable. New effects remain blocked; existing results are preserved.",
+    "normereignisse.auftragUnklar":
+      "The write outcome is unclear. Read only the original under the same identifier.",
+    "normereignisse.aufgabeEntfernt":
+      "The original task was removed. This event will not recreate it.",
+    "normereignisse.aufgabeOeffnen": "Open original task",
+    "normereignisse.pruefschritt": "Execute or read original review step",
+    "normereignisse.auftragVerknuepfen": "Link this original order",
     "normereignisse.titel": "Standards notices and professional replacement",
     "normereignisse.hilfe":
       "Record limited notices from selected knowledge objects with separate events, dates and scopes.",
@@ -78,7 +116,7 @@ export default {
     "normereignisse.aktualisieren": "Read current state",
     "normereignisse.fehler":
       "The current state could not be confirmed. Please check your entries and sources and try again.",
-    "normereignisse.leer": "No standards event evidence recorded yet.",
+    "normereignisse.leer": "No currently readable standards event evidence available.",
     "normereignisse.keinSuchtreffer": "No readable source found.",
     "normereignisse.norm": "Standard {{kennung}} · edition {{ausgabe}}",
     "normereignisse.datumOffen": "Date unknown",
@@ -121,6 +159,25 @@ export default {
       "Only currently readable, explicitly assigned entries are shown. Similarity was not treated as a dependency.",
   },
   nl: {
+    "normereignisse.annahmeUngeprueft": "Een inhoudelijke acceptatie kan met de huidige toegangsrechten niet worden gecontroleerd.",
+    "normereignisse.pruefauftrag": "Controle bij de oorspronkelijke taak",
+    "normereignisse.pruefauftragHilfe":
+      "Koppel een bewust opgedragen eigen notitieopdracht uit het huidige Klara-gesprek. De oorspronkelijke notitie moet het gebeurtenisbewijs bevatten. Uitvoering en hervatting blijven in de bestaande opdracht.",
+    "normereignisse.pruefauftragAuswahl": "Bestaande eigen notitieopdracht",
+    "normereignisse.auftragWaehlen": "Opdracht kiezen",
+    "normereignisse.auftragFehlt":
+      "De gekoppelde oorspronkelijke opdracht ontbreekt. Er wordt geen vervangende opdracht gemaakt.",
+    "normereignisse.keinAuftrag":
+      "Geen passende eigen notitieopdracht in het huidige gesprek. Geef daar bewust opdracht met de echte oorspronkelijke notitie.",
+    "normereignisse.auftragsquelleGeaendert":
+      "De oorspronkelijke notitie is gewijzigd of niet beschikbaar. Nieuwe effecten blijven geblokkeerd; bestaande resultaten blijven behouden.",
+    "normereignisse.auftragUnklar":
+      "De schrijfuitkomst is onduidelijk. Lees alleen het origineel onder dezelfde identificatie.",
+    "normereignisse.aufgabeEntfernt":
+      "De oorspronkelijke taak is verwijderd. Deze gebeurtenis maakt haar niet opnieuw aan.",
+    "normereignisse.aufgabeOeffnen": "Oorspronkelijke taak openen",
+    "normereignisse.pruefschritt": "Oorspronkelijke controlestap uitvoeren of lezen",
+    "normereignisse.auftragVerknuepfen": "Deze oorspronkelijke opdracht koppelen",
     "normereignisse.titel": "Normbekendmakingen en vakinhoudelijke vervanging",
     "normereignisse.hilfe":
       "Beperkte bekendmakingen uit geselecteerde kennisobjecten vastleggen met afzonderlijke gebeurtenissen, datums en toepassingsgebieden.",
@@ -137,7 +194,7 @@ export default {
     "normereignisse.aktualisieren": "Actuele stand lezen",
     "normereignisse.fehler":
       "De actuele stand kon niet worden bevestigd. Controleer je invoer en bronnen en probeer opnieuw.",
-    "normereignisse.leer": "Nog geen normgebeurtenisbewijzen vastgelegd.",
+    "normereignisse.leer": "Geen momenteel leesbare normgebeurtenisbewijzen beschikbaar.",
     "normereignisse.keinSuchtreffer": "Geen leesbare bron gevonden.",
     "normereignisse.norm": "Norm {{kennung}} · uitgave {{ausgabe}}",
     "normereignisse.datumOffen": "Datum onbekend",

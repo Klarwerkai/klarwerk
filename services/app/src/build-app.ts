@@ -6196,6 +6196,8 @@ export function buildApp(
   });
   app.register(klaraFristenRoutes({ dienst: fristenDienst, audit: services.audit }, guards));
   const normereignisse = new KlaraNormereignisDienst({
+    aufgaben: services.klaraAufgaben,
+    gespraeche: services.klaraGespraeche,
     repo: services.klaraFristen,
     quellen: fristenQuellen,
     ko: services.ko,

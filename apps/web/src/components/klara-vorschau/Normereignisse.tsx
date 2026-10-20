@@ -304,6 +304,7 @@ function Normkarte({
     <article
       data-testid="normgeschichte"
       data-norm-id={n.id}
+      data-norm-fassung={stand.fassung}
       className="min-w-0 space-y-3 rounded-card border border-hairline p-3"
     >
       <h3 className="font-semibold">
@@ -312,7 +313,21 @@ function Normkarte({
       {NORM_ARTEN.map((art) => (
         <div key={art} className="space-y-1">
           {n.ereignisse.some((e) => e.art === art) ? (
-            n.ereignisse.filter((e) => e.art === art).map((e) => <Ereignis key={e.id} e={e} />)
+            n.ereignisse
+              .filter((e) => e.art === art)
+              .map((e) => (
+                <div key={e.id}>
+                  <Ereignis e={e} />
+                  <Pruefauftrag
+                    normId={n.id}
+                    e={e}
+                    stand={stand.fassung}
+                    kontoId={kontoId}
+                    epoche={epoche}
+                    neuLesen={neuLesen}
+                  />
+                </div>
+              ))
           ) : (
             <p>
               <strong>{t(`normereignisse.${art}`)}</strong>
@@ -327,7 +342,8 @@ function Normkarte({
           {t("normereignisse.widerspruch")}
         </p>
       ) : null}
-      {n.annahmen.length === 0 ? <p>{t("normereignisse.pruefungOffen")}</p> : null}
+      {n.annahmeUngeprueft ? <p>{t("normereignisse.annahmeUngeprueft")}</p> :
+        n.annahmen.length === 0 ? <p>{t("normereignisse.pruefungOffen")}</p> : null}
       {n.annahmen.map((a) => (
         <div
           key={a.id}
@@ -362,7 +378,7 @@ function Normkarte({
         </div>
       ) : null}
       {stand.fachannahmeErlaubt ? (
-        <details onToggle={(ev) => setFachoffen(ev.currentTarget.open)}>
+        <details data-testid="norm-fachform" onToggle={(ev) => setFachoffen(ev.currentTarget.open)}>
           <summary>{t("normereignisse.annahme")}</summary>
           <p className="my-2">{t("normereignisse.annahmeHilfe")}</p>
           {optionen.data?.fassungen.length === 0 ? (
@@ -450,5 +466,117 @@ function Normkarte({
       ) : null}
       {fehler || optionen.isError ? <p role="alert">{t("normereignisse.fehler")}</p> : null}
     </article>
+  );
+}
+
+function Pruefauftrag({
+  normId,
+  e,
+  stand,
+  kontoId,
+  epoche,
+  neuLesen,
+}: {
+  normId: string;
+  e: NormEreignis;
+  stand: number;
+  kontoId: string;
+  epoche: number;
+  neuLesen: () => Promise<unknown>;
+}): JSX.Element {
+  const { t } = useAssistenzT();
+  const [offen, setOffen] = useState(false);
+  const [auswahl, setAuswahl] = useState("");
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState(false);
+  const aktiv = useRef(true);
+  useEffect(() => {
+    aktiv.current = true;
+    return () => {
+      aktiv.current = false;
+    };
+  }, []);
+  const aktuell = () => aktiv.current && anfrageEpoche() === epoche;
+  const daten = useQuery({
+    queryKey: ["norm-pruefauftrag", kontoId, epoche, normId, e.id, stand],
+    queryFn: () => klaraNormApi.pruefauftraege(normId, e.id),
+    enabled: offen,
+  });
+  const gebunden = daten.data?.gebunden;
+  const auftrag = daten.data?.auftraege.find(
+    (a) => a.auftragId === (gebunden?.auftragId ?? auswahl),
+  );
+  const wirke = async () => {
+    if (!auftrag || laeuft || !aktuell()) return;
+    setLaeuft(true);
+    setFehler(false);
+    try {
+      if (gebunden) await klaraNormApi.pruefschritt(auftrag);
+      else await klaraNormApi.verknuepfen(normId, e.id, stand, auftrag);
+      if (aktuell()) {
+        await daten.refetch();
+        await neuLesen();
+      }
+    } catch {
+      if (aktuell()) {
+        setFehler(true);
+        await daten.refetch();
+      }
+    } finally {
+      if (aktuell()) setLaeuft(false);
+    }
+  };
+  return (
+    <details data-testid="norm-pruefauftrag" onToggle={(ev) => setOffen(ev.currentTarget.open)}>
+      <summary>{t("normereignisse.pruefauftrag")}</summary>
+      <div className="my-2 space-y-2">
+        <p>{t("normereignisse.pruefauftragHilfe")}</p>
+        {daten.data && !gebunden ? (
+          <Field label={t("normereignisse.pruefauftragAuswahl")}>
+            <select
+              aria-label={t("normereignisse.pruefauftragAuswahl")}
+              value={auswahl}
+              onChange={(ev) => setAuswahl(ev.target.value)}
+              disabled={laeuft}
+              className="w-full rounded-input border border-hairline bg-surface p-2"
+            >
+              <option value="">{t("normereignisse.auftragWaehlen")}</option>
+              {daten.data.auftraege.map((a) => (
+                <option key={a.auftragId} value={a.auftragId}>
+                  {a.titel}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
+        {daten.data && !auftrag ? (
+          <p>{t(gebunden ? "normereignisse.auftragFehlt" : "normereignisse.keinAuftrag")}</p>
+        ) : null}
+        {auftrag ? (
+          <>
+            <p>{auftrag.titel}</p>
+            {!auftrag.quelleAktuell ? <p>{t("normereignisse.auftragsquelleGeaendert")}</p> : null}
+            {auftrag.schritt?.ausgangUnklar ? <p>{t("normereignisse.auftragUnklar")}</p> : null}
+            {auftrag.ergebnisVorhanden === false ? (
+              <p>{t("normereignisse.aufgabeEntfernt")}</p>
+            ) : null}
+            {auftrag.ergebnisVorhanden && auftrag.schritt?.ergebnis ? (
+              <Link className="underline" to={auftrag.schritt.ergebnis.pfad}>
+                {t("normereignisse.aufgabeOeffnen")}
+              </Link>
+            ) : null}
+            {auftrag.ergebnisVorhanden !== false ? (
+              <Button disabled={laeuft} onClick={() => void wirke()}>
+                {t(gebunden ? "normereignisse.pruefschritt" : "normereignisse.auftragVerknuepfen")}
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+        <Button disabled={laeuft || daten.isFetching} onClick={() => void daten.refetch()}>
+          {t("normereignisse.aktualisieren")}
+        </Button>
+        {fehler || daten.isError ? <p role="alert">{t("normereignisse.fehler")}</p> : null}
+      </div>
+    </details>
   );
 }

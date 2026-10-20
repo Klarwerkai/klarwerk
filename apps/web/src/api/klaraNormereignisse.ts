@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { KlaraAuftragErgebnis } from "./klaraAuftrag";
 
 export const NORM_ARTEN = [
   "angekuendigt",
@@ -32,6 +33,25 @@ export interface NormEreignis {
   belege: NormBeleg[];
   zuerstGelesenAm: string;
   pruefVorgang: string;
+  pruefauftrag?: NormPruefauftragRef;
+}
+export interface NormPruefauftragRef {
+  gespraechId: string;
+  auftragId: string;
+  nr: 1;
+  schluessel: string;
+}
+export interface NormPruefauftrag extends NormPruefauftragRef {
+  titel: string;
+  fassung: number;
+  stand: string;
+  quelleAktuell: boolean;
+  ergebnisVorhanden: boolean | null;
+  schritt: { stand: string; ausgangUnklar: boolean; ergebnis: KlaraAuftragErgebnis | null } | null;
+}
+export interface NormPruefauftraege {
+  gebunden: NormPruefauftragRef | null;
+  auftraege: NormPruefauftrag[];
 }
 export interface NormZiel {
   koId: string;
@@ -54,6 +74,7 @@ export interface Normgeschichte {
   ereignisse: NormEreignis[];
   annahmen: NormAnnahme[];
   widerspruch: boolean;
+  annahmeUngeprueft: boolean;
 }
 export interface NormStand {
   fassung: number;
@@ -92,7 +113,22 @@ export interface NormFassung {
 }
 const BASIS = "/me/klara/normereignisse";
 const pfad = (id: string) => `${BASIS}/${encodeURIComponent(id)}`;
+const pruefpfad = (id: string, e: string) =>
+  `${pfad(id)}/ereignisse/${encodeURIComponent(e)}/pruefauftrag`;
 export const klaraNormApi = {
+  pruefauftraege: (id: string, e: string) => api.get<NormPruefauftraege>(pruefpfad(id, e)),
+  verknuepfen: (id: string, e: string, fassung: number, a: NormPruefauftragRef) =>
+    api.post(pruefpfad(id, e), {
+      fassung,
+      gespraechId: a.gespraechId,
+      auftragId: a.auftragId,
+      bestaetigt: true,
+    }),
+  pruefschritt: (a: NormPruefauftrag) =>
+    api.post(
+      `/me/klara/gespraeche/${encodeURIComponent(a.gespraechId)}/auftraege/${encodeURIComponent(a.auftragId)}/schritte/${encodeURIComponent(a.schluessel)}/ausfuehrung`,
+      { nr: a.nr, auftragFassung: a.fassung },
+    ),
   lesen: () => api.get<NormStand>(BASIS),
   fachfassung: (id: string, ziel: NormZiel) =>
     api.get<NormFassung>(`${pfad(id)}/fassungen/${encodeURIComponent(ziel.koId)}/${ziel.fassung}`),

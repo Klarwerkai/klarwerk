@@ -1,3 +1,4 @@
+import { echterNotizauftrag } from "./pruefauftrag-vorrichtung";
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -40,6 +41,8 @@ afterEach(async () => {
 });
 function neu() {
   return new KlaraNormereignisDienst({
+    aufgaben: services.klaraAufgaben,
+    gespraeche: services.klaraGespraeche,
     repo: services.klaraFristen,
     quellen,
     ko: services.ko,
@@ -117,7 +120,132 @@ async function annahmeEingabe(
   };
 }
 
+const notizauftrag = (inhalt = BEKANNTMACHUNG, konto = ich) =>
+  echterNotizauftrag(app, konto.kopf, inhalt);
+
 describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
+  it("bewusster vorhandener Originalnotizauftrag bleibt über Kopie/Reload dieselbe echte G-Aufgabe; Entfernen erzeugt keinen Ersatz", async () => {
+    const q = await wissen();
+    await dienst.beobachten(kontoId, [q.id], lauf);
+    const n = (await dienst.sicht(kontoId))[0];
+    const e = n?.ereignisse[0];
+    if (!n || !e) throw new Error("Ereignis fehlt");
+    const p = await notizauftrag();
+    const url = `/api/me/klara/normereignisse/${n.id}/ereignisse/${e.id}/pruefauftrag`;
+    const liste = await app.inject({ url, headers: ich.kopf });
+    expect(liste.statusCode, liste.body).toBe(200);
+    expect(liste.json().auftraege).toHaveLength(1);
+    expect(
+      (await app.inject({ url: "/api/me/klara/aufgaben", headers: ich.kopf })).json().aufgaben,
+    ).toEqual([]);
+    const payload = {
+      fassung: (await services.klaraFristen.hole(kontoId))?.fassung,
+      gespraechId: p.gespraechId,
+      auftragId: p.auftragId,
+      bestaetigt: true,
+    };
+    const bindung = await app.inject({ method: "POST", url, headers: ich.kopf, payload });
+    expect(bindung.statusCode, bindung.body).toBe(200);
+    expect(bindung.json().wiederholt).toBe(false);
+    const ref = bindung.json().pruefauftrag;
+    const ausUrl = `${p.pfad}/${p.auftragId}/schritte/${ref.schluessel}/ausfuehrung`;
+    const aus = () =>
+      app.inject({
+        method: "POST",
+        url: ausUrl,
+        headers: ich.kopf,
+        payload: { nr: 1, auftragFassung: 1 },
+      });
+    const getan = await aus();
+    expect(getan.statusCode, getan.body).toBe(200);
+    const taskId = getan.json().schritt.ergebnis.id;
+    const task = await app.inject({ url: `/api/me/klara/aufgaben/${taskId}`, headers: ich.kopf });
+    expect(task.json().aufgabe).toMatchObject({
+      inhalt: BEKANNTMACHUNG,
+      bezug: { art: "notiz", notizId: p.notiz.id },
+    });
+    const kopie = await wissen();
+    await neu().beobachten(kontoId, [kopie.id], lauf);
+    const lesung = await neu().pruefauftraege(kontoId, n.id, e.id);
+    expect(lesung.gebunden).toEqual(ref);
+    expect(lesung.auftraege[0]).toMatchObject({
+      ergebnisVorhanden: true,
+      schritt: { ergebnis: { id: taskId } },
+    });
+    expect((await aus()).json().wiederholt).toBe(true);
+    expect((await dienst.verknuepfePruefauftrag(kontoId, n.id, e.id, payload)).wiederholt).toBe(
+      true,
+    );
+    expect(
+      (await app.inject({ url: "/api/me/klara/aufgaben", headers: ich.kopf })).json().aufgaben,
+    ).toHaveLength(1);
+    const geloescht = await app.inject({
+      method: "DELETE",
+      url: `/api/me/klara/aufgaben/${taskId}`,
+      headers: ich.kopf,
+    });
+    expect(geloescht.statusCode, geloescht.body).toBe(200);
+    expect(geloescht.json()).toEqual({ geloescht: 1 });
+    expect((await neu().pruefauftraege(kontoId, n.id, e.id)).auftraege[0]?.ergebnisVorhanden).toBe(
+      false,
+    );
+    expect((await aus()).json().schritt.ergebnis.id).toBe(taskId);
+    expect(
+      (await app.inject({ url: "/api/me/klara/aufgaben", headers: ich.kopf })).json().aufgaben,
+    ).toEqual([]);
+  });
+  it("fremde oder unpassende Notizpläne und spätere Zweitbindung werden abgewiesen; Stop erhält die Referenz ohne Aufgabe", async () => {
+    const q = await wissen();
+    await dienst.beobachten(kontoId, [q.id], lauf);
+    const n = (await dienst.sicht(kontoId))[0];
+    const e = n?.ereignisse[0];
+    if (!n || !e) throw new Error("Ereignis fehlt");
+    const unpassend = await notizauftrag("Nur ähnlich benannter Inhalt ohne Ereignisbeleg.");
+    const fremd = await notizauftrag(BEKANNTMACHUNG, await kontoMitRolle("controller"));
+    for (const p of [unpassend, fremd])
+      await expect(
+        dienst.verknuepfePruefauftrag(kontoId, n.id, e.id, {
+          fassung: (await services.klaraFristen.hole(kontoId))?.fassung,
+          gespraechId: p.gespraechId,
+          auftragId: p.auftragId,
+          bestaetigt: true,
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+    const p = await notizauftrag();
+    const r = await dienst.verknuepfePruefauftrag(kontoId, n.id, e.id, {
+      fassung: (await services.klaraFristen.hole(kontoId))?.fassung,
+      gespraechId: p.gespraechId,
+      auftragId: p.auftragId,
+      bestaetigt: true,
+    });
+    const stopp = await app.inject({
+      method: "PUT",
+      url: `${p.pfad}/${p.auftragId}/abbruch`,
+      headers: ich.kopf,
+      payload: {},
+    });
+    expect(stopp.statusCode, stopp.body).toBe(200);
+    const getan = await app.inject({
+      method: "POST",
+      url: `${p.pfad}/${p.auftragId}/schritte/${r.pruefauftrag.schluessel}/ausfuehrung`,
+      headers: ich.kopf,
+      payload: { nr: 1, auftragFassung: 1 },
+    });
+    expect(getan.statusCode, getan.body).toBe(409);
+    const zweiter = await notizauftrag();
+    await expect(
+      dienst.verknuepfePruefauftrag(kontoId, n.id, e.id, {
+        fassung: (await services.klaraFristen.hole(kontoId))?.fassung,
+        gespraechId: zweiter.gespraechId,
+        auftragId: zweiter.auftragId,
+        bestaetigt: true,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect((await neu().pruefauftraege(kontoId, n.id, e.id)).gebunden).toEqual(r.pruefauftrag);
+    expect(
+      (await app.inject({ url: "/api/me/klara/aufgaben", headers: ich.kopf })).json().aufgaben,
+    ).toEqual([]);
+  });
   it("Vorschau wirkt nicht; Normbeleg erhält die vorhandene Fristenregel und echte Frist, Wiederholung schreibt keine neue Fassung", async () => {
     const n = await app.inject({
       method: "POST",
@@ -308,10 +436,15 @@ describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
       expect(fassung.json().aussage).not.toContain("spätere v3");
     }
     await services.ko.setQuellrechte(nachfolger.id, { stufe: "intern", leser: [] }, kontoId);
-    expect((await app.inject({
-      url: `/api/me/klara/normereignisse/${n.id}/fassungen/${nachfolger.id}/${nachfolger.version}`,
-      headers: ich.kopf,
-    })).statusCode).toBe(404);
+    expect((await dienst.stand(kontoId)).normen[0]?.annahmeUngeprueft).toBe(true);
+    expect(
+      (
+        await app.inject({
+          url: `/api/me/klara/normereignisse/${n.id}/fassungen/${nachfolger.id}/${nachfolger.version}`,
+          headers: ich.kopf,
+        })
+      ).statusCode,
+    ).toBe(404);
   });
   it("ein aktuelles tatsächlich lesendes Konto ohne ko.validate kann keine Fachannahme erzeugen", async () => {
     const leser = await kontoMitRolle("viewer");
@@ -370,19 +503,25 @@ describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
     const { bisher, nachfolger } = await fachlicheFassungen();
     const n = (await dienst.sicht(kontoId))[0];
     if (!n) throw new Error("Normgeschichte fehlt");
-    await services.ko.revise(a.id, {
-      statement: BEKANNTMACHUNG.replace("2026-11-01", "2026-12-01"),
-    }, kontoId);
-    await expect(dienst.nehmeAbloesungAn(kontoId, n.id,
-      await annahmeEingabe(bisher, nachfolger))).rejects.toMatchObject({
-        status: 409,
-        message: expect.stringContaining("noch nicht in den Ereignisbelegen"),
-      });
+    await services.ko.revise(
+      a.id,
+      {
+        statement: BEKANNTMACHUNG.replace("2026-11-01", "2026-12-01"),
+      },
+      kontoId,
+    );
+    await expect(
+      dienst.nehmeAbloesungAn(kontoId, n.id, await annahmeEingabe(bisher, nachfolger)),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining("noch nicht in den Ereignisbelegen"),
+    });
     await dienst.beobachten(kontoId, [a.id, kopie.id], lauf);
     const danach = await dienst.stand(kontoId);
     expect(danach.normen[0]?.widerspruch).toBe(true);
     expect(danach.normen[0]?.ereignisse.map((e) => e.datum).sort()).toEqual([
-      "2026-11-01", "2026-12-01",
+      "2026-11-01",
+      "2026-12-01",
     ]);
     expect(danach.normen[0]?.annahmen).toEqual([]);
   });

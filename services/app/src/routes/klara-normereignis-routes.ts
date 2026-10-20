@@ -43,6 +43,39 @@ export function klaraNormereignisRoutes(
   guards: Guards,
 ): FastifyPluginAsync {
   return async (app) => {
+    app.get<{ Params: { id: string; ereignisId: string } }>(
+      "/api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) return;
+        try {
+          return reply.send(
+            await deps.dienst.pruefauftraege(user.id, request.params.id, request.params.ereignisId),
+          );
+        } catch (err) {
+          return fehler(reply, err);
+        }
+      },
+    );
+    app.post<{ Params: { id: string; ereignisId: string } }>(
+      "/api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) return;
+        try {
+          return reply.send(
+            await deps.dienst.verknuepfePruefauftrag(
+              user.id,
+              request.params.id,
+              request.params.ereignisId,
+              request.body,
+            ),
+          );
+        } catch (err) {
+          return fehler(reply, err);
+        }
+      },
+    );
     app.get("/api/me/klara/normereignisse", async (request, reply) => {
       const user = await guards.requireUser(request, reply);
       if (!user) return;
