@@ -244,8 +244,19 @@ export function objectRoutes(
     if (!normal.sichtbar) return normal;
     const bytes = decodeDataUrl(data)?.bytes;
     const snapshot = bytes
-      ? await snapshotLesbar(bytes, objectId, optionen.datenUmgebung?.(user))
-      : undefined;
+      ? await snapshotLesbar(
+          bytes,
+          objectId,
+          optionen.datenUmgebung?.(user),
+          ref.lifecycle?.praesentationAbleitung,
+          async (id) => {
+            const quelle = await store.read(id);
+            return quelle ? decodeDataUrl(quelle.data)?.bytes : undefined;
+          },
+        )
+      : ref.lifecycle?.praesentationAbleitung
+        ? { sichtbar: false, vertraulich: true }
+        : undefined;
     return snapshot
       ? {
           ...normal,

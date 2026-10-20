@@ -35,6 +35,7 @@ import {
   vollLesbar,
 } from "../praesentation-daten";
 import type { DatenpunktAblage } from "../praesentation-daten-ablage";
+import { ergaenzungsVorschau, leseErgaenzungsSuche } from "../praesentation-ergaenzung";
 import { datenlage } from "../praesentation-pruefung";
 import {
   type KontrollAnschluss,
@@ -297,6 +298,30 @@ export function praesentationDatenRoutes(
   }
 
   return async (app) => {
+    // PP-06: nur vorhandene, vollständig lesbare Datenpunkte. Die Vorschau schreibt nichts.
+    app.post<{ Params: { id: string; anhangId: string } }>(
+      "/api/kos/:id/office/:anhangId/ergaenzung/vorschau",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) return;
+        try {
+          const suche = leseErgaenzungsSuche(request.body);
+          if (suche.ort.anhangId !== request.params.anhangId) {
+            throw new DatenFehler("ungueltig", "Der gewählte Anhang passt nicht zur Anfrage.");
+          }
+          reply.header("Cache-Control", "no-store");
+          return await ergaenzungsVorschau(
+            request.params.id,
+            suche,
+            umgebung(user),
+            deps.ablage,
+            jetzt,
+          );
+        } catch (f) {
+          fehler(reply, f);
+        }
+      },
+    );
     app.get<{ Params: { id: string; anhangId: string } }>(
       "/api/kos/:id/office/:anhangId/folien-daten",
       async (request, reply) => {
