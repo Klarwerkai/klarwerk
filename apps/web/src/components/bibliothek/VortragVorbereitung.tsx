@@ -232,6 +232,7 @@ export function VortragVorbereitung({
           {" "}
           {t("vortrag.text3")}{" "}
           <select
+            aria-label={t("vortrag.text3")}
             value={folieId}
             onChange={(e) => {
               edit();
@@ -431,6 +432,7 @@ export function VortragVorbereitung({
             {" "}
             {t("vortrag.text24")}{" "}
             <select
+              aria-label={t("vortrag.text24")}
               value={auswahl}
               onChange={(e) => {
                 edit();
@@ -498,6 +500,7 @@ export function VortragVorbereitung({
             {" "}
             {t("vortrag.text31")}{" "}
             <select
+              aria-label={t("vortrag.text31")}
               value={nachArt}
               onChange={(e) => {
                 edit();
@@ -541,6 +544,7 @@ export function VortragVorbereitung({
                 {" "}
                 {t("vortrag.text37")}{" "}
                 <select
+                  aria-label={t("vortrag.text37")}
                   className={feld}
                   value={
                     lage.datenpunkte.some(
