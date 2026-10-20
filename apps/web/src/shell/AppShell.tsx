@@ -167,6 +167,11 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
     setDrawerOpen(false);
   }, [location.pathname]);
 
+  // Beim Verbreitern endet die schmale Navigation. Zurück zu schmal darf sie nicht selbst öffnen.
+  useEffect(() => {
+    if (!narrow) setDrawerOpen(false);
+  }, [narrow]);
+
   // KLARA-OFFICE-02: /begleiter OHNE Shell — die Fläche der Mac-Begleitapp ist ein eigenes, frei
   // bewegliches Fenster (Figur bzw. Gespräch). Hinweis- und Fußbereich trägt die Seite selbst in der
   // Lage „Gespräch" (`pages/Begleiter.tsx`); als blosse Figur wäre jeder Rahmen verdeckte Fläche.
@@ -200,74 +205,25 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
     );
   }
 
-  if (narrow) {
-    return (
-      <SeitenhilfeProvider>
-        <TutorialProvider>
-          <div className="flex h-full flex-col">
-            {/* AUFTRAG-mega3 Block C (bens Sammel-Review 3, Auflage F) → AUFTRAG-mega48 Block A: die
-              Grenze umfasst weiterhin AUSNAHMSLOS ALLE Nicht-Modalflächen — Kopfband, Inhalt UND die
-              Geschwister Command Palette, Toasts und Klara. Sie gilt für JEDE modale Fläche (Drawer
-              UND Filterblatt, über den Kontext statt über einen Prop), und sie besteht aus mehreren
-              angemeldeten BEREICHEN statt aus einem Container. Das ist nötig, weil `<main>` selbst
-              der Portal-Anker ist: läge der Seiteninhalt nicht in einem eigenen Bereich, müsste man
-              `<main>` sperren — und das Filterblatt läge wieder im gesperrten Teilbaum. */}
-            <ModalBoundaryProvider hostRef={mainRef}>
-              <NavGuardModalBoundaryBridge />
-              <div className="flex min-h-0 flex-1 flex-col">
-                <ModalRegion>
-                  <Kopfband
-                    narrow
-                    onOpenMenu={() => setDrawerOpen(true)}
-                    menuButtonRef={hamburgerRef}
-                  />
-                  <TutorialEinstieg />
-                </ModalRegion>
-                <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-5">
-                  <ModalRegion>
-                    <TutorialFlaeche />
-                    <VorschauHinweis flaeche="seite" />
-                    {children}
-                  </ModalRegion>
-                </main>
-                {/* AUFTRAG-mega61 Block B: der Hinweis liegt als GESCHWISTER der Inhaltsfläche, nicht
-                  darüber. Er nimmt echten Layout-Platz und verdeckt deshalb kein Bedienelement. */}
-                <ModalRegion>
-                  <NoticeBanner />
-                  <AssistenzProfilLader />
-                  <AssistenzEinrichtung />
-                </ModalRegion>
-                <ModalRegion>
-                  <CommandPalette />
-                  <ToastViewport />
-                  <KlaraEbene />
-                  <VormachenAnzeige />
-                </ModalRegion>
-              </div>
-              <MobileNavDrawer
-                open={drawerOpen}
-                onClose={() => setDrawerOpen(false)}
-                triggerRef={hamburgerRef}
-              />
-            </ModalBoundaryProvider>
-          </div>
-        </TutorialProvider>
-      </SeitenhilfeProvider>
-    );
-  }
-
   return (
     <SeitenhilfeProvider>
       <TutorialProvider>
         <div className="flex h-full flex-col">
-          {/* Dieselbe Grenze auf breiten Geräten — die Bauform ist EINE, sonst entstünde beim
-            nächsten Overlay wieder ein zweiter, halber Weg. */}
+          {/* Eine Bauform über alle Breiten: Provider, Portal-Anker, Modalregion und Inhaltskasten
+            bleiben an derselben Stelle montiert. Sonst gehen lokale Arbeitsstände (etwa offene
+            Anhänge und PP-05-Vorschauen) beim Wechsel über 899 px verloren. Die Modalgrenze umfasst
+            Kopfband, Inhalt und die übrigen Nicht-Modalflächen; <main> selbst bleibt Portal-Anker. */}
           <ModalBoundaryProvider hostRef={mainRef}>
             <NavGuardModalBoundaryBridge />
             <div className="flex min-h-0 flex-1 flex-col">
               <ModalRegion>
                 {/* MAC-03 (Nacharbeit 54): bei eingeblendeter Leiste ohne die doppelten Bereiche. */}
-                <Kopfband leisteSichtbar={leiste.offen} />
+                <Kopfband
+                  narrow={narrow}
+                  onOpenMenu={() => setDrawerOpen(true)}
+                  menuButtonRef={hamburgerRef}
+                  leisteSichtbar={!narrow && leiste.offen}
+                />
                 <TutorialEinstieg />
               </ModalRegion>
               {/* MACOS-20261014 · MAC-03: links die ausblendbare Arbeitsbereichsleiste, rechts `<main>`.
@@ -277,7 +233,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                 Seiteninhalt nicht neu (Eingaben, Kontext, Arbeitsstand bleiben). */}
               <div className="relative flex min-h-0 flex-1">
                 <ModalRegion>
-                  {leiste.offen ? (
+                  {narrow ? null : leiste.offen ? (
                     <Arbeitsbereichsleiste
                       onAusblenden={leisteUmschalten}
                       knopfRef={ausblendenRef}
@@ -296,8 +252,8 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                   behalten. */}
                 <main
                   ref={mainRef}
-                  data-seitenleiste={leiste.offen ? "an" : "aus"}
-                  className="min-w-0 flex-1 overflow-y-auto px-9 py-7"
+                  data-seitenleiste={narrow ? undefined : leiste.offen ? "an" : "aus"}
+                  className={`min-w-0 flex-1 overflow-y-auto ${narrow ? "px-4 py-5" : "px-9 py-7"}`}
                 >
                   <ModalRegion>
                     <TutorialFlaeche />
@@ -318,6 +274,13 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
               <KlaraEbene />
               <VormachenAnzeige />
             </ModalRegion>
+            {narrow ? (
+              <MobileNavDrawer
+                open={drawerOpen}
+                onClose={() => setDrawerOpen(false)}
+                triggerRef={hamburgerRef}
+              />
+            ) : null}
           </ModalBoundaryProvider>
         </div>
       </TutorialProvider>

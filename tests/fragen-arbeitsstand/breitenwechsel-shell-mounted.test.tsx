@@ -5,14 +5,15 @@
 //
 // `weiterarbeiten-mounted.test.tsx` W1 baut `Ask` allein ab und wieder auf; die Tutorialtests setzen
 // die Breite VOR der Montage. Ein Wechsel der Breite bei STEHENDER Seite kam in keinem
-// Produkttest vor. Hier läuft er durch die echte `AppShell`: sie hat für schmal und breit getrennte
-// Rückgaben und montiert die Seite dabei neu. Ausgelöst wird er wie im Browser — `matchMedia`
+// Produkttest vor. Hier läuft er durch die echte `AppShell`: ihr Inhaltsbaum muss bei schmal und
+// breit montiert bleiben, auch für Arbeitsstände ohne Persistenz. Ausgelöst wird er wie im Browser — `matchMedia`
 // meldet über seinen `change`-Hörer eine neue Lage, `useMediaQuery` liest `matches` neu.
 //
 // Geprüft nach JEDEM Schritt (Tutorial auf, Tutorial zu, breit→schmal, schmal→breit):
 // der ungesendete Folgeentwurf steht im Feld, die Antwort steht mit ihrer Quelle da, und es ist
 // bei der EINEN Modellanfrage geblieben. Dass der Wechsel wirklich stattfand, belegen das
-// Menü-Symbol des schmalen Kopfbands und ein NEUES Eingabefeld (die Seite wurde neu montiert).
+// Menü-Symbol des schmalen Kopfbands. Identische main-, Modalregion- und Eingabeknoten belegen,
+// dass der Zustand durch dieselbe Montage erhalten bleibt, statt nach einer Neumontage zu laden.
 //
 // Gerüst: `tests/fe003-tutorial-fragen/huelle.tsx` (echte Hülle, Netz auf `fetch`-Ebene).
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -115,15 +116,35 @@ describe("Ergänzung 1 · Breitenwechsel der echten Hülle mit vorhandenem Arbei
     pruefen("Tutorial zu");
 
     const feldBreit = echtesFeld(c);
+    const main = c.querySelector("main");
+    const region = feldBreit.closest("[data-modal-region]");
+    expect(main).not.toBeNull();
+    expect(region).not.toBeNull();
+    const gleicheMontage = (): void => {
+      expect(c.querySelector("main"), "derselbe Portal-Anker bleibt montiert").toBe(main);
+      expect(echtesFeld(c), "das Eingabefeld bleibt montiert").toBe(feldBreit);
+      expect(echtesFeld(c).closest("[data-modal-region]"), "dieselbe Inhaltsregion").toBe(region);
+    };
     await medien.setze(true);
     expect(q(c, "kopfband-menue"), "schmale Hülle aktiv").not.toBeNull();
-    expect(echtesFeld(c), "die Seite wurde beim Wechsel neu montiert").not.toBe(feldBreit);
+    gleicheMontage();
     pruefen("schmal");
 
-    const feldSchmal = echtesFeld(c);
+    // Eine offene modale Navigation muss beim Verbreitern sauber freigeben; beim erneuten
+    // Verengen öffnet sie sich nicht von selbst. Der Inhaltsbaum bleibt auch dabei derselbe.
+    await klick(q(c, "kopfband-menue"));
+    expect(c.querySelector("dialog[aria-modal='true']")).not.toBeNull();
+    expect(region?.hasAttribute("inert")).toBe(true);
     await medien.setze(false);
     expect(q(c, "kopfband-menue"), "breite Hülle aktiv").toBeNull();
-    expect(echtesFeld(c), "die Seite wurde beim Wechsel neu montiert").not.toBe(feldSchmal);
+    expect(c.querySelector("dialog[aria-modal='true']")).toBeNull();
+    expect(c.querySelector("[inert]")).toBeNull();
+    gleicheMontage();
     pruefen("wieder breit");
+    await medien.setze(true);
+    expect(q(c, "kopfband-menue")).not.toBeNull();
+    expect(c.querySelector("dialog[aria-modal='true']")).toBeNull();
+    gleicheMontage();
+    pruefen("erneut schmal");
   });
 });

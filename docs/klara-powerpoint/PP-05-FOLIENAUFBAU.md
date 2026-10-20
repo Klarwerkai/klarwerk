@@ -165,3 +165,24 @@ keine Rechte werden aus einer verloren gegangenen oder unpassenden Zuordnung erf
 Die Änderung gilt ausschließlich den genannten Download-/Rückverweiscallern. Sie behauptet
 keine native Hostprüfung, keinen Rückruf bereits heruntergeladener lokaler Kopien und
 keine globale Transaktion über mehrere Quellartikel.
+
+## Getrennter Nachtrag: Arbeitsstand beim Breitenwechsel
+
+Der erste tatsächliche PP-05-Browserfall auf `ccfb8759` erreichte den regulären Artikelweg
+über Mehr/Anhänge, die Tastaturbedienung und die Vorschau mit 400/600 T€. Beim Wechsel auf
+320 px verschwand die Kontextaktion: die getrennten schmalen/breiten AppShell-Bäume montierten
+den Inhalt neu und verloren dabei lokale Office-/PP-05-Zustände. Der Lauf blieb rot und wurde beendet.
+
+Die reguläre AppShell verwendet jetzt einen gemeinsamen Baum mit unverändert montierten
+Providern, Portal-Anker `<main>`, Inhalts-Modalregion und Inhaltskasten. Nur Kopfband-Props,
+Seitenleiste/Drawer und Breitenabstände wechseln. Ein offener Drawer endet beim Verbreitern.
+Die shell-losen Rückgaben für `/mobile` und `/begleiter` bleiben unverändert. Kein neuer
+Persistenzspeicher, Nachladen oder automatisches Wiederöffnen ersetzt den Zustandserhalt.
+
+Die bestehende montierte Breitenwechselprobe erwartete historisch ein neues Eingabefeld.
+Sie verlangt nun dieselben main-, Modalregion- und Eingabeknoten sowie erhaltenen Entwurf,
+Antwort/Quelle, eine einzige Modellanfrage und saubere Drawer-Freigabe. Sie scheitert gegen
+den alten Shell-Baum und besteht mit der Korrektur; fünf bestehende Shell-/Modalitätsfälle
+bestehen ebenfalls. Das sind Komponentenbelege. Der unveränderte PP-05-Browserfall mit
+Übernahme/Herkunft/Rücknahme und die visuelle Prüfung bei 320 px warten auf eine neue feste
+Ressourcenzuteilung. Vorige PP-05-/Downloadbelege werden dadurch nicht zu neuen Browserbelegen.
