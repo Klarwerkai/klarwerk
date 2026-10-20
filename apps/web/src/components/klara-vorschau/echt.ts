@@ -312,6 +312,8 @@ function quellprojektionenVerwerfen(): void {
 
 /** Eine Serverprojektion ersetzt gespeicherte Zeilen; noch lokale eigene Arbeit bleibt daneben. */
 function uebernimmGespraech(g: KlaraGespraech, lokalId?: string): void {
+  // Auch unveränderte Nachrichten-IDs können eine neuere Rechteprojektion tragen.
+  inhaltsGeneration += 1;
   setze((z) => {
     const ids = new Set(g.nachrichten.map((n) => n.id));
     const nachrichten = g.nachrichten.map((n): EchtNachricht => {
@@ -327,6 +329,8 @@ function uebernimmGespraech(g: KlaraGespraech, lokalId?: string): void {
     return {
       ...z,
       gespraech: ohneNachrichten(g),
+      laden: "bereit",
+      ladeFehler: null,
       nachrichten: [
         ...nachrichten,
         ...z.nachrichten.filter(
@@ -400,12 +404,24 @@ async function ladeGespraech(kontoId: string, t: TFunction, erneut: boolean): Pr
     const kandidat =
       typeof roh === "object" && roh !== null ? (roh as { gespraech?: unknown }).gespraech : null;
     const g = istGespraech(kandidat) ? kandidat : null;
-    if (!gueltig(gen) || folge !== leseFolge || zustand.kontoId !== kontoId) return;
+    if (
+      !gueltig(gen) ||
+      folge !== leseFolge ||
+      inhalt !== inhaltsGeneration ||
+      zustand.kontoId !== kontoId
+    )
+      return;
     if (g) await uebernimmAntwort(g, gen, inhalt);
     else if (!zustand.gespraech) setze((z) => ({ ...z, gespraech: null }));
     if (gueltig(gen) && folge === leseFolge) setze((z) => ({ ...z, laden: "bereit" }));
   } catch (fehler) {
-    if (!gueltig(gen) || folge !== leseFolge || zustand.kontoId !== kontoId) return;
+    if (
+      !gueltig(gen) ||
+      folge !== leseFolge ||
+      inhalt !== inhaltsGeneration ||
+      zustand.kontoId !== kontoId
+    )
+      return;
     setze((z) => ({ ...z, laden: "fehler", ladeFehler: fehlerBild(fehler, t).text }));
   }
 }

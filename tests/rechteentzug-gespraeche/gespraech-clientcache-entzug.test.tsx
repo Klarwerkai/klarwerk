@@ -291,7 +291,9 @@ async function montiere() {
                 createElement(
                   MemoryRouter,
                   { initialEntries: ["/fragen"] },
-                  <KlaraVorschau betriebsart="produkt" />,
+                  createElement<NonNullable<Parameters<typeof KlaraVorschau>[0]>>(KlaraVorschau, {
+                    betriebsart: "produkt",
+                  }),
                 ),
               ),
             ),
