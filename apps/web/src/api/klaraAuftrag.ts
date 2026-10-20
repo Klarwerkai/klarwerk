@@ -1,3 +1,5 @@
+import type { KlaraBeschaffungsziel } from "../lib/klaraBeschaffungsauftrag";
+export type { KlaraBeschaffungsziel } from "../lib/klaraBeschaffungsauftrag";
 import { api } from "./client";
 // produkt:20261008:klara-aktionen (Klara 05) — der Drahtvertrag der Ausführungsaufträge im eigenen
 // Klara-Gespräch (Spiegel von `services/app/src/klara-auftrag.ts` und der Auftragstüren in
@@ -173,6 +175,7 @@ export type KlaraAufgabenaktion =
   | { art: "eskalieren" };
 
 export interface KlaraAuftragGrenze {
+  beschaffung?: KlaraBeschaffungsziel;
   plan?: KlaraPlanSchritt[];
   fassung: number;
   erlaubteAktionen: KlaraAktion[];
@@ -217,6 +220,7 @@ export interface KlaraAuftrag extends KlaraAuftragGrenze {
 }
 
 export interface KlaraAuftragEingabe {
+  beschaffung?: KlaraBeschaffungsziel;
   quelle: KlaraAuftragsQuelle;
   wortlaut: string;
   ziel: string;
@@ -229,6 +233,7 @@ export interface KlaraAuftragEingabe {
 }
 
 export interface KlaraKorrekturEingabe {
+  beschaffung?: KlaraBeschaffungsziel;
   plan?: KlaraPlanSchritt[];
   auftragFassung?: number;
   erlaubteAktionen: KlaraAktion[];

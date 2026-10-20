@@ -52,6 +52,7 @@ import {
 } from "./klara-auftrag";
 import { liesAuftragsnotiz } from "./klara-auftragsnotiz";
 import { pruefeAuftragswissen } from "./klara-auftragswissen";
+import { pruefeBeschaffungsquellen } from "./klara-beschaffungsquellen";
 import { type KlaraGespraechDienst, KlaraGespraechFehler } from "./klara-gespraech";
 import { wissensUebernahmeVorgang } from "./klara-wissensuebernahme";
 
@@ -490,6 +491,7 @@ export class KlaraAusfuehrung {
       if (methode !== "GET") {
         if (notizQuelle) await liesAuftragsnotiz(notizQuelle, produktRufe);
         if (p.wissen) await pruefeAuftragswissen(p.wissen, produktRufe);
+        if (a.beschaffung) await pruefeBeschaffungsquellen(a.beschaffung, produktRufe);
         // Nach asynchronem Quellenlesen muss auch die Routine noch gelten. Der Stop-/Grenzreadback
         // folgt nach dieser Prüfung, unmittelbar vor dem bestehenden Produktaufruf.
         await pruefeHerkunft();
@@ -683,6 +685,19 @@ export class KlaraAusfuehrung {
       if (!entwurfId) {
         // Der tatsächliche Vorgang wird zuerst nachgelesen. Nur eine neue Anlage kopiert Quellen.
         const gelesen = vorhanden ? await liesAnlage() : null;
+        if (!gelesen && p.anforderungAusSchritt) {
+          const ref = a.schritte.find(
+            (s) =>
+              s.nr === p.anforderungAusSchritt &&
+              ["gespeichert", "abgeschlossen"].includes(s.stand),
+          )?.ergebnis;
+          if (ref?.art !== "entwurf") return scheitert("vorschritt");
+          const rq = await rufe("GET", `/api/drafts/${encodeURIComponent(ref.id)}`);
+          if (rq.status !== 200 || !istEntwurf(rq.daten)) return scheitert(codeAus(rq.status));
+          if (ref.stand === null || rq.daten.updatedAt !== ref.stand)
+            return scheitert("versionGeaendert");
+          koerper += `\nBezug: ursprünglicher Anforderungsentwurf ${ref.pfad} · Stand ${ref.stand}. Die aktuellen Mengen-/Terminvorgaben stehen oben; der ältere Entwurf bleibt als damaliges Teilergebnis erhalten.`;
+        }
         if (!gelesen && p.quellen && p.quellen.length > 0) {
           const quellen = await liesQuellen(p.quellen, rufe);
           if ("code" in quellen) return scheitert(quellen.code);

@@ -1,3 +1,5 @@
+import type { KlaraBeschaffungsziel } from "./klaraBeschaffungsauftrag";
+import { erkenneBeschaffung } from "./klaraBeschaffungsauftrag";
 // ================================================================================================
 // KLARA 05 (produkt:20261008:klara-aktionen) — WELCHER SATZ IST EIN KLARER AUSFÜHRUNGSAUFTRAG?
 // ================================================================================================
@@ -77,6 +79,8 @@ export interface ErkannterSchritt {
 }
 
 export interface ErkannterAuftrag {
+  beschaffung?: KlaraBeschaffungsziel;
+  beschaffungsQuelle?: string;
   schritte: ErkannterSchritt[];
 }
 
@@ -467,6 +471,7 @@ export function erkenneAuftrag(text: string): ErkannterAuftrag | null {
   }
   const s = bereinige(roh);
   return (
+    erkenneBeschaffung(s) ??
     ausGespraechsnotiz(s) ??
     aufgabeMitErinnerung(s) ??
     anlegen(s) ??

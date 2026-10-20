@@ -1,5 +1,11 @@
 import { canonicalJson } from "../../audit";
 import type { KlaraAuftragsnotiz } from "./klara-auftragsnotiz";
+import {
+  type KlaraBeschaffungsziel,
+  beschaffungsKorrekturErlaubt,
+  beschaffungsZiel,
+  bindeBeschaffungsPlan,
+} from "./klara-beschaffungsziel";
 import { istDatum, istUhrzeit, istZeitzone } from "./klara-erinnerung-zeit";
 import { type WissensZiel, wissensZiel as f08Ziel } from "./klara-wissensuebernahme";
 // ================================================================================================
@@ -243,6 +249,8 @@ export interface KlaraWissensAuftragsbindung {
 }
 
 export interface KlaraPlanSchritt {
+  /** Interner Anfrageentwurf bezieht sich auf das echte Anforderungsergebnis. */
+  readonly anforderungAusSchritt?: number;
   readonly wissen?: KlaraWissensAuftragsbindung;
   readonly notizQuelle?: KlaraAuftragsnotiz;
   readonly nr: number;
@@ -290,6 +298,7 @@ const ENTWURFSFELD_MAX = 200;
 
 /** Eine Fassung der Grenze. Die aktuelle steht am Auftrag selbst, frühere in `fassungen`. */
 export interface KlaraAuftragGrenze {
+  readonly beschaffung?: KlaraBeschaffungsziel;
   readonly plan?: readonly KlaraPlanSchritt[];
   readonly fassung: number;
   readonly erlaubteAktionen: readonly KlaraAktion[];
@@ -606,6 +615,7 @@ function grenzeAus(a: KlaraAuftrag): KlaraAuftragGrenze {
   return {
     ...(a.plan?.length ? { plan: a.plan } : {}),
     fassung: a.fassung,
+    ...(a.beschaffung ? { beschaffung: a.beschaffung } : {}),
     erlaubteAktionen: a.erlaubteAktionen,
     erlaubteZiele: a.erlaubteZiele,
     erlaubteQuellen: a.erlaubteQuellen,
@@ -621,6 +631,7 @@ function grenzeAus(a: KlaraAuftrag): KlaraAuftragGrenze {
 // ------------------------------------------------------------------------------------------------
 
 export interface KlaraAuftragEingabe {
+  beschaffung?: unknown;
   quelle?: unknown;
   wortlaut?: unknown;
   ziel?: unknown;
@@ -760,6 +771,18 @@ function pruefePlan(
       };
     } else if (o.wissen != null)
       throw eingabeFehler(`${feld}: Wissensbindung gehört nur zur bewussten Wissensübernahme.`);
+    let anforderungAusSchritt: number | undefined;
+    if (o.anforderungAusSchritt !== undefined) {
+      anforderungAusSchritt = ganzzahl(
+        o.anforderungAusSchritt,
+        1,
+        nr - 1,
+        `${feld}.anforderungAusSchritt`,
+      );
+      const vor = objekt(eintraege[anforderungAusSchritt - 1], "Anforderungsschritt");
+      if (aktion !== "entwurf_erstellen" || vor.aktion !== "entwurf_erstellen")
+        throw eingabeFehler("Anfrage und ihre Anforderung bleiben interne Entwürfe.");
+    }
     const inhalt =
       aktion === "entwurf_erstellen" || aktion === "persoenliche_aufgabe_anlegen"
         ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`)
@@ -800,6 +823,7 @@ function pruefePlan(
       ...(erinnerung ? { erinnerung } : {}),
       ...(notizQuelle ? { notizQuelle } : {}),
       ...(wissen ? { wissen } : {}),
+      ...(anforderungAusSchritt ? { anforderungAusSchritt } : {}),
     };
   });
 }
@@ -858,7 +882,16 @@ export function neuerAuftrag(
   const erlaubteAktionen = aktionen(eingabe.erlaubteAktionen);
   const erlaubteZiele = ziele(eingabe.erlaubteZiele);
   const erlaubteQuellen = quellen(eingabe.erlaubteQuellen);
-  const plan = pruefePlan(eingabe.plan, erlaubteAktionen, erlaubteZiele, erlaubteQuellen);
+  const beschaffung =
+    eingabe.beschaffung == null
+      ? undefined
+      : beschaffungsZiel(eingabe.beschaffung, erlaubteQuellen);
+  const rohPlan = pruefePlan(eingabe.plan, erlaubteAktionen, erlaubteZiele, erlaubteQuellen);
+  if (beschaffung && (erlaubteAktionen.length !== 1 || erlaubteAktionen[0] !== "entwurf_erstellen"))
+    throw eingabeFehler("Dieser Beschaffungsauftrag erlaubt nur interne Entwurfsanlagen.");
+  if (!beschaffung && rohPlan.some((p) => p.anforderungAusSchritt !== undefined))
+    throw eingabeFehler("Anforderungsbezug gehört zum begrenzten Beschaffungsauftrag.");
+  const plan = beschaffung ? bindeBeschaffungsPlan(rohPlan, beschaffung) : rohPlan;
   const geplanteSchritte = ganzzahl(
     eingabe.geplanteSchritte,
     1,
@@ -872,13 +905,18 @@ export function neuerAuftrag(
     id,
     quelle: wahl(eingabe.quelle, KLARA_QUELLEN_DES_AUFTRAGS, "quelle"),
     wortlaut: text(eingabe.wortlaut, 2_000, "wortlaut"),
-    ziel: text(eingabe.ziel, 600, "ziel"),
+    ziel: beschaffung
+      ? `Interne Entwürfe für ${beschaffung.produkt}: ${beschaffung.bedarf}`.slice(0, 600)
+      : text(eingabe.ziel, 600, "ziel"),
     verantwortlich,
     fassung: 1,
     erlaubteAktionen,
     erlaubteZiele,
     erlaubteQuellen,
-    ergebnis: text(eingabe.ergebnis, 600, "ergebnis"),
+    ...(beschaffung ? { beschaffung } : {}),
+    ergebnis: beschaffung
+      ? "Anforderungs- und interner Anfrageentwurf. Kein Versand, keine Lieferantenauswahl als Kaufentscheidung, keine Bestellung; weitere fachliche und äußere Schritte bleiben offen."
+      : text(eingabe.ergebnis, 600, "ergebnis"),
     geplanteSchritte,
     plan,
     grund: null,
@@ -918,6 +956,7 @@ export function mitNeuemAuftrag(
 }
 
 export interface KlaraKorrekturEingabe {
+  beschaffung?: unknown;
   plan?: unknown;
   erlaubteAktionen?: unknown;
   erlaubteZiele?: unknown;
@@ -997,8 +1036,19 @@ export function korrigiere(
       behalten.push(p);
     }
   }
-  if (eingabe.plan !== undefined) {
-    const neu = pruefePlan(eingabe.plan, neueAktionen, neueZiele, neueQuellen);
+  const beschaffung =
+    eingabe.beschaffung === undefined
+      ? a.beschaffung
+      : beschaffungsZiel(eingabe.beschaffung, neueQuellen);
+  if (eingabe.beschaffung !== undefined) {
+    if (!a.beschaffung || !beschaffung)
+      throw eingabeFehler("Beschaffungsziel kann nicht nachträglich die Auftragsart ändern.");
+    beschaffungsKorrekturErlaubt(a.beschaffung, beschaffung);
+  }
+  const planEingabe = eingabe.plan ?? (eingabe.beschaffung !== undefined ? a.plan : undefined);
+  if (planEingabe !== undefined) {
+    const roh = pruefePlan(planEingabe, neueAktionen, neueZiele, neueQuellen);
+    const neu = beschaffung ? bindeBeschaffungsPlan(roh, beschaffung, begonnen) : roh;
     if (
       neu.length !== (a.plan ?? []).length ||
       neu.some((p) => {
@@ -1009,6 +1059,7 @@ export function korrigiere(
           canonicalJson(p.notizQuelle ?? null) !== canonicalJson(alt.notizQuelle ?? null) ||
           canonicalJson(p.wissen ?? null) !== canonicalJson(alt.wissen ?? null) ||
           p.ausSchritt !== alt.ausSchritt ||
+          p.anforderungAusSchritt !== alt.anforderungAusSchritt ||
           (p.ziel && alt.ziel && !gleichesZiel(p.ziel, alt.ziel)) ||
           (begonnen.has(p.nr) && canonicalJson(p) !== canonicalJson(alt))
         );
@@ -1026,6 +1077,7 @@ export function korrigiere(
     ...a,
     fassungen: [...a.fassungen, grenzeAus(a)],
     fassung: a.fassung + 1,
+    ...(beschaffung ? { beschaffung } : {}),
     erlaubteAktionen: neueAktionen,
     erlaubteZiele: neueZiele,
     erlaubteQuellen: neueQuellen,

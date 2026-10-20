@@ -32,6 +32,7 @@ import {
   KlaraSchrittNachweis,
 } from "./KlaraAktionsnachweis";
 import { KlaraAuftragsnotizNachweis } from "./KlaraAuftragsnotizNachweis";
+import { KlaraBeschaffungsziel } from "./KlaraBeschaffungsziel";
 import { KlaraErinnerungszeitRueckfrage } from "./KlaraErinnerungszeitRueckfrage";
 import {
   type AuftragsUmgebung,
@@ -223,6 +224,7 @@ function AusfuehrungKarte({
         {t("klaraauftrag.ohneKi")}
       </p>
 
+      <KlaraBeschaffungsziel key={auftrag?.fassung ?? 0} a={a} umgebung={umgebung} />
       {auftrag ? (
         <p data-testid="klara-ausfuehrung-fortschritt" className="mt-1 text-[11.5px] text-text">
           {t("klaraauftrag.fortschritt", {
@@ -235,7 +237,9 @@ function AusfuehrungKarte({
             ? t("klaraauftrag.schrittStand.quelle_gesperrt")
             : auftrag.unterbrochenAm
               ? t("klaraauftrag.ereignis.unterbrochen")
-              : t(`klaraauftrag.stand.${auftrag.stand}`)}
+              : auftrag.beschaffung && auftrag.stand === "abgeschlossen"
+                ? t("klaraauftrag.bes.vorbereitet")
+                : t(`klaraauftrag.stand.${auftrag.stand}`)}
         </p>
       ) : null}
       {auftrag ? (
@@ -808,6 +812,7 @@ function AusfuehrungKarte({
         (laeuft || a.phase === "angehalten") &&
         !a.abbruch &&
         offen.length > 0 &&
+        !auftrag.beschaffung &&
         korrektur === null ? (
           <button
             type="button"
