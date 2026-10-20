@@ -21,7 +21,7 @@ function instanz() {
 }
 let i: ReturnType<typeof instanz>;
 function api(
-  method: "GET" | "POST" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
   payload?: unknown,
   x = i,
@@ -273,4 +273,57 @@ it("Wiederholung eines ungebundenen anderen Vorgangs wird nicht als quellengebun
   expect((await ausNotiz(normal.id, { vorgang })).statusCode).toBe(201);
   const r = await ausNotiz(n.id, { vorgang });
   expect(r.statusCode, r.body).toBe(409);
+});
+it("F15-1-R · geschützte bearbeitete Aufgabe wird nach Entzug nicht über gewöhnliche Notiz und gleichen Vorgang zurückgegeben", async () => {
+  const audioId = await audio();
+  const n = await meeting(audioId);
+  const erzeugt = await ausNotiz(n.id);
+  expect(erzeugt.statusCode, erzeugt.body).toBe(201);
+  const a = erzeugt.json().aufgabe;
+  const titel = "Bearbeiteter privater F15-Titel";
+  const inhalt = "Bearbeiteter privater F15-Inhalt mit eigener synthetischer Markierung.";
+  const bearbeitet = await api("PUT", `/me/klara/aufgaben/${a.id}`, {
+    fassung: a.fassung,
+    titel,
+    inhalt,
+  });
+  expect(bearbeitet.statusCode, bearbeitet.body).toBe(200);
+  expect(bearbeitet.json().aufgabe.fassung).toBeGreaterThan(1);
+  const erlaubt = await ausNotiz(n.id);
+  expect(erlaubt.statusCode, erlaubt.body).toBe(200);
+  expect(erlaubt.json().aufgabe).toMatchObject({
+    id: a.id,
+    titel,
+    inhalt,
+    fassung: bearbeitet.json().aufgabe.fassung,
+  });
+  const normal = await normaleNotiz();
+  const normalAufgabe = await ausNotiz(normal.id);
+  expect(normalAufgabe.statusCode, normalAufgabe.body).toBe(201);
+  const normalReplay = await ausNotiz(normal.id);
+  expect(normalReplay.statusCode, normalReplay.body).toBe(200);
+  expect(normalReplay.json().aufgabe.id).toBe(normalAufgabe.json().aufgabe.id);
+  await i.services.objects.delete(audioId);
+  const verborgen = await taskSicht(a.id);
+  expect(verborgen.einzeln.statusCode).toBe(404);
+  expect(verborgen.ids).not.toContain(a.id);
+  expect(verborgen.liste.body).not.toContain(inhalt);
+  const umgekehrt = await ausNotiz(normal.id, { vorgang: a.vorgang });
+  console.log(
+    JSON.stringify({
+      beleg: "F15-1-R-umgekehrter-Replay",
+      notizId: n.id,
+      geschuetzteTaskId: a.id,
+      bearbeiteteFassung: bearbeitet.json().aufgabe.fassung,
+      erlaubtVorEntzug: erlaubt.statusCode,
+      direkteSichtNachEntzug: verborgen.einzeln.statusCode,
+      inListe: verborgen.ids.includes(a.id),
+      normalReplay: normalReplay.statusCode,
+      umgekehrterReplay: umgekehrt.statusCode,
+      gibtAufgabenkoerperZurueck: !!umgekehrt.json().aufgabe,
+    }),
+  );
+  expect(umgekehrt.statusCode, umgekehrt.body).toBe(409);
+  expect(umgekehrt.json().aufgabe).toBeUndefined();
+  for (const privat of [a.id, titel, inhalt]) expect(umgekehrt.body).not.toContain(privat);
 });
