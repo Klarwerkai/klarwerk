@@ -53,7 +53,13 @@ function dist(mitOffice: boolean): string {
   writeFileSync(join(dir, "word-addin", "taskpane.html"), '<meta content="__KW_FASSUNG__">');
   if (mitOffice) {
     mkdirSync(join(dir, "office-addin"));
-    for (const datei of ["taskpane.html", "hostkern.js", "taskpane.js", "taskpane.css"]) {
+    for (const datei of [
+      "taskpane.html",
+      "hostkern.js",
+      "taskpane.js",
+      "taskpane.css",
+      "folien-herkunft.js",
+    ]) {
       writeFileSync(join(dir, "office-addin", datei), lies(datei));
     }
   }
@@ -86,6 +92,16 @@ describe("A · das Office-Fenster wird wie das Word-Fenster ausgeliefert", () =>
     expect(kern.statusCode).toBe(200);
     expect(kern.headers["cache-control"]).toBe("no-cache");
     expect(kern.body).toContain("KlaraOfficeHost");
+    // PP-02: die Herkunft an der Zahl kommt auf demselben Weg, gestempelt in der Seite.
+    const seite = await app.inject({ method: "GET", url: KLARA_OFFICE_TASKPANE_PFAD });
+    expect(seite.body).toContain(`folien-herkunft.js?v=${KLARA_OFFICE_TASKPANE_FASSUNG}`);
+    const herkunft = await app.inject({
+      method: "GET",
+      url: "/office-addin/folien-herkunft.js?v=1.0.0.0",
+    });
+    expect(herkunft.statusCode).toBe(200);
+    expect(herkunft.headers["cache-control"]).toBe("no-cache");
+    expect(herkunft.body).toContain("KlaraFolienHerkunft");
     const word = await app.inject({ method: "GET", url: KLARA_TASKPANE_PFAD });
     expect(word.statusCode).toBe(200);
     expect(word.headers[KLARA_FASSUNG_KOPF]).toBe(KLARA_TASKPANE_FASSUNG);

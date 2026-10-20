@@ -529,6 +529,59 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "R-0095 — Anhang wie /raw, die Träger zusätzlich über sichtbareFuer.",
   },
+  // --- PP-02 · Datenherkunft und Bindung an Folien (praesentation-daten-routes.ts) ----------
+  // produkt:20261015:klara-powerpoint-datenherkunft. Jede Route geht durch DIESELBE Entscheidung:
+  // `umgebung(user).artikel` ruft `darfSehen` (mit `ko.read`), unsichtbar ⇒ 404 ohne Existenzauskunft.
+  // Was ein Datenpunkt hinausträgt (Wert, Fundstelle samt Zitat, Formel mit Eingabewerten, Prüfgründe,
+  // Korrekturen), steht erst nach `vollLesbar` (praesentation-daten.ts) in der Antwort: dieselbe
+  // Entscheidung an Heimatartikel, jeder Quelle und rekursiv jeder Eingabe samt Historie — das ist
+  // ein Leseurteil über den Dienst, gemessen in pp02-datenherkunft.test.ts D8. Nachgeprüft wird hier
+  // der unbedingte Aufruf an der Registrierung.
+  "GET /api/kos/:id/office/:anhangId/folien-daten": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "PP-02 — darfSehen am Artikel des Anhangs (u.artikel), sonst 404; Folieninhalt nur dieses " +
+      "Anhangs, Datenpunkte nur voll lesbar (sichtenVon → sicht → vollLesbar).",
+  },
+  "GET /api/kos/:id/datenpunkte": {
+    urteil: "PRAEDIKAT",
+    grund: "PP-02 — darfSehen am Heimatartikel, sonst 404; Liste nur voll lesbarer Datenpunkte.",
+  },
+  "POST /api/kos/:id/datenpunkte": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "PP-02 — darfSehen am Heimatartikel vor dem Erfassen; Quellen und Eingaben nur lesbar " +
+      "verwendbar (erfasse); Antwort ist die eigene, voll lesbare Sicht.",
+  },
+  "GET /api/datenpunkte/:dpId": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "PP-02 — lesbarerDatenpunkt: darfSehen am Heimatartikel, dann vollLesbar über Quellen, " +
+      "Eingaben und Historie; sonst 404. Frühere Fassungen nur über denselben Weg.",
+  },
+  "POST /api/datenpunkte/:dpId/bindungen": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "PP-02 — lesbarerDatenpunkt (darfSehen am Heimatartikel + vollLesbar) UND darfSehen am " +
+      "Zielartikel der Bindung, je sonst 404.",
+  },
+  "POST /api/datenpunkte/:dpId/pruefungen": {
+    urteil: "PRAEDIKAT",
+    grund: "PP-02 — lesbarerDatenpunkt vor jeder Wirkung, sonst 404; Antwort ist dieselbe Sicht.",
+  },
+  "POST /api/datenpunkte/:dpId/korrektur": {
+    urteil: "PRAEDIKAT",
+    grund: "PP-02 — lesbarerDatenpunkt vor jeder Wirkung, sonst 404; Antwort ist dieselbe Sicht.",
+  },
+  // PP-02-Hostanschluss über A01: die in PowerPoint geöffnete Präsentation gegen die Bindungen
+  // des Anhangs. Der Körper ist die eigene Datei des Aufrufers; hinaus gehen ihre Folienkennungen,
+  // die Befunde der lesbaren Bindungen und dieselben Sichten wie an folien-daten.
+  "POST /api/kos/:id/office/:anhangId/folien-abgleich": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "PP-02 Hostanschluss — darfSehen am Artikel des Anhangs (u.artikel), sonst 404; Befunde nur " +
+      "für voll lesbare Datenpunkte (sichtenVon).",
+  },
   // --- Die Nebenwege (Block D) -------------------------------------------------------------
   // JOB 1546 D2 (A28): das dauerhafte Signal am EIGENEN Objekt. Die Route ruft `sichtbareFuer`
   // über `eigeneKoIds` (conflicts-routes.ts) und filtert danach auf die Autorschaft selbst — sie

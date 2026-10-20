@@ -9,6 +9,8 @@
 //   F3  nur vorhandene same-origin-Endpunkte — keine zweite Assistenz, kein zweites Login
 //   F4  KO-04-05: das Fenster kennt keine Bild-, Form- oder Figurenerzeugung im Dokument
 //   F5  jede Schreibstelle steht hinter ihrer Zielprüfung; Klara speichert nicht selbst
+//   F6  PP-02 (`folien-herkunft.js`): nur lesend, nur über den Abrufweg des Fensters, nur die
+//       vorhandenen PP-02-/Artikelwege
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -18,6 +20,7 @@ import { ORDNER, lies } from "./buehne";
 const SEITE = lies("taskpane.html");
 const SKRIPT = lies("taskpane.js");
 const KERN = lies("hostkern.js");
+const HERKUNFT = lies("folien-herkunft.js");
 
 /** Nur die Zeilen, die etwas TUN — Kommentare dürfen einen Namen nennen, ohne ihn zu benutzen. */
 function ausfuehrbar(text: string): string {
@@ -41,6 +44,7 @@ describe("F1 · die einzige fremde Quelle ist office.js", () => {
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       "hostkern.js?v=__KW_FASSUNG__",
       "taskpane.js?v=__KW_FASSUNG__",
+      "folien-herkunft.js?v=__KW_FASSUNG__",
     ]);
     expect(alle(SEITE, /<link\s+rel="stylesheet"\s+href="([^"]+)"/g)).toEqual([
       "taskpane.css?v=__KW_FASSUNG__",
@@ -72,6 +76,7 @@ describe("F2 · KO-06-05 · Anleitung und Verdrahtung zeigen auf tatsächliche B
       "frage-text",
       "rueckgabe-block",
       "ruecknahme",
+      "herkunft-block",
     ]);
     for (const ziel of ziele) {
       expect(ids.has(ziel), ziel).toBe(true);
@@ -87,6 +92,19 @@ describe("F2 · KO-06-05 · Anleitung und Verdrahtung zeigen auf tatsächliche B
       }
     }
     expect(angesprochen.size).toBeGreaterThan(20);
+    for (const id of angesprochen) {
+      expect(ids.has(id), id).toBe(true);
+    }
+  });
+
+  it("jedes Element, das folien-herkunft.js anspricht, steht im Fenster", () => {
+    const angesprochen = new Set(alle(ausfuehrbar(HERKUNFT), /\bel\("([^"]+)"\)/g));
+    for (const name of ["text", "zeigen"]) {
+      for (const id of alle(ausfuehrbar(HERKUNFT), new RegExp(`\\b${name}\\("([^"]+)"`, "g"))) {
+        angesprochen.add(id);
+      }
+    }
+    expect(angesprochen.size).toBeGreaterThan(12);
     for (const id of angesprochen) {
       expect(ids.has(id), id).toBe(true);
     }
@@ -136,7 +154,7 @@ describe("F3 · nur vorhandene Endpunkte — der Assistenzkern und die Anmeldung
 
 describe("F4 · KO-04-05 · keine Bilder, Formen oder Figuren im Dokument", () => {
   it("das Fenster enthält keinen einzigen Erzeugungsweg dafür", () => {
-    const code = ausfuehrbar(SKRIPT) + ausfuehrbar(KERN);
+    const code = ausfuehrbar(SKRIPT) + ausfuehrbar(KERN) + ausfuehrbar(HERKUNFT);
     for (const verbot of [
       "addImage",
       "addGeometricShape",
@@ -188,5 +206,35 @@ describe("F5 · jede Schreibstelle steht hinter ihrer Zielprüfung", () => {
   it("Klara speichert nicht selbst und sagt das im Fenster", () => {
     expect(code).not.toMatch(/\.save\(/);
     expect(SEITE).toContain("Klara speichert nicht selbst.");
+  });
+});
+
+describe("F6 · PP-02 · die Herkunft im Fenster liest nur", () => {
+  const code = ausfuehrbar(HERKUNFT);
+
+  it("nur die vorhandenen Wege: Artikel lesen und den PP-02-Abgleich, über den Abrufweg des Fensters", () => {
+    expect([...new Set(alle(code, /"(\/api\/[^"]*)"/g))].sort()).toEqual(["/api/kos/"]);
+    expect(code).toContain('"/folien-abgleich"');
+    expect(code).not.toMatch(/https?:\/\//);
+    expect(code).not.toMatch(/\bfetch\(/);
+    // Prüfbefund B5 (18.10.2026): der Abgleich übergibt seine eigene, größenabhängige Frist.
+    expect(code).toContain("f.abruf(pfad, init, fristMs)");
+    expect(SKRIPT).toContain("abruf: abruf,");
+    const route = quelltext("services/app/src/routes/praesentation-daten-routes.ts");
+    expect(route).toContain('"/api/kos/:id/office/:anhangId/folien-abgleich"');
+    expect(quelltext("services/app/src/routes/ko-routes.ts")).toContain('"/api/kos/:id"');
+  });
+
+  it("kein Schreiben ins Dokument: keine Textzuweisung, kein Speichern, keine Einstellungen", () => {
+    expect(code).not.toMatch(/\.text = /);
+    expect(code).not.toMatch(/\.(values|formulas) = /);
+    expect(code).not.toMatch(/\.save\(|saveAsync|settings\.set|setSelectedShapes/);
+    expect(code).not.toContain("innerHTML");
+  });
+
+  it("Hostlauf H01: hidden gilt für die Knöpfe des Abschnitts (button { display: block } überstimmt es sonst)", () => {
+    const css = lies("taskpane.css");
+    expect(css).toMatch(/button\s*\{\s*display:\s*block;/);
+    expect(css).toContain("#herkunft-block button[hidden] { display: none; }");
   });
 });

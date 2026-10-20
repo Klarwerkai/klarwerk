@@ -119,3 +119,16 @@ label.haken {
   outline: 3px solid #d79a00;
   outline-offset: 2px;
 }
+
+/* PP-02 · Herkunft der Zahlen (folien-herkunft.js) */
+.zahlen { list-style: none; padding: 0; margin: 8px 0; }
+.zahlen li { margin: 4px 0; }
+.herkunft { border-left: 3px solid currentColor; padding: 4px 8px; margin-top: 8px; }
+.herkunft dt { font-weight: 600; margin-top: 6px; }
+.herkunft dd { margin: 0 0 0 8px; overflow-wrap: anywhere; }
+.herkunft h3 { font-size: 1rem; margin: 4px 0; }
+.zahlen button.zahl { text-align: left; width: 100%; }
+#herkunft-anhang { width: 100%; box-sizing: border-box; font: inherit; padding: 4px 6px; margin: 4px 0; }
+/* Hostlauf H01 (17.10.): `button { display: block }` oben überstimmt das hidden-Attribut — „Zurück“
+   stand ohne Wirkung da. Für die Knöpfe dieses Abschnitts gilt hidden wieder. */
+#herkunft-block button[hidden] { display: none; }

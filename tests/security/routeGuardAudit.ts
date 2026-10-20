@@ -412,6 +412,24 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
       "Fassungsstempel; keine Nutzer-/Wissensdaten. Beide Manifeste zeigen vor jeder Anmeldung " +
       "auf diese Adresse.",
   },
+  // produkt:20261015:klara-powerpoint-datenherkunft (PP-02): Lesen ko.read, Wirkungen ko.create
+  // (die fachliche Freigabe verlangt im Handler zusätzlich ko.validate); jede Route fährt darfSehen
+  // über die Umgebung der Anfrage (u.artikel), vgl. mega74-lesewege-sammler.test.ts.
+  "GET /api/kos/:id/office/:anhangId/folien-daten": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/kos/:id/datenpunkte": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/datenpunkte": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "GET /api/datenpunkte/:dpId": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/datenpunkte/:dpId/bindungen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/datenpunkte/:dpId/pruefungen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/datenpunkte/:dpId/korrektur": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  // PP-02-Hostanschluss über A01: nur lesend; ko.read schon vor dem Lesen des Körpers (onRequest).
+  "POST /api/kos/:id/office/:anhangId/folien-abgleich": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
   // SCRUM-510 WP2: Admin-Trigger Confluence-Space-Import (Source-Datei immer gescannt; Route nur bei
   // KLARWERK_CONFLUENCE_IMPORT registriert). Echte Admin-Auth via requirePermission("users.manage").
   "POST /api/admin/import/confluence": { protection: "users.manage" },

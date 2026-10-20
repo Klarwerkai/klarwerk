@@ -106,6 +106,11 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
   const fehlerText = useFehlerText();
   const qc = useQueryClient();
   const titelId = useId();
+  // UI-06 (R17, R2): die Herkunft trägt eine Kennung, auf die die offene Zahl verweist; die Fläche
+  // merkt sich die Zahl, an der die Herkunft geöffnet wurde.
+  const herkunftId = useId();
+  const bereich = useRef<HTMLElement>(null);
+  const oeffner = useRef<HTMLButtonElement | null>(null);
   const schluessel = ["ko", koId, "office", anhangId, "folien-daten"] as const;
   const lage = useQuery({
     queryKey: schluessel,
@@ -122,10 +127,27 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
     void qc.invalidateQueries({ queryKey: ["datenpunkt"] });
   };
 
+  // UI-05/06 (R2): Schließen — per Knopf, Escape oder zweitem Klick auf die Zahl — gibt den Fokus an
+  // die Zahl zurück, an der die Herkunft geöffnet wurde. Ist sie nicht mehr da oder kam der Einstieg
+  // nicht von einer Zahl, erhält ihn die Zahl desselben Datenpunkts in dieser Fläche.
+  const schliesseHerkunft = () => {
+    const wurzel = pfad[0]?.id;
+    setPfad([]);
+    const gemerkt = oeffner.current;
+    const zahl =
+      gemerkt?.isConnected && gemerkt.dataset.datenpunkt === wurzel
+        ? gemerkt
+        : [
+            ...(bereich.current?.querySelectorAll<HTMLButtonElement>("button[data-datenpunkt]") ??
+              []),
+          ].find((b) => b.dataset.datenpunkt === wurzel);
+    zahl?.focus();
+  };
+
   const d = lage.data;
   const aktiv = pfad.at(-1) ?? null;
   return (
-    <section data-folien-daten={anhangId} aria-labelledby={titelId} className="mt-3">
+    <section ref={bereich} data-folien-daten={anhangId} aria-labelledby={titelId} className="mt-3">
       <h5 id={titelId} className="text-[12.5px] font-semibold text-text">
         {t("praesentationdaten.titel")}
       </h5>
@@ -136,7 +158,7 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
         </output>
       ) : null}
       {lage.isError ? (
-        <p role="alert" className="mt-1 text-[12.5px] text-danger">
+        <p role="alert" className="mt-1 text-[12.5px] text-trust-crit-text">
           {fehlerText(lage.error)}
         </p>
       ) : null}
@@ -157,6 +179,11 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
                   neuLaden();
                   setPfad([{ id: neu.id }]);
                 }}
+                herkunftId={herkunftId}
+                schliesse={schliesseHerkunft}
+                merkeOeffner={(zahl) => {
+                  oeffner.current = zahl;
+                }}
               />
             ))}
           </ol>
@@ -172,8 +199,9 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
                 setPfad((p) => [...p, fassung === undefined ? { id } : { id, fassung }])
               }
               zurueck={() => setPfad((p) => p.slice(0, -1))}
-              schliessen={() => setPfad([])}
+              schliessen={schliesseHerkunft}
               geaendert={neuLaden}
+              elementId={herkunftId}
             />
           ) : null}
         </div>
@@ -190,6 +218,9 @@ function Folie({
   erfassenAn,
   setErfassenAn,
   nachErfassen,
+  herkunftId,
+  schliesse,
+  merkeOeffner,
 }: {
   lage: FolienDatenLage;
   folie: FolieMitElementen;
@@ -198,6 +229,9 @@ function Folie({
   erfassenAn: string | null;
   setErfassenAn: (schluessel: string | null) => void;
   nachErfassen: (neu: DatenpunktSicht) => void;
+  herkunftId: string;
+  schliesse: () => void;
+  merkeOeffner: (zahl: HTMLButtonElement) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   return (
@@ -224,7 +258,15 @@ function Folie({
                 {daten.length > 0 ? (
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {daten.map((dp) => (
-                      <Zahl key={dp.id} dp={dp} gewaehlt={aktiv === dp.id} oeffne={oeffne} />
+                      <Zahl
+                        key={dp.id}
+                        dp={dp}
+                        gewaehlt={aktiv === dp.id}
+                        oeffne={oeffne}
+                        herkunftId={herkunftId}
+                        schliesse={schliesse}
+                        merkeOeffner={merkeOeffner}
+                      />
                     ))}
                   </div>
                 ) : null}
@@ -259,15 +301,25 @@ function Folie({
   );
 }
 
-/** Die Zahl bzw. Aussage selbst: ein Klick öffnet ihre Herkunft. */
+/**
+ * Die Zahl bzw. Aussage selbst: ein Klick öffnet ihre Herkunft, ein zweiter Klick auf die offene Zahl
+ * schließt sie wieder — ein echter Umschalter, deshalb stimmt `aria-pressed` (UI-06, R17).
+ */
 function Zahl({
   dp,
   gewaehlt,
   oeffne,
+  herkunftId,
+  schliesse,
+  merkeOeffner,
 }: {
   dp: DatenpunktSicht;
   gewaehlt: boolean;
   oeffne: (id: string) => void;
+  /** Kennung des Detailbereichs; die offene Zahl verweist mit `aria-controls` darauf. */
+  herkunftId: string;
+  schliesse: () => void;
+  merkeOeffner: (zahl: HTMLButtonElement) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const erfassung = t(`praesentationdaten.erfassung.${dp.erfassung}`);
@@ -280,7 +332,17 @@ function Zahl({
       data-zustand={dp.pruefstand.zustand}
       aria-pressed={gewaehlt}
       aria-label={t("praesentationdaten.herkunftVon", { wert: dp.wert, erfassung, zustand })}
-      onClick={() => oeffne(dp.id)}
+      aria-controls={gewaehlt ? herkunftId : undefined}
+      onClick={(e) => {
+        // Prüfbefund B7 (18.10.2026): auch beim Schließen DIESE Zahl merken — derselbe Datenpunkt kann
+        // an mehreren Elementen stehen; der Fokus gehört an den Knopf, der geklickt wurde.
+        merkeOeffner(e.currentTarget);
+        if (gewaehlt) {
+          schliesse();
+          return;
+        }
+        oeffne(dp.id);
+      }}
       className={`inline-flex items-center gap-1.5 rounded-btn border px-2 py-0.5 text-[12px] ${gewaehlt ? "border-ink" : "border-hairline"}`}
     >
       <span className="font-semibold text-text">{dp.wert}</span>
@@ -304,6 +366,7 @@ function Herkunft({
   zurueck,
   schliessen,
   geaendert,
+  elementId,
 }: {
   id: string;
   /** Eine bestimmte Datenfassung (Eingabe einer Berechnung); ohne Angabe der aktuelle Stand. */
@@ -315,6 +378,8 @@ function Herkunft({
   zurueck: () => void;
   schliessen: () => void;
   geaendert: () => void;
+  /** DOM-Kennung des Detailbereichs (Ziel von `aria-controls` an der offenen Zahl). */
+  elementId: string;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const fehlerText = useFehlerText();
@@ -344,13 +409,27 @@ function Herkunft({
 
   return (
     <aside
+      id={elementId}
       data-herkunft={id}
       data-herkunft-fassung={dp?.fassung}
       aria-label={t("praesentationdaten.herkunft")}
       onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          schliessen();
+        if (e.key !== "Escape") {
+          return;
         }
+        // UI-05 (R3): Escape gilt der Herkunft — es schließt nicht zusätzlich die Seitenhilfe oder
+        // eine andere äußere Ebene, die auf Escape am Dokument hört.
+        e.stopPropagation();
+        // UI-05 (R4): Während einer Eingabe per Eingabemethode (IME) gehört Escape der Komposition.
+        if (e.nativeEvent.isComposing || e.keyCode === 229) {
+          return;
+        }
+        // UI-05 (R4): Eine begonnene, ungespeicherte Prüfung oder Korrektur verwirft Escape nicht
+        // still; verwerfen bleibt dem ausdrücklichen „Abbrechen“ bzw. „Schließen“.
+        if (e.currentTarget.querySelector("form[data-ungespeichert]")) {
+          return;
+        }
+        schliessen();
       }}
       className="min-w-0 rounded-card border border-hairline p-3 text-[12px] lg:sticky lg:top-2 lg:self-start"
     >
@@ -375,7 +454,7 @@ function Herkunft({
         </button>
       </div>
       {abfrage.isError ? (
-        <p role="alert" className="mt-2 text-danger">
+        <p role="alert" className="mt-2 text-trust-crit-text">
           {fehlerText(abfrage.error)}
         </p>
       ) : null}
@@ -385,7 +464,7 @@ function Herkunft({
             {dp.wert}
           </h6>
           {dp.historisch ? (
-            <p data-herkunft-historisch="" className="mt-1 text-danger">
+            <p data-herkunft-historisch="" className="mt-1 text-trust-crit-text">
               {t("praesentationdaten.historisch", {
                 fassung: dp.fassung,
                 aktuell: dp.historisch.aktuelleFassung,
@@ -405,7 +484,7 @@ function Herkunft({
           </p>
           <p className="text-muted">{t(`praesentationdaten.erfassungsweg.${dp.erfassung}`)}</p>
           {dp.pruefstand.prognose ? (
-            <p data-herkunft-prognose="" className="mt-1 text-danger">
+            <p data-herkunft-prognose="" className="mt-1 text-trust-crit-text">
               {t("praesentationdaten.prognoseHinweis")}
             </p>
           ) : null}
@@ -494,7 +573,7 @@ function Herkunft({
                           </span>
                         </button>
                         {e.aktuell.fassung !== e.verwendet.fassung ? (
-                          <span data-eingabe-geaendert="" className="ml-1 text-danger">
+                          <span data-eingabe-geaendert="" className="ml-1 text-trust-crit-text">
                             {t("praesentationdaten.eingabeGeaendert", {
                               wert: e.aktuell.wert,
                               fassung: e.aktuell.fassung,
@@ -580,7 +659,9 @@ function Herkunft({
                       ? ` · ${t("praesentationdaten.zelle", { zeile: b.zeile, spalte: b.spalte })}`
                       : ""}
                     {" — "}
-                    <span className={b.lage === "abweichung" ? "text-danger" : "text-muted"}>
+                    <span
+                      className={b.lage === "abweichung" ? "text-trust-crit-text" : "text-muted"}
+                    >
                       {t(`praesentationdaten.lage.${b.lage}`)}
                     </span>
                     {b.heute ? (
@@ -692,7 +773,9 @@ function FundstelleText({ dp }: { dp: DatenpunktSicht }): JSX.Element {
             <span className="whitespace-pre-line text-muted">„{f.ocrText}“</span>
           </span>
           {f.unsicher ? (
-            <span className="block text-danger">{t("praesentationdaten.ocrUnsicher")}</span>
+            <span className="block text-trust-crit-text">
+              {t("praesentationdaten.ocrUnsicher")}
+            </span>
           ) : null}
         </p>
       );
@@ -744,6 +827,8 @@ function Pruefen({
   const [grund, setGrund] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
+  // UI-05 (R4): seit dem letzten Speichern etwas gewählt oder eingegeben — dann verwirft Escape nichts.
+  const [beruehrt, setBeruehrt] = useState(false);
   const id = useId();
 
   async function senden(e: FormEvent) {
@@ -760,6 +845,7 @@ function Pruefen({
         }),
       );
       setGrund("");
+      setBeruehrt(false);
     } catch (f) {
       setFehler(fehlerText(f));
     } finally {
@@ -768,7 +854,13 @@ function Pruefen({
   }
 
   return (
-    <form data-pruefen="" onSubmit={senden} className="mt-2 space-y-1">
+    <form
+      data-pruefen=""
+      data-ungespeichert={beruehrt ? "" : undefined}
+      onChange={() => setBeruehrt(true)}
+      onSubmit={senden}
+      className="mt-2 space-y-1"
+    >
       <p className="font-semibold">{t("praesentationdaten.pruefungFesthalten")}</p>
       <label htmlFor={`${id}-d`} className="block text-muted">
         {t("praesentationdaten.dimensionWaehlen")}
@@ -813,7 +905,7 @@ function Pruefen({
         {t("praesentationdaten.pruefungGiltFuer", { fassung: dp.fassung })}
       </p>
       {fehler ? (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="text-trust-crit-text">
           {fehler}
         </p>
       ) : null}
@@ -846,6 +938,8 @@ function Korrigieren({
   const [grund, setGrund] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
+  // UI-05 (R4): seit dem Öffnen etwas eingegeben und nicht gespeichert — dann verwirft Escape nichts.
+  const [beruehrt, setBeruehrt] = useState(false);
   const id = useId();
 
   async function senden(art: "werte" | "neuBerechnen" | "quelleAktualisieren") {
@@ -874,6 +968,7 @@ function Korrigieren({
       );
       setOffen(false);
       setGrund("");
+      setBeruehrt(false);
     } catch (f) {
       setFehler(fehlerText(f));
     } finally {
@@ -910,6 +1005,8 @@ function Korrigieren({
   return (
     <form
       data-korrigieren=""
+      data-ungespeichert={beruehrt ? "" : undefined}
+      onChange={() => setBeruehrt(true)}
       onSubmit={(e) => {
         e.preventDefault();
         void senden("werte");
@@ -924,7 +1021,7 @@ function Korrigieren({
       {feld("grund", grund, setGrund)}
       <p className="text-muted">{t("praesentationdaten.korrekturHinweis")}</p>
       {fehler ? (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="text-trust-crit-text">
           {fehler}
         </p>
       ) : null}
@@ -960,7 +1057,19 @@ function Korrigieren({
         ) : null}
         <button
           type="button"
-          onClick={() => setOffen(false)}
+          data-korrigieren-abbrechen=""
+          onClick={() => {
+            // Prüfbefund P2 (18.10.2026): „Abbrechen“ verwirft die Eingaben wirklich — beim nächsten
+            // Öffnen steht wieder der Datenpunkt da, nicht eine alte Eingabe, die als unberührt gälte.
+            setWert(dp.wert);
+            setEinheit(dp.einheit ?? "");
+            setZeitraum(dp.zeitraum ?? "");
+            setBezugsgroesse(dp.bezugsgroesse ?? "");
+            setGrund("");
+            setFehler(null);
+            setOffen(false);
+            setBeruehrt(false);
+          }}
           className="rounded-btn border border-hairline px-2 py-0.5 text-muted"
         >
           {t("praesentationdaten.abbrechen")}
@@ -1274,7 +1383,7 @@ function Erfassen({
       ) : null}
 
       {fehler ? (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="text-trust-crit-text">
           {fehler}
         </p>
       ) : null}

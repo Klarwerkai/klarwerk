@@ -87,6 +87,31 @@
     <p id="speichern-hinweis" class="muted" hidden>Gespeichert wird wie sonst auch: im Web und bei OneDrive automatisch, sonst mit ⌘S. Klara speichert nicht selbst.</p>
   </section>
 
+  <!-- PP-02 (produkt:20261015:klara-powerpoint-datenherkunft): Herkunft der Zahlen an der
+       markierten Form — nur in PowerPoint, nur lesend (folien-herkunft.js). -->
+  <section id="herkunft-block" class="block" hidden>
+    <h2>Herkunft der Zahlen</h2>
+    <p id="herkunft-zeile" class="muted">Noch mit keinem KLARWERK-Anhang verbunden.</p>
+    <label for="herkunft-artikel">Artikel in KLARWERK (Link oder Kennung)</label>
+    <input id="herkunft-artikel" type="text" maxlength="300" placeholder="https://…/wissen/…" />
+    <button id="herkunft-verbinden" type="button" disabled>Anhänge laden</button>
+    <div id="herkunft-anhang-wahl" hidden>
+      <label for="herkunft-anhang">PowerPoint-Anhang, an dem die Zahlen gebunden sind</label>
+      <select id="herkunft-anhang"></select>
+    </div>
+    <button id="herkunft-abgleichen" type="button" disabled>Mit dieser Präsentation abgleichen</button>
+    <p id="herkunft-abgleich" class="muted"></p>
+    <p id="herkunft-meldung" class="hinweis" hidden></p>
+    <ul id="herkunft-liste" class="zahlen" aria-label="Gebundene Zahlen an der markierten Form"></ul>
+    <p id="herkunft-leer" class="muted" hidden></p>
+    <div id="herkunft-detail" class="herkunft" role="region" aria-label="Herkunft" tabindex="-1" hidden>
+      <div id="herkunft-detail-inhalt"></div>
+      <button id="herkunft-zurueck" type="button" hidden>Zurück</button>
+      <button id="herkunft-schliessen" type="button">Schließen</button>
+      <a id="herkunft-link" href="#" target="_blank" rel="noopener">In KLARWERK öffnen</a>
+    </div>
+  </section>
+
   <section id="anleitung" class="block">
     <h2>So geht’s</h2>
     <!-- KO-06-05: jeder Schritt zeigt auf ein Bedienelement dieser Seite (data-ziel = seine id);
@@ -97,10 +122,12 @@
       <li><button type="button" class="schritt" data-ziel="frage-text">Fragen</button> – Frage schreiben und „Klara fragen“ drücken.</li>
       <li><button type="button" class="schritt" data-ziel="rueckgabe-block">Zurückgeben</button> – Ziel wählen, prüfen, „Jetzt schreiben“.</li>
       <li><button type="button" class="schritt" data-ziel="ruecknahme">Zurücknehmen</button> – solange das Ziel unverändert ist.</li>
+      <li><button type="button" class="schritt" data-ziel="herkunft-block">Herkunft</button> – nur PowerPoint: Artikel verbinden, abgleichen, Form markieren, Zahl anklicken.</li>
     </ol>
   </section>
 
   <script src="hostkern.js?v=__KW_FASSUNG__"></script>
   <script src="taskpane.js?v=__KW_FASSUNG__"></script>
+  <script src="folien-herkunft.js?v=__KW_FASSUNG__"></script>
 </body>
 </html>

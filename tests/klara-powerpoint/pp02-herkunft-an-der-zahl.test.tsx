@@ -14,6 +14,21 @@
 //   H3  (K4) Eine für den Nutzer verborgene Quelle steht als „nicht einsehbar“ da, ohne Inhalt; der
 //       Prüfstand nennt je Dimension Stand und Grund. Ohne Schreibrecht keine Erfassen-/Prüfknöpfe.
 //   H4  (K5) Englisch: dieselbe Fläche mit englischen Bezeichnungen.
+//   UI-06/UI-05 (Risiken R17, R2, R3, R4 und Warnfarbe aus CHAT-67/ui04-08, Abschnitt 5):
+//   H6  Die Zahl ist ein echter Umschalter: der zweite Klick schließt (dann stimmt `aria-pressed`),
+//       die offene Zahl verweist mit `aria-controls` auf die Herkunft; Schließen per Klick, Knopf —
+//       auch aus der Tiefe einer Eingabe — gibt den Fokus an die Zahl zurück, die geöffnet hat (R2).
+//   H7  Escape in der Herkunft schließt nur sie und erreicht das Dokument nicht — dort hört die
+//       Seitenhilfe (`KlaraAssistant`) auf Escape (R3).
+//   H8  Escape verwirft keine begonnene Korrektur oder Prüfung und gehört während einer IME-
+//       Komposition der Eingabemethode; unberührt schließt Escape wie bisher (R4).
+//   Unabhängige Prüfung 0001–0006 (18.10.2026):
+//   H10 (B7) dieselbe Zahl an zwei Elementen: Schließen über den zweiten Knopf gibt IHM den Fokus.
+//   H11 (P2) „Abbrechen“ setzt die Korrektur auf den Datenpunkt zurück; nichts gilt als unberührt.
+//   H9  Warnhinweise der Herkunft tragen eine Farbe, die das Theme kennt (`text-trust-crit-text`);
+//       `text-danger` (kein Token) bleibt nur in der Zustandsfarbe an der Zahl, die der PP-03-Anschluss
+//       umstellt.
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   QueryClient,
@@ -29,6 +44,7 @@ import {
 } from "../../apps/web/src/api/praesentationDaten";
 import { FolienDaten } from "../../apps/web/src/components/bibliothek/FolienDaten";
 import i18n from "../../apps/web/src/i18n";
+import { repoPfad } from "../support/repoPfad";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -265,8 +281,8 @@ async function warte(): Promise<void> {
   });
 }
 
-async function montiere(): Promise<void> {
-  vi.spyOn(praesentationDaten, "lage").mockResolvedValue(LAGE);
+async function montiere(lage: FolienDatenLage = LAGE): Promise<void> {
+  vi.spyOn(praesentationDaten, "lage").mockResolvedValue(lage);
   const spion = vi.spyOn(praesentationDaten, "datenpunkt");
   abruf = spion;
   spion.mockImplementation(async (id: string, fassung?: number) => {
@@ -307,6 +323,32 @@ const zahl = (id: string) => {
 
 const aside = () => container.querySelector<HTMLElement>("[data-herkunft]");
 
+async function klick(e: Element | null | undefined): Promise<void> {
+  expect(e, "Bedienelement fehlt").toBeTruthy();
+  await act(async () => {
+    (e as HTMLElement).click();
+  });
+  await warte();
+}
+
+async function escapeDruecken(ziel: Element | null | undefined, extra: KeyboardEventInit = {}) {
+  expect(ziel, "Ziel für Escape fehlt").toBeTruthy();
+  await act(async () => {
+    ziel?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, ...extra }));
+  });
+  await warte();
+}
+
+/** Tippen wie ein Mensch: Wert setzen und das native `input`-Ereignis auslösen (React-onChange). */
+async function tippen(feld: HTMLInputElement | null | undefined, text: string): Promise<void> {
+  expect(feld, "Eingabefeld fehlt").toBeTruthy();
+  const setzer = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  await act(async () => {
+    setzer?.call(feld, text);
+    feld?.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 describe("PP-02 · Herkunft direkt an der Zahl", () => {
   it("H1 · manuelle Zahl, OCR-Zahl und berechneter Wert stehen unterscheidbar an ihren Elementen", async () => {
     await montiere();
@@ -342,9 +384,11 @@ describe("PP-02 · Herkunft direkt an der Zahl", () => {
       zahl("dp-ergebnis").click();
     });
     await warte();
+    // Die Zahl ist ein Umschalter (H6): gedrückt, solange ihre Herkunft offen ist, und sie nennt sie.
     expect(zahl("dp-ergebnis").getAttribute("aria-pressed")).toBe("true");
     const detail = aside();
     expect(detail?.dataset.herkunft).toBe("dp-ergebnis");
+    expect(zahl("dp-ergebnis").getAttribute("aria-controls")).toBe(detail?.id);
     const erfassung = detail?.querySelector<HTMLElement>("[data-herkunft-erfassung]");
     expect(erfassung?.dataset.herkunftErfassung).toBe("berechnet");
     expect(detail?.querySelector("[data-herkunft-rechenweg]")?.textContent).toContain(
@@ -398,6 +442,9 @@ describe("PP-02 · Herkunft direkt an der Zahl", () => {
     });
     await warte();
     expect(aside()).toBeNull();
+    // R2: der Fokus kehrt an die Zahl zurück, an der die Herkunft geöffnet wurde.
+    expect(document.activeElement).toBe(zahl("dp-ergebnis"));
+    expect(zahl("dp-ergebnis").getAttribute("aria-pressed")).toBe("false");
   });
 
   it("H3 · verborgene Quelle, Prüfstand je Dimension mit Grund, keine Prüfknöpfe ohne Recht", async () => {
@@ -467,5 +514,161 @@ describe("PP-02 · Herkunft direkt an der Zahl", () => {
     expect(zahl("dp-manuell").textContent).toContain("Entered manually");
     expect(zahl("dp-ocr").textContent).toContain("OCR-recognised");
     expect(zahl("dp-ergebnis").textContent).toContain("Calculated");
+  });
+
+  it("H6 · R17 die Zahl schaltet um; R2 Schließen gibt den Fokus an die öffnende Zahl zurück", async () => {
+    await montiere();
+    const manuell = zahl("dp-manuell");
+    expect(manuell.getAttribute("aria-pressed")).toBe("false");
+    expect(manuell.hasAttribute("aria-controls")).toBe(false);
+    await klick(manuell);
+    expect(manuell.getAttribute("aria-pressed")).toBe("true");
+    const kennung = manuell.getAttribute("aria-controls") ?? "";
+    expect(kennung).not.toBe("");
+    expect(aside()?.id).toBe(kennung);
+    expect(document.activeElement).toBe(aside()?.querySelector("h6"));
+    // Zweiter Klick auf die offene Zahl: die Herkunft schließt, der Fokus steht an der Zahl.
+    await klick(manuell);
+    expect(aside()).toBeNull();
+    expect(manuell.getAttribute("aria-pressed")).toBe("false");
+    expect(manuell.hasAttribute("aria-controls")).toBe(false);
+    expect(document.activeElement).toBe(manuell);
+    // Ein dritter Klick öffnet wieder — echtes Umschalten, keine Einbahn.
+    await klick(manuell);
+    expect(aside()?.dataset.herkunft).toBe("dp-manuell");
+
+    // Aus der Tiefe (Eingabe einer Berechnung) mit dem Knopf „Schließen“: der Fokus geht an die Zahl,
+    // an der der Weg begann — nicht an die Zahl der zuletzt gezeigten Eingabe.
+    await klick(zahl("dp-ergebnis"));
+    await klick(aside()?.querySelector('[data-eingabe="dp-umsatz"]'));
+    expect(aside()?.dataset.herkunft).toBe("dp-umsatz");
+    expect(zahl("dp-ergebnis").getAttribute("aria-pressed")).toBe("false");
+    await klick(aside()?.querySelector("[data-herkunft-schliessen]"));
+    expect(aside()).toBeNull();
+    expect(document.activeElement).toBe(zahl("dp-ergebnis"));
+  });
+
+  it("H7 · R3 Escape in der Herkunft schließt nur die Herkunft, nicht die Seitenhilfe", async () => {
+    await montiere();
+    // So hört die Seitenhilfe (`KlaraAssistant`) auf Escape: am Dokument.
+    const amDokument = vi.fn();
+    document.addEventListener("keydown", amDokument);
+    try {
+      await klick(zahl("dp-ocr"));
+      await escapeDruecken(aside()?.querySelector("h6"));
+      expect(aside()).toBeNull();
+      expect(amDokument).not.toHaveBeenCalled();
+      // Gegenprobe: außerhalb der Herkunft erreicht Escape das Dokument wie bisher.
+      await escapeDruecken(zahl("dp-ocr"));
+      expect(amDokument).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener("keydown", amDokument);
+    }
+  });
+
+  it("H8 · R4 Escape verwirft keine begonnene Korrektur oder Prüfung, IME-Komposition hat Vorrang", async () => {
+    await montiere({ ...LAGE, darfErfassen: true });
+    const herkunft = () => aside();
+    await klick(zahl("dp-umsatz"));
+    expect(herkunft()?.dataset.herkunft).toBe("dp-umsatz");
+    const kopf = () => herkunft()?.querySelector("h6");
+
+    // Während einer IME-Komposition (isComposing bzw. keyCode 229) gehört Escape der Eingabemethode.
+    await escapeDruecken(kopf(), { isComposing: true });
+    expect(herkunft()).not.toBeNull();
+    await escapeDruecken(kopf(), { keyCode: 229 });
+    expect(herkunft()).not.toBeNull();
+
+    // Korrektur geöffnet und Grund eingetippt: Escape lässt Herkunft UND Eingabe stehen.
+    await klick(herkunft()?.querySelector("[data-korrigieren-oeffnen]"));
+    const korrektur = () => herkunft()?.querySelector<HTMLFormElement>("form[data-korrigieren]");
+    const grund = () => korrektur()?.querySelector<HTMLInputElement>('input[id$="-grund"]');
+    await tippen(grund(), "Wert aus der Quelle (fiktiv)");
+    await escapeDruecken(grund());
+    expect(herkunft()?.dataset.herkunft).toBe("dp-umsatz");
+    expect(grund()?.value).toBe("Wert aus der Quelle (fiktiv)");
+    // Verwerfen bleibt ausdrücklich: „Abbrechen“.
+    await klick(korrektur()?.querySelector("[data-korrigieren-abbrechen]"));
+    expect(korrektur()).toBeNull();
+
+    // Prüfung begonnen (Grund eingetippt): ebenso geschützt.
+    const pruefGrund = () =>
+      herkunft()?.querySelector<HTMLInputElement>('form[data-pruefen] input[id$="-g"]');
+    await tippen(pruefGrund(), "Struktur nachgesehen (fiktiv)");
+    await escapeDruecken(pruefGrund());
+    expect(herkunft()?.dataset.herkunft).toBe("dp-umsatz");
+    expect(pruefGrund()?.value).toBe("Struktur nachgesehen (fiktiv)");
+
+    // Der Knopf „Schließen“ ist ausdrücklich und schließt; neu geöffnet ist nichts begonnen —
+    // dann schließt Escape wie bisher.
+    await klick(herkunft()?.querySelector("[data-herkunft-schliessen]"));
+    expect(herkunft()).toBeNull();
+    await klick(zahl("dp-umsatz"));
+    expect(pruefGrund()?.value).toBe("");
+    await escapeDruecken(kopf());
+    expect(herkunft()).toBeNull();
+    expect(document.activeElement).toBe(zahl("dp-umsatz"));
+  });
+
+  it("H9 · Warnhinweise der Herkunft in einer Farbe, die das Theme kennt", async () => {
+    await montiere();
+    await klick(zahl("dp-ocr"));
+    const unsicher = [...(aside()?.querySelectorAll("span") ?? [])].find(
+      (s) => s.textContent === i18n.t("praesentationdaten.ocrUnsicher"),
+    );
+    expect(unsicher?.className).toContain("text-trust-crit-text");
+    expect(aside()?.innerHTML).not.toContain("text-danger");
+    await klick(zahl("dp-ergebnis"));
+    expect(aside()?.querySelector("[data-eingabe-geaendert]")?.className).toContain(
+      "text-trust-crit-text",
+    );
+    // Quelle: `text-danger` (kein Token im Theme) steht nur noch in der Zustandsfarbe an der Zahl,
+    // die der PP-03-Anschluss (CHAT-67) umstellt — sonst nirgends.
+    const quelle = readFileSync(
+      repoPfad("apps/web/src/components/bibliothek/FolienDaten.tsx"),
+      "utf8",
+    );
+    const ohneZustandsfarbe = quelle.replace(/const ZUSTANDSFARBE[\s\S]*?\n};\n/, "");
+    expect(ohneZustandsfarbe).not.toBe(quelle);
+    expect(ohneZustandsfarbe).not.toContain("text-danger");
+    const theme = readFileSync(repoPfad("apps/web/tailwind.config.ts"), "utf8");
+    expect(theme).toContain('"crit-text": token("trust-crit-text")');
+  });
+
+  it("H10 · B7 dieselbe Zahl an zwei Elementen: Schließen über den zweiten Knopf gibt ihm den Fokus", async () => {
+    const doppelt: FolienDatenLage = {
+      ...LAGE,
+      datenpunkte: LAGE.datenpunkte.map((d) =>
+        d.id === "dp-manuell" ? { ...d, bindungen: [bindung("b-3", "7"), bindung("b-9", "6")] } : d,
+      ),
+    };
+    await montiere(doppelt);
+    const an = (shape: string) =>
+      container.querySelector<HTMLButtonElement>(
+        `[data-element="256:${shape}"] [data-datenpunkt="dp-manuell"]`,
+      );
+    expect(an("7") && an("6") && an("7") !== an("6")).toBe(true);
+    await klick(an("7"));
+    expect(an("6")?.getAttribute("aria-pressed")).toBe("true");
+    await klick(an("6"));
+    expect(aside()).toBeNull();
+    expect(document.activeElement).toBe(an("6"));
+  });
+
+  it("H11 · P2 „Abbrechen“ setzt die Korrektur auf den Datenpunkt zurück", async () => {
+    await montiere({ ...LAGE, darfErfassen: true });
+    await klick(zahl("dp-umsatz"));
+    const korrektur = () => aside()?.querySelector<HTMLFormElement>("form[data-korrigieren]");
+    const feld = (name: string) =>
+      korrektur()?.querySelector<HTMLInputElement>(`input[id$="-${name}"]`);
+    await klick(aside()?.querySelector("[data-korrigieren-oeffnen]"));
+    await tippen(feld("zeitraum"), "Q1 2026 (fiktiv)");
+    await tippen(feld("grund"), "nur ausprobiert (fiktiv)");
+    await klick(korrektur()?.querySelector("[data-korrigieren-abbrechen]"));
+    await klick(aside()?.querySelector("[data-korrigieren-oeffnen]"));
+    expect(feld("wert")?.value).toBe("1.550 T€");
+    expect(feld("zeitraum")?.value).toBe("Q4 2025");
+    expect(feld("grund")?.value).toBe("");
+    expect(korrektur()?.hasAttribute("data-ungespeichert")).toBe(false);
   });
 });

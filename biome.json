@@ -57,6 +57,7 @@
       "apps/web/public/office-addin/hostkern.js",
       "apps/web/public/office-addin/taskpane.js",
       "apps/web/public/office-addin/taskpane.css",
+      "apps/web/public/office-addin/folien-herkunft.js",
       "_relay/spikes",
       ".local",
       "**/.claude",

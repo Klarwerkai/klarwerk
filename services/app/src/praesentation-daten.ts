@@ -10,7 +10,9 @@
 // Folie und Element. Es schließt L04 und L17 aus `docs/klara-powerpoint/BESTAND.md`.
 //
 // WAS WIEDERVERWENDET WIRD, statt es ein zweites Mal zu bauen:
-//   · Folien lesen: `lesePraesentation` (W06) — `p:sldId`, Folienteil, Titel.
+//   · Folien lesen: dieselbe Bedeutung wie `lesePraesentation` (W06) — `p:sldId`, Folienteil, Titel;
+//     seit dem Prüfbefund B1 (18.10.2026) als lineare Abtastung in dieser Datei, weil der
+//     Regex-Leser von W06 bei fremden Bytes quadratisch lief (siehe „LINEARE ABTASTUNG“).
 //   · Folienidentität: `p:sldId` + Dateifassung (SHA-256 der Bytes), wie W10 sie führt; nie die
 //     Foliennummer. Das Element dazu ist die Shape-Kennung (`p:cNvPr/@id`).
 //   · Rechenweg: die Arten und die Rechnung von V06 (`rechne`, `BERECHNUNGSARTEN`).
@@ -30,8 +32,9 @@
 // KEIN MODELL läuft hier. Kein Schreiben in die Präsentation: Bindungen sind Verweise auf Elemente.
 
 import { createHash } from "node:crypto";
+import JSZip from "jszip";
 import type { KnowledgeObject } from "../../knowledge-object";
-import { BERECHNUNGSARTEN, lesePraesentation, rechne } from "./office-nachbearbeitung";
+import { BERECHNUNGSARTEN, rechne } from "./office-nachbearbeitung";
 
 // ------------------------------------------------------------------------------------------------
 // FEHLER
@@ -105,32 +108,6 @@ function attribut(tag: string, name: string): string | undefined {
   return new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
 }
 
-/** Der Text eines Ausschnitts: Absätze (`a:p`) aus Läufen (`a:t`), je Absatz eine Zeile. */
-function absatzText(xml: string): string {
-  return [...xml.matchAll(/<a:p(?:\s[^>]*)?>([\s\S]*?)<\/a:p>/g)]
-    .map((p) =>
-      [...(p[1] ?? "").matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)]
-        .map((t) => xmlText(t[1] ?? ""))
-        .join(""),
-    )
-    .filter((z) => z.trim().length > 0)
-    .join("\n");
-}
-
-function zellenAus(xml: string): Tabellenzelle[] {
-  const zellen: Tabellenzelle[] = [];
-  let zeile = 0;
-  for (const tr of xml.matchAll(/<a:tr(?:\s[^>]*)?>([\s\S]*?)<\/a:tr>/g)) {
-    zeile += 1;
-    let spalte = 0;
-    for (const tc of (tr[1] ?? "").matchAll(/<a:tc(?:\s[^>]*)?(?:\/>|>([\s\S]*?)<\/a:tc>)/g)) {
-      spalte += 1;
-      zellen.push({ zeile, spalte, text: absatzText(tc[1] ?? "").replace(/\n/g, " ") });
-    }
-  }
-  return zellen;
-}
-
 function aufloesen(verzeichnis: string, ziel: string): string {
   const teile = ziel.startsWith("/") ? [] : verzeichnis.split("/").filter(Boolean);
   for (const t of ziel.replace(/^\//, "").split("/")) {
@@ -143,63 +120,400 @@ function aufloesen(verzeichnis: string, ziel: string): string {
   return teile.join("/");
 }
 
-/** Ein Element einer Folie: Form, Grafikrahmen (Tabelle) oder Bild — in Dokumentreihenfolge. */
-const ELEMENT = /<p:(sp|graphicFrame|pic)(?=[\s>])[^>]*>([\s\S]*?)<\/p:\1>/g;
+// ------------------------------------------------------------------------------------------------
+// LINEARE ABTASTUNG (unabhängige Prüfung 0001–0006, Befund B1, 18.10.2026)
+// ------------------------------------------------------------------------------------------------
+//
+// DER BEFUND: Gelesen wurde über reguläre Ausdrücke der Form „Start-Tag, dann bis zum nächsten
+// Schluss-Tag“ (`<p:sp…>([\s\S]*?)</p:sp>`, ebenso Absatz, Lauf, Zeile, Zelle — auch in W06
+// `lesePraesentation`). Fehlt der Schluss, sucht jeder Start bis zum Textende: 64 000 offene `<p:sp>`
+// (2 KB gepackt) hielten den Server über die Route `folien-abgleich` rund neun Sekunden fest.
+//
+// JETZT: Jeder Folienteil wird EINMAL durchgegangen. `indexOf` springt zum nächsten Tag, das Tag-Ende
+// wird unter Beachtung von Anführungszeichen gefunden, Kommentar, Verarbeitungsanweisung und CDATA am
+// Stück. Fehlt ein Abschluss, endet die Abtastung dort — sie sucht nie ein zweites Mal. Gezählt
+// wird die Schachtelung, nicht gesucht.
+//
+// DIESELBE BEDEUTUNG wie W06 für wohlgeformte Dateien: Folien über `p:sldId` in Dokumentreihenfolge,
+// Titel aus der ersten Form `<p:sp>` mit Titelplatzhalter (sonst der erste Absatz der Folie),
+// Ausblendung über `show="0|false"`. Belegt in pp02-hostanschluss.test.ts (H8, Vergleich mit W06).
+
+/** Höchstzahl der `p:sldId`-Einträge; mehrfach genannte Folienteile werden nur einmal gelesen. */
+export const MAX_FOLIEN = 2000;
+/** Höchstgröße EINES Folienteils (Zeichen) — ein echter Folienteil liegt weit darunter. */
+export const MAX_FOLIENTEIL_ZEICHEN = 16 * 1024 * 1024;
+
+interface XmlTag {
+  readonly name: string;
+  readonly art: "auf" | "zu" | "leer";
+  /** Der Tag von „<“ bis „>“ — für `attribut`. */
+  readonly roh: string;
+}
+
+/** Hat der Tag Attribute (Leerraum nach dem Namen)? So verlangten es die früheren Muster `<x\s…>`. */
+function mitAttributen(t: XmlTag): boolean {
+  return (
+    t.art !== "zu" && t.roh.length > t.name.length + 1 && t.roh.charCodeAt(t.name.length + 1) <= 32
+  );
+}
+
+/**
+ * Geht einen XML-Teil genau einmal durch: `tag` je Start-, End- oder leerem Tag, `text` je Rohtext
+ * dazwischen (als Bereich, CDATA als Text). Linear in der Länge; endet am ersten offenen Konstrukt.
+ */
+function tastAb(
+  xml: string,
+  tag: (t: XmlTag) => void,
+  text: (von: number, bis: number) => void = () => {},
+): void {
+  const n = xml.length;
+  let pos = 0;
+  while (pos < n) {
+    const lt = xml.indexOf("<", pos);
+    if (lt < 0) {
+      text(pos, n);
+      return;
+    }
+    if (lt > pos) {
+      text(pos, lt);
+    }
+    if (xml.startsWith("<!--", lt)) {
+      const ende = xml.indexOf("-->", lt + 4);
+      if (ende < 0) {
+        return;
+      }
+      pos = ende + 3;
+      continue;
+    }
+    if (xml.startsWith("<![CDATA[", lt)) {
+      const ende = xml.indexOf("]]>", lt + 9);
+      if (ende < 0) {
+        return;
+      }
+      text(lt + 9, ende);
+      pos = ende + 3;
+      continue;
+    }
+    if (xml.startsWith("<?", lt)) {
+      const ende = xml.indexOf("?>", lt + 2);
+      if (ende < 0) {
+        return;
+      }
+      pos = ende + 2;
+      continue;
+    }
+    if (xml.startsWith("<!", lt)) {
+      return; // DOCTYPE u. Ä. — in OOXML nicht vorgesehen; nicht gedeutet, hier endet das Lesen.
+    }
+    let i = lt + 1;
+    const zu = xml.charCodeAt(i) === 47; // „/“
+    if (zu) {
+      i += 1;
+    }
+    const nameStart = i;
+    while (i < n) {
+      const c = xml.charCodeAt(i);
+      if (c === 62 || c === 47 || c <= 32) {
+        break;
+      }
+      i += 1;
+    }
+    const name = xml.slice(nameStart, i);
+    let ende = -1;
+    while (i < n) {
+      const c = xml.charCodeAt(i);
+      if (c === 62) {
+        ende = i;
+        break;
+      }
+      if (c === 34 || c === 39) {
+        const q = xml.indexOf(c === 34 ? '"' : "'", i + 1);
+        if (q < 0) {
+          return;
+        }
+        i = q + 1;
+        continue;
+      }
+      i += 1;
+    }
+    if (ende < 0) {
+      return;
+    }
+    tag({
+      name,
+      art: zu ? "zu" : xml.charCodeAt(ende - 1) === 47 ? "leer" : "auf",
+      roh: xml.slice(lt, ende + 1),
+    });
+    pos = ende + 1;
+  }
+}
+
+/** `Id` → `Target` der Beziehungen eines Teils (spätere gleiche `Id` gewinnt, wie zuvor die Map). */
+function beziehungsZiele(rels: string): Map<string, string> {
+  const ziele = new Map<string, string>();
+  tastAb(rels, (t) => {
+    if (t.name === "Relationship" && mitAttributen(t)) {
+      ziele.set(attribut(t.roh, "Id") ?? "", attribut(t.roh, "Target") ?? "");
+    }
+  });
+  return ziele;
+}
+
+interface ElementRoh {
+  readonly name: string;
+  /** Start-Tag genau `<p:sp>` — die Form, in der W06 den Titel sucht. */
+  readonly nackt: boolean;
+  tiefe: number;
+  cNvPr?: string;
+  blip?: string;
+  tabelle: boolean;
+  titelPlatzhalter: boolean;
+  readonly absaetze: string[];
+  readonly zellen: Tabellenzelle[];
+}
+
+interface FolieRoh {
+  readonly elemente: ElementRoh[];
+  readonly titel: string;
+  readonly ausgeblendet: boolean;
+}
+
+const ELEMENTNAMEN = new Set(["p:sp", "p:graphicFrame", "p:pic"]);
+const TITELPLATZHALTER = /^<p:ph\s[^>]*type="(title|ctrTitle)"/;
+
+/** Eine Folie in einem Durchgang: Elemente (Text, Tabellenzellen, Bildverweis), Titel, Ausblendung. */
+function folieAbtasten(xml: string): FolieRoh {
+  const elemente: ElementRoh[] = [];
+  let el: ElementRoh | undefined;
+  let titel: string | undefined;
+  let ersterAbsatz: string | undefined;
+  let ausgeblendet = false;
+  // Absatz (a:p) mit seinen Läufen (a:t), Tabellenzeile (a:tr) und -zelle (a:tc) — je mit Tiefe.
+  let absatzTiefe = 0;
+  let laeufe: string[] = [];
+  let lauf: string[] | undefined;
+  let zeile = 0;
+  let zeilenTiefe = 0;
+  let spalte = 0;
+  let zelle:
+    | { readonly zeile: number; readonly spalte: number; readonly absaetze: string[] }
+    | undefined;
+  let zellenTiefe = 0;
+
+  const absatzFertig = () => {
+    const satz = laeufe.join("");
+    laeufe = [];
+    if (satz.trim().length === 0) {
+      return;
+    }
+    ersterAbsatz ??= satz;
+    el?.absaetze.push(satz);
+    zelle?.absaetze.push(satz);
+  };
+
+  tastAb(
+    xml,
+    (t) => {
+      if (t.name === "p:sld" && mitAttributen(t) && /\sshow="(0|false)"/.test(t.roh)) {
+        ausgeblendet = true;
+      }
+      if (!el) {
+        if (t.art === "auf" && ELEMENTNAMEN.has(t.name)) {
+          el = {
+            name: t.name,
+            nackt: t.roh === "<p:sp>",
+            tiefe: 1,
+            tabelle: false,
+            titelPlatzhalter: false,
+            absaetze: [],
+            zellen: [],
+          };
+          zeile = 0;
+          zeilenTiefe = 0;
+          zellenTiefe = 0;
+          zelle = undefined;
+          absatzTiefe = 0;
+          laeufe = [];
+          lauf = undefined;
+        }
+      } else if (t.name === el.name) {
+        el.tiefe += t.art === "auf" ? 1 : t.art === "zu" ? -1 : 0;
+        if (el.tiefe === 0) {
+          if (el.nackt && el.titelPlatzhalter && titel === undefined) {
+            const kandidat = el.absaetze.join(" ").trim();
+            if (kandidat) {
+              titel = kandidat;
+            }
+          }
+          elemente.push(el);
+          el = undefined;
+          return;
+        }
+      } else if (t.art !== "zu") {
+        if (t.name === "p:cNvPr" && el.cNvPr === undefined && mitAttributen(t)) {
+          el.cNvPr = t.roh;
+        } else if (t.name === "a:blip" && el.blip === undefined && mitAttributen(t)) {
+          const ziel = attribut(t.roh, "r:embed");
+          if (ziel) {
+            el.blip = ziel;
+          }
+        } else if (t.name === "p:ph" && TITELPLATZHALTER.test(t.roh)) {
+          el.titelPlatzhalter = true;
+        }
+        if (t.name.startsWith("a:tbl")) {
+          el.tabelle = true;
+        }
+      }
+      // Tabellen: Zeilen und Zellen (auch leere `<a:tc/>`) in Dokumentreihenfolge.
+      if (el && t.name === "a:tr") {
+        if (t.art === "auf") {
+          zeilenTiefe += 1;
+          if (zeilenTiefe === 1) {
+            zeile += 1;
+            spalte = 0;
+          }
+        } else if (t.art === "zu" && zeilenTiefe > 0) {
+          zeilenTiefe -= 1;
+        }
+      } else if (el && t.name === "a:tc" && zeilenTiefe > 0) {
+        if (t.art === "leer" && zellenTiefe === 0) {
+          spalte += 1;
+          el.zellen.push({ zeile, spalte, text: "" });
+        } else if (t.art === "auf") {
+          zellenTiefe += 1;
+          if (zellenTiefe === 1) {
+            spalte += 1;
+            zelle = { zeile, spalte, absaetze: [] };
+          }
+        } else if (t.art === "zu" && zellenTiefe > 0) {
+          zellenTiefe -= 1;
+          if (zellenTiefe === 0 && zelle) {
+            el.zellen.push({
+              zeile: zelle.zeile,
+              spalte: zelle.spalte,
+              text: zelle.absaetze.join("\n").replace(/\n/g, " "),
+            });
+            zelle = undefined;
+          }
+        }
+      }
+      // Absätze und Läufe — überall auf der Folie (der erste Absatz ist der Ersatztitel).
+      if (t.name === "a:p") {
+        if (t.art === "auf") {
+          absatzTiefe += 1;
+          if (absatzTiefe === 1) {
+            laeufe = [];
+          }
+        } else if (t.art === "zu" && absatzTiefe > 0) {
+          absatzTiefe -= 1;
+          if (absatzTiefe === 0) {
+            absatzFertig();
+          }
+        }
+      } else if (t.name === "a:t" && absatzTiefe > 0) {
+        if (t.art === "auf" && lauf === undefined) {
+          lauf = [];
+        } else if (t.art === "zu" && lauf !== undefined) {
+          laeufe.push(xmlText(lauf.join("")));
+          lauf = undefined;
+        }
+      }
+    },
+    (von, bis) => {
+      lauf?.push(xml.slice(von, bis));
+    },
+  );
+  return { elemente, titel: titel ?? ersterAbsatz ?? "", ausgeblendet };
+}
 
 /**
  * Liest Folien und Elemente einer `.pptx`. Gelesen wird nur; Tabellen kommen mit Zeile und Spalte,
  * Bilder mit der Inhaltskennung ihrer Bytes. Diagramme, SmartArt und Notizen liest dieser Weg nicht
  * (L03) — sie erscheinen nicht als Element und lassen sich daher auch nicht binden.
+ *
+ * Grenzen (B1): höchstens `MAX_FOLIEN` Einträge in der Folienliste, je Folienteil höchstens
+ * `MAX_FOLIENTEIL_ZEICHEN`; ein mehrfach genannter Folienteil wird nur EINMAL gelesen und geliefert,
+ * ein mehrfach verwendetes Bild nur einmal entpackt. Die Entpackgrenze des ganzen Archivs setzt der
+ * Aufrufer, der fremde Bytes annimmt (Route `folien-abgleich`).
  */
 export async function leseFolienDaten(bytes: Buffer): Promise<FoliensatzDaten> {
-  const praes = await lesePraesentation(bytes);
-  const folien: FolieMitElementen[] = [];
-  for (const f of praes.folien) {
-    const xml = (await praes.zip.file(f.pfad)?.async("string")) ?? "";
-    const verzeichnis = f.pfad.slice(0, f.pfad.lastIndexOf("/"));
-    const relsPfad = `${verzeichnis}/_rels/${f.pfad.slice(verzeichnis.length + 1)}.rels`;
-    const rels = (await praes.zip.file(relsPfad)?.async("string")) ?? "";
-    const ziele = new Map(
-      [...rels.matchAll(/<Relationship\s[^>]*>/g)].map(
-        (r) => [attribut(r[0], "Id") ?? "", attribut(r[0], "Target") ?? ""] as const,
-      ),
+  const zip = await JSZip.loadAsync(bytes);
+  const praes = await zip.file("ppt/presentation.xml")?.async("string");
+  const praesRels = await zip.file("ppt/_rels/presentation.xml.rels")?.async("string");
+  if (!praes || !praesRels) {
+    throw new DatenFehler("ungueltig", "Die Datei enthält keine PowerPoint-Präsentation.");
+  }
+  const ziele = beziehungsZiele(praesRels);
+  const eintraege: { readonly folieId: number; readonly pfad: string }[] = [];
+  let genannt = 0;
+  tastAb(praes, (t) => {
+    if (t.name !== "p:sldId" || !mitAttributen(t)) {
+      return;
+    }
+    genannt += 1;
+    const folieId = Number(attribut(t.roh, "id"));
+    const ziel = ziele.get(attribut(t.roh, "r:id") ?? "");
+    if (Number.isInteger(folieId) && ziel) {
+      eintraege.push({ folieId, pfad: aufloesen("ppt", ziel) });
+    }
+  });
+  if (genannt > MAX_FOLIEN) {
+    throw new DatenFehler(
+      "ungueltig",
+      `Die Präsentation nennt ${genannt} Folien; gelesen werden höchstens ${MAX_FOLIEN}.`,
     );
+  }
+  const folien: FolieMitElementen[] = [];
+  const gelesen = new Set<string>();
+  const bildKennung = new Map<string, string | undefined>();
+  for (const { folieId, pfad } of eintraege) {
+    if (gelesen.has(pfad)) {
+      continue; // Derselbe Folienteil ein zweites Mal genannt: nur einmal lesen und liefern.
+    }
+    gelesen.add(pfad);
+    const xml = (await zip.file(pfad)?.async("string")) ?? "";
+    if (xml.length > MAX_FOLIENTEIL_ZEICHEN) {
+      throw new DatenFehler("ungueltig", "Ein Folienteil ist für das Lesen zu groß.");
+    }
+    const verzeichnis = pfad.slice(0, pfad.lastIndexOf("/"));
+    const relsPfad = `${verzeichnis}/_rels/${pfad.slice(verzeichnis.length + 1)}.rels`;
+    const bildZiele = beziehungsZiele((await zip.file(relsPfad)?.async("string")) ?? "");
+    const roh = folieAbtasten(xml);
     const elemente: FolienElement[] = [];
     let bilder = 0;
-    for (const m of xml.matchAll(ELEMENT)) {
-      const art = m[1];
-      const inhalt = m[2] ?? "";
-      const cNvPr = /<p:cNvPr\s[^>]*>/.exec(inhalt)?.[0] ?? "";
-      const shapeId = attribut(cNvPr, "id");
+    for (const e of roh.elemente) {
+      const shapeId = e.cNvPr ? attribut(e.cNvPr, "id") : undefined;
       if (!shapeId) {
         continue;
       }
-      const name = xmlText(attribut(cNvPr, "name") ?? "");
-      if (art === "pic") {
+      const name = xmlText((e.cNvPr && attribut(e.cNvPr, "name")) ?? "");
+      if (e.name === "p:pic") {
         bilder += 1;
-        const rId = /<a:blip\s[^>]*r:embed="([^"]+)"/.exec(inhalt)?.[1];
-        const ziel = rId ? ziele.get(rId) : undefined;
-        const daten = ziel
-          ? await praes.zip.file(aufloesen(verzeichnis, ziel))?.async("uint8array")
-          : undefined;
-        if (daten) {
+        const ziel = e.blip ? bildZiele.get(e.blip) : undefined;
+        const bildPfad = ziel ? aufloesen(verzeichnis, ziel) : undefined;
+        let kennung = bildPfad === undefined ? undefined : bildKennung.get(bildPfad);
+        if (bildPfad !== undefined && !bildKennung.has(bildPfad)) {
+          const daten = await zip.file(bildPfad)?.async("uint8array");
+          kennung = daten ? `sha256:${sha256(daten)}` : undefined;
+          bildKennung.set(bildPfad, kennung);
+        }
+        if (kennung) {
           elemente.push({
             shapeId,
             name,
             art: "bild",
             text: "",
-            bild: { kennung: `sha256:${sha256(daten)}`, bildAufFolie: bilder },
+            bild: { kennung, bildAufFolie: bilder },
           });
         }
         continue;
       }
-      if (art === "graphicFrame") {
-        if (!inhalt.includes("<a:tbl")) {
+      if (e.name === "p:graphicFrame") {
+        if (!e.tabelle) {
           continue; // Diagramm, SmartArt, OLE: nicht gelesen (L03).
         }
-        const zellen = zellenAus(inhalt);
         const zeilen = new Map<number, string[]>();
-        for (const z of zellen) {
+        for (const z of e.zellen) {
           zeilen.set(z.zeile, [...(zeilen.get(z.zeile) ?? []), z.text]);
         }
         elemente.push({
@@ -207,20 +521,20 @@ export async function leseFolienDaten(bytes: Buffer): Promise<FoliensatzDaten> {
           name,
           art: "tabelle",
           text: [...zeilen.values()].map((z) => z.join(" | ")).join("\n"),
-          zellen,
+          zellen: e.zellen,
         });
         continue;
       }
-      const text = absatzText(inhalt);
+      const text = e.absaetze.join("\n");
       if (text.trim()) {
         elemente.push({ shapeId, name, art: "text", text });
       }
     }
     folien.push({
-      sldId: String(f.folieId),
-      position: f.nummer,
-      titel: f.titel,
-      ausgeblendet: f.ausgeblendet,
+      sldId: String(folieId),
+      position: folien.length + 1,
+      titel: roh.titel,
+      ausgeblendet: roh.ausgeblendet,
       elemente,
     });
   }
@@ -275,6 +589,66 @@ function normal(text: string): string {
 export function stehtIn(text: string, wert: string): boolean {
   const w = normal(wert);
   return w.length > 0 && normal(text).includes(w);
+}
+
+const ZIFFER = /\p{N}/u;
+const ZIFFER_ODER_BUCHSTABE = /[\p{L}\p{N}]/u;
+const VORZEICHEN = new Set(["-", "−", "+"]);
+
+/** Setzt das Zeichen VOR `i` eine Zahl fort, die bei `i` mit einer Ziffer beginnt? */
+function zahlGehtVornWeiter(t: string, i: number): boolean {
+  const c = t.charAt(i - 1);
+  if (!c) {
+    return false;
+  }
+  if (ZIFFER.test(c)) {
+    return true;
+  }
+  if ((c === "." || c === ",") && ZIFFER.test(t.charAt(i - 2))) {
+    return true;
+  }
+  // Nachprüfung N1: ein Vorzeichen direkt davor gehört zur Zahl — wie in `ZAHLTOKEN` nur, wenn davor
+  // kein Buchstabe und keine Ziffer steht („−300 T€“ ja, „Q4-300 T€“ nein).
+  return VORZEICHEN.has(c) && !ZIFFER_ODER_BUCHSTABE.test(t.charAt(i - 2));
+}
+
+/** Setzt das Zeichen AN `j` eine Zahl fort, die vor `j` mit einer Ziffer endet? */
+function zahlGehtHintenWeiter(t: string, j: number): boolean {
+  const c = t.charAt(j);
+  if (!c) {
+    return false;
+  }
+  return ZIFFER.test(c) || ((c === "." || c === ",") && ZIFFER.test(t.charAt(j + 1)));
+}
+
+/**
+ * Die Lage am Element (passt/abweichung) — NUR für `elementBefund` (Prüfbefund B3, Nachprüfung N1/N2,
+ * 18.10.2026). Ist der Wert eine Zahl (`zahlAusWert`), muss sie als GANZE Zahl dastehen: keine Ziffer,
+ * kein „.“/„,“ mit Ziffer und kein Vorzeichen unmittelbar davor, keine Ziffer und kein „.“/„,“ mit
+ * Ziffer danach. „1.200 T€“ passt so nicht in „11.200 T€“, „300 T€“ nicht in „−300 T€“, „12 %“ nicht in
+ * „112 %“. Buchstaben trennen wie in `ZAHLTOKEN` („1.500“ passt in „1.500T€“). Eine Aussage (keine
+ * einzelne Zahl) vergleicht wie `stehtIn`.
+ *
+ * Erfassen, Binden und Korrigieren prüfen weiter mit `stehtIn` — der PP-02-Kern bleibt, wie er war.
+ */
+export function zahlStehtImText(text: string, wert: string): boolean {
+  if (zahlAusWert(wert) === undefined) {
+    return stehtIn(text, wert);
+  }
+  const w = normal(wert);
+  const t = normal(text);
+  const vorn = ZIFFER.test(w.charAt(0));
+  const hinten = ZIFFER.test(w.charAt(w.length - 1));
+  for (let i = t.indexOf(w); i >= 0; i = t.indexOf(w, i + 1)) {
+    if (vorn && zahlGehtVornWeiter(t, i)) {
+      continue;
+    }
+    if (hinten && zahlGehtHintenWeiter(t, i + w.length)) {
+      continue;
+    }
+    return true;
+  }
+  return false;
 }
 
 /** Ersetzt die Zahl in einer Vorlage („29,4 %“) durch eine neue, mit `stellen` Nachkommastellen. */
@@ -1908,6 +2282,40 @@ export interface BindungsSicht extends Bindung {
   readonly heute?: string;
 }
 
+/** Was eine Bindung in einem Foliensatz vorfindet. */
+export type ElementBefund =
+  | { readonly lage: "passt" }
+  | { readonly lage: "element_fehlt" }
+  | { readonly lage: "abweichung"; readonly heute: string };
+
+/**
+ * Derselbe Maßstab für den Anhang am Artikel und für die Präsentation, die PowerPoint auf dem Mac
+ * oder im Web gerade geöffnet hat (Hostanschluss über A01): Folie über `p:sldId`, Element über
+ * `p:cNvPr/@id`, bei Tabellen die Zelle; der Wert muss dort stehen, ein Bild muss dieselben Bytes
+ * tragen.
+ */
+export function elementBefund(dp: Datenpunkt, b: Bindung, satz: FoliensatzDaten): ElementBefund {
+  const element = satz.folien
+    .find((f) => f.sldId === b.sldId)
+    ?.elemente.find((e) => e.shapeId === b.shapeId);
+  if (!element) {
+    return { lage: "element_fehlt" };
+  }
+  const zelle =
+    b.zeile !== undefined
+      ? element.zellen?.find((z) => z.zeile === b.zeile && z.spalte === b.spalte)
+      : undefined;
+  if (b.zeile !== undefined && !zelle) {
+    return { lage: "element_fehlt" };
+  }
+  const heute = zelle ? zelle.text : element.text;
+  const passt =
+    element.art === "bild"
+      ? dp.fundstelle.art === "bild" && element.bild?.kennung === dp.fundstelle.bildKennung
+      : zahlStehtImText(heute, dp.wert);
+  return passt ? { lage: "passt" } : { lage: "abweichung", heute };
+}
+
 async function bindungsSicht(
   dp: Datenpunkt,
   b: Bindung,
@@ -1920,26 +2328,12 @@ async function bindungsSicht(
   if (!datei) {
     return { ...b, lage: "anhang_fehlt" };
   }
-  const element = datei.satz.folien
-    .find((f) => f.sldId === b.sldId)
-    ?.elemente.find((e) => e.shapeId === b.shapeId);
-  if (!element) {
+  const befund = elementBefund(dp, b, datei.satz);
+  if (befund.lage === "element_fehlt") {
     return { ...b, lage: "element_fehlt", anhangName: datei.name };
   }
-  const zelle =
-    b.zeile !== undefined
-      ? element.zellen?.find((z) => z.zeile === b.zeile && z.spalte === b.spalte)
-      : undefined;
-  if (b.zeile !== undefined && !zelle) {
-    return { ...b, lage: "element_fehlt", anhangName: datei.name };
-  }
-  const heute = zelle ? zelle.text : element.text;
-  const passt =
-    element.art === "bild"
-      ? dp.fundstelle.art === "bild" && element.bild?.kennung === dp.fundstelle.bildKennung
-      : stehtIn(heute, dp.wert);
-  if (!passt) {
-    return { ...b, lage: "abweichung", anhangName: datei.name, heute };
+  if (befund.lage === "abweichung") {
+    return { ...b, lage: "abweichung", anhangName: datei.name, heute: befund.heute };
   }
   return {
     ...b,

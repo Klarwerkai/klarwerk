@@ -604,12 +604,15 @@ function groesseVon(eintrag: unknown): number | undefined {
 // GEZAEHLT, NICHT GESAMMELT: Jeder Chunk wird nach dem Addieren verworfen. Der Speicherbedarf
 // bleibt bei der Chunkgroesse (gemessen 16.384 Byte), unabhaengig davon, wie gross das Archiv
 // entpackt waere.
-type ExpansionsErgebnis =
+export type ExpansionsErgebnis =
   | { art: "gemessen"; summe: number }
   | { art: "ueber_grenze"; summe: number }
   | { art: "strom_kaputt"; summe: number };
 
-async function zaehleEchteExpansion(archiv: JSZip, grenze: number): Promise<ExpansionsErgebnis> {
+export async function zaehleEchteExpansion(
+  archiv: JSZip,
+  grenze: number,
+): Promise<ExpansionsErgebnis> {
   const pfade: string[] = [];
   archiv.forEach((pfad, eintrag) => {
     if (!eintrag.dir) {

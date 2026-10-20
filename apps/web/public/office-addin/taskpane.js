@@ -1037,6 +1037,8 @@
   // Für Prüfstände und die gemeinsame Begleitfigur: lesender Zugriff auf den Stand und die Wege.
   window.klaraOfficeFenster = {
     zustand: z,
+    // PP-02 (folien-herkunft.js): derselbe Abrufweg samt Übergabeschlüssel — kein zweiter Login.
+    abruf: abruf,
     kontextLesen: kontextLesen,
     fragen: fragen,
     summeVorbereiten: summeVorbereiten,

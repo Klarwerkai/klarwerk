@@ -17,9 +17,10 @@ import { ensureLoggedIn } from "./support/auth";
 //   B1  Nutzerweg: zwei direkt übernommene Tabellenzahlen, eine MANUELLE Zahl, eine OCR-Zahl aus dem
 //       Folienbild (echte Erkennung), ein BERECHNETER Wert; Herkunft an der Zahl, Eingabe → Quelle
 //       (Tabellenzelle), Korrektur, Neuladen und Wiederöffnen — der Stand ist gespeichert.  (K1, K2)
-//   B2  Bedienung: Tastatur (Fokus, Enter öffnet, Escape schließt, Fokus im Detailbereich), Namen im
-//       Barrierebaum (Schaltflächen und Detailbereich), schmales und breites Fenster ohne
-//       abgeschnittene Fläche, Darstellung bei Dunkel-Präferenz.                          (K5)
+//   B2  Bedienung: Tastatur (Fokus, Enter öffnet, Escape schließt, Fokus im Detailbereich und danach
+//       zurück an der Zahl; die Zahl schaltet um), Namen im Barrierebaum (Schaltflächen und
+//       Detailbereich), schmales und breites Fenster ohne abgeschnittene Fläche, Darstellung bei
+//       Dunkel-Präferenz.                                                                  (K5)
 //
 // WAS NICHT BELEGT IST, ausdrücklich: ein echter Screenreader (VoiceOver/NVDA) — hier steht nur der
 // Barrierebaum des Browsers; PowerPoint selbst (native App, Web) — das ist ein anderer Host (A01);
@@ -327,7 +328,12 @@ test.describe("PP-02 · Datenherkunft am PowerPoint-Anhang", () => {
     const detail = page.getByRole("complementary", { name: "Herkunft" });
     await expect(detail).toBeVisible();
     await expect(detail.locator("h6")).toBeFocused();
+    // UI-06 (R17): die Zahl ist ein echter Umschalter — gedrückt, solange ihre Herkunft offen ist,
+    // und sie verweist mit `aria-controls` auf den Detailbereich.
     await expect(zahl).toHaveAttribute("aria-pressed", "true");
+    const kennung = await zahl.getAttribute("aria-controls");
+    expect(kennung).toBeTruthy();
+    await expect(detail).toHaveAttribute("id", kennung ?? "");
     // Mit Tab erreichbar: die Schaltflächen des Detailbereichs.
     await page.keyboard.press("Tab");
     const fokus = await page.evaluate(
@@ -338,6 +344,15 @@ test.describe("PP-02 · Datenherkunft am PowerPoint-Anhang", () => {
     );
     await page.keyboard.press("Escape");
     await expect(detail).toHaveCount(0);
+    // UI-05/06 (R2): Escape gibt den Fokus an die Zahl zurück; sie ist nicht mehr gedrückt.
+    await expect(zahl).toBeFocused();
+    await expect(zahl).toHaveAttribute("aria-pressed", "false");
+    // R17: öffnen mit Enter, ein zweiter Klick auf die offene Zahl schließt wieder — Fokus an der Zahl.
+    await page.keyboard.press("Enter");
+    await expect(detail).toBeVisible();
+    await zahl.click();
+    await expect(detail).toHaveCount(0);
+    await expect(zahl).toBeFocused();
 
     // Breites Fenster: Detailbereich NEBEN der Folie, nichts abgeschnitten.
     await zahl.click();

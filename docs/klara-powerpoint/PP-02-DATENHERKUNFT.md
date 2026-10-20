@@ -116,11 +116,68 @@ Artikel (`OfficeImArtikel`, „Im Artikel öffnen“) für `.pptx`-Anhänge. Kei
 
 | Host | PP-02 |
 | --- | --- |
-| H01 Native PowerPoint-App | nicht angeboten; erst über A01 |
-| H02 PowerPoint für das Web | nicht angeboten; erst über A01 |
+| H01 Native PowerPoint-App | angeschlossen im Fenster aus A01 (§6a); **Hostlauf offen** |
+| H02 PowerPoint für das Web | angeschlossen im Fenster aus A01 (§6a); **Hostlauf offen** |
 | H03 Importierte Datei | nur, wenn die Datei als Anhang am Artikel hängt; der Erfassen-Weg selbst ist nicht angeschlossen |
 | H04 PPTX als Anhang im Artikel | gebaut (Server, Ablage, Fläche) |
 | H05 Besprechung, H06 Export | nicht angeschlossen (PP-05, PP-07, PP-08) |
+
+## 6a. Hostanschluss über A01 (PowerPoint für Mac und im Web)
+
+Kein eigenes Manifest, kein eigener Adapter: PP-02 hängt an das Office-Fenster von
+`aufnahme:20260922:excel-erster-weg` (`apps/web/public/office-addin/`, Manifest
+`docs/office-addin/klara-powerpoint-manifest.xml`, Anmeldung über den vorhandenen Übergabecode).
+
+- **Fenster** `folien-herkunft.js`, Abschnitt „Herkunft der Zahlen“ (nur PowerPoint): Artikel nennen
+  (Link oder Kennung), PowerPoint-Anhang wählen, „Mit dieser Präsentation abgleichen“. Danach zeigt
+  das Fenster an der markierten Form jede gebundene Zahl mit Erfassungsart und Prüfstand; ein Klick
+  öffnet die Herkunft (Quelle mit Fassung, Fundstelle, Rechenweg mit allen verwendeten Eingaben —
+  jede öffnet ihre eigene Herkunft —, Annahmen, Prüfstand je Dimension, Befund in dieser Datei).
+- **Server** `POST /api/kos/:id/office/:anhangId/folien-abgleich` (Tor `ko.read` vor dem Lesen des
+  Körpers, höchstens 30 MiB Präsentation): Office liefert die geöffnete Datei
+  (`getFileAsync`, Compressed); der Server liest sie mit `leseFolienDaten` — derselbe Leser wie für
+  den Anhang — und prüft jede Bindung mit `elementBefund` (Folie über `p:sldId`, Element über
+  `p:cNvPr/@id`, Zelle, Wert bzw. Bildbytes). Gespeichert wird nichts; die Herkunft sind dieselben
+  Sichten wie an `folien-daten`. Der Anhang bleibt die Quelle, nicht die Hostdatei.
+- **Grenzen des Abgleichs** (unabhängige Prüfung 0001–0006, Befund B1, 18.10.2026;
+  `services/app/src/folien-abgleich-grenzen.ts`): vor dem Körper Takt je Nutzer (20 je Minute, wie
+  `/api/capture/slides`); nach dem vollständigen Empfang ein Platz — höchstens einer je Nutzer und
+  zwei insgesamt, gehalten nur während des Lesens (Nachprüfung N3); vor jedem Parser die selbst
+  gezählten Einträge des Zentralverzeichnisses (höchstens 20 000, ein widersprüchlicher Endsatz ist
+  unlesbar, N4) und die gestreamte Entpackgrenze des DOCX-Eingangs (`zaehleEchteExpansion`: 160 MiB
+  Summe, 100-faches Verhältnis); erst dann der gespeicherte Anhang. Der Leser (`leseFolienDaten`)
+  tastet jeden Folienteil einmal linear ab (vorher Regex mit quadratischer Laufzeit bei offenen Tags),
+  liest höchstens 2000 Folien und eine mehrfach genannte Folie nur einmal. Die Antwort nennt je
+  geöffneter Folie nur Kennung, Stelle und Elemente (Kennung, Name) — keine Texte der Datei.
+  Die Lage am Element (`elementBefund`, „passt“/„abweichung“) verlangt bei einem Zahlwert die ganze
+  Zahl: keine Ziffer, kein Dezimalzeichen mit Ziffer und kein Vorzeichen daneben (1.200 T€ passt nicht
+  in 11.200 T€, 300 T€ nicht in −300 T€; Befund B3, Nachprüfung N1). Erfassen, Binden und Korrigieren
+  prüfen unverändert mit `stehtIn` (Nachprüfung N2).
+- **Zuordnung ohne Deutung der Office-Kennungen** (ihr Format ist nicht dokumentiert): eine Folie
+  über ihre Stelle in der gelesenen Datei — nennt PowerPoint sie in der Form „<Zahl>#…“ und ist die Zahl
+  die `p:sldId` an dieser Stelle, ist die Folie bestätigt; ist sie die `p:sldId` einer ANDEREN Folie
+  der Datei (vertauscht), wird gar nichts zugeordnet; eine unbekannte Zahl oder ein anderes Format
+  gilt als „nach Position (Kennung nicht vergleichbar)“ (Befunde P1/B9, Nachprüfung N5; das Format
+  von `Slide.id` ist im Hostlauf zu belegen) —, eine Form über
+  Kennung **und** Name, sonst über einen Namen, der auf der Folie in PowerPoint **und** in der Datei
+  eindeutig ist (Befund B2). Welche Regel wie oft griff, steht nach dem Abgleich im Fenster — das ist
+  zugleich der Messwert für den Hostlauf. Der Fokus folgt der Herkunft und kehrt beim Schließen an die
+  Zahl zurück; während eines Abgleichs ist die Anhangwahl gesperrt; die Frist wächst mit der Datei.
+- **Grenzen:** nur lesend (keine Rückgabe ins Dokument, keine Einstellungen in der Datei); verlangt
+  PowerPointApi 1.5 (Auswahl) und `getFileAsync`; eine Folie, die nach dem Abgleich entsteht, ist erst
+  nach erneutem Abgleich zugeordnet; die Verbindung merkt sich das Fenster je Dokument im
+  Browserspeicher des Fensters, nicht in der Präsentation.
+- **Belege am Kandidaten:** `tests/klara-powerpoint/pp02-hostanschluss.test.ts` (Serverweg H1–H3) und
+  `tests/office-addin/powerpoint-herkunft.test.ts` (Fenster P1–P5 auf der A01-Bühne, mit echten
+  Serverantworten zu genau den gesendeten Bytes).
+- **Hostlauf H01 PowerPoint für Mac 16.111 (17.10.2026, Integrationsstand A01 ⊕ PP-02, lokaler
+  Prüfhost, fiktives Deck; von Claude bedient):** Fenster lädt, Anmeldung über den Übergabeweg,
+  `getFileAsync` liefert die geöffnete Datei; Office meldet die Form-Kennungen wie `p:cNvPr/@id`
+  (7 von 7 über Kennung und Name). Die herausgegebene Datei ist nie bytegleich mit dem Anhang —
+  PowerPoint speichert sie dabei neu und ergänzt beim Speichern mit offenem Fenster eigene
+  `webextension`-Teile; `p:sldId` und `p:cNvPr/@id` bleiben erhalten. Herkunft an der Zahl,
+  Eingabe bis zur Tabellenzelle, manuell/OCR/berechnet unterscheidbar, Änderung als Abweichung,
+  Speichern/Wiederöffnen belegt. PowerPoint im Web (H02) ist ein eigener, noch offener Lauf.
 
 ## 7. Belege und Grenzen
 
@@ -154,3 +211,17 @@ Offen und ausdrücklich nicht behauptet:
   Wirkungsübersicht oder Übernahme von Quellenänderungen in die Folie (PP-07): Abweichungen werden
   angezeigt, die Folie wird nicht geändert.
 - Kein eigener Löschweg für Datenpunkte (Bestandsreset entfernt sie).
+
+## Direkte Integration 20.10.2026
+
+Die erhaltene PP-02-Vorarbeit 26b5159 ist mit der A01-Vorleistung 9106756 und dem lokalen
+Browser-Integrationsstand von Auftrag 62 vereinigt. Alle Korrekturpatches 0001–0008 sind
+übernommen, einschließlich der Härtung des Folienabgleichs und der Herkunfts-/Fokusbedienung.
+204 gezielte Prüfungen decken den PP-02-Serverweg, die Webfläche, das Office-Fenster am
+Office-JS-Prüfstand und die betroffenen ZIP-/DOCX-/Slides-Wege ab. Wurzel-/Web-Typprüfung und
+Formatprüfung sind bestanden. Der bestehende PostgreSQL-Integrationstest war ausgeschlossen
+und wird nicht als ausgeführt gezählt.
+
+Das ist ein lokaler Integrationsstand. Eine neue native PowerPoint- oder Web-Hostabnahme,
+ein Modelllauf, eine Anmeldung und eine Veröffentlichung sind damit nicht behauptet. Die
+historischen Hostbelege behalten ihre jeweilige Kandidatenbindung.

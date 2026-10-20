@@ -77,6 +77,12 @@ export function textVon(id: string): string {
   return knoten(id).textContent ?? "";
 }
 
+/** PP-02: alle Knoten zu einem Selektor — ohne DOM-lib, über dieselben Struktur-Typen. */
+export function alleKnoten(selektor: string): Knoten[] {
+  const d = g.document as unknown as { querySelectorAll(s: string): ArrayLike<Knoten> };
+  return Array.from(d.querySelectorAll(selektor));
+}
+
 // ---- Fake-Fetch -----------------------------------------------------------------------------------
 
 export interface Abruf {
@@ -505,11 +511,21 @@ export interface OfficeOptionen {
   stufen: Record<string, string[]>;
   ansicht?: () => "edit" | "read";
   textAuswahl?: string;
+  /** PP-02: die Bytes, die `getFileAsync` (Compressed) für die geöffnete Präsentation liefert. */
+  datei?: Uint8Array;
+}
+
+/** PP-02: wie oft das Fenster die Datei geöffnet und wieder geschlossen hat. */
+export interface DateiAbrufe {
+  geoeffnet: number;
+  geschlossen: number;
+  scheibe: number;
 }
 
 export interface Buehne {
   fenster: Fenster;
   abrufe: Abruf[];
+  datei: DateiAbrufe;
   office: { context: { document: { url: string; mode: string } } };
 }
 
@@ -525,10 +541,50 @@ async function ruhe(): Promise<void> {
   }
 }
 
-const NAMEN = ["Office", "Excel", "PowerPoint", "fetch", "klaraOfficeFenster", "KlaraOfficeHost"];
+const NAMEN = [
+  "Office",
+  "Excel",
+  "PowerPoint",
+  "fetch",
+  "klaraOfficeFenster",
+  "KlaraOfficeHost",
+  "KlaraFolienHerkunft",
+];
 let gesichert: Record<string, unknown> = {};
 
 type Rueckruf = (ergebnis: { status: string; value: string }) => void;
+type Antwortruf = (ergebnis: { status: string; value?: unknown; error?: Error }) => void;
+
+/** `getFileAsync` nach dem Vertrag der Office-API: Datei → Scheiben → `closeAsync`. */
+function dateiAttrappe(daten: Uint8Array | undefined, zaehler: DateiAbrufe) {
+  return (_art: string, optionen: { sliceSize?: number }, cb: Antwortruf): void => {
+    if (!daten) {
+      cb({ status: "failed", error: new Error("Datei nicht verfügbar") });
+      return;
+    }
+    const groesse = optionen.sliceSize ?? 4194304;
+    zaehler.geoeffnet += 1;
+    cb({
+      status: "succeeded",
+      value: {
+        size: daten.length,
+        sliceCount: Math.max(1, Math.ceil(daten.length / groesse)),
+        getSliceAsync(i: number, cb2: Antwortruf): void {
+          zaehler.scheibe = Math.max(zaehler.scheibe, i + 1);
+          const teil = daten.subarray(i * groesse, (i + 1) * groesse);
+          cb2({
+            status: "succeeded",
+            value: { data: Array.from(teil), index: i, size: teil.length },
+          });
+        },
+        closeAsync(cb3?: Antwortruf): void {
+          zaehler.geschlossen += 1;
+          cb3?.({ status: "succeeded" });
+        },
+      },
+    });
+  };
+}
 
 /** Die Orte, an denen die Skripte Globals lesen: der globale Rahmen und — falls getrennt — `window`. */
 function orte(): Record<string, unknown>[] {
@@ -555,6 +611,7 @@ export async function starte(
   }
   g.document.body.innerHTML = rumpf(lies("taskpane.html"));
   const abrufe: Abruf[] = [];
+  const datei: DateiAbrufe = { geoeffnet: 0, geschlossen: 0, scheibe: 0 };
   let bereit: ((info: { host: string; platform: string }) => void) | null = null;
   const office = {
     onReady(cb: (info: { host: string; platform: string }) => void) {
@@ -571,6 +628,7 @@ export async function starte(
         getSelectedDataAsync(_art: string, cb: Rueckruf): void {
           cb({ status: "succeeded", value: optionen.textAuswahl ?? "" });
         },
+        getFileAsync: dateiAttrappe(optionen.datei, datei),
       },
       requirements: {
         isSetSupported(satz: string, stufe: string): boolean {
@@ -587,6 +645,7 @@ export async function starte(
     },
     AsyncResultStatus: { Succeeded: "succeeded", Failed: "failed" },
     CoercionType: { Text: "text" },
+    FileType: { Compressed: "compressed" },
     DocumentMode: { ReadOnly: "readOnly", ReadWrite: "readWrite" },
   };
   setze("Office", office);
@@ -595,6 +654,7 @@ export async function starte(
   setze("fetch", fakeFetch([...regeln, GRUNDVERSORGUNG], abrufe));
   new Function(lies("hostkern.js"))();
   new Function(lies("taskpane.js"))();
+  new Function(lies("folien-herkunft.js"))();
   const melden = bereit as ((info: { host: string; platform: string }) => void) | null;
   if (!melden) {
     throw new Error("taskpane.js hat Office.onReady nicht registriert");
@@ -602,7 +662,21 @@ export async function starte(
   melden({ host: optionen.host, platform: optionen.plattform });
   await ruhe();
   const fenster = orte().find((ort) => ort.klaraOfficeFenster !== undefined)?.klaraOfficeFenster;
-  return { fenster: fenster as Fenster, abrufe, office };
+  return { fenster: fenster as Fenster, abrufe, datei, office };
+}
+
+/** PP-02: der Zugang, den `folien-herkunft.js` für Prüfstände meldet (`window.KlaraFolienHerkunft`). */
+export interface FolienHerkunftZugang {
+  abgleichen(): Promise<void>;
+  regeln: { zahlKnopfText(sicht: unknown): string };
+}
+
+export function folienHerkunft(): FolienHerkunftZugang {
+  const modul = orte().find((ort) => ort.KlaraFolienHerkunft !== undefined)?.KlaraFolienHerkunft;
+  if (!modul) {
+    throw new Error("folien-herkunft.js hat sich nicht gemeldet");
+  }
+  return modul as FolienHerkunftZugang;
 }
 
 /** Der Stand, den das Fenster der Begleitfigur meldet (`window.klaraOfficeKontext`). */
@@ -620,4 +694,10 @@ export function abbauen(): void {
     setze(name, gesichert[name]);
   }
   g.document.body.innerHTML = "";
+  // PP-02: das Fenster merkt sich je Präsentation die Verbindung (localStorage) — je Lauf frisch.
+  try {
+    (g.window.localStorage as { clear(): void } | undefined)?.clear();
+  } catch {
+    /* ohne Speicher */
+  }
 }
