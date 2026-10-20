@@ -257,7 +257,14 @@ export class KlaraWissensDienst {
       if (ko.version !== q.fassung)
         throw new WissensFehler(409, "Quellfassung geändert; Herkunft zuerst klären.");
       // Kein Auszug deklassifiziert eine geschützte Quelle. Deren bewusste Fachfreigabe ist ein eigener Weg.
-      if ((ko.confidentiality ?? "intern") !== "intern" || (ko.spaceId && ko.spaceId !== space?.id))
+      if (
+        ko.confidentiality !== "intern" ||
+        (ko.quellrechte &&
+          (ko.quellrechte.stufe !== "intern" ||
+            ko.quellrechte.leser !== undefined ||
+            ko.quellrechte.leserUnvollstaendig === true)) ||
+        (ko.spaceId && ko.spaceId !== space?.id)
+      )
         throw new WissensFehler(
           403,
           "Geschützte Quelle darf über diesen Weg nicht weitergegeben werden.",
@@ -332,7 +339,7 @@ export class KlaraWissensDienst {
     if (x.bewusst !== true) throw new WissensFehler(400, "Bewusste Übernahme fehlt.");
     const ziel = wissensZiel(x.ziel);
     return this.d.vorlagen.sperre(
-      ziel.art === "space" ? { spaceId: ziel.spaceId } : null,
+      ziel.vorlage ?? null,
       async () => {
         const v = await this.vorschau(user, id, x.fassung, ziel);
         if (v.stempel !== x.stempel)
@@ -374,6 +381,7 @@ export class KlaraWissensDienst {
           wiederholt,
         };
       },
+      ziel.spaceId,
     );
   }
 }

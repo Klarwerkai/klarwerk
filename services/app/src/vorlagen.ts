@@ -1747,7 +1747,7 @@ export interface VorlagenEinreichungPort {
    * `SPACE_GELOESCHT`, nichts entsteht) oder wartet bis nach der Zuordnung (der Space trägt den
    * Beitrag, die Löschung wird abgelehnt). Ohne Space läuft `arbeit` unverändert.
    */
-  sperre<T>(bezug: unknown, arbeit: () => Promise<T>): Promise<T>;
+  sperre<T>(bezug: unknown, arbeit: () => Promise<T>, zielSpaceId?: string): Promise<T>;
   /**
    * Dieselbe Sperre für lange Anlagewege (`from-document`, Promote): sie gilt ab der Rückkehr bis
    * zum Aufruf der zurückgegebenen Freigabe — im `finally` des Aufrufers. Ohne Space: sofort frei.
@@ -1818,8 +1818,10 @@ export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichu
   }
 
   return {
-    sperre<T>(roh: unknown, arbeit: () => Promise<T>): Promise<T> {
-      return mitSpace(roh) && deps.exklusiv ? deps.exklusiv(arbeit) : arbeit();
+    sperre<T>(roh: unknown, arbeit: () => Promise<T>, zielSpaceId?: string): Promise<T> {
+      return (mitSpace(roh) || Boolean(zielSpaceId)) && deps.exklusiv
+        ? deps.exklusiv(arbeit)
+        : arbeit();
     },
 
     async halte(roh) {

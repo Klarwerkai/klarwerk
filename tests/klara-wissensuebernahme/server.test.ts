@@ -7,6 +7,7 @@ import {
 } from "../../services/app/src/build-app";
 
 let s: AppServices;
+let repos: ReturnType<typeof inMemoryRepos>;
 let app: ReturnType<typeof buildApp>;
 let token: string;
 let fremd: string;
@@ -56,7 +57,8 @@ async function uebernehmen(n: { id: string; fassung: number }, v: { stempel: str
   });
 }
 beforeEach(async () => {
-  s = assembleServices(inMemoryRepos());
+  repos = inMemoryRepos();
+  s = assembleServices(repos);
   app = buildApp(s);
   await app.inject({
     method: "POST",
@@ -354,5 +356,97 @@ describe("F08 · bewusste Übernahme", () => {
     expect(wieder.statusCode, wieder.body).toBe(200);
     expect(wieder.json().wiederholt).toBe(true);
     expect(await s.ko.list()).toHaveLength(1);
+  });
+  it("zusätzliche Quellleser und unbekannte Schutzstufe erlauben keine breitere Übernahme", async () => {
+    const q = await s.ko.create(
+      {
+        title: "Leserliste",
+        statement: "Nur für den berechtigten Quellleser.",
+        author: aid,
+        type: "technik",
+        category: "Wartung",
+        confidentiality: "intern",
+      },
+      undefined,
+      { stufe: "intern", leser: [aid], version: 1 },
+    );
+    expect((await auf("GET", `/api/kos/${q.id}`, undefined, fremd)).statusCode).toBe(404);
+    const imp = await auf("POST", `${basis}/wissen/import`, {
+      titel: "Quellauszug",
+      inhalt: q.statement,
+      projekt: "Projekt",
+      abschnitt: "Quellleser",
+      antwortFassung: "1",
+      aussagen: [
+        { text: q.statement, art: "behauptung", quellen: [{ id: q.id, fassung: q.version }] },
+      ],
+    });
+    expect(imp.statusCode, imp.body).toBe(201);
+    const n = imp.json().notiz;
+    expect(
+      (await auf("POST", `${basis}/notizen/${n.id}/wissen/vorschau`, { fassung: n.fassung, ziel }))
+        .statusCode,
+    ).toBe(403);
+    expect(await s.ko.list()).toHaveLength(1);
+    const offen = await s.ko.create({
+      title: "Ungeklärt",
+      statement: "Unbekannte Schutzklasse.",
+      author: aid,
+      type: "technik",
+      category: "Wartung",
+      confidentiality: "intern",
+    });
+    const { confidentiality: _stufe, ...ohneStufe } = offen;
+    await repos.koRepo.update(ohneStufe);
+    const no = await auf("POST", `${basis}/notizen`, {
+      vorgang: "f-ungeklaert-quellklasse",
+      weg: "geschrieben",
+      inhalt: offen.statement,
+      objektbezug: {
+        pfad: `/wissen/${offen.id}`,
+        seitenName: "Quelle",
+        objekt: "Quelle",
+        koId: offen.id,
+        fassung: offen.version,
+      },
+    });
+    expect(no.statusCode, no.body).toBe(201);
+    expect(
+      (
+        await auf("POST", `${basis}/notizen/${no.json().notiz.id}/wissen/vorschau`, {
+          fassung: 1,
+          ziel,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const erlaubt = await s.ko.create({
+      title: "Explizit intern",
+      statement: "Offenes Quellenwissen.",
+      author: aid,
+      type: "technik",
+      category: "Wartung",
+      confidentiality: "intern",
+    });
+    const norm = await auf("POST", `${basis}/notizen`, {
+      vorgang: "f-explizit-intern",
+      weg: "geschrieben",
+      inhalt: erlaubt.statement,
+      objektbezug: {
+        pfad: `/wissen/${erlaubt.id}`,
+        seitenName: "Quelle",
+        objekt: "Quelle",
+        koId: erlaubt.id,
+        fassung: erlaubt.version,
+      },
+    });
+    expect(norm.statusCode, norm.body).toBe(201);
+    expect(
+      (
+        await auf("POST", `${basis}/notizen/${norm.json().notiz.id}/wissen/vorschau`, {
+          fassung: 1,
+          ziel,
+        })
+      ).statusCode,
+    ).toBe(200);
   });
 });
