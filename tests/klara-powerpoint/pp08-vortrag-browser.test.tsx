@@ -12,6 +12,15 @@ it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte p
   try {
     const basis = await w.app.listen({ host: "127.0.0.1", port: 0 });
     browser = await chromium.launch({ headless: true });
+    process.stderr.write(
+      JSON.stringify({
+        event: "PP08_BROWSER_BEGIN",
+        at: new Date().toISOString(),
+        basis,
+        browser: await browser.version(),
+        serverListening: w.app.server.listening,
+      }) + "\n",
+    );
     const page = await browser.newPage({ viewport: { width: 1280, height: 950 } });
     const vortragAnfragen: string[] = [];
     page.on("request", (r) => {
@@ -104,5 +113,13 @@ it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte p
   } finally {
     await browser?.close();
     await w.app.close();
+    process.stderr.write(
+      JSON.stringify({
+        event: "PP08_BROWSER_END",
+        at: new Date().toISOString(),
+        browserDisconnected: !browser?.isConnected(),
+        serverListening: w.app.server.listening,
+      }) + "\n",
+    );
   }
 }, 60000);
