@@ -921,6 +921,118 @@ function eigeneZahl(stand: unknown, rolle: Rolle): number | undefined {
   return (stand as Partial<Record<Rolle, number>>)[rolle];
 }
 
+// produkt:20261011:assistenz-browser-aktionen (BPA-03): die Werkzeuge der drei schreibenden
+// Browserauftragstüren. Die Bühne trägt das synthetische Seitenprofil (`buehne.browserSeite`), damit
+// ein Auftrag einen ECHTEN Lauf bekommt. Ein Lauf gehört der Anmeldung, die ihn anlegt — hergestellt
+// wird er deshalb mit der Sitzung des Besitzers, und gemessen wird der Akteur selbst (der
+// Unangemeldete gegen den Lauf des Viewers). Die Seite antwortet wie `aktion.js` (Form geprüft in
+// `klara-browser-relais.ts`, `seitenLageAus`).
+const BROWSER_API = "/api/me/klara/browser-auftraege";
+const BROWSER_TAB = 7;
+let browserVorgang = 0;
+
+function browserAuftrag(buehne: Buehne): Record<string, unknown> {
+  browserVorgang += 1;
+  return {
+    vorgang: `rollenabnahme-${browserVorgang}-${Date.now()}`,
+    quelle: "getippt",
+    wortlaut:
+      "Fülle den Angebotsentwurf aus: Betreff „Rollenabnahme“ und speichere ihn als Entwurf.",
+    ziel: { tabId: BROWSER_TAB, url: buehne.browserSeite },
+    host: { browser: "Chromium", version: "149.0", erweiterung: "0.4.2" },
+  };
+}
+
+/** Die Lage der synthetischen Seite, wie `aktion.js` sie meldet — mit oder ohne das Formular. */
+function browserLage(buehne: Buehne, mitFormular: boolean): Record<string, unknown> {
+  const ort = new URL(buehne.browserSeite);
+  return {
+    tabId: BROWSER_TAB,
+    origin: ort.origin,
+    pfad: ort.pathname,
+    hindernisse: [],
+    formularTreffer: mitFormular ? 1 : 0,
+    formular: mitFormular
+      ? {
+          name: "Angebotsentwurf",
+          fingerabdruck: "0a1b2c3d4e5f6789",
+          felder: ["Betreff", "Empfänger", "Nachricht"].map((label) => ({
+            label,
+            typ: label === "Nachricht" ? "textarea" : "text",
+            wert: "",
+            gesperrt: false,
+          })),
+          knoepfe: ["Entwurf speichern", "Endgültig senden"],
+        }
+      : null,
+    entwuerfe: [],
+  };
+}
+
+interface BrowserLauf {
+  id: string;
+  /** Der zuletzt gestellte Befehl des Kerns — noch unbeantwortet. */
+  befehl: { nr: number; art: string } | null;
+  /** Die letzte gesendete Folgenummer des Takts. */
+  folge: number;
+}
+
+/** Legt mit der Sitzung des Besitzers einen Browserauftrag an und holt den ersten Befehl ab. */
+async function legeBrowserlaufAn(buehne: Buehne, besitzer: Rolle): Promise<BrowserLauf> {
+  const anlage = await musterhaft(
+    buehne.app,
+    kopf(buehne, besitzer),
+    "POST",
+    BROWSER_API,
+    browserAuftrag(buehne),
+  );
+  const start = anlage.json() as { auftrag: { id: string }; befehl: BrowserLauf["befehl"] };
+  const lauf: BrowserLauf = { id: start.auftrag.id, befehl: start.befehl, folge: 0 };
+  for (let i = 0; i < 20 && !lauf.befehl; i++) {
+    lauf.folge += 1;
+    const takt = await musterhaft(
+      buehne.app,
+      kopf(buehne, besitzer),
+      "POST",
+      `${BROWSER_API}/${lauf.id}/takt`,
+      { folge: lauf.folge },
+    );
+    lauf.befehl = (takt.json() as { befehl: BrowserLauf["befehl"] }).befehl;
+  }
+  if (lauf.befehl?.art !== "lage") {
+    throw new Error(`Vorbereitung fehlgeschlagen: erster Befehl ${JSON.stringify(lauf.befehl)}`);
+  }
+  return lauf;
+}
+
+/**
+ * Die Browseraufträge im eigenen Gespräch je Rolle — Zahl und Stand des neuesten, über deren eigene
+ * Lesetür. Ein blosser Übergabe-Eintrag ist kein angelegter Lauf.
+ */
+async function browserauftragsStand(
+  buehne: Buehne,
+): Promise<Record<Rolle, { zahl: number; neuester: string | null }>> {
+  const stand = {} as Record<Rolle, { zahl: number; neuester: string | null }>;
+  for (const rolle of ROLLEN) {
+    const r = await musterhaft(buehne.app, kopf(buehne, rolle), "GET", BROWSER_API);
+    const auftraege = (r.json() as { auftraege: { stand: string }[] }).auftraege;
+    stand[rolle] = { zahl: auftraege.length, neuester: auftraege[0]?.stand ?? null };
+  }
+  return stand;
+}
+
+/** Der lebende Lauf, wie ihn die Anmeldung seines Besitzers liest: Stand und Schrittstände. */
+async function browserlaufStand(
+  buehne: Buehne,
+  besitzer: Rolle,
+  id: string,
+): Promise<{ stand: string; schritte: string[] }> {
+  const r = await musterhaft(buehne.app, kopf(buehne, besitzer), "GET", `${BROWSER_API}/${id}`);
+  const a = (r.json() as { auftrag: { stand: string; schritte: { art: string; stand: string }[] } })
+    .auftrag;
+  return { stand: a.stand, schritte: a.schritte.map((x) => `${x.art}:${x.stand}`) };
+}
+
 async function merkeVorliebe(buehne: Buehne, rolle: Rolle): Promise<string> {
   const antwort = await fahre(
     buehne.app,
@@ -2198,6 +2310,104 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
         wirkung: {
           beschreibung: `das Gedächtnis von ${besitzer} ist danach leer`,
           eingetreten: (stand) => eigeneZahl(stand, besitzer) === 0,
+        },
+      };
+    },
+  },
+
+  // --- produkt:20261011:assistenz-browser-aktionen (BPA-03) · Browseraufträge -----------------
+  // Die Tür verlangt `ko.read` (jede Rolle) und eine eigene Anmeldesitzung; jede WIRKUNG auf der
+  // Seite prüft der Dienst vor ihrem Schritt frisch mit `ko.create` — das ändert keinen HTTP-Status
+  // an der Tür, sondern den Lauf (`gestoppt_recht`) und ist in
+  // `tests/klara-browser-aktionen/produktweg-routen.test.ts` (P7, Q2–Q4) am Draht gemessen.
+  // Nachgelesen wird über die eigene Lesetür des Besitzers: der Auftrag im eigenen Gespräch bzw.
+  // der lebende Lauf.
+  {
+    gruppe: "klaraBrowserAktionRoutes",
+    methode: "POST",
+    route: "/api/me/klara/browser-auftraege",
+    belegstelle: "services/app/src/routes/klara-browser-aktion-routes.ts:76",
+    erfolg: [201],
+    tor: "ko.read; eigene Anmeldesitzung — der Auftrag liegt im eigenen Gespräch",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      return {
+        pfad: BROWSER_API,
+        payload: browserAuftrag(buehne),
+        bestand: () => browserauftragsStand(buehne),
+        wirkung: {
+          beschreibung: `das Gespräch von ${besitzer} trägt danach genau einen Browserauftrag mit einem Lauf (keine Übergabe)`,
+          eingetreten: (stand) => {
+            const eigen = (
+              stand as Partial<Record<Rolle, { zahl: number; neuester: string | null }>>
+            )[besitzer];
+            return eigen?.zahl === 1 && eigen.neuester !== null && eigen.neuester !== "uebergabe";
+          },
+        },
+      };
+    },
+  },
+  {
+    gruppe: "klaraBrowserAktionRoutes",
+    methode: "POST",
+    route: "/api/me/klara/browser-auftraege/:id/takt",
+    belegstelle: "services/app/src/routes/klara-browser-aktion-routes.ts:119",
+    erfolg: [200],
+    tor: "ko.read; eigene Anmeldesitzung, Lauf derselben Anmeldung",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      const lauf = await legeBrowserlaufAn(buehne, besitzer);
+      return {
+        pfad: `${BROWSER_API}/${lauf.id}/takt`,
+        // Die Erweiterung meldet die Antwort der Seite auf den Lesebefehl.
+        payload: {
+          folge: lauf.folge + 1,
+          antwort: { nr: lauf.befehl?.nr, ergebnis: browserLage(buehne, true) },
+          seite: { adapter: "aktion.js@1.0.0" },
+        },
+        bestand: () => browserlaufStand(buehne, besitzer, lauf.id),
+        wirkung: {
+          beschreibung: `der Leseschritt im Lauf von ${besitzer} ist danach erfolgt`,
+          eingetreten: (stand) => (stand as { schritte: string[] }).schritte[0] === "lesen:erfolgt",
+        },
+      };
+    },
+  },
+  {
+    gruppe: "klaraBrowserAktionRoutes",
+    methode: "POST",
+    route: "/api/me/klara/browser-auftraege/:id/steuerung",
+    belegstelle: "services/app/src/routes/klara-browser-aktion-routes.ts:135",
+    erfolg: [200],
+    tor: "ko.read; eigene Anmeldesitzung, Lauf derselben Anmeldung",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      const lauf = await legeBrowserlaufAn(buehne, besitzer);
+      // Die Seite meldet das Formular nicht: der Lauf hält mit einer Klärung an und ruht.
+      const halt = await musterhaft(
+        buehne.app,
+        kopf(buehne, besitzer),
+        "POST",
+        `${BROWSER_API}/${lauf.id}/takt`,
+        {
+          folge: lauf.folge + 1,
+          antwort: { nr: lauf.befehl?.nr, ergebnis: browserLage(buehne, false) },
+        },
+      );
+      const ruht = (halt.json() as { auftrag: { stand: string } }).auftrag.stand;
+      if (ruht !== "klaerung") {
+        throw new Error(`Vorbereitung fehlgeschlagen: Lauf ruht nicht (${ruht})`);
+      }
+      return {
+        pfad: `${BROWSER_API}/${lauf.id}/steuerung`,
+        payload: { art: "abbruch" },
+        bestand: () => browserlaufStand(buehne, besitzer, lauf.id),
+        wirkung: {
+          beschreibung: `der Lauf von ${besitzer} ist danach abgebrochen`,
+          eingetreten: (stand) => (stand as { stand: string }).stand === "abgebrochen",
         },
       };
     },

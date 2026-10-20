@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- KLARA-OFFICE-02 · Vorlage. `scripts/klara-office/begleiter-bauen.sh` setzt __FASSUNG__, __BAU__
+     und __SERVER__ ein. Kein Autostart-Schlüssel, keine Hintergrundrechte. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Klara Begleiter</string>
+  <key>CFBundleDisplayName</key><string>Klara Begleiter</string>
+  <key>CFBundleIdentifier</key><string>ai.klarwerk.klara-begleiter</string>
+  <key>CFBundleExecutable</key><string>KlaraBegleiter</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>__FASSUNG__</string>
+  <key>CFBundleVersion</key><string>__BAU__</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleDevelopmentRegion</key><string>de</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>LSArchitecturePriority</key><array><string>arm64</string></array>
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>KlarwerkServer</key><string>__SERVER__</string>
+  <key>NSMicrophoneUsageDescription</key><string>Zum Diktieren und Sprechen mit Klara. Ohne Mikrofon bleibt die Texteingabe vollständig nutzbar.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Zum Umwandeln des Diktierten in Text für Klara. Ohne Erlaubnis bleibt die Texteingabe vollständig nutzbar.</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key><true/>
+  </dict>
+  <key>NSHumanReadableCopyright</key><string>KLARWERK · Klara Begleiter · lokale Begleitapp ohne Autostart</string>
+</dict>
+</plist>

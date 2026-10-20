@@ -677,19 +677,27 @@
    *
    * Ein fehlender Zweig ist KEIN Fehler, sondern der Fall „dieser Browser kennt die Anfrage nicht";
    * er führt in denselben ehrlichen Satz wie eine Ablehnung.
+   *
+   * BPA-01 AC10: dieselbe EINE Anfragestelle fragt auch `nativeMessaging` an — auf Klick „Mit
+   * Begleiter verbinden". Es gibt weiterhin genau einen `request` in dieser Datei.
+   * @param {"clipboardRead" | "nativeMessaging"} recht
    * @returns {Promise<boolean>}
    */
-  async function darfLesen() {
+  async function rechtAnfragen(recht) {
     const rechte =
       /** @type {{ permissions?: { request(anfrage: { permissions: string[] }): Promise<boolean> } }} */ (
         /** @type {unknown} */ (chrome)
       ).permissions;
     if (!rechte) return false;
     try {
-      return (await rechte.request({ permissions: ["clipboardRead"] })) === true;
+      return (await rechte.request({ permissions: [recht] })) === true;
     } catch {
       return false;
     }
+  }
+  /** Die Zwischenablage: das optionale Recht, angefragt in der Klickgeste. */
+  function darfLesen() {
+    return rechtAnfragen("clipboardRead");
   }
   // ================================================================================================
   // CHROME-ERFASSEN-EINFUEGEN — DER KLICK GEHÖRT DEM VORGANG, AN DEM ER GESCHAH.
@@ -1249,4 +1257,490 @@
     () => markeHolen(true),
   );
   // KW-MARKE-END
+  // ================================================================================================
+  // KW-KONTEXT · BPA-01 — DIE KONTEXTKARTE IN DER LEISTE.
+  // ================================================================================================
+  //
+  // Sie zeigt, welche Seite und welche Markierung Klara gerade kennt (Browser, Seite, Markierung,
+  // Erfassungszeit), ob sie mit dem Klara-Kern verbunden ist, was NICHT gelesen wurde — und bei
+  // einer Sperre den Grund samt zulässigem nächsten Schritt. Die Antworten kommen vom Worker
+  // (`KontextSicht`); die Leiste rechnet nichts selbst und sendet nichts ins Netz.
+  //
+  // KEINE ABFRAGESCHLEIFE: gefragt wird nach dem Aufbau, auf Knopfdruck und wenn sich Karte, Sperre,
+  // Kernbindung oder Anmeldung im Sitzungsspeicher ändern. Die Frage selbst schreibt nichts.
+  /** @type {import("./types").KontextSicht | null} */
+  let kontextStand = null;
+  let kontextLaeuft = false;
+  /** @param {unknown} antwort @returns {antwort is import("./types").KontextSicht} */
+  const istKontext = (antwort) =>
+    typeof antwort === "object" &&
+    antwort !== null &&
+    /** @type {{kontext?: unknown}} */ (antwort).kontext === true;
+  function kontextZeigen() {
+    const stand = kontextStand;
+    const karte = stand?.karte ?? null;
+    const grund = stand?.sperre ?? null;
+    // Der Stopp bleibt erreichbar, solange etwas besteht — auch ohne sichtbare Karte.
+    $("kontext").hidden = !karte && !grund && !stand?.widerrufbar && !kontextLaeuft;
+    $("kontext-karte").hidden = !karte;
+    $("kontext-browser").textContent = karte?.browser ?? "";
+    $("kontext-seite").textContent = karte ? `${karte.seite} · ${karte.domain}` : "";
+    $("kontext-auswahl").textContent = karte?.auswahl ?? "";
+    $("kontext-zeit").textContent = karte?.erfasstAm ?? "";
+    $("kontext-tabelle").hidden = !karte?.tabelle;
+    $("kontext-luecken").hidden = !karte;
+    $("kontext-rahmen").hidden = !karte?.nichtGeliefert.includes("eingebetteter_rahmen");
+    $("kontext-verbunden").hidden = !stand?.verbunden;
+    $("kontext-veraltet").hidden = !karte?.veraltet;
+    $("kontext-import").hidden = !stand?.importe.some((i) => i.verbindung === "widerrufen");
+    const text = grund ? globalThis.KlaraKontext?.sperrText(grund, language) : null;
+    $("kontext-sperre").hidden = !text;
+    $("kontext-sperre").textContent = text?.text ?? "";
+    $("kontext-schritt").hidden = !text;
+    $("kontext-schritt").textContent = text?.naechsterSchritt ?? "";
+    $("kontext-verbinden").disabled =
+      kontextLaeuft || !karte || karte.veraltet || stand?.verbunden === true;
+    $("kontext-erklaeren").disabled = kontextLaeuft || stand?.verbunden !== true;
+    $("kontext-begleiter").disabled = kontextLaeuft || stand?.angemeldet !== true;
+    // Der Begleiter mit seinen Fassungen — die Hostfassungen, die ein Beleg festhält.
+    const begleiter = stand?.begleiter ?? null;
+    const begleiterZeile =
+      begleiter?.verbunden === true
+        ? [
+            belegText("begleiterVerbunden"),
+            begleiter.version,
+            begleiter.macos,
+            belegText(begleiter.uebergeben ? "begleiterUebergeben" : "begleiterOhneKarte"),
+          ]
+            .filter((teil) => teil.length > 0)
+            .join(" · ")
+        : "";
+    $("kontext-begleiter-stand").hidden = !begleiterZeile;
+    $("kontext-begleiter-stand").textContent = begleiterZeile;
+    // Der Widerruf wartet NICHT auf einen laufenden Schritt: er ist gerade dann der Stopp.
+    $("kontext-widerrufen").disabled = !kontextLaeuft && stand?.widerrufbar !== true;
+    const antwort = stand?.antwort ?? null;
+    $("kontext-antwort-box").hidden = !antwort;
+    $("kontext-antwort").textContent = antwort?.text ?? "";
+    $("kontext-antwort-leer").hidden = !antwort || Boolean(antwort.text);
+    kontextBelegeZeigen(antwort);
+  }
+  /** @param {string} schluessel */
+  function belegText(schluessel) {
+    return globalThis.KlaraKontext?.erklaerungsText(schluessel, language) ?? "";
+  }
+  /**
+   * Die Belege der Antwort: Lage und Einschränkungen, jeder Absatz mit den Quellen, die ihn
+   * tragen, und die Quellen selbst mit dem Öffnungsweg zum Originalbeleg in Klarwerk. Alles als
+   * Text und mit `createElement` — nichts aus der Antwort wird als Markup gedeutet.
+   * @param {import("./types").KontextSicht["antwort"]} antwort
+   */
+  function kontextBelegeZeigen(antwort) {
+    const lage = antwort?.lage ? belegText(`lage_${antwort.lage}`) : "";
+    $("kontext-lage").hidden = !lage;
+    $("kontext-lage").textContent = lage;
+
+    const punkte = antwort
+      ? [
+          ...antwort.gruende
+            .filter((g) => g !== "alle_tragenden_quellen_validiert")
+            .map((g) => belegText(`grund_${g}`)),
+          antwort.vorbehalt ? belegText("vorbehalt") : "",
+          antwort.konflikt ? belegText("konflikt") : "",
+          antwort.konfliktUnbekannt ? belegText("konfliktUnbekannt") : "",
+        ].filter((p) => p.length > 0)
+      : [];
+    const einschraenkungen = $("kontext-einschraenkungen");
+    clear(einschraenkungen);
+    for (const punkt of punkte) {
+      const li = document.createElement("li");
+      li.textContent = punkt;
+      einschraenkungen.appendChild(li);
+    }
+    einschraenkungen.hidden = punkte.length === 0;
+
+    const quellen = antwort?.quellen ?? [];
+    /** @param {string} koId */
+    const titelVon = (koId) =>
+      quellen.find((q) => q.koId === koId)?.titel ?? belegText("unbenannt");
+    const absaetze = $("kontext-absaetze");
+    clear(absaetze);
+    for (const absatz of antwort?.absaetze ?? []) {
+      const text = document.createElement("p");
+      text.textContent = absatz.text;
+      const beleg = document.createElement("p");
+      beleg.className = "hint";
+      beleg.textContent =
+        absatz.quellen.length > 0
+          ? `${belegText("belegtDurch")} ${absatz.quellen.map(titelVon).join(", ")}`
+          : belegText("ohneBeleg");
+      absaetze.append(text, beleg);
+    }
+    absaetze.hidden = (antwort?.absaetze.length ?? 0) === 0;
+    // Mit Absatzzuordnung steht der Text dort; ohne sie als ein Block.
+    $("kontext-antwort").hidden = !antwort?.text || !absaetze.hidden;
+
+    const liste = $("kontext-quellen");
+    clear(liste);
+    for (const quelle of quellen) {
+      const li = document.createElement("li");
+      const titel = quelle.titel ?? belegText("unbenannt");
+      const adresse = globalThis.KlaraKontext?.quellenAdresse(quelle.koId) ?? null;
+      if (adresse) {
+        const link = document.createElement("a");
+        link.href = adresse;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = titel;
+        li.appendChild(link);
+      } else {
+        li.textContent = titel;
+      }
+      const angaben = [
+        quelle.version !== null ? `${belegText("fassung")} ${quelle.version}` : "",
+        quelle.validiert === true ? belegText("geprueft") : "",
+        quelle.validiert === false ? belegText("ungeprueft") : "",
+        quelle.tragend ? "" : belegText("herangezogen"),
+      ].filter((a) => a.length > 0);
+      if (angaben.length > 0) li.append(` · ${angaben.join(" · ")}`);
+      liste.appendChild(li);
+    }
+    $("kontext-quellen-box").hidden = quellen.length === 0;
+  }
+  /**
+   * @param {"kontext" | "kontextVerbinden" | "kontextErklaeren" | "kontextWiderrufen" | "kontextBegleiter"} art
+   */
+  async function kontextFragen(art) {
+    // Verbinden, Erklären und der Begleiter laufen; Widerruf und Lesen setzen keinen Laufzustand —
+    // der Stopp darf einen laufenden Schritt nicht als „fertig" ausgeben.
+    const handlung =
+      art === "kontextVerbinden" || art === "kontextErklaeren" || art === "kontextBegleiter";
+    if (handlung) {
+      kontextLaeuft = true;
+      kontextZeigen();
+    }
+    try {
+      const antwort = await chrome.runtime.sendMessage({ type: art, sprache: language });
+      if (istKontext(antwort)) kontextStand = antwort;
+    } catch {
+      // Ohne Antwort bleibt die letzte Karte stehen; der nächste Anlass fragt erneut.
+    } finally {
+      if (handlung) kontextLaeuft = false;
+      kontextZeigen();
+    }
+  }
+  $("kontext-verbinden").addEventListener("click", () => void kontextFragen("kontextVerbinden"));
+  $("kontext-erklaeren").addEventListener("click", () => void kontextFragen("kontextErklaeren"));
+  // AC10: das optionale Recht wird IN der Klickgeste angefragt; ob Chrome es erteilt hat, prüft der
+  // Worker selbst (ohne Recht gibt es `connectNative` nicht) und meldet den Grund.
+  $("kontext-begleiter").addEventListener("click", async () => {
+    if (kontextLaeuft) return;
+    await rechtAnfragen("nativeMessaging");
+    await kontextFragen("kontextBegleiter");
+  });
+  $("kontext-widerrufen").addEventListener("click", () => void kontextFragen("kontextWiderrufen"));
+  $("language").addEventListener("change", kontextZeigen);
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "session") return;
+    if (
+      "kontext" in changes ||
+      "kontextSperre" in changes ||
+      "kern" in changes ||
+      "kontextAntwort" in changes ||
+      "begleiter" in changes ||
+      "auth" in changes
+    )
+      void kontextFragen("kontext");
+  });
+  // Wie die Marke: erst nach dem Aufbau, nie als erste Nachricht der Leiste.
+  void aufbau.then(
+    () => kontextFragen("kontext"),
+    () => kontextFragen("kontext"),
+  );
+  // KW-KONTEXT-END
+  // ================================================================================================
+  // KW-AKTION · BPA-03 — AUF DER FREIGEGEBENEN SEITE AUSFÜHREN.
+  // ================================================================================================
+  //
+  // Die Leiste nimmt den Auftrag der Person auf — getippt oder gesprochen — und zeigt danach, was
+  // der Aktionskern TATSÄCHLICH getan hat: jeden Schritt mit seinem Stand, eine Klärung oder
+  // Übergabe mit konkretem nächsten Schritt, vor einer Außenwirkung die Bestätigung mit genau den
+  // Werten, die gesendet würden, und eine Rücknahme nur dort, wo sie wirklich möglich ist. Sie
+  // rechnet nichts selbst und sendet nichts ins Netz; alles geht über den Worker (`aktion…`).
+  //
+  // GESPROCHEN: die Spracherkennung des Browsers (dieselbe Wahl wie in der Web-App, ohne eigenen
+  // Anbieter). Das Erkannte steht im Feld und lässt sich korrigieren; der Auftrag bleibt
+  // „gesprochen". Ohne Spracherkennung gibt es den Knopf nicht.
+  /** @type {import("./types").AktionSicht | null} */
+  let aktionStand = null;
+  let aktionQuelle = /** @type {"getippt" | "gesprochen"} */ ("getippt");
+  /** Der Vorgangsschlüssel des Auftrags im Feld — ein zweiter Klick ist derselbe Auftrag (AC07). */
+  let aktionVorgang = "";
+  let aktionStartet = false;
+  /**
+   * @typedef {{lang: string, interimResults: boolean, maxAlternatives: number, start(): void, stop(): void,
+   *   onresult: ((e: {results: ArrayLike<ArrayLike<{transcript: string}>>}) => void) | null,
+   *   onerror: ((e: {error?: string}) => void) | null, onend: (() => void) | null}} Erkennung
+   */
+  const Spracherkennung = /** @type {(new () => Erkennung) | undefined} */ (
+    /** @type {Record<string, unknown>} */ (globalThis).SpeechRecognition ??
+      /** @type {Record<string, unknown>} */ (globalThis).webkitSpeechRecognition
+  );
+  /** @type {Erkennung | null} */
+  let aktionHoert = null;
+  /** @param {unknown} antwort @returns {antwort is import("./types").AktionSicht} */
+  const istAktion = (antwort) =>
+    typeof antwort === "object" &&
+    antwort !== null &&
+    /** @type {{aktion?: unknown}} */ (antwort).aktion === true;
+  /** @param {string} schluessel @returns {string} */
+  const aktionText = (schluessel) =>
+    globalThis.KLARA_AKTION_TEXT?.[language]?.[schluessel] ??
+    globalThis.KLARA_TEXT[language]?.[schluessel] ??
+    schluessel;
+  /** @param {string} id @param {boolean} sichtbar @param {string} [text] */
+  function zeile(id, sichtbar, text) {
+    $(id).hidden = !sichtbar;
+    if (text !== undefined) $(id).textContent = sichtbar ? text : "";
+  }
+  const AKTION_STATUS = ["anmelden", "keine_freigabe", "laeuft", "verbindung", "invalid_message"];
+  /** @param {import("./types").AktionSicht | null} s @returns {string} */
+  function aktionMeldung(s) {
+    if (!s) return "";
+    if (s.klaerung) return s.klaerung;
+    if (s.fehler) {
+      // Ein Sperrgrund der Freigabe (BPA-01) hat seinen eigenen Text und nächsten Schritt.
+      const sperre = globalThis.KlaraKontext?.sperrText(s.fehler, language);
+      if (sperre?.text)
+        return `${aktionText("aktion_gesperrt")} ${sperre.text} ${sperre.naechsterSchritt}`;
+      const text = globalThis.KLARA_AKTION_TEXT?.[language]?.[`aktion_${s.fehler}`];
+      return text ?? `${aktionText("aktion_fehler")} (${s.fehler})`;
+    }
+    return AKTION_STATUS.includes(s.status) ? aktionText(`aktion_${s.status}`) : "";
+  }
+  function aktionZeigen() {
+    const s = aktionStand;
+    const a = s?.auftrag ?? null;
+    $("aktion").hidden = !s?.angemeldet;
+    zeile("aktion-ziel", Boolean(s?.ziel), `${aktionText("aktionZiel")} ${s?.ziel?.url ?? ""}`);
+    $("aktion-quelle").hidden = aktionQuelle !== "gesprochen";
+    $("aktion-sprechen").hidden = !Spracherkennung;
+    $("aktion-sprechen").textContent = aktionText(
+      aktionHoert ? "aktionSprechenStopp" : "aktionSprechen",
+    );
+    $("aktion-hoeren").hidden = !aktionHoert;
+    const laeuft = Boolean(s?.laeuft) || aktionStartet;
+    /** @type {HTMLButtonElement} */ ($("aktion-ausfuehren")).disabled = laeuft;
+    // Hinweis des Workers (nicht angemeldet, keine Freigabe, Verbindung …) oder eine Klärung.
+    const meldung = aktionMeldung(s);
+    zeile("aktion-hinweis", Boolean(meldung), meldung);
+    // Die erkannte Zuordnung (Feld = Wert), bevor etwas geschieht — nur als Text und nur, solange
+    // der Text im Feld derselbe ist (ein geänderter Text ist ein neuer Vorgang).
+    const zuordnung = aktionVorgang ? (s?.zuordnung ?? null) : null;
+    $("aktion-zuordnung").hidden = !zuordnung;
+    $("aktion-zuordnung-werte").replaceChildren(
+      ...(zuordnung?.felder ?? []).flatMap((w) => {
+        const dt = document.createElement("dt");
+        dt.textContent = w.label;
+        const dd = document.createElement("dd");
+        dd.textContent = w.wert;
+        return [dt, dd];
+      }),
+    );
+    $("aktion-zuordnung-ok").textContent = zuordnung ? aktionText("aktionZuordnungOk") : "";
+    /** @type {HTMLButtonElement} */ ($("aktion-zuordnung-ok")).disabled = laeuft;
+    $("aktion-stand-box").hidden = !a;
+    if (!a) return;
+    // „Läuft" nur, solange der Worker den Lauf tatsächlich antreibt — nach einem Verbindungsabbruch
+    // zeigt die Leiste den letzten Stand des Kerns ohne diesen Zusatz und bietet Fortsetzen an.
+    const treibt = Boolean(s?.laeuft);
+    $("aktion-stand").textContent = treibt ? `${aktionText("aktionLaeuft")} ${a.text}` : a.text;
+    const liste = $("aktion-schritte");
+    liste.replaceChildren(
+      ...a.schritte.map((x) => {
+        const li = document.createElement("li");
+        li.setAttribute("data-kennung", x.aktionskennung);
+        li.setAttribute("data-stand", x.stand);
+        const was = aktionText(`aktionSchrittArt_${x.art}`);
+        const ziel = x.feld ?? x.knopf ?? "";
+        li.textContent = `${was}${ziel ? ` „${ziel}"` : ""} — ${aktionText(`aktionSchrittStand_${x.stand}`)}`;
+        return li;
+      }),
+    );
+    zeile("aktion-klaerung", Boolean(a.klaerung), a.klaerung ?? "");
+    zeile("aktion-uebergabe", Boolean(a.uebergabe), a.uebergabe?.schritt ?? "");
+    const bedarf = a.bedarf;
+    $("aktion-bestaetigung").hidden = !bedarf;
+    $("aktion-bestaetigung-text").textContent = bedarf?.text ?? "";
+    $("aktion-bestaetigen").textContent = bedarf
+      ? `${aktionText("aktionBestaetigen")} „${bedarf.knopf}"`
+      : "";
+    $("aktion-bestaetigung-werte").replaceChildren(
+      ...(bedarf?.werte ?? []).flatMap((w) => {
+        const dt = document.createElement("dt");
+        dt.textContent = w.label;
+        const dd = document.createElement("dd");
+        dd.textContent = w.wert;
+        return [dt, dd];
+      }),
+    );
+    zeile(
+      "aktion-bestaetigt",
+      Boolean(a.bestaetigung),
+      a.bestaetigung
+        ? `${aktionText("aktionBestaetigt")} „${a.bestaetigung.knopf}" · ${a.bestaetigung.bestaetigtAm}`
+        : "",
+    );
+    const angebot = a.ruecknahmeAngebot;
+    const ruecknahmeText = a.ruecknahme
+      ? a.ruecknahme.text
+      : angebot === "nicht_ruecknehmbar"
+        ? aktionText("aktionNichtRuecknehmbar")
+        : angebot === "unklar"
+          ? aktionText("aktionUnklarRuecknahme")
+          : angebot === "kein_loeschen"
+            ? aktionText("aktionKeinLoeschen")
+            : "";
+    zeile("aktion-ruecknahme-text", Boolean(ruecknahmeText), ruecknahmeText);
+    const steuerbar = a.steuerbar;
+    const ende = ["fertig", "abgebrochen", "gestoppt_recht", "uebergabe", "unterbrochen"].includes(
+      a.stand,
+    );
+    $("aktion-pause").hidden = !steuerbar || !treibt;
+    $("aktion-fortsetzen").hidden =
+      !steuerbar || treibt || ende || a.stand === "bestaetigung_noetig";
+    $("aktion-abbrechen").hidden = !steuerbar || ende;
+    const ruecknahme =
+      steuerbar &&
+      !treibt &&
+      (angebot === "entwurf_loeschen" || angebot === "felder_zuruecksetzen");
+    $("aktion-ruecknahme").hidden = !ruecknahme;
+    $("aktion-ruecknahme").textContent = ruecknahme
+      ? aktionText(angebot === "entwurf_loeschen" ? "aktionEntwurfLoeschen" : "aktionFelderZurueck")
+      : "";
+  }
+  /** @param {Record<string, unknown>} nachricht */
+  async function aktionFragen(nachricht) {
+    try {
+      const antwort = await chrome.runtime.sendMessage(
+        /** @type {import("./types").Message} */ ({ ...nachricht, sprache: language }),
+      );
+      if (istAktion(antwort)) aktionStand = antwort;
+    } catch {
+      // Ohne Antwort bleibt der letzte Stand stehen; der nächste Anlass fragt erneut.
+    } finally {
+      aktionZeigen();
+    }
+  }
+  $("aktion-wortlaut").addEventListener("input", () => {
+    const leer = !$("aktion-wortlaut").value.trim();
+    // Geleert ist ein neuer Auftrag: neue Quelle, neuer Vorgang. Korrigiert bleibt er gesprochen.
+    if (leer) aktionQuelle = "getippt";
+    aktionVorgang = "";
+    aktionZeigen();
+  });
+  /** @param {string | null} zuordnung Abdruck einer gezeigten und bestätigten Zuordnung. */
+  async function aktionStarte(zuordnung) {
+    if (aktionStartet) return;
+    const wortlaut = $("aktion-wortlaut").value.trim();
+    if (!aktionVorgang) aktionVorgang = crypto.randomUUID();
+    aktionStartet = true;
+    aktionZeigen();
+    try {
+      // Läuft die Leiste als Tab (nicht im Seitenfenster), ist dieser Tab keine Seite für Klara.
+      /** @type {number | undefined} */
+      let leisteTab;
+      try {
+        leisteTab = (await chrome.tabs.getCurrent())?.id;
+      } catch {
+        leisteTab = undefined;
+      }
+      await aktionFragen({
+        type: "aktionStarten",
+        wortlaut,
+        quelle: aktionQuelle,
+        vorgang: aktionVorgang,
+        ...(leisteTab === undefined ? {} : { leisteTab }),
+        ...(zuordnung ? { zuordnung } : {}),
+      });
+    } finally {
+      aktionStartet = false;
+      aktionZeigen();
+    }
+  }
+  $("aktion-ausfuehren").addEventListener("click", () => void aktionStarte(null));
+  $("aktion-zuordnung-ok").addEventListener("click", () => {
+    const abdruck = aktionStand?.zuordnung?.abdruck;
+    if (abdruck) void aktionStarte(abdruck);
+  });
+  $("aktion-sprechen").addEventListener("click", () => {
+    if (aktionHoert) {
+      aktionHoert.stop();
+      return;
+    }
+    if (!Spracherkennung) return;
+    const erkennung = new Spracherkennung();
+    erkennung.lang = language === "en" ? "en-US" : "de-DE";
+    erkennung.interimResults = false;
+    erkennung.maxAlternatives = 1;
+    erkennung.onresult = (e) => {
+      const text = Array.from(e.results)
+        .map((r) => r[0]?.transcript ?? "")
+        .join(" ")
+        .trim();
+      if (!text) return;
+      $("aktion-wortlaut").value = text;
+      aktionQuelle = "gesprochen";
+      aktionVorgang = "";
+      aktionZeigen();
+    };
+    erkennung.onerror = (e) => {
+      $("aktion-hinweis").hidden = false;
+      $("aktion-hinweis").textContent = `${aktionText("aktionSprechen")}: ${e.error ?? ""}`;
+    };
+    erkennung.onend = () => {
+      aktionHoert = null;
+      aktionZeigen();
+    };
+    aktionHoert = erkennung;
+    aktionZeigen();
+    try {
+      erkennung.start();
+    } catch {
+      aktionHoert = null;
+      aktionZeigen();
+    }
+  });
+  /** @param {string} art */
+  const steuern = (art) => () => void aktionFragen({ type: "aktionSteuern", art });
+  $("aktion-pause").addEventListener("click", steuern("pause"));
+  $("aktion-fortsetzen").addEventListener("click", steuern("fortsetzen"));
+  $("aktion-abbrechen").addEventListener("click", steuern("abbruch"));
+  $("aktion-nicht-ausloesen").addEventListener("click", steuern("abbruch"));
+  $("aktion-ruecknahme").addEventListener("click", steuern("ruecknahme"));
+  $("aktion-bestaetigen").addEventListener("click", () => {
+    const bedarf = aktionStand?.auftrag?.bedarf;
+    if (!bedarf) return;
+    void aktionFragen({
+      type: "aktionSteuern",
+      art: "bestaetigen",
+      fingerabdruck: bedarf.fingerabdruck,
+    });
+  });
+  $("language").addEventListener("change", aktionZeigen);
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "session") return;
+    if (
+      "aktion" in changes ||
+      "auth" in changes ||
+      "kontext" in changes ||
+      "kontextEpoche" in changes
+    )
+      void aktionFragen({ type: "aktion" });
+  });
+  void aufbau.then(
+    () => aktionFragen({ type: "aktion" }),
+    () => aktionFragen({ type: "aktion" }),
+  );
+  // KW-AKTION-END
 })();

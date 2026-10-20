@@ -6,6 +6,7 @@
     <title>Klara · Browser</title>
     <link rel="stylesheet" href="panel.css" />
     <script src="i18n.js" defer></script>
+    <script src="kontext.js" defer></script>
     <script src="panel.js" defer></script>
   </head>
   <body>
@@ -95,6 +96,71 @@
           </form>
           <button type="button" id="logout" data-i18n="logout" hidden></button>
         </details>
+        <!-- BPA-01: DIE KONTEXTKARTE. Welche Seite und welche Markierung Klara gerade kennt — und
+             wenn nicht, warum nicht und was als Nächstes geht. Verborgen, solange es weder Karte
+             noch Sperre gibt. Inhalte setzt `panel.js` ausschliesslich als Text. -->
+        <section id="kontext" aria-labelledby="kontext-title" hidden>
+          <h2 id="kontext-title" data-i18n="kontextTitel"></h2>
+          <dl id="kontext-karte" hidden><dt data-i18n="kontextBrowser"></dt><dd id="kontext-browser"></dd><dt data-i18n="page"></dt><dd id="kontext-seite"></dd><dt data-i18n="kontextAuswahl"></dt><dd id="kontext-auswahl"></dd><dt data-i18n="captured"></dt><dd id="kontext-zeit"></dd></dl>
+          <p id="kontext-tabelle" class="hint" data-i18n="kontextTabelle" hidden></p>
+          <p id="kontext-luecken" class="hint" data-i18n="kontextNichtGeliefert" hidden></p>
+          <p id="kontext-rahmen" class="hint" data-i18n="kontextRahmen" hidden></p>
+          <p id="kontext-verbunden" class="hint" data-i18n="kontextVerbunden" hidden></p>
+          <p id="kontext-veraltet" class="hint warn" data-i18n="kontextVeraltet" hidden></p>
+          <p id="kontext-import" class="hint" data-i18n="kontextImportBleibt" hidden></p>
+          <p id="kontext-sperre" class="hint warn" hidden></p>
+          <p id="kontext-schritt" class="hint" hidden></p>
+          <div class="actions"><button type="button" id="kontext-verbinden" data-i18n="kontextVerbinden"></button><button type="button" id="kontext-erklaeren" data-i18n="kontextErklaeren" disabled></button><button type="button" id="kontext-widerrufen" data-i18n="kontextWiderrufen"></button><button type="button" id="kontext-begleiter" data-i18n="kontextBegleiter" disabled></button></div>
+          <!-- AC10: der Klara-Begleiter auf diesem Mac (Native Messaging) — mit seinen Fassungen. -->
+          <p id="kontext-begleiter-stand" class="hint" hidden></p>
+          <!-- Klaras Antwort gilt für genau diese Markierung und Fassung; der Worker liefert sie nur
+               dann. Der Text wird ausschliesslich als Text gesetzt. -->
+          <div id="kontext-antwort-box" aria-live="polite" hidden>
+            <h3 data-i18n="kontextAntwortTitel"></h3>
+            <p id="kontext-lage" class="hint" hidden></p>
+            <ul id="kontext-einschraenkungen" class="hint" hidden></ul>
+            <p id="kontext-antwort" hidden></p>
+            <div id="kontext-absaetze" hidden></div>
+            <p id="kontext-antwort-leer" class="hint" data-i18n="kontextAntwortLeer" hidden></p>
+            <div id="kontext-quellen-box" hidden>
+              <h4 data-i18n="kontextQuellenTitel"></h4>
+              <ul id="kontext-quellen"></ul>
+            </div>
+            <p class="hint" data-i18n="kontextAntwortHinweis"></p>
+          </div>
+        </section>
+        <!-- BPA-03: AUF DIESER SEITE AUSFÜHREN. Der Auftrag (getippt oder gesprochen) für die Seite,
+             die mit der Klickgeste freigegeben ist; darunter der tatsächliche Stand jedes Schritts,
+             Klärung oder Übergabe, die Bestätigung vor einer Außenwirkung und — nur wo sie wirklich
+             möglich ist — die Rücknahme. Alles kommt vom Kern; `panel.js` setzt es nur als Text. -->
+        <section id="aktion" aria-labelledby="aktion-title" hidden>
+          <h2 id="aktion-title" data-i18n="aktionTitel"></h2>
+          <p id="aktion-ziel" class="hint" hidden></p>
+          <label for="aktion-wortlaut" data-i18n="aktionAuftrag"></label>
+          <textarea id="aktion-wortlaut" rows="4" maxlength="2000"></textarea>
+          <p id="aktion-quelle" class="hint" data-i18n="aktionGesprochen" hidden></p>
+          <p id="aktion-hoeren" class="hint" role="status" data-i18n="aktionHoert" hidden></p>
+          <div class="actions"><button type="button" id="aktion-ausfuehren" data-i18n="aktionAusfuehren"></button><button type="button" id="aktion-sprechen" data-i18n="aktionSprechen" hidden></button></div>
+          <p id="aktion-hinweis" class="hint warn" hidden></p>
+          <div id="aktion-zuordnung" role="group" aria-labelledby="aktion-hinweis" hidden>
+            <dl id="aktion-zuordnung-werte"></dl>
+            <div class="actions"><button type="button" id="aktion-zuordnung-ok"></button></div>
+          </div>
+          <div id="aktion-stand-box" hidden>
+            <p id="aktion-stand" role="status" aria-live="polite"></p>
+            <ol id="aktion-schritte"></ol>
+            <p id="aktion-klaerung" class="hint warn" hidden></p>
+            <p id="aktion-uebergabe" class="hint warn" role="alert" hidden></p>
+            <div id="aktion-bestaetigung" role="alertdialog" aria-labelledby="aktion-bestaetigung-text" hidden>
+              <p id="aktion-bestaetigung-text"></p>
+              <dl id="aktion-bestaetigung-werte"></dl>
+              <div class="actions"><button type="button" id="aktion-bestaetigen"></button><button type="button" id="aktion-nicht-ausloesen" data-i18n="aktionNichtAusloesen"></button></div>
+            </div>
+            <p id="aktion-bestaetigt" class="hint" hidden></p>
+            <p id="aktion-ruecknahme-text" class="hint" hidden></p>
+            <div class="actions"><button type="button" id="aktion-pause" data-i18n="aktionPause" hidden></button><button type="button" id="aktion-fortsetzen" data-i18n="aktionFortsetzen" hidden></button><button type="button" id="aktion-abbrechen" data-i18n="aktionAbbrechen" hidden></button><button type="button" id="aktion-ruecknahme" hidden></button></div>
+          </div>
+        </section>
         <!-- JOB 3524 · Lieferung 5: DIE REIHENFOLGE DER FLÄCHE.
              Inhaltsquelle wählen · Inhalt des GEWÄHLTEN Umfangs · Titel, Vertraulichkeit, kurze
              Quellenangabe · Details (zugeklappt) · Speichern und Verwerfen. Die langen Anleitungs-

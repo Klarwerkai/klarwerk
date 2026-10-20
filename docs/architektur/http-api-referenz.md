@@ -340,6 +340,12 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/klara/sessions/:sessionId/close` | `ko.read` | — | 200 geschlossene Sitzung | Dienstfehler |
 | `POST` | `/api/klara/sessions/:sessionId/zuruf` | `ko.read` | Rumpf `{ text, koIds, art }` | 200 Vorschlag (schreibt nichts) | 503 `NO_FORMULIERER`; Dienstfehler |
 | `GET` | `/api/klara/answers/:answerId/explanation` | `ko.read` | — | 200 Erklärung der Antwort | 404 `NOT_FOUND` |
+| `GET` | `/api/klara/programme` | `requireUser` | — | 200 Fähigkeitsübersicht je Programm (Lesen/Auswahl/Schreiben/Ergebnisprüfung/Rücknahme mit Stand, Fassung, Grenzen), `alleProgramme: false`, Name/Avatar aus dem eigenen Assistenzprofil | 401 |
+| `POST` | `/api/klara/programme/verbinden` | `requireUser` | Rumpf `{ ziel: { programm, sitzung, hostKonto, objekt, auswahl, fassung } }` (Mandant/Nutzer setzt der Server) | 200 `{ bindung, programm }` (gesiegelte Bindung) | 400 `VALIDATION` (unvollständig oder Programm ohne Weg); 401 |
+| `POST` | `/api/klara/programme/wirkung` | `requireUser` | Rumpf `{ aktuell, bindung? \| gebunden? }` | 200 `{ ok: true }` | 400 `VALIDATION`; 409 `{ ok: false, grund, text, naechsterSchritt }` (Ziel abweichend); 401 |
+| `POST` | `/api/klara/programme/finder` | `ko.create` (Anmeldung vor dem Parsen) | Rumpf `{ bindung, aktuell, rechte, dateien: [{ dateiId, name, groesse, geaendertAm, mime, inhalt }] }` | 201 `{ ok, objektId, herkunft }` (vorhandene Objektablage) | 400 `VALIDATION`; 409 Ziel/Fassung abweichend, keine/mehrere Dateien, Dateifreigabe fehlt; 401; 403 |
+| `GET` | `/api/klara/programme/finder/:objektId` | `requireUser`; nur Eigentümer des Objekts | — | 200 `{ objektId, name, mime, herkunft, protokolliertAm }` (Datei-Kennung, Quellfassung, Aufnahmebindung) | 404 `NOT_FOUND` (unbekannt oder fremd); 401 |
+| `POST` | `/api/klara/programme/bedienungshilfe` | `requireUser` | Rumpf `{ bindung, aktuell, rechte, beobachtung, kontext? }` | 200 `{ ok, markierung, kontext, verworfen, kontextBindung }` | 400 `VALIDATION`; 409 gestoppt (Freigabe fehlt, kein Lesezweck) oder Klärung (Fenster/Element mehrdeutig, leer); 401 |
 | `POST` | `/api/knowledge/check` | `ko.read` | Rumpf `{ text, source?, koId?, draftId?, confidentiality?, nichtEingestuft? }` | 200 Ähnlichkeits-/Widerspruchsbefund; bei ähnlichem Negativwissen zusätzlich `negativwissen[]` | — |
 | `POST` | `/api/check-text` | `ko.read` oder Add-in-Fähigkeit (Schalter `KLARWERK_ADDON_API`) | Rumpf `{ text, title?, locale?, want?, source?, koId?, confidentiality?, nichtEingestuft?, ungeprueftEinbeziehen? }` — `ungeprueftEinbeziehen: false` beschränkt den Sitzungsweg auf validierten Bestand, `true`/fehlend lässt ihn wie bisher auch Eingereichtes einbeziehen; am Add-in-Schlüssel wirkungslos (immer nur validiert) | 200 Prüfergebnis | 403 `FORBIDDEN`; 400 Formfehler |
 | `POST` | `/api/reasoner` | `ko.read` | Rumpf `{ task, text?, answers?, locale?, instruction?, query?, outputLanguage?, source?, koId?, confidentiality?, nichtEingestuft?, draftId? }` | 200 Ergebnis der Aufgabe; bei `task: "ask"` mit Prüfdienst zusätzlich `referenzpruefung` (REF-04, derselbe Prüfdienst wie `/api/ask`) | 400 `BAD_REQUEST`; 409 `CONFIDENTIAL_CLOUD_BLOCKED` (mit `reason`); 503 `KI_ABGESCHALTET` |
@@ -426,6 +432,12 @@ herabgestuft werden (409 `mutability`).
 | `DELETE` | `/api/livewall/photo` | `requireUser` | — | 200 `{ photoConsent: false }` — Widerruf löscht die Bilddaten | — |
 | `PUT` | `/api/livewall/consent` | `requireUser` | Rumpf `{ nameConsent: boolean }` | 200 `{ nameConsent }` — Zustimmung/Widerruf als Prüfprotokoll-Ereignis | 400 `BAD_REQUEST` |
 | `GET` | `/api/me/impact` | `requireUser` | — | 200 eigene Wirkung | — |
+| `POST` | `/api/me/klara/begleiter/adapter` | `requireUser` | Rumpf `{ instanz, host, hostFassung?, dokument: { kennung, titel, gespeichert } }` — ein Word-Fenster (Office-Adapter `begleiter.js`) meldet sich für die Mac-Begleitapp an; nur Arbeitsspeicher | 201 `{ instanz, aktivMs }` | 400 `VALIDATION` |
+| `PUT` | `/api/me/klara/begleiter/adapter/:instanz` | `requireUser`, eigenes Fenster | Rumpf `{ seq, auswahl: { text, laenge, stand } \| null, auswahlStand?, erledigt? }` — Folgenummer streng steigend | 200 `{ aktionen }` für dieses Fenster | 400 `VALIDATION`; 404 `NOT_FOUND` (fremd, unbekannt, abgelaufen); 409 `CONFLICT` (`veraltet`) |
+| `DELETE` | `/api/me/klara/begleiter/adapter/:instanz` | `requireUser`, eigenes Fenster | — | 200 `{ abgemeldet }` | 400 `VALIDATION` |
+| `GET` | `/api/me/klara/begleiter/kontext` | `requireUser` | — | 200 `{ jetzt, aktivMs, adapter[] }` — nur eigene Fenster; Auswahl nur bei aktivem Adapter | — |
+| `POST` | `/api/me/klara/begleiter/adapter/:instanz/aktionen` | `requireUser`, eigenes aktives Fenster | Rumpf `{ art: "einfuegen" \| "frage", text, auswahlStand }` | 202 `{ aktion }` | 400 `VALIDATION`; 404 `NOT_FOUND`; 409 `CONFLICT` (`adapter_inaktiv`, `veraltet`, `zu_viele`) |
+| `GET` | `/api/me/klara/begleiter/sitzung` | `requireUser` | — | 200 `{ nutzer, sitzung }` — Kennung und Fingerabdruck der eigenen Anmeldesitzung (SHA-256, nie das Merkmal); die Begleitapp bindet die Browserkarte daran (BPA-01 AC10) | 401 |
 | `GET` | `/api/me/author-transfers` | `users.manage` | — | 200 `[{ koId, grund, kritisch }]` — wartende Autorenübergaben | 403 |
 | `GET` | `/api/me/author-transfers/summary` | `users.manage` | — | 200 `{ open }` — Zahl der wartenden Autorenübergaben | 403 |
 | `GET` | `/api/me/returned-tasks` | `ko.read`, sichtbar | — | 200 `[{ koId, at, verdict }]` — an mich zurückgegebene Entwürfe | — |
@@ -528,6 +540,30 @@ die gelesene Version.
 | `GET` | `/api/meetings/:id/folien/:dateiId/:sldId` | `ko.read`, Meetingrecht, Leserecht an der Datei | — | 200 `{ rueckmeldungen }` — über präsentierte Datei oder Original | 404 `NOT_FOUND` |
 | `GET` | `/api/meetings/:id/zeitstellen/:zeitMs` | `ko.read`, Meetingrecht | — | 200 `{ rueckmeldungen }` | 400 `VALIDATION`; 404 `NOT_FOUND` |
 | `POST` | `/api/meetings/:id/fassungsabgleich` | `ko.create`, Meetingrecht, Leserecht am aktuellen Quellobjekt des Originals und an der neuen Fassung (ein abgelöstes Objekt zählt nicht) | Rumpf `{ originalObjectId, neueFassungObjectId }` | 200 `{ dateiId, quelleId, fassung, eintraege: [{ rueckmeldungId, sldId, stand }] }` — `dateiId` logisches Original, `quelleId` das Objekt der neuen Fassung (Rechte und Öffnen dort); Einträge nur aus lesbaren Mitschriften | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+
+### 3.12 Klara im Browser: berechtigte Funktionen auf einer freigegebenen Seite (`klaraBrowserAktionRoutes`, BPA-03)
+
+Die Erweiterung (`extensions/klara-browser/worker.js`) legt den Auftrag an, holt jeden Schritt im
+Takt ab und führt ihn nur im freigegebenen Tab aus. Jede Route verlangt `ko.read` (ohne Anmeldung
+401 nach Abschnitt 2) und danach eine eigene Anmeldesitzung (Bearer oder Sitzungskeks); eine
+zugelassene Anfrage ohne eigene Sitzung erhält 403 `FORBIDDEN` (`grund` `nur_sitzung`) — ein
+Dienstschlüssel erreicht diese Routen nicht (sie stehen nicht in `DIENST_ROUTEN`, also 401). Jede Wirkung (Eintragen, Speichern, Auslösen, Löschen bei der Rücknahme) prüft der
+Dienst (`klara-browser-aktion-dienst.ts`, `rechte`) unmittelbar vor ihrem Schritt frisch mit
+`ko.create` — kein HTTP-Fehler: ein Lauf endet dann `gestoppt_recht`, eine Rücknahme unterbleibt mit
+Begründung und der Lauf behält seinen Stand. Trennt allein ein Feldname die Werte (eindeutig ist nur
+ein Wert in Anführungszeichen oder einer, der auf ein Satzzeichen endet, vor einer mit Doppelpunkt,
+`=` oder Anführungszeichen eingeleiteten Beschriftung), antwortet die Anlage mit einer Klärung samt
+`zuordnung` (Felder und Abdruck); ausgeführt wird erst ein erneuter Auftrag mit genau diesem Abdruck. Ein Lauf gehört der
+Anmeldung, die ihn anlegte; ohne Seitenprofil (`buildApp`-Option `browserAktion.seitenprofile`)
+wird jede Seite zur Übergabe „nicht unterstützt".
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/me/klara/browser-auftraege` | `ko.read`; eigene Anmeldesitzung | Rumpf `{ vorgang, quelle: "getippt" \| "gesprochen", wortlaut, ziel: { tabId, url }, host: { browser, version, erweiterung }, zuordnung? }` | 201 `{ art: "auftrag", auftrag, befehl }` — neuer Lauf oder Übergabe im eigenen Klara-Gespräch; derselbe Vorgang für dasselbe Ziel ist derselbe Auftrag; 200 `{ art: "klaerung", text, zuordnung? }` — nichts angelegt | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 409 `CONFLICT` (`zu_viele`); 404/409 aus dem Gespräch; Dienstfehler |
+| `GET` | `/api/me/klara/browser-auftraege` | `ko.read`; eigene Anmeldesitzung | — | 200 `{ auftraege }` — die Browseraufträge des eigenen aktuellen Gesprächs, neueste zuerst | 403 `FORBIDDEN` (`nur_sitzung`); Dienstfehler |
+| `GET` | `/api/me/klara/browser-auftraege/:id` | `ko.read`; eigene Anmeldesitzung | — | 200 `{ auftrag }` — der lebende Lauf dieser Anmeldung oder der Eintrag im eigenen Gespräch | 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`, auch fremd); Dienstfehler |
+| `POST` | `/api/me/klara/browser-auftraege/:id/takt` | `ko.read`; eigene Anmeldesitzung, Lauf derselben Anmeldung | Rumpf `{ folge, antwort?: { nr, ergebnis }, seite?: { adapter?, recht? } }` — `folge` streng steigend | 200 `{ auftrag, befehl }` — wartet bis zum nächsten Befehl oder zur Ruhe des Laufs (höchstens 20 s) | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`, auch fremd); 409 `CONFLICT` (`andere_sitzung`, `veraltet`); Dienstfehler |
+| `POST` | `/api/me/klara/browser-auftraege/:id/steuerung` | `ko.read`; eigene Anmeldesitzung, Lauf derselben Anmeldung | Rumpf `{ art: "pause" \| "fortsetzen" \| "abbruch" \| "bestaetigen" \| "ruecknahme" \| "widerruf", fingerabdruck? }` | 200 `{ auftrag, befehl }` | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`); 409 `CONFLICT` (`andere_sitzung`, `keine_bestaetigung`, `bestaetigung_passt_nicht`, `laeuft`); Dienstfehler |
 
 ## 4 Testabdeckung und Abdeckungsziel
 

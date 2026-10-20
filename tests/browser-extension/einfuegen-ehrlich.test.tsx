@@ -179,7 +179,9 @@ describe("JOB 3412 · der Einfügen-Knopf nennt den gangbaren Weg", () => {
 
   it("F5 · `clipboardRead` steht ausschliesslich als OPTIONALES Recht im Manifest", () => {
     const gelesen = JSON.parse(read("manifest.json"));
-    expect(gelesen.optional_permissions).toEqual(["clipboardRead"]);
+    // BPA-01 AC10: `nativeMessaging` kam als zweites OPTIONALES Recht hinzu (Begleiter, nur auf
+    // Klick). Bewusst nachgeführt und weiterhin abschliessend gepinnt.
+    expect(gelesen.optional_permissions).toEqual(["clipboardRead", "nativeMessaging"]);
     // KEINE PFLICHTBERECHTIGUNG: die feste Liste bleibt, wie sie war. Was dieser Fall damit NICHT
     // behauptet (Runde 2, BEN): dass das Recht nach der Zustimmung wieder verfällt. Ein erteiltes
     // optionales Recht kann bestehen bleiben; gemessen wird hier allein das Manifest.

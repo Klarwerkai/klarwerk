@@ -92,6 +92,8 @@ const Arbeitsweise = lazy(() =>
 const Ausgangspruefung = lazy(() =>
   import("./pages/Ausgangspruefung").then((m) => ({ default: m.Ausgangspruefung })),
 );
+// KLARA-OFFICE-02: die Fläche der Mac-Begleitapp — nachgeladen wie jede andere Seite.
+const Begleiter = lazy(() => import("./pages/Begleiter").then((m) => ({ default: m.Begleiter })));
 const Capture = lazy(() => import("./pages/Capture").then((m) => ({ default: m.Capture })));
 const CaptureFrontDoor = lazy(() =>
   import("./pages/CaptureFrontDoor").then((m) => ({ default: m.CaptureFrontDoor })),
@@ -480,6 +482,18 @@ export function AppRoutes(): JSX.Element {
             Verwaltung, Gruppe „Qualität". */}
         <Route path="/qualitaetsaufgaben" element={<Qualitaetsaufgaben />} />
         <Route path="/mobile" element={<Mobile />} />
+        {/* KLARA-OFFICE-02 (produkt:20261010:klara-office-mac-maskottchen): die Fläche, die die
+            native Begleitapp auf dem Mac zeigt — OHNE Hülle (`shell/AppShell.tsx`) und ohne
+            `Guarded`: jede Tür dahinter fordert die Anmeldung am Server (`/api/me/klara/…`). Eigene
+            Fehlergrenze: ein Fehler nimmt das Fenster der App nicht mit. */}
+        <Route
+          path="/begleiter"
+          element={
+            <ErrorBoundary key="begleiter">
+              <Begleiter />
+            </ErrorBoundary>
+          }
+        />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />
       </Routes>

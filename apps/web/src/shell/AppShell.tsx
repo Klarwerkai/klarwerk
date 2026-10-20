@@ -137,6 +137,18 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
     setDrawerOpen(false);
   }, [location.pathname]);
 
+  // KLARA-OFFICE-02: /begleiter OHNE Shell — die Fläche der Mac-Begleitapp ist ein eigenes, frei
+  // bewegliches Fenster (Figur bzw. Gespräch). Hinweis- und Fußbereich trägt die Seite selbst in der
+  // Lage „Gespräch" (`pages/Begleiter.tsx`); als blosse Figur wäre jeder Rahmen verdeckte Fläche.
+  if (location.pathname === "/begleiter") {
+    return (
+      <div className="h-full">
+        {children}
+        <ToastViewport />
+      </div>
+    );
+  }
+
   // B1b: /mobile OHNE Shell — volle schmale Breite, kein Kopfband-Chrome drumherum.
   if (location.pathname === "/mobile") {
     return (

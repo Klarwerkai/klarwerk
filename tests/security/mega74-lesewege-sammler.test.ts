@@ -1320,6 +1320,59 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur ein eigenes Gespräch (user.id), Antwort nur die Zahl.",
   },
+  // produkt:20261010:klara-office-mac-maskottchen (BPA-01 nacharbeit-19: aus ff96149e übernommen).
+  "POST /api/me/klara/begleiter/adapter": {
+    urteil: "EIGENER_BESTAND",
+    grund: "meldet ein eigenes Word-Fenster an (user.id); Antwort nur Kennung und Frist.",
+  },
+  "PUT /api/me/klara/begleiter/adapter/:instanz": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur ein eigenes angemeldetes Fenster; zurück nur die für es beauftragten Aktionen.",
+  },
+  "DELETE /api/me/klara/begleiter/adapter/:instanz": {
+    urteil: "EIGENER_BESTAND",
+    grund: "meldet nur ein eigenes Fenster ab (user.id), Antwort nur wahr/falsch.",
+  },
+  "GET /api/me/klara/begleiter/kontext": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die eigenen Word-Fenster und deren Auswahl (klara-begleiter-routes.ts, user.id).",
+  },
+  "POST /api/me/klara/begleiter/adapter/:instanz/aktionen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "beauftragt nur ein eigenes, aktives Fenster; fremd und unbekannt antworten 404.",
+  },
+  "GET /api/me/klara/begleiter/sitzung": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur Kennung und Sitzungsfingerabdruck der eigenen Anmeldung (user.id); kein KO-Inhalt.",
+  },
+  // produkt:20261011:assistenz-programmadapter (BPA-01 nacharbeit-19: aus 345b4467 übernommen).
+  "GET /api/klara/programme": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Fähigkeitsübersicht je Programm plus Name/Avatar des eigenen Assistenzprofils " +
+      "(programmadapter-routes.ts, user.id); kein KO-Inhalt.",
+  },
+  "POST /api/klara/programme/verbinden": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Gesiegelte Bindung aus dem eigenen Ziel und der eigenen Sitzung; kein KO-Inhalt.",
+  },
+  "POST /api/klara/programme/wirkung": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Ergebnis der Zielprüfung über das eingereichte Ziel; kein KO-Inhalt.",
+  },
+  "POST /api/klara/programme/finder": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Upload der selbst gewählten Datei — owner aus der Anmeldung, Antwort nur Herkunft.",
+  },
+  "GET /api/klara/programme/finder/:objektId": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Herkunft der EIGENEN Aufnahme (lifecycle.owner === user.id), sonst 404; kein KO-Inhalt.",
+  },
+  "POST /api/klara/programme/bedienungshilfe": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Gibt nur die eingereichte Markierung und eigenen, gesiegelten Kontext zurück.",
+  },
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): die KI-Aufträge lesen Titel und
   // Inhalt von Wissensobjekten in Paket und Prompt. Jede Registrierung bildet dafür die EINE
   // Entscheidung (`sichtbarkeitsfilterFuer(user)`) und reicht sie an den Dienst; der Prompt geht
@@ -1371,6 +1424,32 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/me/klara/gespraeche/:id/ki-vergleich": {
     urteil: "PRAEDIKAT",
     grund: "BPA-13 — Vergleich nur über eigene Aufträge; Sicht mit sichtbarkeitsfilterFuer.",
+  },
+  // produkt:20261011:assistenz-browser-aktionen (BPA-03): Browseraufträge liegen IM eigenen
+  // Gespräch (Konto aus der Anmeldung, fremd und unbekannt 404). Sie lesen kein Wissensobjekt; die
+  // Antwort ist der eigene Auftrag (Beschriftungen aus dem Seitenprofil, Stände, Kennungen).
+  "POST /api/me/klara/browser-auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt einen eigenen Browserauftrag an; Antwort ist dieser Auftrag, kein Objektinhalt.",
+  },
+  "GET /api/me/klara/browser-auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die Browseraufträge des eigenen aktuellen Gesprächs (user.id).",
+  },
+  "GET /api/me/klara/browser-auftraege/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ein eigener Browserauftrag; fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/browser-auftraege/:id/takt": {
+    urteil: "EIGENER_BESTAND",
+    // Datenfluss am Draht belegt (produktweg-routen Q1): der nächste Befehl trägt nur Werte aus dem
+    // Wortlaut der Person, Namen aus dem Seitenprofil und vorher Gelesenes derselben Seite.
+    grund:
+      "eigener Lauf derselben Anmeldung; Antwort eigener Auftrag und nächster Befehl, kein Objektinhalt.",
+  },
+  "POST /api/me/klara/browser-auftraege/:id/steuerung": {
+    urteil: "EIGENER_BESTAND",
+    grund: "steuert einen eigenen Lauf derselben Anmeldung; Antwort eigener Auftrag.",
   },
   // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
   // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.

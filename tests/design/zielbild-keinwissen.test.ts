@@ -72,6 +72,8 @@ const MARKE_DATEI = join(WURZEL, "apps/web/public/word-addin/marke.js");
 const BEGRIFFE_DATEI = join(WURZEL, "apps/web/public/word-addin/begriffe.js");
 /** AUFTRAG gesamt-dokumenterzeugung: der Block KW-ANLEITUNG, geladen hinter begriffe.js. */
 const ANLEITUNG_DATEI = join(WURZEL, "apps/web/public/word-addin/anleitung.js");
+/** AUFTRAG klara-office-mac-maskottchen: der Block KW-BEGLEITER, geladen hinter anleitung.js. */
+const BEGLEITER_DATEI = join(WURZEL, "apps/web/public/word-addin/begleiter.js");
 /** R-0336/R-0708: der Block KW-WORDVERGLEICH, geladen unmittelbar nach taskpane.js. */
 const WV_DATEI = join(WURZEL, "apps/web/public/word-addin/wortvergleich.js");
 const ZIELBILD =
@@ -577,6 +579,8 @@ describe.runIf(zielbildDa)(
             "/word-addin/begriffe.js": [BEGRIFFE_DATEI, "application/javascript; charset=utf-8"],
             // AUFTRAG gesamt-dokumenterzeugung: ebenso `anleitung.js` (Block KW-ANLEITUNG).
             "/word-addin/anleitung.js": [ANLEITUNG_DATEI, "application/javascript; charset=utf-8"],
+            // AUFTRAG klara-office-mac-maskottchen: ebenso `begleiter.js` (Block KW-BEGLEITER).
+            "/word-addin/begleiter.js": [BEGLEITER_DATEI, "application/javascript; charset=utf-8"],
             // R-0336/R-0708: ebenso `wortvergleich.js` (Block KW-WORDVERGLEICH).
             "/word-addin/wortvergleich.js": [WV_DATEI, "application/javascript; charset=utf-8"],
           };

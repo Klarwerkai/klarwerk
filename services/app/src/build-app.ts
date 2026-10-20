@@ -376,6 +376,12 @@ import {
   type KlaraAufgabeRepo,
   PgKlaraAufgabeRepo,
 } from "./klara-aufgabe";
+// produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal der Begleitapp (nur Arbeitsspeicher).
+import { BegleiterKanal } from "./klara-begleiter";
+// produkt:20261011:assistenz-browser-aktionen (BPA-03): der Vertrag des Browseradapters und sein
+// Produktweg (Auftrag aus dem Wortlaut, Rechte je Schritt, Verlauf im eigenen Gespräch).
+import { BrowserFaehigkeitsregister, type BrowserSeitenprofil } from "./klara-browser-aktion";
+import { BrowserAktionDienst } from "./klara-browser-aktion-dienst";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
 // Speicher ohne Datenbank.
 import {
@@ -449,6 +455,8 @@ import {
   Produktbudget,
   type ProduktbudgetRepo,
 } from "./produktbudget";
+// produkt:20261011:assistenz-programmadapter (BPA-04): das Siegel der Hostbindungen.
+import { BindungsSiegel } from "./programmadapter";
 import {
   InMemoryQuellabgleichRepo,
   PgQuellabgleichRepo,
@@ -500,6 +508,9 @@ import { klaraAiRoutes } from "./routes/klara-ai-routes";
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
 // produkt:20261008:klara-aufgaben (Klara 07): die eigenen, serverseitig gespeicherten Aufgaben.
 import { klaraAufgabeRoutes } from "./routes/klara-aufgabe-routes";
+// produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen Word und Begleitapp.
+import { klaraBegleiterRoutes } from "./routes/klara-begleiter-routes";
+import { klaraBrowserAktionRoutes } from "./routes/klara-browser-aktion-routes";
 // produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen, serverseitig gespeicherten Notizen.
@@ -527,6 +538,7 @@ import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { produktbudgetRoutes } from "./routes/produktbudget-routes";
+import { programmadapterRoutes } from "./routes/programmadapter-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 import { pushRoutes } from "./routes/push-routes";
 // ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
@@ -3506,6 +3518,16 @@ export function buildApp(
      * Projektordner. Tests setzen einen eigenen Ordner.
      */
     kiCodexBasis?: string;
+    /**
+     * BPA-03 (produkt:20261011:assistenz-browser-aktionen): die Seitenprofile, auf denen Klara im
+     * Browser handeln darf, und die Fristen des Befehlswegs. Ohne Angabe gibt es KEIN Profil — jede
+     * Seite ist „nicht unterstützt" und endet in der Übergabe. Profile für echte Websites sind eine
+     * eigene Entscheidung (O01); Tests und Prüfinstanzen setzen das synthetische Profil.
+     */
+    browserAktion?: {
+      seitenprofile?: readonly BrowserSeitenprofil[];
+      fristen?: { abholMs?: number; antwortMs?: number; taktMs?: number; ablaufMs?: number };
+    };
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -5580,6 +5602,22 @@ export function buildApp(
   app.register(
     klaraGespraechRoutes({ dienst: klaraGespraechDienst, audit: services.audit }, guards),
   );
+  // produkt:20261011:assistenz-browser-aktionen (BPA-03): berechtigte Funktionen auf einer
+  // Browserseite. DIESELBE Gesprächsinstanz trägt den Verlauf (kein zweiter), dieselbe
+  // Anmeldeprüfung die Rechte je Schritt; die Seite erreicht nur die Erweiterung.
+  app.register(
+    klaraBrowserAktionRoutes(
+      {
+        dienst: new BrowserAktionDienst({
+          gespraeche: klaraGespraechDienst,
+          auth: services.auth,
+          register: new BrowserFaehigkeitsregister(opts.browserAktion?.seitenprofile ?? []),
+          fristen: opts.browserAktion?.fristen,
+        }),
+      },
+      guards,
+    ),
+  );
   // ================================================================================================
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13) — DER ARBEITSWEG MIT EINER GEWÄHLTEN KI.
   // ================================================================================================
@@ -5827,6 +5865,25 @@ export function buildApp(
         hintergrund: () => {
           void faehigkeiten.ausfuehrung.arbeiteWarteschlangeAb().catch(() => undefined);
         },
+      },
+      guards,
+    ),
+  );
+  // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen dem Word-Fenster und
+  // der Begleitapp — je Konto, nur im Arbeitsspeicher dieses Prozesses (`klara-begleiter.ts`).
+  // BPA-01 AC10 (nacharbeit-19): gezielt aus dem Host-Kandidaten ff96149e übernommen.
+  app.register(klaraBegleiterRoutes({ kanal: new BegleiterKanal() }, guards));
+  // produkt:20261011:assistenz-programmadapter: was Klara in welchem Programm kann — Name und Avatar
+  // aus DEMSELBEN Assistenzprofil, Dateiaufnahme in DIESELBE Objektablage, keine zweite Anmeldung
+  // oder Ablage je Programm. Das Siegel der Hostbindungen lebt je Instanz im Arbeitsspeicher.
+  // BPA-01 AC10 (nacharbeit-19): gezielt aus dem BPA-04-Kandidaten 345b4467 übernommen.
+  app.register(
+    programmadapterRoutes(
+      {
+        assistenzProfil: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
+        objekte: services.objects,
+        audit: services.audit,
+        siegel: new BindungsSiegel(),
       },
       guards,
     ),

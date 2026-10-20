@@ -310,6 +310,8 @@ export async function mount(
     return 0;
   };
   win.eval(read("i18n.js"));
+  // BPA-01: dieselbe Ladefolge wie `panel.html` — der Kontextvertrag liefert die Sperrtexte.
+  win.eval(read("kontext.js"));
   win.eval(read("panel.js"));
   // A real response and its render microtask, never an arbitrary sleep.
   const settle = async () => {

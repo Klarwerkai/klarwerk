@@ -75,6 +75,7 @@ export function harness(
   // JOB 3278 · CHR-02: die Leiste wird nicht mehr als Tab geöffnet, sondern über die Side-Panel-
   // API. `spuren` hält die REIHENFOLGE der Chrome-Aufrufe fest — daran hängt die Zusicherung, dass
   // `sidePanel.open` VOR dem ersten Speicherzugriff läuft und die Klickgeste damit nicht verwirkt.
+  let leseSperre: Promise<void> | null = null;
   const panelOpens: number[] = [];
   /** BPA-02 (Nacharbeit 5): ausdrücklich gestellte weitere Tabs — sonst keiner. */
   const weitereTabs = new Map<number, Selected>();
@@ -119,6 +120,9 @@ export function harness(
     runtime: {
       id: "test-extension",
       getURL: (p: string) => `chrome-extension://test-extension/${p}`,
+      // BPA-01 AC10: wie im Browser nur vorhanden, wenn `nativeMessaging` erteilt ist —
+      // gestellt über `setzeBegleiter`. Ohne ihn fehlt die Schnittstelle ganz.
+      connectNative: undefined as undefined | ((host: string) => unknown),
       onMessage: event("message"),
       onInstalled: event("installed"),
     },
@@ -143,6 +147,8 @@ export function harness(
     tabs: {
       onActivated: event("activated"),
       onUpdated: event("updated"),
+      // BPA-01: Chrome meldet das Schliessen eines Tabs; die einmalige Freigabe endet damit.
+      onRemoved: event("removed"),
     },
     scripting: {
       executeScript: async (options: unknown) => {
@@ -169,6 +175,10 @@ export function harness(
           ];
         }
         expect(options).toEqual({ target: { tabId: 7 }, files: ["selection.js"] });
+        // BPA-01 (nacharbeit-4): das Lesen der Seite dauert im Browser — ein Fall kann es hier
+        // anhalten und WÄHREND des Lesens Tab, Konto oder Anmeldung wechseln.
+        if (leseSperre) await leseSperre;
+        // Chrome-Erfassen-Einfügen (main): derselbe Halt, beim Aufbau des Prüfstands übergeben.
         if (optionen.leseHalt) await optionen.leseHalt;
         return [
           {
@@ -182,6 +192,11 @@ export function harness(
     },
     i18n: { getMessage: () => "In Klarwerk übernehmen" },
   };
+  // BPA-01: `importScripts` ist BROWSERVERHALTEN des Workers — er lädt `kontext.js` aus dem Paket in
+  // genau diesen Kontext, wie Chrome es im Service Worker tut. Der Prüfling bleibt unverändert.
+  const importScripts = (...dateien: string[]) => {
+    for (const datei of dateien) runInContext(read(datei), context);
+  };
   const context = createContext({
     chrome,
     fetch: fetcher,
@@ -191,6 +206,7 @@ export function harness(
     crypto: globalThis.crypto,
     setTimeout,
     clearTimeout,
+    importScripts,
   });
   const boot = () => runInContext(read("worker.js"), context);
   boot();
@@ -235,6 +251,23 @@ export function harness(
       if (unlesbar) unlesbareTabs.add(tabId);
       else unlesbareTabs.delete(tabId);
     },
+    /** Hält das nächste Lesen der Seite an; der Rückgabewert lässt es weiterlaufen. */
+    halteLesen: () => {
+      let los = () => {};
+      leseSperre = new Promise<void>((frei) => {
+        los = frei;
+      });
+      return () => {
+        leseSperre = null;
+        los();
+      };
+    },
+    /** AC10: der Native-Messaging-Anschluss (Recht erteilt + Host) — `undefined` nimmt ihn weg. */
+    setzeBegleiter: (verbinde: ((host: string) => unknown) | undefined) => {
+      chrome.runtime.connectNative = verbinde;
+    },
+    /** Wie oft die Seite bisher gelesen wurde (auch angehaltene Lesungen). */
+    lesungen: () => spuren.filter((s) => s === "scripting.executeScript").length,
     /** Der Zuhörer der Leiste an DIESEM Speicher — so meldet der Worker ihr seine Schreibvorgänge. */
     subscribe: (fn: (changes: Aenderungen, area: string) => void) => {
       hoerer.push(fn);
