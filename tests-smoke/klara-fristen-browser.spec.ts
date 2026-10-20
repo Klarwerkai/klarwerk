@@ -110,6 +110,9 @@ test("AW19 · konfigurierte Quellen: Vorschau ohne Wirkung, automatische eigene 
     await expect(chip).toContainText("Aus Information erkannt");
     await expect(chip).toContainText("Manuell festgelegt");
     await chip.click();
+    await expect
+      .poll(() => p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true);
     await p
       .getByTestId("kalender-detail-herkunft")
       .getByRole("link", { name: "Belege und Fundstellen" })

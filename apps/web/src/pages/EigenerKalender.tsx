@@ -354,9 +354,9 @@ function Detail({
               {t("kalender.detail.schliessen")}
             </Button>
           </div>
-          <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+          <dl className="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 [&>dd]:min-w-0 [&>dd]:break-words">
             <dt className="text-muted">{t("kalender.detail.kennung")}</dt>
-            <dd data-testid="kalender-detail-id" className="font-mono">
+            <dd data-testid="kalender-detail-id" className="break-all font-mono">
               {e.id}
             </dd>
             <dt className="text-muted">{t("kalender.detail.art")}</dt>
@@ -406,7 +406,7 @@ function Detail({
             {e.fristId ? (
               <>
                 <dt className="text-muted">{t("kalender.detail.frist")}</dt>
-                <dd className="font-mono">{e.fristId}</dd>
+                <dd className="break-all font-mono">{e.fristId}</dd>
               </>
             ) : null}
             {e.serie ? (
