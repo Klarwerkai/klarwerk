@@ -427,11 +427,13 @@ describe("AW21 · Normbelege im echten vorhandenen PG-Fristen-CAS", () => {
         else {
           const e = f.n.ereignisse.find((e) => e.datum === "2027-02-01");
           if (!e) throw new Error("Gegenbeleg fehlt");
-          gegner.push(await dienst(buildPgServices(zweiterPool)).klaereKonflikt(f.id, f.n.id, {
-            ...f.eingabe,
-            auswahl: [{ art: e.art, ereignisId: e.id }],
-            begruendung: "Tatsächliche zweite Entscheidung gewinnt nur ihren eigenen CAS.",
-          });
+          gegner.push(
+            await dienst(buildPgServices(zweiterPool)).klaereKonflikt(f.id, f.n.id, {
+              ...f.eingabe,
+              auswahl: [{ art: e.art, ereignisId: e.id }],
+              begruendung: "Tatsächliche zweite Entscheidung gewinnt nur ihren eigenen CAS.",
+            }),
+          );
         }
       };
       await expect(f.d.klaereKonflikt(f.id, f.n.id, f.eingabe)).rejects.toMatchObject({
