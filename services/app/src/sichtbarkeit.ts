@@ -1286,9 +1286,17 @@ const STUFE_FUER_UNBEKANNT: Confidentiality = "vertraulich";
 export async function privatesFolgeprodukt(
   user: SessionUser,
   objectId: string,
-  lifecycle: { owner?: string | undefined; privatQuelle?: string | undefined } | undefined,
+  lifecycle:
+    | {
+        owner?: string | undefined;
+        privatQuelle?: string | undefined;
+        purpose?: string | undefined;
+      }
+    | undefined,
   quellen: AnhangQuellen,
 ): Promise<AnhangUrteil | undefined> {
+  if (lifecycle?.purpose === "klara_audio")
+    return { sichtbar: !!lifecycle.owner && lifecycle.owner === user.id, vertraulich: true };
   const quelleId = lifecycle?.privatQuelle;
   if (!quelleId) {
     return undefined;

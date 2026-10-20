@@ -35,6 +35,7 @@ export const KLARA_NOTIZ_GELOESCHT = "klara.notiz.geloescht";
 export interface KlaraNotizRoutenDeps {
   dienst: KlaraNotizDienst;
   audit: AuditService;
+  loesche?: (kontoId: string, id: string) => Promise<boolean>;
   lesbar?: (user: SessionUser, notiz: KlaraNotiz) => Promise<boolean>;
 }
 
@@ -178,7 +179,11 @@ export function klaraNotizRoutes(deps: KlaraNotizRoutenDeps, guards: Guards): Fa
         return;
       }
       try {
-        if (!(await dienst.loesche(user.id, request.params.id))) {
+        if (
+          !(await (deps.loesche
+            ? deps.loesche(user.id, request.params.id)
+            : dienst.loesche(user.id, request.params.id)))
+        ) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Notiz nicht gefunden." });
           return;
         }

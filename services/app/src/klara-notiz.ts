@@ -648,6 +648,12 @@ export class KlaraNotizDienst {
       throw eingabeFehler("fassung ist Pflicht (die zuletzt gesehene Fassung).");
     }
     const alt = await this.hole(kontoId, id);
+    if (alt.wissensHerkunft?.besprechung && !alt.wissensHerkunft.besprechung.quelleNotizId)
+      throw new KlaraNotizFehler(
+        409,
+        "konflikt",
+        "Transkript über die versionierte Hörfehlerkorrektur ändern.",
+      );
     const inhalt =
       eingabe.inhalt === undefined
         ? alt.inhalt

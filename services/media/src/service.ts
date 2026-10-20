@@ -1,4 +1,5 @@
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
+import { wavAusschnitt, type WavAbschnitt } from "./wav-abschnitte";
 import { type MediaAnalysis, MediaAnalysisError, type Transcriber } from "./types";
 
 // SCRUM-521 (WP1): Vertraulichkeits-Rangordnung (self-contained; media bleibt von knowledge-object
@@ -149,6 +150,9 @@ export class MediaAnalysisService {
     objectId: string,
     locale: "de" | "en",
     requestConfidentiality?: string,
+    zeitgebunden = false,
+    bereich?: WavAbschnitt,
+    signal?: AbortSignal,
   ): Promise<MediaAnalysis> {
     const stored = await this.objects.read(objectId);
     if (!stored) {
@@ -225,6 +229,25 @@ export class MediaAnalysisService {
     try {
       // confidential ist hier false oder durch die zweite Adminfreigabe gedeckt (oben geprüft); der
       // cappedTranscriber-Wächter fragt dieselbe Freigabe noch einmal (Belt & Suspenders).
+      if (zeitgebunden) {
+        if (!this.transcriber.transcribeTimed)
+          throw new Error("Der vorhandene Anbieter liefert keine Zeitsegmente.");
+        const zeittranskript = await this.transcriber.transcribeTimed(
+          bereich ? wavAusschnitt(decoded.bytes, bereich) : decoded.bytes,
+          bereich ? "audio/wav" : decoded.mime,
+          locale,
+          confidential,
+          signal,
+        );
+        return {
+          objectId,
+          transcript: zeittranskript.text,
+          zeittranskript,
+          engineActive: true,
+          engine: this.transcriber.name,
+          note: "Zeitgebundenes automatisches Transkript; fachlich und hörend zu prüfen.",
+        };
+      }
       const transcript = await this.transcriber.transcribe(
         decoded.bytes,
         decoded.mime,

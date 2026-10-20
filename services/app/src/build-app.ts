@@ -403,6 +403,7 @@ import {
 import { KlaraAusfuehrung, type KlaraRufe, type KlaraVorWirkung } from "./klara-ausfuehrung";
 // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal der Begleitapp (nur Arbeitsspeicher).
 import { BegleiterKanal } from "./klara-begleiter";
+import { KlaraBesprechungsDienst } from "./klara-besprechung";
 // produkt:20261011:assistenz-browser-aktionen (BPA-03): der Vertrag des Browseradapters und sein
 // Produktweg (Auftrag aus dem Wortlaut, Rechte je Schritt, Verlauf im eigenen Gespräch).
 import { BrowserFaehigkeitsregister, type BrowserSeitenprofil } from "./klara-browser-aktion";
@@ -586,6 +587,7 @@ import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-
 import { klaraAufgabeRoutes } from "./routes/klara-aufgabe-routes";
 // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen Word und Begleitapp.
 import { klaraBegleiterRoutes } from "./routes/klara-begleiter-routes";
+import { klaraBesprechungRoutes } from "./routes/klara-besprechung-routes";
 import { klaraBrowserAktionRoutes } from "./routes/klara-browser-aktion-routes";
 // produkt:20261007:klara-erinnerungen-kalender (Klara 10): die eigenen Erinnerungen.
 import { klaraErinnerungRoutes } from "./routes/klara-erinnerung-routes";
@@ -944,6 +946,7 @@ export interface AppServices {
    * Wissensbestand; im Postgres-Betrieb haltbar (`PgKlaraNotizRepo`), sonst im Speicher.
    */
   klaraNotizen: KlaraNotizRepo;
+  klaraNotizenRoh?: KlaraNotizRepo;
   /**
    * produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben (`klara-aufgabe.ts`) je
    * Konto. Aus demselben Grund wie `klaraNotizen` NICHT in `AppRepos` und in keiner gemeinsamen
@@ -1913,6 +1916,7 @@ export function assembleServices(
     ...(opts.withTx ? { withTx: opts.withTx } : {}),
   });
   const autorenNamen = autorenNamenAus(auth);
+  const klaraNotizenBasis = opts.klaraNotizen ?? new InMemoryKlaraNotizRepo();
   const library = new LibraryService({
     koService: ko,
     dokumente,
@@ -2068,24 +2072,35 @@ export function assembleServices(
     eigenerKalender: opts.eigenerKalender ?? new InMemoryEigenerKalenderRepo(),
     klaraFristen: opts.klaraFristen ?? new InMemoryKlaraFristenRepo(),
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
-    klaraNotizen: new QuellgeschuetzteKlaraNotizen(
-      opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
-      async (n) => {
-        const konto = await repos.users.findById(n.kontoId);
-        if (!konto?.approved) return false;
-        const user = {
-          id: konto.id,
-          role: konto.role,
-          ...(konto.freigabe ? { freigabe: konto.freigabe } : {}),
-          spaceLesbar: lesbareSpaces(await spaces.aktuelle(), konto.id),
-        };
-        for (const q of n.wissensHerkunft?.aussagen.flatMap((a) => a.quellen) ?? []) {
-          const quelle = await ko.get(q.id);
-          if (!quelle || !darfSehen(user, quelle)) return false;
-        }
-        return true;
-      },
-    ),
+    klaraNotizenRoh: klaraNotizenBasis,
+    klaraNotizen: new QuellgeschuetzteKlaraNotizen(klaraNotizenBasis, async (n) => {
+      const konto = await repos.users.findById(n.kontoId);
+      if (!konto?.approved) return false;
+      const b = n.wissensHerkunft?.besprechung;
+      if (b?.quelleNotizId && !(await klaraNotizenBasis.hole(n.kontoId, b.quelleNotizId)))
+        return false;
+      if (b?.audioId) {
+        const audio = await objects.metadata(b.audioId);
+        if (
+          !audio ||
+          audio.lifecycle?.owner !== n.kontoId ||
+          audio.lifecycle.purpose !== "klara_audio"
+        )
+          return false;
+      }
+
+      const user = {
+        id: konto.id,
+        role: konto.role,
+        ...(konto.freigabe ? { freigabe: konto.freigabe } : {}),
+        spaceLesbar: lesbareSpaces(await spaces.aktuelle(), konto.id),
+      };
+      for (const q of n.wissensHerkunft?.aussagen.flatMap((a) => a.quellen) ?? []) {
+        const quelle = await ko.get(q.id);
+        if (!quelle || !darfSehen(user, quelle)) return false;
+      }
+      return true;
+    }),
     // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
     klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
     // produkt:20261007:klara-erinnerungen-kalender: die Erinnerungen — Postgres, wenn injiziert.
@@ -6122,6 +6137,15 @@ export function buildApp(
     audit: services.audit,
   });
   app.register(klaraWissenRoutes(klaraWissen, services.spaces, guards));
+  const klaraBesprechung = new KlaraBesprechungsDienst(
+    services.klaraNotizen,
+    services.klaraNotizenRoh ?? services.klaraNotizen,
+    services.klaraAufgaben,
+    services.objects,
+    services.media,
+    () => services.reasoner.kiAbschaltung().abgeschaltet,
+  );
+  app.register(klaraBesprechungRoutes(klaraBesprechung, services.objects, guards));
   // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen Notizen. Eine Notiz aus dem
   // Gespräch liest Wortlaut und Bezug aus DEMSELBEN eigenen Gespräch.
   app.register(
@@ -6132,6 +6156,7 @@ export function buildApp(
           gespraeche: services.klaraGespraeche,
         }),
         audit: services.audit,
+        loesche: (kontoId, id) => klaraBesprechung.loesche(kontoId, id),
         lesbar: async (user, n) => {
           if (!n.wissensHerkunft) return true;
           try {
