@@ -76,7 +76,8 @@ Originalabschluss unabhängig zu beurteilen. Kein neuer Synchronisations- oder F
 
 Erster fester Port: `fbc1ef39dff20253dacc4c03b86cf4b58bbed9c2`,
 `services/app/src/office-datenfolien.ts`, `DeckVertrag` / `GebundenerDeckVertrag`.
-Ergänzungen danach sind additiv: Folientitel, Währung, Prognosekennung und Kontrollzeitpunkt.
+Ergänzungen danach sind additiv: optionaler Folientitel, Währung und Prognosekennung.
+Der Kontrollzeitpunkt gehört bereits zum ersten festen Port.
 
 ```ts
 {
