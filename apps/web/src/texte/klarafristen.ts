@@ -96,6 +96,7 @@ export default {
     "klarafristen.verlauf.quelle_zurueckgezogen": "Beleg zurückgezogen",
     "klarafristen.verlauf.verworfen": "Bewusst verworfen",
     "klarafristen.verlauf.manuell": "Manuell bearbeitet",
+    "klarafristen.verlauf.zeitgrenze": "Frist ist inzwischen vergangen",
   },
   en: {
     "klarafristen.profil":
@@ -191,6 +192,7 @@ export default {
     "klarafristen.verlauf.quelle_zurueckgezogen": "Evidence withdrawn",
     "klarafristen.verlauf.verworfen": "Explicitly discarded",
     "klarafristen.verlauf.manuell": "Manually edited",
+    "klarafristen.verlauf.zeitgrenze": "Deadline has since passed",
   },
   nl: {
     "klarafristen.profil":
@@ -287,5 +289,6 @@ export default {
     "klarafristen.verlauf.quelle_zurueckgezogen": "Bewijs ingetrokken",
     "klarafristen.verlauf.verworfen": "Bewust verworpen",
     "klarafristen.verlauf.manuell": "Handmatig bewerkt",
+    "klarafristen.verlauf.zeitgrenze": "Termijn is inmiddels verstreken",
   },
 } satisfies Textmodul;
