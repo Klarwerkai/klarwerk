@@ -17,6 +17,10 @@ interface XmlElement {
   getAttribute(name: string): string | null;
   getAttributeNS(namespace: string, name: string): string | null;
   lookupNamespaceURI(prefix: string): string | null;
+  getElementsByTagNameNS(
+    namespace: string,
+    name: string,
+  ): ArrayLike<XmlElement> & Iterable<XmlElement>;
 }
 interface XmlDocument {
   documentElement: XmlElement;
@@ -153,4 +157,79 @@ describe("PP05 XML-Namensräume", () => {
       }
     },
   );
+});
+
+// MS-OI29500 §20.1.2.2.17: Office wählt den Grafikobjekttyp anhand dieser festen URI.
+// https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/05d4382c-b474-4571-98bc-227f8c917033
+describe("PP05 native Tabellenkennung", () => {
+  const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+  const TABLE_URI = "http://schemas.openxmlformats.org/drawingml/2006/table";
+  function tabellenGrafik(doc: XmlDocument): XmlElement {
+    const graphic = [...doc.getElementsByTagNameNS(A, "graphicData")].find(
+      (g) => g.getElementsByTagNameNS(A, "tbl").length > 0,
+    );
+    expect(graphic, "Native Tabelle im Grafikrahmen").toBeDefined();
+    return graphic!;
+  }
+  it("unterscheidet die wohlgeformte fe329-Warnungsfolie von einer Office-Tabellenkennung", async () => {
+    const bad = wohlgeformt(
+      await readFile(fixture("pp05-fe329-tabellenfolie.xml"), "utf8"),
+      "eingefrorene echte Warnungsausgabe",
+    );
+    const graphic = tabellenGrafik(bad);
+    expect(graphic.getAttribute("uri")).toBe(`${A}/table`);
+    expect(graphic.getAttribute("uri")).not.toBe(TABLE_URI);
+  });
+  it("schreibt eine Office-erkennbare native Tabelle mit unveränderten Werten und Zellbindungen", async () => {
+    const input = await readFile(nativeInput);
+    const output = await schreibeDatenfolien(input, plan(input));
+    const zip = await JSZip.loadAsync(output.bytes);
+    const cells = output.deck.bindungen.filter((b) => b.zeile);
+    expect(
+      cells.map(({ datenpunktId, zeile, spalte, shapeId }) => ({
+        datenpunktId,
+        zeile,
+        spalte,
+        shapeId,
+      })),
+    ).toEqual([
+      { datenpunktId: "nord", zeile: 2, spalte: 2, shapeId: "3" },
+      { datenpunktId: "sued", zeile: 3, spalte: 2, shapeId: "3" },
+      { datenpunktId: "summe", zeile: 4, spalte: 2, shapeId: "3" },
+    ]);
+    const doc = wohlgeformt(
+      await zip.file(`ppt/slides/klaraPP05_${cells[0]!.sldId}.xml`)!.async("string"),
+      "geänderte Tabellenfolie",
+    );
+    const graphic = tabellenGrafik(doc);
+    expect(graphic.getAttribute("uri")).toBe(TABLE_URI);
+    const table = graphic.getElementsByTagNameNS(A, "tbl")[0]!;
+    expect(table.getElementsByTagNameNS(A, "tr")).toHaveLength(4);
+    expect(table.getElementsByTagNameNS(A, "gridCol")).toHaveLength(4);
+    const text = [...table.getElementsByTagNameNS(A, "t")].map((t) => t.textContent);
+    expect(text).toEqual(
+      expect.arrayContaining(["Bezug / Einheit", "400 T€", "600 T€", "1.000 T€"]),
+    );
+    expect(output.deck.vertrag).toBe("klara-pp05-v1");
+    const chart = wohlgeformt(
+      await zip
+        .file(`ppt/slides/klaraPP05_${output.deck.diagramme[0]!.sldId}.xml`)!
+        .async("string"),
+      "unveränderte Diagrammkennung",
+    );
+    expect(chart.getElementsByTagNameNS(A, "graphicData")[0]?.getAttribute("uri")).toBe(
+      "http://schemas.openxmlformats.org/drawingml/2006/chart",
+    );
+    const original = await JSZip.loadAsync(input);
+    expect(await zip.file("ppt/slides/slide1.xml")!.async("nodebuffer")).toEqual(
+      await original.file("ppt/slides/slide1.xml")!.async("nodebuffer"),
+    );
+    if (process.env.PP05_TABLE_URI_BELEGE) {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(
+        join(process.env.PP05_TABLE_URI_BELEGE, "PP05-R1-TABELLENKENNUNG-GEAENDERT.pptx"),
+        output.bytes,
+      );
+    }
+  });
 });

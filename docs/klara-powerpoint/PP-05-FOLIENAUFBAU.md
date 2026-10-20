@@ -210,3 +210,19 @@ und die eingefrorene fehlerhafte Folienliste. Ein strikter XML-Parser weist den 
 und prüft das geänderte Paket bei lokalen und globalen Namespace-Deklarationen, auflösbare
 Folienverweise und erhaltene Vorlagenteile. Die native Öffnung/Bearbeitung/Speicherung/Wiederöffnung
 der geänderten Ausgabe ist ein separater noch ausstehender Nachweis; XML-Prüfung ersetzt ihn nicht.
+
+## Getrennter Nachtrag: native Tabellen-Objektkennung
+
+Der tatsächliche Folgefall auf `fe329b6e` bestätigte den geschlossenen Namespacefehler im
+neuen gespeicherten Paket, PowerPoint bot jedoch weiter eine Inhaltsreparatur an. Der Versuch
+endete regulär ohne Repair, Bearbeitung oder Speicherung; dieser negative Beleg bleibt erhalten.
+
+Die Tabellenfolie der eingefrorenen 50911-Byte-Ausgabe verwendete als `graphicData`-Kennung
+`…/drawingml/2006/main/table`. Office bestimmt den nativen Objekttyp über diese Kennung;
+für `tbl` ist ausschließlich `…/drawingml/2006/table` dokumentiert
+([MS-OI29500 §20.1.2.2.17](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/05d4382c-b474-4571-98bc-227f8c917033)).
+Der Schreiber verwendet jetzt diese Tabellenkennung. Der Element-Namensraum von `a:tbl`
+bleibt DrawingML/main; Inhalte, Werte, Zellbindungen und Diagrammkennung bleiben erhalten.
+Die neue enge Probe unterscheidet ausdrücklich wohlgeformtes XML von einer für Office
+erkennbaren Tabellenkennung. Eine erneute tatsächliche native Öffnung und Weiterbearbeitung
+der geänderten Ausgabe bleibt bis zur frischen Zuteilung offen.
