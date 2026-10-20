@@ -7,8 +7,8 @@ import {
   type Kandidat,
   aktuellerCommit,
   erwarteterStand,
+  kandidatBereitstellen,
   pruefeKandidat,
-  starteKandidat,
 } from "../fe003-tutorial-fragen/kandidat";
 
 let kandidat: Kandidat;
@@ -17,7 +17,7 @@ const belege = join(process.cwd(), ".local/run/klara-i-browser", aktuellerCommit
 const ergebnisse: unknown[] = [];
 beforeAll(async () => {
   mkdirSync(belege, { recursive: true });
-  kandidat = await starteKandidat();
+  kandidat = await kandidatBereitstellen(undefined);
   const bindung = await pruefeKandidat(kandidat.url, erwarteterStand());
   writeFileSync(join(belege, "kandidat.json"), JSON.stringify(bindung, null, 2));
   browser = await chromium.launch({ headless: true });
