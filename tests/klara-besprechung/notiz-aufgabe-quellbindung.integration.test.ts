@@ -1,0 +1,276 @@
+import { randomUUID } from "node:crypto";
+import type { Pool } from "pg";
+import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
+import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { buildApp, buildPgServices } from "../../services/app/src/build-app";
+import { createPool, migrate } from "../../services/app/src/db";
+import { pcmQuelle } from "./segment-fixture";
+let container: StartedTestContainer;
+let url = "";
+let admin = "";
+let token = "";
+const pools: Pool[] = [];
+const apps: ReturnType<typeof buildApp>[] = [];
+function instanz() {
+  const pool = createPool(url);
+  pools.push(pool);
+  const services = buildPgServices(pool);
+  const app = buildApp(services);
+  apps.push(app);
+  return { pool, services, app };
+}
+let i: ReturnType<typeof instanz>;
+function api(
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  payload?: unknown,
+  x = i,
+  auth = token,
+) {
+  return x.app.inject({
+    method,
+    url: `/api${path}`,
+    headers: { authorization: `Bearer ${auth}` },
+    ...(payload ? { payload: payload as Record<string, unknown> } : {}),
+  });
+}
+async function audio(segmentiert = false) {
+  const r = await api("POST", "/objects", {
+    name: "synthetische-quelle.wav",
+    mime: "audio/wav",
+    kind: "video",
+    purpose: "klara_audio",
+    data: `data:audio/wav;base64,${segmentiert ? pcmQuelle(1).toString("base64") : "UklGRg=="}`,
+  });
+  expect(r.statusCode, r.body).toBe(201);
+  return r.json().id as string;
+}
+async function meeting(audioId?: string, segmentiert = false) {
+  const r = await api("POST", "/me/klara/besprechungen/import", {
+    titel: "Synthetische F15-Privatmarke",
+    meetingId: `caller-${randomUUID()}`,
+    berechtigt: true,
+    ...(segmentiert
+      ? { audioId, segmentiert: true, transkription: true }
+      : audioId
+        ? {
+            audioId,
+            vtt: "WEBVTT\n\na\n00:00:00.000 --> 00:00:01.000\nBeschluss: Synthetische F15-Privatmarke erhalten.",
+          }
+        : { text: "Beschluss: Synthetische F15-Privatmarke erhalten." }),
+  });
+  expect(r.statusCode, r.body).toBe(200);
+  return r.json().notiz;
+}
+async function normaleNotiz(
+  titel = "Gewöhnlicher eigener Ergebniszettel",
+  inhalt = "Gewöhnliches eigenes Ergebnis ohne F15-Quelle.",
+) {
+  const r = await api("POST", "/me/klara/notizen", {
+    vorgang: `note-${randomUUID()}`,
+    weg: "geschrieben",
+    titel,
+    inhalt,
+    objektbezug: { pfad: "/start", seitenName: "Start", objekt: titel },
+  });
+  expect(r.statusCode, r.body).toBe(201);
+  return r.json().notiz;
+}
+// Genau der normale sichtbare Als-Aufgabe-Caller: kein interner dritter Parameter/Bindungsflag.
+function ausNotiz(notizId: string, extra: Record<string, unknown> = {}) {
+  return api("POST", "/me/klara/aufgaben", {
+    vorgang: `aufgabe-aus-notiz-${notizId.replace(/[^A-Za-z0-9_-]/g, "_")}`.slice(0, 100),
+    weg: "notiz",
+    quelle: { notizId },
+    ...extra,
+  });
+}
+async function taskSicht(id: string, x = i) {
+  const [einzeln, liste] = await Promise.all([
+    api("GET", `/me/klara/aufgaben/${id}`, undefined, x),
+    api("GET", "/me/klara/aufgaben", undefined, x),
+  ]);
+  return { einzeln, liste, ids: liste.json().aufgaben.map((a: { id: string }) => a.id) };
+}
+beforeAll(async () => {
+  container = await new GenericContainer("postgres:16-alpine")
+    .withName(`klara-f15-quellbindung-${randomUUID()}`)
+    .withLabels({ "klarwerk.owner": "klara-f15-quellbindung-20261020" })
+    .withEnvironment({ POSTGRES_PASSWORD: "f15-synthetic", POSTGRES_DB: "klara_f15_quellbindung" })
+    .withExposedPorts(5432)
+    .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+    .start();
+  console.log(
+    JSON.stringify({
+      ressource: "F15-1-PG",
+      ereignis: "begonnen",
+      at: new Date().toISOString(),
+      containerId: container.getId(),
+    }),
+  );
+  url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klara_f15_quellbindung`;
+  const p = createPool(url);
+  await migrate(p);
+  await p.end();
+  const x = instanz();
+  expect(
+    (
+      await x.app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: {
+          name: "F15 Prüfbetrieb",
+          email: "admin@f15-quellbindung.test",
+          password: "synthetisch123",
+        },
+      })
+    ).statusCode,
+  ).toBe(201);
+  admin = (
+    await x.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@f15-quellbindung.test", password: "synthetisch123" },
+    })
+  ).json().token;
+}, 120000);
+beforeEach(async () => {
+  i = instanz();
+  const email = `f-${randomUUID()}@f15-quellbindung.test`;
+  expect(
+    (
+      await api(
+        "POST",
+        "/users",
+        { name: "F15 fiktiver Caller", email, role: "experte", password: "synthetisch123" },
+        i,
+        admin,
+      )
+    ).statusCode,
+  ).toBe(201);
+  token = (
+    await i.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email, password: "synthetisch123" },
+    })
+  ).json().token;
+});
+afterAll(async () => {
+  for (const a of apps) await a.close();
+  for (const p of pools) await p.end();
+  await container?.stop();
+  console.log(
+    JSON.stringify({ ressource: "F15-1-PG", ereignis: "beendet", at: new Date().toISOString() }),
+  );
+});
+it("normaler Notiz→Aufgabe-Caller verweigert echte Teilfassung auch bei abweichendem Text/Clientflag vor jeder Kopie", async () => {
+  const n = await meeting(await audio(true), true);
+  const r = await ausNotiz(n.id, {
+    titel: "Eigener behaupteter Ersatztext",
+    inhalt: "Teilfassung trotzdem kopieren",
+    privatNotizGebunden: false,
+  });
+  console.log(
+    JSON.stringify({
+      beleg: "F15-1-Teilfassung",
+      notizId: n.id,
+      status: r.statusCode,
+      taskId: r.json().aufgabe?.id ?? null,
+    }),
+  );
+  expect(r.statusCode, r.body).toBe(409);
+  expect(
+    (await i.pool.query("SELECT id FROM klara_aufgaben WHERE konto_id=$1", [n.kontoId])).rowCount,
+  ).toBe(0);
+  expect((await ausNotiz(n.id, { privatNotizGebunden: true })).statusCode).toBe(409);
+});
+it("fertige Audio/VTT-Notiz wird im normalen Caller persistent gebunden; heutiger Quellenentzug sperrt Einzel-, Listen- und Wiederholungsweg", async () => {
+  const audioId = await audio();
+  const n = await meeting(audioId);
+  const r = await ausNotiz(n.id);
+  expect(r.statusCode, r.body).toBe(201);
+  const task = r.json().aufgabe;
+  expect(task.inhalt).toBe(n.inhalt);
+  expect(task.titel).toBe(n.titel);
+  const wieder = await ausNotiz(n.id);
+  expect(wieder.statusCode, wieder.body).toBe(200);
+  expect(wieder.json().aufgabe.id).toBe(task.id);
+  const gespeichert = (await i.pool.query("SELECT data FROM klara_aufgaben WHERE id=$1", [task.id]))
+    .rows[0].data;
+  const neu = instanz();
+  expect((await taskSicht(task.id, neu)).einzeln.statusCode).toBe(200);
+  await neu.services.objects.delete(audioId);
+  const sicht = await taskSicht(task.id, neu);
+  const erneut = await ausNotiz(n.id);
+  console.log(
+    JSON.stringify({
+      beleg: "F15-1-Quellentzug",
+      taskId: task.id,
+      notizId: n.id,
+      privatNotizGebunden: gespeichert.privatNotizGebunden ?? false,
+      einzeln: sicht.einzeln.statusCode,
+      inListe: sicht.ids.includes(task.id),
+      wiederholung: erneut.statusCode,
+    }),
+  );
+  expect(sicht.einzeln.statusCode, sicht.einzeln.body).toBe(404);
+  expect(sicht.ids).not.toContain(task.id);
+  expect(sicht.liste.body).not.toContain("Synthetische F15-Privatmarke");
+  expect(erneut.statusCode).toBe(404);
+  expect(gespeichert.privatNotizGebunden).toBe(true);
+});
+it("normale Aufgaben aus fertigem Transkript und privater Übergabe verschwinden nach Quellbesprechungslöschung auch aus realer PG-Ablage", async () => {
+  const n = await meeting();
+  const ue = await api("POST", `/me/klara/besprechungen/${n.id}/uebernehmen`, {
+    fassung: n.fassung,
+    bewusst: true,
+    auswahl: ["zeile-1"],
+  });
+  expect(ue.statusCode, ue.body).toBe(200);
+  const ids: string[] = [];
+  for (const id of [n.id, ue.json().notizId]) {
+    const r = await ausNotiz(id);
+    expect(r.statusCode, r.body).toBe(201);
+    ids.push(r.json().aufgabe.id);
+  }
+  expect((await api("DELETE", `/me/klara/notizen/${n.id}`)).statusCode).toBe(200);
+  const rest = await i.pool.query("SELECT id FROM klara_aufgaben WHERE id=ANY($1::text[])", [ids]);
+  const sicht = await Promise.all(ids.map((id) => taskSicht(id)));
+  console.log(
+    JSON.stringify({
+      beleg: "F15-1-Privatloeschung",
+      notizId: n.id,
+      taskIds: ids,
+      pgReste: rest.rowCount,
+      einzeln: sicht.map((s) => s.einzeln.statusCode),
+    }),
+  );
+  expect(rest.rowCount).toBe(0);
+  for (let j = 0; j < ids.length; j++) {
+    expect(sicht[j]?.einzeln.statusCode).toBe(404);
+    expect(sicht[j]?.ids).not.toContain(ids[j]);
+  }
+});
+it("gewöhnliche eigene Notizen/Ergebnisse behalten ihren bisherigen unabhängigen Aufgabenweg; Clientflag erzeugt keine falsche Bindung", async () => {
+  const n = await normaleNotiz();
+  const r = await ausNotiz(n.id, { privatNotizGebunden: true });
+  expect(r.statusCode, r.body).toBe(201);
+  const task = r.json().aufgabe;
+  const row = (await i.pool.query("SELECT data FROM klara_aufgaben WHERE id=$1", [task.id])).rows[0]
+    .data;
+  expect(row.privatNotizGebunden).toBeUndefined();
+  expect((await api("DELETE", `/me/klara/notizen/${n.id}`)).statusCode).toBe(200);
+  const sicht = await taskSicht(task.id);
+  expect(sicht.einzeln.statusCode, sicht.einzeln.body).toBe(200);
+  expect(sicht.ids).toContain(task.id);
+  expect(sicht.einzeln.json().aufgabe.inhalt).toBe(n.inhalt);
+});
+it("Wiederholung eines ungebundenen anderen Vorgangs wird nicht als quellengebundene Besprechungsaufgabe ausgegeben", async () => {
+  const n = await meeting();
+  const normal = await normaleNotiz(n.titel, n.inhalt);
+  const vorgang = `idempotenz-${randomUUID()}`;
+  expect((await ausNotiz(normal.id, { vorgang })).statusCode).toBe(201);
+  const r = await ausNotiz(n.id, { vorgang });
+  expect(r.statusCode, r.body).toBe(409);
+});
