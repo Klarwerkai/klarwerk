@@ -8,6 +8,8 @@ const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const P = "http://schemas.openxmlformats.org/presentationml/2006/main";
 const C = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+// Office-Objektkennung; der Element-Namensraum von a:tbl bleibt dagegen DrawingML/main.
+const TABLE_GRAPHIC_DATA_URI = "http://schemas.openxmlformats.org/drawingml/2006/table";
 const PKG = "http://schemas.openxmlformats.org/package/2006/relationships";
 const CT = "application/vnd.openxmlformats-officedocument";
 const X = (s: string) =>
@@ -161,7 +163,7 @@ export async function schreibeDatenfolien(
         `${f.prognose ? "Prognose · " : ""}${f.zustand}`,
       ]),
     ];
-    const table = `<a:graphicData uri="${A}/table"><a:tbl><a:tblPr firstRow="1" bandRow="1"/><a:tblGrid>${[0.28, 0.19, 0.2, 0.23].map((n) => `<a:gridCol w="${Math.round(w * n)}"/>`).join("")}</a:tblGrid>${rows.map((r) => `<a:tr h="${Math.round(h * 0.14)}">${r.map(cell).join("")}</a:tr>`).join("")}</a:tbl></a:graphicData>`;
+    const table = `<a:graphicData uri="${TABLE_GRAPHIC_DATA_URI}"><a:tbl><a:tblPr firstRow="1" bandRow="1"/><a:tblGrid>${[0.28, 0.19, 0.2, 0.23].map((n) => `<a:gridCol w="${Math.round(w * n)}"/>`).join("")}</a:tblGrid>${rows.map((r) => `<a:tr h="${Math.round(h * 0.14)}">${r.map(cell).join("")}</a:tr>`).join("")}</a:tbl></a:graphicData>`;
     const id = await neu("Datenübersicht", frame(3, "Gebundene Daten", table));
     gruppe.forEach((f, j) =>
       deck.bindungen.push({
