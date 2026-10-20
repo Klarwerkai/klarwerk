@@ -424,6 +424,7 @@ import {
   inMemoryErinnerungAblage,
   pgErinnerungAblage,
 } from "./klara-erinnerung";
+import { KlaraErinnerungQuellen } from "./klara-erinnerung-quellen";
 import {
   InMemoryKlaraFristenRepo,
   type KlaraFristenRepo,
@@ -4333,8 +4334,19 @@ export function buildApp(
     gespraeche: services.klaraGespraeche,
     spaces: services.spaces,
   });
+  const erinnerungQuellen = new KlaraErinnerungQuellen({
+    auth: services.auth,
+    ko: services.ko,
+    notizen: services.klaraNotizen,
+    notizenRoh: services.klaraNotizenRoh ?? services.klaraNotizen,
+    aufgaben: services.klaraAufgaben,
+    gespraeche: services.klaraGespraeche,
+    spaces: services.spaces,
+  });
+  const erinnerungQuellschutz = erinnerungQuellen.pruefe.bind(erinnerungQuellen);
   const erinnerungDienst = new KlaraErinnerungDienst({
     ablage: services.klaraErinnerungen,
+    quellschutz: erinnerungQuellschutz,
     notizen: services.klaraNotizen,
     aufgaben: services.klaraAufgaben,
     gespraeche: services.klaraGespraeche,
@@ -4370,6 +4382,7 @@ export function buildApp(
   const erinnerungSteuerung = new KlaraErinnerungSteuerung({
     ...dNormDeps,
     ablage: services.klaraErinnerungen,
+    quellschutz: erinnerungQuellschutz,
     konto: (id) => services.auth.kontoLesen(id),
     notizen: services.klaraNotizen,
     aufgaben: services.klaraAufgaben,
