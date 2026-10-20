@@ -537,6 +537,16 @@ const REGISTER: Record<string, Eintrag> = {
   // Entscheidung an Heimatartikel, jeder Quelle und rekursiv jeder Eingabe samt Historie — das ist
   // ein Leseurteil über den Dienst, gemessen in pp02-datenherkunft.test.ts D8. Nachgeprüft wird hier
   // der unbedingte Aufruf an der Registrierung.
+  "POST /api/kos/:id/office/:anhangId/folienaufbau/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "PP05: bestehendes Office-Schreib-/Sitzungstor, darfSehen am Ziel und PP02-vollLesbar an jeder Herkunft vor der Vorschau.",
+  },
+  "POST /api/kos/:id/office/:anhangId/folienaufbau/uebernehmen": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "PP05: dieselbe frische Herkunftsprüfung vor der Ausgabe, keine Erweiterung des Quell-Leserkreises; Ziel-CAS über den Office-Dienst.",
+  },
   "GET /api/kos/:id/office/:anhangId/folien-daten": {
     urteil: "PRAEDIKAT",
     grund:

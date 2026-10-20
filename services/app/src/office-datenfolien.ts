@@ -45,6 +45,7 @@ export interface DeckVertrag {
   belegfolien: { datenpunktId: string; datenFassung: number; sldIds: string[] }[];
   folien: {
     sldId: string;
+    titel?: string;
     rolle: "haupt" | "detail" | "einzelfolie";
     datenpunkte: { id: string; fassung: number }[];
   }[];
@@ -121,7 +122,7 @@ export async function schreibeDatenfolien(
       rels(rel("rIdLayout", "slideLayout", `../${layout.slice(4)}`) + extraRels),
     );
     contentType(part, `${CT}.presentationml.slide+xml`);
-    deck.folien.push({ sldId: String(sldId), rolle: "haupt", datenpunkte: [] });
+    deck.folien.push({ sldId: String(sldId), titel, rolle: "haupt", datenpunkte: [] });
     return String(sldId);
   };
   await neu(
@@ -147,8 +148,13 @@ export async function schreibeDatenfolien(
   for (let i = 0; i < plan.fakten.length; i += 3) {
     const gruppe = plan.fakten.slice(i, i + 3);
     const rows = [
-      ["Bezug", "Wert", "Zeitraum", "Prüfstand"],
-      ...gruppe.map((f) => [f.label, f.wert, f.zeitraum, f.zustand]),
+      ["Bezug / Einheit", "Wert", "Zeitraum", "Prüfstand"],
+      ...gruppe.map((f) => [
+        `${f.label} (${f.einheit})`,
+        f.wert,
+        f.zeitraum,
+        `${f.prognose ? "Prognose · " : ""}${f.zustand}`,
+      ]),
     ];
     const table = `<a:graphicData uri="${A}/table"><a:tbl><a:tblPr firstRow="1" bandRow="1"/><a:tblGrid>${[0.28, 0.19, 0.2, 0.23].map((n) => `<a:gridCol w="${Math.round(w * n)}"/>`).join("")}</a:tblGrid>${rows.map((r) => `<a:tr h="${Math.round(h * 0.14)}">${r.map(cell).join("")}</a:tr>`).join("")}</a:tbl></a:graphicData>`;
     const id = await neu("Datenübersicht", frame(3, "Gebundene Daten", table));
@@ -175,6 +181,7 @@ export async function schreibeDatenfolien(
           [
             `${f.einheit} · ${f.zeitraum}`,
             f.zustand,
+            ...(f.prognose ? ["Prognose: kein beobachteter Ist-Wert"] : []),
             "Quelle und Rechenweg: zugehörige Belegfolien",
           ],
           0.48,
@@ -212,14 +219,14 @@ export async function schreibeDatenfolien(
     wb.file(
       "xl/worksheets/sheet1.xml",
       xml(
-        `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Bezug</t></is></c><c r="B1" t="inlineStr"><is><t>${X(plan.diagramm.einheit)}</t></is></c></row>${plan.fakten.map((f, i) => `<row r="${i + 2}"><c r="A${i + 2}" t="inlineStr"><is><t>${X(f.label)}</t></is></c><c r="B${i + 2}"><v>${f.zahl}</v></c></row>`).join("")}</sheetData></worksheet>`,
+        `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Bezug</t></is></c><c r="B1" t="inlineStr"><is><t>${X(plan.diagramm.einheit)}</t></is></c></row>${plan.fakten.map((f, i) => `<row r="${i + 2}"><c r="A${i + 2}" t="inlineStr"><is><t>${X(f.prognose ? `${f.label} (Prognose)` : f.label)}</t></is></c><c r="B${i + 2}"><v>${f.zahl}</v></c></row>`).join("")}</sheetData></worksheet>`,
       ),
     );
     zip.file(workbook, await wb.generateAsync({ type: "nodebuffer" }));
     contentType(workbook, `${CT}.spreadsheetml.sheet`);
     const pts = (values: (string | number)[]) =>
       `<c:ptCount val="${values.length}"/>${values.map((v, i) => `<c:pt idx="${i}"><c:v>${X(String(v))}</c:v></c:pt>`).join("")}`;
-    const cats = `<c:cat><c:strRef><c:f>Daten!$A$2:$A$${plan.fakten.length + 1}</c:f><c:strCache>${pts(plan.fakten.map((f) => f.label))}</c:strCache></c:strRef></c:cat>`;
+    const cats = `<c:cat><c:strRef><c:f>Daten!$A$2:$A$${plan.fakten.length + 1}</c:f><c:strCache>${pts(plan.fakten.map((f) => (f.prognose ? `${f.label} (Prognose)` : f.label)))}</c:strCache></c:strRef></c:cat>`;
     const vals = `<c:val><c:numRef><c:f>Daten!$B$2:$B$${plan.fakten.length + 1}</c:f><c:numCache><c:formatCode>General</c:formatCode>${pts(plan.fakten.map((f) => f.zahl as number))}</c:numCache></c:numRef></c:val>`;
     const axTitle = `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/>${absatz(plan.diagramm.einheit)}</c:rich></c:tx></c:title>`;
     zip.file(

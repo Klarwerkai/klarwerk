@@ -1,5 +1,7 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import JSZip from "jszip";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { DeckVertrag } from "../../services/app/src/office-datenfolien";
 import type { AufbauPlan } from "../../services/app/src/praesentation-aufbau";
 import { leseFolienDaten } from "../../services/app/src/praesentation-daten";
@@ -7,6 +9,197 @@ import { decodeDataUrl } from "../../services/object-store";
 import { welt } from "./pp05-welt";
 
 describe("PP-05 kontrollierter Datei-/API-Weg (keine Hostabnahme)", () => {
+  it("Gleiche Einheit mit verschiedener Währung wird nicht als Diagramm verglichen", async () => {
+    const w = await welt();
+    try {
+      const d = await w.capture({
+        art: "zahl",
+        wert: "700",
+        einheit: "T€",
+        waehrung: "USD",
+        zeitraum: "Q4 2025",
+        bezugsgroesse: "Umsatz USA",
+        erfassung: "manuell",
+      });
+      const r = await w.app.inject({
+        method: "POST",
+        url: `${w.basis}/folienaufbau/vorschau`,
+        payload: {
+          ...w.auftrag,
+          datenpunkte: [
+            { id: w.a.id, fassung: 1 },
+            { id: d.id, fassung: 1 },
+          ],
+        },
+      });
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json<AufbauPlan>().diagramm).toBeNull();
+    } finally {
+      await w.app.close();
+    }
+  });
+  it("Fachlich freigegebene manuelle Fassung bleibt gültig, Quelle=Ziel verlangt neue Aktualitätsprüfung", async () => {
+    const w = await welt();
+    try {
+      w.nutzer.role = "admin";
+      for (const dimension of ["struktur", "konsistenz", "fachliche_freigabe"]) {
+        const p = await w.app.inject({
+          method: "POST",
+          url: `/api/datenpunkte/${w.b.id}/pruefungen`,
+          payload: { dimension, ergebnis: "bestanden", grund: "Fiktive Fachprüfung", fassung: 1 },
+        });
+        expect(p.statusCode, p.body).toBe(200);
+      }
+      const p = await w.app.inject({
+        method: "POST",
+        url: `${w.basis}/folienaufbau/vorschau`,
+        payload: w.auftrag,
+      });
+      expect(p.statusCode, p.body).toBe(200);
+      const plan = p.json<AufbauPlan>();
+      expect(plan.fakten[1]!.zustand).toContain("Validiert");
+      expect(plan.fakten[1]!.belege.join(" ")).toContain("Fiktive Fachprüfung");
+      expect(plan.fakten[0]!.zustand).toBe("Überprüfung nach Übernahme nötig");
+      expect(plan.fakten[2]!.zustand).toBe("Überprüfung nach Übernahme nötig");
+    } finally {
+      await w.app.close();
+    }
+  });
+  it("Prognose bleibt auf den ausgegebenen Folien und in der editierbaren Diagrammdatenquelle markiert", async () => {
+    const w = await welt();
+    try {
+      const d = await w.capture({
+        art: "zahl",
+        wert: "800 T€",
+        einheit: "T€",
+        waehrung: "EUR",
+        zeitraum: "Q4 2025",
+        bezugsgroesse: "Szenario",
+        erfassung: "prognose",
+        annahmen: ["20 Prozent mehr Aufträge"],
+        modellbezug: "Fiktive Planung",
+      });
+      const auftrag = {
+        ...w.auftrag,
+        datenpunkte: [
+          { id: w.b.id, fassung: 1 },
+          { id: d.id, fassung: 1 },
+        ],
+      };
+      const p = (
+        await w.app.inject({
+          method: "POST",
+          url: `${w.basis}/folienaufbau/vorschau`,
+          payload: auftrag,
+        })
+      ).json<AufbauPlan>();
+      const r = await w.app.inject({
+        method: "POST",
+        url: `${w.basis}/folienaufbau/uebernehmen`,
+        payload: { ...auftrag, planId: p.planId },
+      });
+      expect(r.statusCode, r.body).toBe(200);
+      const ko = await w.ko.get(w.article.id);
+      const obj = await w.objekte.read(ko!.attachments[0]!.objectId!);
+      const zip = await JSZip.loadAsync(decodeDataUrl(obj!.data)!.bytes);
+      const texte = (await leseFolienDaten(decodeDataUrl(obj!.data)!.bytes)).folien
+        .flatMap((f) => f.elemente.map((e) => e.text))
+        .join(" ");
+      expect(texte).toContain("Prognose: kein beobachteter Ist-Wert");
+      expect(texte).toContain("20 Prozent mehr Aufträge");
+      const chart = Object.keys(zip.files).find(
+        (n) => n.startsWith("ppt/charts/") && n.endsWith(".xml") && !n.includes("_rels"),
+      )!;
+      expect(await zip.file(chart)!.async("string")).toContain("Szenario (Prognose)");
+    } finally {
+      await w.app.close();
+    }
+  });
+  it("Lesbare vertrauliche Quelle darf nicht in einen breiteren Zielartikel exportiert werden", async () => {
+    const w = await welt();
+    try {
+      const q = await w.ko.create({
+        title: "Vertraulicher Testbeleg",
+        statement: "Wert 900 T€",
+        author: "anna",
+        type: "best_practice",
+        category: "Test",
+        confidentiality: "vertraulich",
+      });
+      const d = await w.capture({
+        art: "zahl",
+        wert: "900 T€",
+        einheit: "T€",
+        zeitraum: "2025",
+        bezugsgroesse: "Test",
+        erfassung: "direkt",
+        quelleKoId: q.id,
+        zitat: "Wert 900 T€",
+      });
+      const r = await w.app.inject({
+        method: "POST",
+        url: `${w.basis}/folienaufbau/vorschau`,
+        payload: { ...w.auftrag, datenpunkte: [{ id: d.id, fassung: 1 }] },
+      });
+      expect(r.statusCode).toBe(400);
+      expect(r.body).toContain("Leserkreis");
+      expect(r.body).not.toContain(q.title);
+    } finally {
+      await w.app.close();
+    }
+  });
+  it("Bindungsfehler nach erfolgreichem Speichern wird als Teilwirkung benannt", async () => {
+    const w = await welt();
+    try {
+      const plan = (
+        await w.app.inject({
+          method: "POST",
+          url: `${w.basis}/folienaufbau/vorschau`,
+          payload: w.auftrag,
+        })
+      ).json<AufbauPlan>();
+      vi.spyOn(w.datenpunkte, "ersetzen").mockResolvedValue(false);
+      const r = await w.app.inject({
+        method: "POST",
+        url: `${w.basis}/folienaufbau/uebernehmen`,
+        payload: { ...w.auftrag, planId: plan.planId },
+      });
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json().bindungenOffen).toEqual(w.auftrag.datenpunkte.map((d) => d.id));
+      expect(r.json().hinweis).toContain("teilweise offen");
+    } finally {
+      vi.restoreAllMocks();
+      await w.app.close();
+    }
+  });
+  it("Fehlender Readback nach Fassungsschritt behauptet keinen erfolgreichen Gesamtabschluss", async () => {
+    const w = await welt();
+    try {
+      const plan = (
+        await w.app.inject({
+          method: "POST",
+          url: `${w.basis}/folienaufbau/vorschau`,
+          payload: w.auftrag,
+        })
+      ).json<AufbauPlan>();
+      const read = w.objekte.read.bind(w.objekte);
+      vi.spyOn(w.objekte, "read").mockImplementation((id) =>
+        id === w.article.attachments[0]!.objectId ? read(id) : Promise.resolve(undefined),
+      );
+      const r = await w.app.inject({
+        method: "POST",
+        url: `${w.basis}/folienaufbau/uebernehmen`,
+        payload: { ...w.auftrag, planId: plan.planId },
+      });
+      expect(r.statusCode).toBe(500);
+      expect(r.json().error).toBe("PP05_TEILWIRKUNG");
+      expect(r.json().fassung).toBe(w.article.version + 1);
+      expect(r.json().message).toContain("Datei wurde als Fassung");
+    } finally {
+      vi.restoreAllMocks();
+      await w.app.close();
+    }
+  });
   it("Vorschau schreibt nichts; editierbare Ausgabe, Quellen, Rechenwege, getrennte Prüfungen, PP02-Bindungen und Rücknahme", async () => {
     const w = await welt();
     try {
@@ -39,6 +232,13 @@ describe("PP-05 kontrollierter Datei-/API-Weg (keine Hostabnahme)", () => {
       }>();
       expect(ergebnis.bindungenOffen).toEqual([]);
       expect(ergebnis.status).toBe("offen");
+      const wiederholt = await w.app.inject({
+        method: "POST",
+        url: `${w.basis}/folienaufbau/uebernehmen`,
+        payload: { ...w.auftrag, planId: plan.planId },
+      });
+      expect(wiederholt.statusCode).toBe(409);
+      expect((await w.ko.get(w.article.id))?.version).toBe(ergebnis.fassung);
       const ko = await w.ko.get(w.article.id);
       const objekt = await w.objekte.read(ko!.attachments[0]!.objectId!);
       const bytes = decodeDataUrl(objekt!.data)!.bytes;
@@ -55,6 +255,33 @@ describe("PP-05 kontrollierter Datei-/API-Weg (keine Hostabnahme)", () => {
       )) {
         expect(await zip.file(name)!.async("nodebuffer"), name).toEqual(
           await original.file(name)!.async("nodebuffer"),
+        );
+      }
+      if (process.env.PP05_BELEGE) {
+        const out = process.env.PP05_BELEGE;
+        await mkdir(out, { recursive: true });
+        await writeFile(join(out, "KONTROLLIERTES-DECK.pptx"), bytes);
+        await writeFile(join(out, "ORIGINAL-VORLAGE.pptx"), w.original);
+        await writeFile(
+          join(out, "DECK-VERTRAG.json"),
+          JSON.stringify({ dateiFassung: ergebnis.dateiFassung, deck: ergebnis.deck }, null, 2),
+        );
+        await writeFile(
+          join(out, "KONTROLLIERTER-BESTAND.json"),
+          JSON.stringify(
+            {
+              fiktiv: true,
+              werte: [400, 600, 1000],
+              einheit: "T€",
+              waehrung: "EUR",
+              zeitraum: "Q4 2025",
+              rechnung: "400 + 600 = 1000",
+              quelle: w.article,
+              auftrag: w.auftrag,
+            },
+            null,
+            2,
+          ),
         );
       }
       const folien = await leseFolienDaten(bytes);

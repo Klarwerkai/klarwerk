@@ -35,6 +35,7 @@ export function registriereAufbauRouten(
     konten: deps.konten,
   };
   async function ausfuehren(request: Anfrage, reply: FastifyReply, uebernehmen: boolean) {
+    let gespeicherteFassung: number | undefined;
     try {
       reply.header("Cache-Control", "no-store");
       const vorher = await vorFassungsschritt(request, reply);
@@ -70,7 +71,8 @@ export function registriereAufbauRouten(
       };
       const plan = await plane();
       if (!uebernehmen) {
-        reply.send(plan);
+        const probe = await schreibeDatenfolien(bytes, plan);
+        reply.send({ ...plan, folien: probe.deck.folien });
         return;
       }
       const planId = (request.body as { planId?: unknown })?.planId;
@@ -112,6 +114,7 @@ export function registriereAufbauRouten(
         },
         user.id,
       );
+      gespeicherteFassung = ko.version;
       const gespeichert = await deps.objekte.read(ref.id);
       if (!gespeichert || !decodeDataUrl(gespeichert.data)?.bytes.equals(ausgabe.bytes))
         throw new Error("Gespeicherte Datei konnte nicht bestätigt werden.");
@@ -161,6 +164,14 @@ export function registriereAufbauRouten(
           : "Datei gespeichert und wieder geöffnet. Rücknahme über den bestehenden Fassungsverlauf.",
       });
     } catch (f) {
+      if (gespeicherteFassung !== undefined) {
+        reply.code(500).send({
+          error: "PP05_TEILWIRKUNG",
+          fassung: gespeicherteFassung,
+          message: `Die Datei wurde als Fassung ${gespeicherteFassung} übernommen. Die Wiederöffnungs- oder Bindungsprüfung konnte nicht vollständig bestätigt werden. Bitte den Dateistand prüfen.`,
+        });
+        return;
+      }
       if (f instanceof DatenFehler) {
         reply
           .code(f.art === "kein_zugriff" ? 404 : 400)

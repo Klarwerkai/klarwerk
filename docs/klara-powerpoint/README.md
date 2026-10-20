@@ -4,6 +4,8 @@ Auftrag `produkt:20261015:klara-powerpoint-bestand`, Revision 1. Paket PP-01: Be
 Integrationsplan; PP-01 selbst ändert am Produkt nichts. PP-02 bis PP-09 sind eigene Aufträge; PP-02
 (Datenherkunft) steht in `PP-02-DATENHERKUNFT.md`.
 
+PP-05: implementierter Teilkern für den bestehenden PPTX-Anhang, siehe [PP-05-FOLIENAUFBAU.md](./PP-05-FOLIENAUFBAU.md); Originalgesamtabschluss offen.
+
 | Datei | Inhalt |
 | --- | --- |
 | [`BESTAND.md`](./BESTAND.md) | Hostmatrix (native App, Web und importierte Datei getrennt), Lese-/Schreib-/Auswahlwege, Validierungsregeln, Datenquellen, Setup, Lücken, Auftragsabgleich |
