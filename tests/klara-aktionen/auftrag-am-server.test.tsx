@@ -994,12 +994,9 @@ describe("U6 · K5 — keine falsche Erfolgsmeldung, keine Doppelaktion", () => 
     await klick(q(document, "klara-ausfuehrung-erneut"));
     await bisPhase("fertig");
     expect(karte()?.dataset.stand).toBe("abgeschlossen");
-    // Derselbe Schrittschlüssel: der Server antwortete beim zweiten Mal mit dem festgehaltenen
-    // Schritt (wiederholt), statt neu auszuführen.
-    expect(ausfuehrungen).toEqual([
-      { status: 200, wiederholt: false },
-      { status: 200, wiederholt: true },
-    ]);
+    // G / AW11-K02: Lesen des tatsächlichen Auftrags klärt die verlorene Antwort bereits.
+    // Ein abgeschlossener Auftrag wird dafür nicht nochmals zur Ausführung geschickt.
+    expect(ausfuehrungen).toEqual([{ status: 200, wiederholt: false }]);
     const netzproben = (await entwuerfe(a, ich)).filter((d) => d.payload.title === "Netzprobe");
     expect(netzproben).toHaveLength(1);
     const [amServer] = await auftraegeAmServer(a, ich);
