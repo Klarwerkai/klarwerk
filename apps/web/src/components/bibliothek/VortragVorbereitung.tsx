@@ -18,9 +18,11 @@ import {
 export function VortragVorbereitung({
   lage,
   oeffne,
+  oeffneFolie,
 }: {
   lage: FolienDatenLage;
   oeffne: (id: string, ausloeser?: HTMLButtonElement) => void;
+  oeffneFolie?: (sldId: string) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const id = useId();
@@ -657,8 +659,15 @@ export function VortragVorbereitung({
                 ))}
                 {ergebnis.antwort.sldIds.map((s) => (
                   <p key={s}>
-                    {" "}
-                    {t("vortrag.text53")} {lage.folien.find((f) => f.sldId === s)?.titel}
+                    {oeffneFolie ? (
+                      <button type="button" className={knopf} onClick={() => oeffneFolie(s)}>
+                        {t("vortrag.text53")} {lage.folien.find((f) => f.sldId === s)?.titel}
+                      </button>
+                    ) : (
+                      <>
+                        {t("vortrag.text53")} {lage.folien.find((f) => f.sldId === s)?.titel}
+                      </>
+                    )}
                   </p>
                 ))}
               </div>

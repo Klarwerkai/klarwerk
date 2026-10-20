@@ -59,6 +59,14 @@ it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte p
       .poll(() => page.evaluate(() => document.activeElement?.textContent))
       .toContain("Herkunft öffnen");
     await bereich
+      .getByRole("button", { name: "Belegfolie: Ergebnis Q4 2025", exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.folie),
+      )
+      .toBe("256");
+    await bereich
       .getByLabel("Probetext für die gewählte Folie", { exact: true })
       .fill("Wir erläutern 1.500 und die offene Frage 9999.");
     expect(vortragAnfragen).toHaveLength(1);
