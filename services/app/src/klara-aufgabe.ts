@@ -581,8 +581,9 @@ export class KlaraAufgabeDienst {
     gebundeneNotiz?: string,
   ): { aufgabe: KlaraAufgabe; wiederholt: boolean } {
     if (
-      gebundeneNotiz &&
-      (!gespeichert.privatNotizGebunden ||
+      (gebundeneNotiz || gespeichert.privatNotizGebunden) &&
+      (!gebundeneNotiz ||
+        !gespeichert.privatNotizGebunden ||
         gespeichert.bezug.art !== "notiz" ||
         gespeichert.bezug.notizId !== gebundeneNotiz)
     ) {
