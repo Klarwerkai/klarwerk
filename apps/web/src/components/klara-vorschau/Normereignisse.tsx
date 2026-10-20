@@ -662,7 +662,13 @@ function Pruefauftrag({
     <details data-testid="norm-pruefauftrag" onToggle={(ev) => setOffen(ev.currentTarget.open)}>
       <summary>{t("normereignisse.pruefauftrag")}</summary>
       <div className="my-2 space-y-2">
-        <p>{t("normereignisse.pruefauftragHilfe")}</p>
+        <p>
+          {t(
+            daten.data?.automatisch
+              ? "normereignisse.automatischerAuftragHilfe"
+              : "normereignisse.pruefauftragHilfe",
+          )}
+        </p>
         {daten.data && !gebunden && !daten.data.automatisch ? (
           <Field label={t("normereignisse.pruefauftragAuswahl")}>
             <select
