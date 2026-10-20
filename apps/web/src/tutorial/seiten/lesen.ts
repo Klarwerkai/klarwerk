@@ -45,7 +45,7 @@ export const LESEN: readonly SeitenEintrag[] = [
   {
     id: "livewall",
     pfade: ["/livewall"],
-    titelKey: "nav.start",
+    titelKey: "start.livewall.title",
     ziel: "main h1",
   },
 ];
