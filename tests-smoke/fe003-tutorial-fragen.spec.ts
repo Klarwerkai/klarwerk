@@ -12,7 +12,7 @@
 //   · Netz: nach dem Öffnen geht KEINE veraendernde Anfrage (POST/PUT/PATCH/DELETE) hinaus — weder
 //     beim Durchlaufen noch in der Übung noch beim Übergang „Eigene Frage stellen“; eine vorher
 //     eingegebene echte Frage bleibt stehen.
-//   · Andere Seiten tragen keinen Knopf.
+//   · Weitere beauftragte Seiten haben inzwischen eigene Tutorialeinstiege (Klara19).
 //
 // Im hermetischen Tor (`smoke:ui:gate`) ist KEIN Modell aktiv — genau der KI-aus-Fall, für den das
 // Tutorial gebaut ist. Die angehängten Bilder sind technische Prüfbelege der gerenderten Oberfläche,
@@ -256,7 +256,7 @@ test("FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig
   expect(animation, "trotz reduzierter Bewegung leuchtet das Ziel auf").toBe("none");
 });
 
-test("FE-003 · andere Seiten tragen kein Tutorial", async ({ page }) => {
+test("Klara19 · Start und Bibliothek haben jetzt einen eigenen Einstieg", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await ensureLoggedIn(page);
   for (const pfad of ["/start", "/bibliothek"]) {
@@ -265,8 +265,8 @@ test("FE-003 · andere Seiten tragen kein Tutorial", async ({ page }) => {
     await page.waitForTimeout(300);
     await expect(
       page.getByTestId("tutorial-knopf"),
-      `${pfad} trägt einen Tutorial-Knopf`,
-    ).toHaveCount(0);
+      `${pfad} trägt den beauftragten Tutorial-Knopf`,
+    ).toHaveCount(1);
     await expect(page.getByTestId("tutorial-bereich")).toHaveCount(0);
   }
 });

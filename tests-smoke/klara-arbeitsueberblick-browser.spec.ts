@@ -6,6 +6,11 @@ import { ensureLoggedIn } from "./support/auth";
 const KENNWORT = "Ueberblick-Smoke-Kennwort-1";
 const marke = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 async function eigeneSeite(browser: Browser, admin: Page): Promise<Page> {
+  const baseURL = test.info().project.use.baseURL;
+  if (!baseURL)
+    throw new Error(
+      "Für die Überblicksprobe ist eine konfigurierte Browserbasisadresse erforderlich.",
+    );
   await ensureLoggedIn(admin);
   const email = `ueberblick-${marke()}@klarwerk.test`;
   const r = await admin.request.post("/api/users", {
@@ -13,7 +18,7 @@ async function eigeneSeite(browser: Browser, admin: Page): Promise<Page> {
   });
   expect(r.status(), await r.text()).toBe(201);
   const kontext = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
+    baseURL,
     viewport: { width: 1280, height: 900 },
     timezoneId: "Europe/Berlin",
     locale: "de-DE",

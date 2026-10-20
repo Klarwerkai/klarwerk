@@ -178,16 +178,16 @@ describe("E1 · der Knopf „Tutorial“: Position, Farbe, Öffnen und Schliesse
 });
 
 // ================================================================================================
-describe("E7 · Pilot und Rahmen getrennt: nur /fragen hat ein Tutorial", () => {
-  it("das Register trägt genau einen, vollständig ausgearbeiteten Eintrag: /fragen", () => {
-    expect(TUTORIALS.map((x) => x.pfad)).toEqual(["/fragen"]);
+describe("E7 · Fragen-Pilot bleibt im erweiterten Rahmen erhalten", () => {
+  it("das Register bewahrt den vollständig ausgearbeiteten Fragen-Eintrag", () => {
+    expect(TUTORIALS.find((x) => x.pfad === "/fragen")).toBe(FRAGEN);
     expect(FRAGEN.schritte.map((s) => s.id)).toEqual(SCHRITTE);
     for (const s of FRAGEN.schritte) {
       expect(s.teile.length, `${s.id} hat keine Vorführung`).toBeGreaterThan(0);
     }
   });
 
-  for (const route of ["/start", "/bibliothek", "/erfassen", "/aufgaben", "/fragen/unterseite"]) {
+  for (const route of ["/fragen/unterseite", "/nicht-vorhanden"]) {
     it(`auf ${route} erscheint weder Knopf noch leerer Bereich`, async () => {
       m = await montiere(route, "leer");
       expect(q(m.container, "leere-seite")).not.toBeNull();
@@ -886,7 +886,10 @@ describe("E2/E4 · Runde 2: der Quellenweg der Seite, in der Demo bedienbar", ()
     const echterChip = Array.from(
       m.container.querySelectorAll(`[data-tutorial-ziel="${FRAGEN_ZIEL.quellenchip}"]`),
     ).find((el) => !el.closest("[data-tutorial-demo]"));
-    expect(echterChip?.getAttribute("href")).toBe(`/wissen/${ECHTE_QUELLE.id}`);
+    const chipZiel = new URL(echterChip?.getAttribute("href") ?? "", "https://test.invalid");
+    expect(chipZiel.pathname).toBe(`/wissen/${ECHTE_QUELLE.id}`);
+    expect(chipZiel.searchParams.get("fassung")).toBe("1");
+    expect(chipZiel.searchParams.get("stelle")).toBe(ECHTE_QUELLE.statement);
     await blattSchliessen(echtesBlatt);
 
     await oeffneTutorial(m.container);
@@ -964,9 +967,13 @@ describe("E4 · Ziele über Namen, nicht über Koordinaten — und fehlende Ziel
     expect(echt(FRAGEN_ZIEL.absenden).length).toBe(1);
     await echteFrageStellen(m.container, "Wie werden Reisen genehmigt?");
     expect(echt(FRAGEN_ZIEL.quellenchip).length).toBe(1);
-    expect(echt(FRAGEN_ZIEL.quellenchip)[0]?.getAttribute("href")).toBe(
-      `/wissen/${ECHTE_QUELLE.id}`,
+    const chipZiel = new URL(
+      echt(FRAGEN_ZIEL.quellenchip)[0]?.getAttribute("href") ?? "",
+      "https://test.invalid",
     );
+    expect(chipZiel.pathname).toBe(`/wissen/${ECHTE_QUELLE.id}`);
+    expect(chipZiel.searchParams.get("fassung")).toBe("1");
+    expect(chipZiel.searchParams.get("stelle")).toBe(ECHTE_QUELLE.statement);
     m.abbauen();
     netz.lage.kiAktiv = false;
     m = await montiere("/fragen");

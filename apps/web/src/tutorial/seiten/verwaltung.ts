@@ -1,0 +1,103 @@
+import type { SeitenEintrag } from "./typen";
+export const VERWALTUNG: readonly SeitenEintrag[] = [
+  {
+    id: "verwaltung",
+    pfade: ["/admin"],
+    titelKey: "menue.einstellungen",
+    ziel: '[data-testid="nutzer-suche"], [data-testid="zeile-ki"], [data-testid="verwaltung-uebersicht"], main h1',
+  },
+  {
+    id: "profil",
+    pfade: ["/profil"],
+    titelKey: "nav.profile",
+    ziel: "main h1",
+  },
+  {
+    id: "import",
+    pfade: ["/import"],
+    titelKey: "nav.import",
+    ziel: "main h1",
+  },
+  {
+    id: "importlauf",
+    pfade: ["/import/lauf/:importId"],
+    titelKey: "nav.import",
+    ziel: '[data-testid="imp-lauf-zaehler"]',
+  },
+  {
+    id: "analytics",
+    pfade: ["/analytics"],
+    titelKey: "nav.analytics",
+    ziel: '[data-testid="analytics-kernzahlen"]',
+  },
+  {
+    id: "lebenszyklus",
+    pfade: ["/lebenszyklus"],
+    titelKey: "nav.lifecycle",
+    ziel: '[data-testid="pruefen-warteschlange"]',
+  },
+  {
+    id: "risiko",
+    pfade: ["/risiko", "/luecke/:id"],
+    titelKey: "nav.risk",
+    ziel: '[data-testid="luecke-zeile"], [data-testid="luecke-vorgang"]',
+  },
+  {
+    id: "ausgang",
+    pfade: ["/ausgangspruefung"],
+    titelKey: "ausgangspruefung.seite.titel",
+    minRole: "controller",
+    ziel: "main h1",
+  },
+  {
+    id: "vorlagen",
+    pfade: ["/vorlagen"],
+    titelKey: "vorlagen.seite.titel",
+    ziel: '[data-testid="vorlage-karte"], main h1',
+  },
+  {
+    id: "unternehmen",
+    pfade: ["/unternehmen"],
+    titelKey: "unternehmen.seite.titel",
+    minRole: "admin",
+    ziel: '[data-testid="unternehmen-profil"]',
+  },
+  {
+    id: "richtlinien",
+    pfade: ["/richtlinien"],
+    titelKey: "unternehmen.richtlinien.titel",
+    ziel: '[data-testid="richtlinie"], main h1',
+  },
+  {
+    id: "kommunikation",
+    pfade: ["/kommunikation"],
+    titelKey: "kommunikation.titel",
+    ziel: '[data-testid="kommunikation-meine"]',
+  },
+  {
+    id: "anbindung",
+    pfade: ["/kalender-anbindung"],
+    titelKey: "klarakalender.titel",
+    ziel: '[data-testid="kalender-anbindung"], [data-testid="kalender-verbinden"], main h1',
+    hilfeKeys: ["klarakalender.bedienhilfe.verbinden"],
+  },
+  {
+    id: "qualitaet",
+    pfade: ["/qualitaetsaufgaben"],
+    titelKey: "qualitaetsaufgaben.titel",
+    minRole: "admin",
+    ziel: '[data-testid="qa-bilanz"]',
+  },
+  {
+    id: "hilfe",
+    pfade: ["/hilfe", "/so-arbeitet-klarwerk", "/einstieg/:thema"],
+    titelKey: "nav.help",
+    ziel: '[data-testid="hilfe-suche"], [data-testid="einstieg-erster-schritt"], [data-testid="arbeitsweise-netz"]',
+  },
+  {
+    id: "mobile",
+    pfade: ["/mobile"],
+    titelKey: "seitenhilfe.mobil.titel",
+    ziel: '[data-testid="mob-erfassung"]',
+  },
+];

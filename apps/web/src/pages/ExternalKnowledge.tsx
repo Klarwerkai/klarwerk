@@ -58,6 +58,7 @@ export function ExternalKnowledge(): JSX.Element {
       <Card className="space-y-2">
         <form className="flex gap-2" onSubmit={submit}>
           <TextInput
+            data-testid="extern-suchfeld"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("ext.placeholder")}
