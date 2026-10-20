@@ -529,6 +529,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "klarafristen",
+    name: "Persönliche Fristen aus Informationen",
+    inhalt:
+      "Bewusst konfigurierte Quellen und Fristarten, Objekt-/Fristkennung, belegte Daten, aktuelle und frühere Fundstellen mit Quellfassung, Ablehnungsmarken, manuelle Korrekturen, Zuständigkeit und Änderungsverlauf. Der eigene Kalender projiziert denselben Vorgang, ohne zweite Fristenablage.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Persönliche Auswahl und Quellenbelege sind einem Konto zugeordnet und können vertrauliche Inhalte enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_fristen"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto verwirft einzelne Fristen am ursprünglichen Vorgang. Geschützte Ablehnungsmarken und Belegverlauf bleiben zur Verhinderung erneuter Übernahme erhalten. Eine Quellenrechtsänderung schützt auch abgeleiteten Ereignistext; sie löscht die private Historie nicht still.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Der eigene berechtigte Bestand ist über die persönliche Fristenfläche lesbar. Eine von der Verwaltung erstellbare Auskunft erhält keine fremden privaten Quellenbelege.",
+    },
+  },
+  {
     // produkt:20261010:klara-eigener-kalender (AW-16) — der eigene Kalender
     // (`services/app/src/eigener-kalender.ts`): eine Zeile je Eintrag, eine je Konto für die Sichtwahl.
     id: "eigenerkalender",

@@ -115,7 +115,7 @@ Antrieb.
   unabhängige Abnahme und zentrale Bereitstellung bleiben eigene Nachweise.
 - Bedienbeleg im echten Word-Host (Menschen-/Hostprobe); belegt ist der Block am echten Server in
   jsdom (`tests/eigener-kalender/word-kalender.test.tsx`).
-- Automatische Übernahme von Fristen aus Informationen (AW-19).
+- Vollständiger AW19-Umfang: beliebige Dokument-/Anhangstexte, weitere Sprachformen und alle ursprünglichen Betriebs-/Fachnachweise. Der nachfolgende begrenzte persönliche Erfassungsweg ist im Code angeschlossen.
 
 ## Engste Nachweise zum aktiven Einzelabbruch
 
@@ -129,3 +129,55 @@ PG-Pools und den gated-pool: Abbruch unmittelbar vor Meldungs- bzw. Berichts-INS
 Wirkungssperre mit `pg_blocking_pids`, Readback bereits gespeicherter Meldung/Notiz, Erhalt eines
 anderen aktiven Laufs. Keine zusätzlichen Tabellen oder Scheduler. Code-Rücknahme erhält bereits
 abgebrochene Läufe und ihre Ergebnisse; sie aktiviert sie nicht erneut.
+
+
+## AW19: Fristen aus ausdrücklich gewählten Informationen
+
+Die Seite „Mein Kalender“ enthält den zunächst geschlossenen Bereich „Fristen aus Informationen“.
+Eine Regel nennt konkrete Quellen, erlaubte Fristarten, die persönliche Sicht, die IANA-Zeitzone für
+„heute/vergangen“ und die Änderungsregel. Die aktive Regel verarbeitet beim Speichern sowie beim
+bewussten Neulesen eindeutig belegte Fristaussagen ohne weitere Bestätigung je Termin. Die Vorschau
+schreibt nichts. Es entsteht durch die Auswahl kein dauernder Quellen-Watchauftrag und kein weiterer
+Zeitgeber; die ausdrücklich beauftragte Wissenspflege ist ein eigener ursprünglicher Auftrag.
+
+Quellen dieses begrenzten Anschlusses sind die heute berechtigt gelesene Kernaussage eines
+Wissensobjekts, der Inhalt einer eigenen Notiz und eine bewusst ausgewählte eigene gespeicherte
+Gesprächsnachricht. Bei Nachrichten nennt die interne Quellenkennung Gespräch und Nachricht; ein
+weiteres Gespräch oder eine Modellantwort wird nicht mitbeobachtet. Der Anhangsleser ist noch nicht
+angeschlossen und liefert keine vorgetäuschten Fristbelege.
+
+Der kostenfreie deutsche Erkenner verlangt eine konkrete Objektkennung und einen Fristanlass mit
+Datum in derselben Aussage. Numerische Kennungen wie L-17 oder Z-8 und ausdrücklich bezeichnete
+Großbuchstabencodes werden erkannt. Andere Sprachformen sind damit nicht allgemein abgenommen.
+Diese erste Form übernimmt nur vollständig verstandene Fristaussagen und minutengenaue Uhrzeiten; weitere Geltungszusätze oder höhere Zeitauflösung bleiben zur Klärung offen. Satz- und Aussagegrenzen bleiben erhalten; ein Nachbarsatz liefert kein Objekt oder Datum hinzu.
+Unklare Daten, fehlende Zeitzonen bei Uhrzeiten, Sommerzeitlücken/-doppelungen, widersprüchliche
+Belege und unklare Geltung bleiben zur Klärung offen. Ein erstes unklar belegtes Datum erzeugt keinen
+verbindlichen Kalendertermin. Ein schon vorher übernommener Termin zeigt einen späteren Konflikt
+oder Widerruf sichtbar als unverlässlich; er wird dadurch nicht als fachlich gekündigt behauptet.
+
+`klara_fristen` hält je Konto Regel, Vorgänge, Quellfassungen/Fundstellen, Ablehnungsmarken und
+Änderungsverlauf. Die Fristidentität besteht aus Konto, Objekt und Anlass; Beleg und Quellfassung
+sind davon getrennt. Der Kalender projiziert denselben Vorgang über `FristenKalenderRepo`, ohne
+zweiten Fristdatenspeicher. Löschen im Kalender verwirft die Frist und behält die geschützte Marke.
+Eine manuelle Datumsänderung behält dieselbe Frist- und Ereigniskennung; sie wird als manuell
+festgelegt angezeigt und durch einen Quellenabruf nicht still überschrieben. Vergangen ist keine
+Erledigungsbestätigung. Unbekannte fachliche Verantwortung bleibt unbekannt; Kalenderbesitz erteilt
+keine Ausführungsbefugnis.
+
+Die fünf persönlichen Fristenrouten verlangen die Sitzung. PostgreSQL bindet das tatsächliche
+Schreiben an Konto, gelesene Quelle und heutige Rechte, mit dem vorhandenen Space-Schreibschutz.
+Ein struktureller Inhaltsvergleich verhindert neue Fassungen allein durch JSONB-Schlüsselreihenfolge.
+Die eigene Anzeige prüft heutige Quellenrechte auch bei historischen Belegen; die Kalender- und
+Word-Sicht schützen den abgeleiteten Text. Berichtstexte im Audit werden nicht gespeichert.
+
+Der synthetische Sollbestand und seine vor der Prüfung gesetzten Grenzen stehen unter
+`tests/klara-fristen/sollbestand.ts`; Erkennung, Nicht-Erkennung, Datum, Objekt und Klärung werden
+getrennt gemessen. Das ist kein allgemeiner Sprach-, Rechts- oder Normnachweis. Technische Quellen-,
+Konto-, Konkurrenz- und Rollbackfälle sowie ein echter Dump/Restore laufen im eigenen begrenzten
+PG-Test. Der Restore baut Pool und App neu, bleibt jedoch im selben Testprozess. Ein neuer echter
+Node-Prozess, Office-Host oder Kalenderprovider wird dadurch nicht behauptet; die bereits vorhandenen
+entsprechenden Belege bleiben getrennt erhalten.
+
+Die Erfassung legt keinen Vorlauf, Versand, Auftrag, Normersatz oder externe Einladung an. Eine
+weitergehende Wirkung braucht den dafür vorgesehenen gesonderten begrenzten Auftrag. Die vollständigen
+sieben ursprünglichen D-Verträge bleiben maßgeblich; die neue Teilfunktion allein schließt sie nicht.

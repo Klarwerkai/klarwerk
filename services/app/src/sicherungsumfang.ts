@@ -97,6 +97,7 @@ export const SICHERUNGSUMFANG: readonly UmfangBereich[] = [
       "klara_erinnerung_einstellungen",
     ],
   },
+  { id: "fristen", art: "assistenz", zustand: "im_dump", tabellen: ["klara_fristen"] },
   // Browser-Speicher der Person (Sitzungscookie, lokale Einstellungen).
   { id: "endgeraet", art: "assistenz", zustand: "ausgeschlossen", tabellen: [] },
 ];

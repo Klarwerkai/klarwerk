@@ -204,6 +204,9 @@ export default {
     "sicherungsnachweise.bereiche.aufgaben.titel": "Persönliche Aufgabenlisten",
     "sicherungsnachweise.bereiche.aufgaben.text":
       "Persönliche Aufgaben je Konto mit Priorität, Status und Bezug zur Notiz bzw. zum Klara-Auftrag. Nur das Konto selbst sieht sie — auch nach einer Wiederherstellung.",
+    "sicherungsnachweise.bereiche.fristen.titel": "Persönliche erkannte Fristen",
+    "sicherungsnachweise.bereiche.fristen.text":
+      "Quellenauswahl, Fristvorgänge, Belegverlauf und Ablehnungsmarken liegen in derselben Datenbank. Ob sie wiederhergestellt wurden, zeigt erst der tatsächliche Tabellenvergleich.",
     "sicherungsnachweise.bereiche.erinnerungen.titel": "Persönliche Erinnerungen",
     "sicherungsnachweise.bereiche.erinnerungen.text":
       "Erinnerungen je Konto mit Zeitplan, Zeitzone und Regeln, dazu jeder Lauf und jede zugestellte Meldung. Nach einer Wiederherstellung verhindern die festen Meldungskennungen eine zweite Zustellung.",
@@ -385,6 +388,9 @@ export default {
     "sicherungsnachweise.bereiche.aufgaben.titel": "Personal task lists",
     "sicherungsnachweise.bereiche.aufgaben.text":
       "Personal tasks per account with priority, status and link to the note or Klara instruction. Only the account itself sees them — also after a restore.",
+    "sicherungsnachweise.bereiche.fristen.titel": "Personal detected deadlines",
+    "sicherungsnachweise.bereiche.fristen.text":
+      "Source selection, deadline records, evidence history and rejection markers reside in the same database. Only an actual table comparison confirms their restoration.",
     "sicherungsnachweise.bereiche.erinnerungen.titel": "Personal reminders",
     "sicherungsnachweise.bereiche.erinnerungen.text":
       "Reminders per account with schedule, time zone and rules, plus every run and every delivered notification. After a restore, the fixed notification IDs prevent a second delivery.",
@@ -568,6 +574,9 @@ export default {
     "sicherungsnachweise.bereiche.aufgaben.titel": "Persoonlijke takenlijsten",
     "sicherungsnachweise.bereiche.aufgaben.text":
       "Persoonlijke taken per account met prioriteit, status en verwijzing naar de notitie of de Klara-opdracht. Alleen het account zelf ziet ze — ook na een herstel.",
+    "sicherungsnachweise.bereiche.fristen.titel": "Persoonlijke herkende termijnen",
+    "sicherungsnachweise.bereiche.fristen.text":
+      "Bronselectie, termijnregistraties, bewijsgeschiedenis en afwijzingsmarkeringen staan in dezelfde database. Alleen een daadwerkelijke tabelvergelijking bevestigt het herstel.",
     "sicherungsnachweise.bereiche.erinnerungen.titel": "Persoonlijke herinneringen",
     "sicherungsnachweise.bereiche.erinnerungen.text":
       "Herinneringen per account met planning, tijdzone en regels, plus elke uitvoering en elke afgeleverde melding. Na een herstel voorkomen de vaste meldingskenmerken een tweede aflevering.",

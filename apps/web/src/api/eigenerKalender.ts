@@ -47,7 +47,7 @@ export interface KalenderSicht {
   beginn: string;
   ende: string | null;
   zeitzone: string;
-  herkunft: { art: "eigen" | "wissensobjekt"; koId: string | null };
+  herkunft: { art: "eigen" | "wissensobjekt" | "information"; koId: string | null };
   geschuetzt: boolean;
   status: KalenderStatus;
   fristId: string | null;
@@ -64,6 +64,7 @@ export interface KalenderSicht {
   angelegtAm: string;
   geaendertAm: string;
   fassung: number;
+  erkennung?: { art: string; stand: string; manuell?: boolean };
 }
 
 /** Ein Termin des vorhandenen Kalenders — nur gelesen. */

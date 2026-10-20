@@ -32,6 +32,7 @@ import {
   eigenerKalenderApi,
 } from "../api/eigenerKalender";
 import { useSession } from "../app/AuthContext";
+import { KlaraFristen } from "../components/klara-vorschau/KlaraFristen";
 import { Button, Card, Field, PageHeader, TextInput } from "../components/ui";
 import {
   isoZuOrtszeit,
@@ -103,6 +104,9 @@ function EintragKnopf({
     >
       <span className="block font-medium text-ink">
         {e.geschuetzt ? t("kalender.geschuetztKurz") : e.titel}
+        {e.erkennung
+          ? ` · ${t(`klarafristen.art.${e.erkennung.art}`)} · ${t(e.erkennung.manuell && e.erkennung.stand === "erkannt" ? "klarafristen.manuell" : `klarafristen.stand.${e.erkennung.stand}`)}`
+          : null}
       </span>
       <span className="block text-muted" data-testid="kalender-eintrag-meta">
         {e.ganztaegig ? t("kalender.ganztaegig") : uhrzeit(e.beginn, zone, i18n.language)}
@@ -350,9 +354,9 @@ function Detail({
               {t("kalender.detail.schliessen")}
             </Button>
           </div>
-          <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+          <dl className="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 [&>dd]:min-w-0 [&>dd]:break-words">
             <dt className="text-muted">{t("kalender.detail.kennung")}</dt>
-            <dd data-testid="kalender-detail-id" className="font-mono">
+            <dd data-testid="kalender-detail-id" className="break-all font-mono">
               {e.id}
             </dd>
             <dt className="text-muted">{t("kalender.detail.art")}</dt>
@@ -376,6 +380,22 @@ function Detail({
             <dt className="text-muted">{t("kalender.detail.herkunft")}</dt>
             <dd data-testid="kalender-detail-herkunft">
               {t(`kalender.herkunft.${e.herkunft.art}`)}
+              {e.herkunft.art === "information" && !e.geschuetzt ? (
+                <>
+                  {" "}
+                  ·{" "}
+                  <a href={`#frist-${e.fristId}`} className="underline">
+                    {t("klarafristen.belege")}
+                  </a>{" "}
+                  {e.erkennung
+                    ? t(
+                        e.erkennung.manuell && e.erkennung.stand === "erkannt"
+                          ? "klarafristen.manuell"
+                          : `klarafristen.stand.${e.erkennung.stand}`,
+                      )
+                    : null}
+                </>
+              ) : null}
               {e.herkunft.koId ? ` (${e.herkunft.koId})` : null}
               {e.teamName ? ` · ${t("kalender.detail.team", { team: e.teamName })}` : null}
             </dd>
@@ -386,7 +406,7 @@ function Detail({
             {e.fristId ? (
               <>
                 <dt className="text-muted">{t("kalender.detail.frist")}</dt>
-                <dd className="font-mono">{e.fristId}</dd>
+                <dd className="break-all font-mono">{e.fristId}</dd>
               </>
             ) : null}
             {e.serie ? (
@@ -496,7 +516,7 @@ function Detail({
         </section>
 
         <div className="flex flex-wrap gap-2">
-          {e.geschuetzt ? null : (
+          {e.geschuetzt || e.herkunft.art === "information" ? null : (
             <Button data-testid="kalender-bearbeiten" onClick={() => onBearbeiten(e)}>
               {t("kalender.bearbeiten")}
             </Button>
@@ -922,6 +942,7 @@ export function EigenerKalender(): JSX.Element {
         {t("kalender.zone", { zone: zoneLesbar(zone, i18n.language, new Date()) })}
       </p>
 
+      {user ? <KlaraFristen kontoId={user.id} /> : null}
       <div className="mb-4 flex flex-wrap gap-6">
         <fieldset className="m-0 border-0 p-0" data-testid="kalender-sicht">
           <legend className="mb-1 text-[12.5px] font-medium text-muted">
