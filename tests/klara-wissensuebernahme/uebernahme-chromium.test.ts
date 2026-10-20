@@ -123,11 +123,11 @@ it("F08 · echter Browser: gewählter Chat → privates Original → Vorschau �
     headers: { authorization: `Bearer ${token}` },
   });
   expect(r.statusCode).toBe(200);
-  mkdirSync(".local/klara-f", { recursive: true });
+  mkdirSync(".local/run/klara-f", { recursive: true });
   await page.locator('[data-testid="wissen-ergebnis"]').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: ".local/klara-f/f08-browser.png", fullPage: true });
+  await page.screenshot({ path: ".local/run/klara-f/f08-browser.png", fullPage: true });
   writeFileSync(
-    ".local/klara-f/f08-browser.json",
+    ".local/run/klara-f/f08-browser.json",
     JSON.stringify(
       {
         browser: browser.version(),

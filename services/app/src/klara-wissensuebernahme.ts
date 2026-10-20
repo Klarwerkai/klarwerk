@@ -8,7 +8,7 @@ import {
   createOperationFingerprint,
 } from "../../knowledge-object";
 import { can } from "../../rbac";
-import type { ReferenzRolle } from "../../reasoner";
+import { kernaussageAusKlartext } from "../../structure";
 import type { SessionUser } from "./http";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
 import { darfSehen } from "./sichtbarkeit";
@@ -54,10 +54,10 @@ const html = (text: string) =>
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
-function text(x: unknown, max: number): string {
+function text(x: unknown, max: number, kuerzen = true): string {
   if (typeof x !== "string" || !x.trim() || x.length > max)
     throw new WissensFehler(400, "Ungültige oder fehlende Textangabe.");
-  return x.trim();
+  return kuerzen ? x.trim() : x;
 }
 function liste(x: unknown): unknown[] {
   if (!Array.isArray(x) || x.length > 50) throw new WissensFehler(400, "Ungültige Liste.");
@@ -109,7 +109,7 @@ export class KlaraWissensDienst {
 
   async importiere(user: SessionUser, roh: unknown) {
     const x = objekt(roh);
-    const inhalt = text(x.inhalt, 20_000);
+    const inhalt = text(x.inhalt, 20_000, false);
     const projekt = text(x.projekt, 200);
     const abschnitt = text(x.abschnitt, 500);
     const antwortFassung = text(x.antwortFassung, 200);
@@ -206,13 +206,11 @@ export class KlaraWissensDienst {
       quellen,
     });
     const h = herkunftGueltig ? n.wissensHerkunft : undefined;
-    const rolle: ReferenzRolle | undefined =
-      h?.anbieter && h.modell
-        ? { anbieter: h.anbieter, modell: h.modell, stufe: "cloud" }
-        : undefined;
+    // Manuelle Exportangaben sind keine nachgewiesene tatsächliche Modellidentität.
+    // Ohne einen gebundenen Adapterbeleg darf sich ein unbekanntes Modell nicht selbst bestätigen.
     const ergebnis = await this.d.referenz.pruefe({
       beleg,
-      antwortRolle: rolle,
+      antwortRolle: undefined,
       akteur: user.id,
       antwortId: n.id,
       leser: {
@@ -275,10 +273,16 @@ export class KlaraWissensDienst {
           )
           .join("")}`
       : "";
-    const bodyHtml = `${kennzeichnung}<p>${html(n.inhalt).replaceAll("\n", "</p><p>")}</p><p>Herkunft: <a href="/start?notiz=${encodeURIComponent(n.id)}">Persönliches Original</a> · Fassung ${n.fassung}</p>${n.offeneFragen.length ? `<p>Offen: ${html(n.offeneFragen.join("; "))}</p>` : ""}`;
+    const quellenLinks = this.quellen(n)
+      .map(
+        (q) =>
+          `<p><a href="/wissen/${encodeURIComponent(q.id)}?fassung=${q.fassung}">Quellfassung ${q.fassung}</a></p>`,
+      )
+      .join("");
+    const bodyHtml = `${quellenLinks}${kennzeichnung}<p>${html(n.inhalt).replaceAll("\n", "</p><p>")}</p><p>Herkunft: <a href="/start?notiz=${encodeURIComponent(n.id)}">Persönliches Original</a> · Fassung ${n.fassung}</p>${n.offeneFragen.length ? `<p>Offen: ${html(n.offeneFragen.join("; "))}</p>` : ""}`;
     const input: CreateKoInput = {
       title: n.titel,
-      statement: n.inhalt.slice(0, 500),
+      statement: kernaussageAusKlartext(n.inhalt),
       bodyHtml,
       type: ziel.type,
       category: ziel.category,

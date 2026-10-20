@@ -294,4 +294,17 @@ describe("F08 · bewusste Übernahme", () => {
       200,
     );
   });
+  it("Originalleerraum bleibt beim gewählten Chatimport zeichengetreu erhalten", async () => {
+    const inhalt = "  Gewählter Originalabschnitt.  \nZweite Zeile.  ";
+    const r = await auf("POST", `${basis}/wissen/import`, {
+      titel: "Original",
+      inhalt,
+      projekt: "Projekt",
+      abschnitt: "Auswahl mit Leerraum",
+      antwortFassung: "1",
+      aussagen: [{ text: "Gewählter Originalabschnitt.", art: "behauptung", quellen: [] }],
+    });
+    expect(r.statusCode, r.body).toBe(201);
+    expect(r.json().notiz.inhalt).toBe(inhalt);
+  });
 });
