@@ -18,6 +18,14 @@ export const FRIST_ARTEN = [
 export type FristArt = (typeof FRIST_ARTEN)[number];
 export type FristQuellart = "wissensobjekt" | "notiz" | "gespraech" | "anhang";
 
+/** Gespeicherter serverseitiger Importanker: Objektidentität getrennt von Quellrevision. */
+export interface FristenImportbeleg {
+  provider: string;
+  externalId: string;
+  sourceVersion: number;
+  sourceRecordId?: string;
+}
+
 /** Ausschließlich vom berechtigten Quellleser aufgebaut, niemals aus einem Client-Wortlaut. */
 export interface FristenQuelle {
   art: FristQuellart;
@@ -26,6 +34,8 @@ export interface FristenQuelle {
   text: string;
   /** Autoritative Identität desselben Belegs, falls der Import eine Kopie nachgewiesen hat. */
   belegId: string;
+  importbeleg?: FristenImportbeleg;
+  importIdentitaetUnklar?: true;
   /** Tatsächlich hinterlegte fachliche Zuständigkeit; fehlend bleibt sie unbekannt. */
   verantwortlich: string | null;
 }
@@ -35,7 +45,10 @@ export type FristDatum =
   | { art: "zeitpunkt"; datum: string; uhrzeit: string; zeitzone: string; utc: string };
 
 export interface FristBeleg {
-  quelle: Pick<FristenQuelle, "art" | "id" | "fassung" | "belegId">;
+  quelle: Pick<
+    FristenQuelle,
+    "art" | "id" | "fassung" | "belegId" | "importbeleg" | "importIdentitaetUnklar"
+  >;
   /** Zeichenpositionen im unveränderten, serverseitig gelesenen Quelltext. */
   abschnitt: { von: number; bis: number; wortlaut: string };
   /** Belegidentität/Fassung und Fristidentität werden bewusst nicht vermischt. */
@@ -56,7 +69,8 @@ export type FristKlaergrund =
   | "sommerzeit_unklar"
   | "geltung_unklar"
   | "widerruf"
-  | "widerspruch";
+  | "widerspruch"
+  | "importidentitaet_unklar";
 
 /** Absichtlich enge belegbare Syntax; unsupported bedeutet Klärung, niemals geschätztes Datum. */
 const ANLAESSE: readonly [FristArt, RegExp][] = [
@@ -85,8 +99,22 @@ export function fristHash(...teile: readonly string[]): string {
 }
 
 /** Objekt und Anlass, ohne Datum/Quelle: ein neuer widersprüchlicher Beleg eröffnet keine Dublette. */
-export function fristIdentitaet(kontoId: string, b: Pick<FristBeleg, "objekt" | "art">): string {
-  return fristHash(kontoId, b.objekt.art.toLocaleLowerCase("de"), b.objekt.kennung, b.art);
+export function fristIdentitaet(
+  kontoId: string,
+  b: Pick<FristBeleg, "objekt" | "art"> & Partial<Pick<FristBeleg, "quelle">>,
+): string {
+  const teile = [kontoId, b.objekt.art.toLocaleLowerCase("de"), b.objekt.kennung, b.art];
+  // Verschiedene nachgewiesene Importobjekte sind kein gemeinsamer Vertrag allein wegen L-17.
+  if (b.quelle?.importbeleg || b.quelle?.importIdentitaetUnklar)
+    teile.push("importobjekt", b.quelle.belegId);
+  return fristHash(...teile);
+}
+
+/** Kein URL-/Titel-/Textvergleich und kein Revisionsschlüssel als Objektidentität. */
+export function fristBelegIdentitaet(q: FristenQuelle): string {
+  return q.importbeleg
+    ? `import:${fristHash(q.importbeleg.provider, q.importbeleg.externalId)}`
+    : q.belegId;
 }
 
 function datumAus(text: string): { datum: FristDatum | null; gruende: FristKlaergrund[] } {
@@ -216,6 +244,7 @@ export function erkenneFristen(q: FristenQuelle): FristBeleg[] {
     }
     const zeit = datumAus(wortlaut);
     const gruende = [...zeit.gruende];
+    if (q.importIdentitaetUnklar) gruende.push("importidentitaet_unklar");
     if (
       objekte.length !== 1 ||
       rohObjekte.some(
@@ -245,9 +274,16 @@ export function erkenneFristen(q: FristenQuelle): FristBeleg[] {
     for (const [art] of anlaesse) {
       const von = aussage.von;
       belege.push({
-        quelle: { art: q.art, id: q.id, fassung: q.fassung, belegId: q.belegId },
+        quelle: {
+          art: q.art,
+          id: q.id,
+          fassung: q.fassung,
+          belegId: fristBelegIdentitaet(q),
+          ...(q.importbeleg ? { importbeleg: q.importbeleg } : {}),
+          ...(q.importIdentitaetUnklar ? { importIdentitaetUnklar: true } : {}),
+        },
         abschnitt: { von, bis: von + wortlaut.length, wortlaut },
-        fingerabdruck: fristHash(q.belegId, wortlaut.replace(/\s+/gu, " ").trim()),
+        fingerabdruck: fristHash(fristBelegIdentitaet(q), wortlaut.replace(/\s+/gu, " ").trim()),
         objekt: { art: objekt[1], kennung: objekt[2] },
         art,
         datum: gruende.length === 0 ? zeit.datum : null,

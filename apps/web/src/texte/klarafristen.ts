@@ -3,6 +3,8 @@ export default {
   praefix: "klarafristen.",
   legacySchluessel: [],
   de: {
+    "klarafristen.grund.importidentitaet_unklar":
+      "Die gespeicherte Importquelle ist nicht eindeutig identifiziert. Keine Kopienzuordnung oder verbindliche Frist aus Titel oder Text erraten.",
     "klarafristen.profil":
       "Erkennungsprofil: eindeutige deutschsprachige Fristaussagen mit konkreter Objektkennung, zum Beispiel „Lizenz L-17: Ablaufdatum 2027-04-30.“ Die Vorschau zeigt die erkannten Vorgänge; sie ist keine vollständige Fristenprüfung eines Dokuments.",
     "klarafristen.manuell": "Manuell festgelegt",
@@ -99,6 +101,8 @@ export default {
     "klarafristen.verlauf.zeitgrenze": "Frist ist inzwischen vergangen",
   },
   en: {
+    "klarafristen.grund.importidentitaet_unklar":
+      "The stored import source is not uniquely identified. Do not infer a copy relationship or binding deadline from its title or text.",
     "klarafristen.profil":
       "Recognition profile: clear German deadline statements with a specific object identifier, for example ‘Lizenz L-17: Ablaufdatum 2027-04-30.’ The preview shows detected records; it is not a complete deadline audit of a document.",
     "klarafristen.manuell": "Set manually",
@@ -195,6 +199,8 @@ export default {
     "klarafristen.verlauf.zeitgrenze": "Deadline has since passed",
   },
   nl: {
+    "klarafristen.grund.importidentitaet_unklar":
+      "De opgeslagen importbron is niet eenduidig geïdentificeerd. Leid geen kopieverband of bindende termijn af uit titel of tekst.",
     "klarafristen.profil":
       "Herkenningsprofiel: duidelijke Duitse termijnuitspraken met een concrete objectcode, bijvoorbeeld ‘Lizenz L-17: Ablaufdatum 2027-04-30.’ Het voorbeeld toont de herkende registraties; het is geen volledige termijncontrole van een document.",
     "klarafristen.manuell": "Handmatig vastgesteld",

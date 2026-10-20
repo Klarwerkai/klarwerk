@@ -1,5 +1,6 @@
 import type { AuthService } from "../../auth";
-import { type KoService, ownershipOf } from "../../knowledge-object";
+import { type KoService, type KnowledgeObject, ownershipOf } from "../../knowledge-object";
+import { importProviderKey } from "../../library-analytics";
 import type { SessionUser } from "./http";
 import type { GeleseneFristenQuelle } from "./klara-fristen-dienst";
 import type { FristQuellart, FristenQuelle } from "./klara-fristen-erkennung";
@@ -16,6 +17,36 @@ export interface FristenQuellenDeps {
   gespraeche: KlaraGespraechRepo;
   spaces: Pick<SpacesRepo, "aktuelle">;
   jetzt?: () => number;
+}
+
+/** Nur der gespeicherte Importanker, kein aus URL, Text oder Titel erratener Kopiebezug. */
+function importbezug(
+  ko: KnowledgeObject,
+): Pick<FristenQuelle, "importbeleg" | "importIdentitaetUnklar"> {
+  const anker = (ko.sources ?? []).filter(
+    (s) => s.externalId !== undefined || s.sourceRecordId !== undefined,
+  );
+  if (!ko.importedVia && anker.length === 0) return {};
+  const s = anker[0];
+  if (
+    anker.length !== 1 ||
+    !s ||
+    !s.provider?.trim() ||
+    !s.externalId?.trim() ||
+    !Number.isSafeInteger(s.sourceVersion) ||
+    Number(s.sourceVersion) < 0 ||
+    s.attachmentOf ||
+    s.sourceRemovedAt
+  )
+    return { importIdentitaetUnklar: true };
+  return {
+    importbeleg: {
+      provider: importProviderKey(s.provider),
+      externalId: s.externalId,
+      sourceVersion: Number(s.sourceVersion),
+      ...(s.sourceRecordId ? { sourceRecordId: s.sourceRecordId } : {}),
+    },
+  };
 }
 
 /** Verwendet denselben Konten-, Space- und Quellenrechtebestand wie die angemeldeten Routen. */
@@ -69,6 +100,7 @@ export class KlaraFristenQuellen {
         fassung: String(ko.version),
         text: ko.statement,
         belegId: `ko:${ko.id}`,
+        ...importbezug(ko),
         verantwortlich,
       };
       quellBedingung = (start) => {
@@ -77,13 +109,17 @@ export class KlaraFristenQuellen {
           String(ko.version),
           ko.statement,
           JSON.stringify(ko.ownership ?? null),
+          JSON.stringify(ko.sources ?? []),
+          JSON.stringify(ko.importedVia ?? null),
           ...trim.params,
         ];
         const und = [
           `EXISTS(SELECT 1 FROM kos q WHERE q.id=$${start}::text
           AND q.data->>'version'=$${start + 1}::text AND q.data->>'statement'=$${start + 2}::text
           AND COALESCE(q.data->'ownership','null'::jsonb)=$${start + 3}::jsonb
-          AND ${trim.sql("q", start + 4)} FOR SHARE)`,
+          AND COALESCE(q.data->'sources','[]'::jsonb)=$${start + 4}::jsonb
+          AND COALESCE(q.data->'importedVia','null'::jsonb)=$${start + 5}::jsonb
+          AND ${trim.sql("q", start + 6)} FOR SHARE)`,
         ];
         if (verantwortlich) {
           const i = start + params.length;

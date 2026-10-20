@@ -112,7 +112,13 @@ export class KlaraFristenDienst {
   private auswerten(stand: FristenStand, quellen: readonly GeleseneFristenQuelle[]): FristenStand {
     let s = stand;
     for (const q of quellen)
-      s = verarbeiteFristenQuelle(s, q.quelle, erkenneFristen(q.quelle), this.am());
+      s = verarbeiteFristenQuelle(
+        s,
+        q.quelle,
+        erkenneFristen(q.quelle),
+        this.am(),
+        quellen.map((q) => q.quelle),
+      );
     const fristen = s.fristen.map((f) =>
       f.datum &&
       ["erkannt", "historisch", "erledigt"].includes(f.stand) &&
