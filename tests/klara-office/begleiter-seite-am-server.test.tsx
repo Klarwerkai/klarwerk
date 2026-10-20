@@ -53,6 +53,7 @@ import {
   adapterUmgebungSetzen,
   appAufbauen,
   drahtAufbauen,
+  eintragMitOriginal,
   neuesKonto,
 } from "../klara-quellen-nutzerweg/kette";
 
@@ -208,6 +209,53 @@ function figur(): HTMLButtonElement {
 }
 
 const nachrichten = (art: string) => anApp.filter((n) => n.art === art);
+
+describe("J · Desktop-Schnellsuche im erhaltenen Begleiter", () => {
+  it("öffnet dieselbe Wissenssuche, übergibt das echte Ziel und erhält den Gesprächsentwurf", async () => {
+    await vorrichtung();
+    if (!aufbau) throw new Error("App fehlt");
+    const ko = await eintragMitOriginal(aufbau.app, aufbau.admin, { titel: "Jotumbau Suchbeleg" });
+    await montiere();
+    await befehlDerApp("gespraech-oeffnen");
+    const entwurf = q<HTMLInputElement>(document, "begleiter-eingabe");
+    if (!entwurf) throw new Error("Eingabe fehlt");
+    await tippe(entwurf, "Mein ungesendeter Entwurf");
+    await befehlDerApp("suche-oeffnen");
+    await bis(() => Boolean(document.querySelector('[data-cmd="suchfeld"]')), 100);
+    const feld = document.querySelector<HTMLInputElement>('[data-cmd="suchfeld"]');
+    if (!feld) throw new Error("Suchfeld fehlt");
+    await tippe(feld, "Jotumbau");
+    const ziel = `/wissen/${ko.koId}`;
+    await bis(() => Boolean(document.querySelector(`[data-cmd-pfad="${ziel}"]`)), 200);
+    expect(document.querySelector('[data-cmd-pfad="/admin"]')).toBeNull();
+    const treffer = document.querySelector<HTMLButtonElement>(`[data-cmd-pfad="${ziel}"]`);
+    if (!treffer) throw new Error("Wissenstreffer fehlt");
+    await klick(treffer);
+    expect(nachrichten("suchziel")).toEqual([{ art: "suchziel", pfad: ziel }]);
+    expect(q<HTMLInputElement>(document, "begleiter-eingabe")?.value).toBe(
+      "Mein ungesendeter Entwurf",
+    );
+    expect(document.querySelector('[data-cmd="suchfeld"]')).toBeNull();
+  });
+
+  it("Escape schließt nur die Palette; Einklappen schließt sie, Wiederöffnen bleibt bewusst", async () => {
+    await vorrichtung();
+    await montiere();
+    await befehlDerApp("suche-oeffnen");
+    await bis(() => Boolean(document.querySelector('[data-cmd="suchfeld"]')), 100);
+    expect(q(document, "begleiter-gespraech"), JSON.stringify(nachrichten("modus"))).not.toBeNull();
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    await ruhe();
+    expect(document.querySelector('[data-cmd="suchfeld"]')).toBeNull();
+    expect(q(document, "begleiter-gespraech")).not.toBeNull();
+    await befehlDerApp("suche-oeffnen");
+    await befehlDerApp("gespraech-schliessen");
+    expect(document.querySelector('[data-cmd="suchfeld"]')).toBeNull();
+    expect(q(document, "begleiter-gespraech")).toBeNull();
+    await befehlDerApp("suche-oeffnen");
+    expect(document.querySelector('[data-cmd="suchfeld"]')).not.toBeNull();
+  });
+});
 
 /** Ein Befehl der App an die Webfläche — derselbe Weg wie `befehl(_:wert:)` in Steuerung.swift. */
 async function befehlDerApp(befehl: string, wert?: number): Promise<void> {

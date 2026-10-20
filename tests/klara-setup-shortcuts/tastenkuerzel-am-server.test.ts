@@ -137,6 +137,7 @@ describe("S1 · K6/K8 — Standard, Festlegen, Ändern, Entfernen, Zurücksetzen
       "auftragSprechen",
       "aufnahmeStoppen",
       "vorlesenStoppen",
+      "suchen",
     ]);
     expect(start.aktionen.every((a) => a.belegung === null && a.quelle === "standard")).toBe(true);
     expect(start.geaendertAm).toBeNull();
@@ -292,5 +293,23 @@ describe("S6 · K4 — Prüfprotokoll", () => {
     expect(ereignisse.map((e) => e.actor)).toEqual([erik.id]);
     const alle = JSON.stringify(await services.audit.list({}));
     expect(alle).not.toContain("KeyE");
+  });
+});
+
+describe("J · Suchaufruf in derselben Kontoablage", () => {
+  it("bleibt standardmäßig unbelegt, ist kontogebunden und lässt sich entfernen", async () => {
+    expect(von(await lies(erik.token), "suchen").belegung).toBeNull();
+    const gesetzt = await setze(erik.token, { aktion: "suchen", belegung: BEFEHL_UMSCHALT_U });
+    expect(von(gesetzt, "suchen").belegung).toEqual(BEFEHL_UMSCHALT_U);
+    expect(von(await lies(vera.token), "suchen").belegung).toBeNull();
+    expect(von(await lies(await anmelden("erik@kuerzel.test")), "suchen").belegung).toEqual(
+      BEFEHL_UMSCHALT_U,
+    );
+    const entfernt = await setze(erik.token, { aktion: "suchen", belegung: null });
+    expect(von(entfernt, "suchen")).toEqual({
+      aktion: "suchen",
+      belegung: null,
+      quelle: "entfernt",
+    });
   });
 });

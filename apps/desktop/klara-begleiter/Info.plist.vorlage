@@ -16,6 +16,11 @@
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSArchitecturePriority</key><array><string>arm64</string></array>
   <key>LSUIElement</key><true/>
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLName</key><string>Klara-Suche öffnen</string>
+    <key>CFBundleURLSchemes</key><array><string>klara-begleiter</string></array>
+  </dict></array>
   <key>NSHighResolutionCapable</key><true/>
   <key>KlarwerkServer</key><string>__SERVER__</string>
   <key>NSMicrophoneUsageDescription</key><string>Zum Diktieren und Sprechen mit Klara. Ohne Mikrofon bleibt die Texteingabe vollständig nutzbar.</string>

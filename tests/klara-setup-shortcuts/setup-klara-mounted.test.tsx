@@ -508,7 +508,7 @@ describe("B1 · Setup › Klara über die reguläre Navigation, alle Einstellung
     await zumBereich();
     const geltung = q(karte, "klara-kuerzel-geltung")?.textContent ?? "";
     expect(geltung).toContain("in Klarwerk, solange das Klarwerk-Fenster aktiv ist");
-    expect(geltung).toContain("für später vorgemerkt");
+    expect(geltung).toContain("bei „Suche öffnen“ beschrieben");
     expect(karte.textContent).not.toMatch(/systemweit (verfügbar|aktiv)|in allen Programmen/);
     for (const aktion of [
       "oeffnen",
@@ -517,6 +517,7 @@ describe("B1 · Setup › Klara über die reguläre Navigation, alle Einstellung
       "auftragSprechen",
       "aufnahmeStoppen",
       "vorlesenStoppen",
+      "suchen",
     ]) {
       expect(zeile(aktion).dataset.quelle, aktion).toBe("standard");
       expect(q(zeile(aktion), "klara-kuerzel-wert")?.textContent, aktion).toContain("Nicht belegt");
