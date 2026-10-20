@@ -65,6 +65,7 @@ export interface KlaraAuftragSchritt {
   fehlerCode?: string | null;
   /** Nacharbeit 2: das am Server bestätigte Ziel eines Öffnens. */
   geprueft?: KlaraAuftragErgebnis | null;
+  ausgangUnklar?: boolean;
   /** Nacharbeit 4: bestätigte Schreibwirkung, deren Nachlesen noch aussteht (Schritt ungeklärt). */
   schreibwirkung?: {
     art: "entwurf" | "aufgabe" | "persoenliche_aufgabe";
@@ -130,10 +131,11 @@ export interface KlaraPlanSchritt {
   aktion: KlaraAktion;
   ziel: KlaraAuftragZiel | null;
   ausSchritt: number | null;
-  inhalt?: string;
-  aenderung?: { art: "ergaenzen"; text: string } | { art: "umbenennen"; titel: string };
+  nr?: number;
+  inhalt?: string | null;
+  aenderung?: { art: "ergaenzen"; text: string } | { art: "umbenennen"; titel: string } | null;
   /** Nacharbeit 4: bei `aufgabe_bearbeiten` die geklärte Aktion (Pflicht). */
-  aufgabenaktion?: KlaraAufgabenaktion;
+  aufgabenaktion?: KlaraAufgabenaktion | null;
 }
 
 /** Nacharbeit 4: Spiegel von `KlaraAufgabenaktion` in `services/app/src/klara-auftrag.ts`. */
@@ -163,7 +165,9 @@ export type KlaraAuftragEreignis =
   | "zurueckgenommen"
   | "abgebrochen"
   | "korrigiert"
-  | "auftrag_abgeschlossen";
+  | "auftrag_abgeschlossen"
+  | "unterbrochen"
+  | "fortgesetzt";
 
 export interface KlaraAuftrag extends KlaraAuftragGrenze {
   id: string;
@@ -175,6 +179,8 @@ export interface KlaraAuftrag extends KlaraAuftragGrenze {
   /** PV-02-02: abgeleitet am Server aus den festgehaltenen Schritten. */
   ergebnisstand?: Exclude<KlaraErgebnisstand, "entwurf">;
   abgebrochenAm: string | null;
+  unterbrochenAm?: string | null;
+  plan?: KlaraPlanSchritt[];
   schritte: KlaraAuftragSchritt[];
   fassungen: KlaraAuftragGrenze[];
   verlauf: { ereignis: KlaraAuftragEreignis; am: string; nr: number | null; fassung: number }[];
@@ -195,6 +201,7 @@ export interface KlaraAuftragEingabe {
 }
 
 export interface KlaraKorrekturEingabe {
+  auftragFassung?: number;
   erlaubteAktionen: KlaraAktion[];
   erlaubteZiele: KlaraAuftragZiel[];
   geplanteSchritte: number;
@@ -219,6 +226,17 @@ function pfad(gespraechId: string, rest = ""): string {
 }
 
 export const klaraAuftragApi = {
+  unterbrechen: (gespraechId: string, auftragId: string, auftragFassung: number) =>
+    api.post<{ auftrag: KlaraAuftrag }>(
+      pfad(gespraechId, `/${encodeURIComponent(auftragId)}/unterbrechen`),
+      { auftragFassung },
+    ),
+  fortsetzen: (gespraechId: string, auftragId: string, auftragFassung: number) =>
+    api.post<{ auftrag: KlaraAuftrag }>(
+      pfad(gespraechId, `/${encodeURIComponent(auftragId)}/fortsetzen`),
+      { auftragFassung },
+    ),
+
   liste: (gespraechId: string) => api.get<{ auftraege: KlaraAuftrag[] }>(pfad(gespraechId)),
   lege: (gespraechId: string, eingabe: KlaraAuftragEingabe) =>
     api.post<{ auftrag: KlaraAuftrag }>(pfad(gespraechId), eingabe),

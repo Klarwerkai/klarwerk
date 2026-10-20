@@ -207,7 +207,7 @@ export type KlaraErgebnisstand =
   | "abgebrochen";
 
 function ungeklaert(s: KlaraAuftragSchritt): boolean {
-  return s.stand === "begonnen" && Boolean(s.schreibwirkung) && !s.geprueft;
+  return s.stand === "begonnen" && Boolean(s.schreibwirkung || s.ausgangUnklar) && !s.geprueft;
 }
 
 /**

@@ -59,6 +59,7 @@ interface Entwurf {
   id: string;
   createdAt?: string;
   updatedAt: string;
+  createOperation?: { id: string; actor: string };
   payload: { title?: string; statement?: string };
 }
 
@@ -209,7 +210,7 @@ export class KlaraAusfuehrung {
     auftragId: string,
     schluessel: string,
     eingabe: { nr?: unknown; auftragFassung?: unknown },
-    rufe: KlaraRufe,
+    produktRufe: KlaraRufe,
   ): Promise<Ergebnis> {
     const a = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
     const plan = a.plan ?? [];
@@ -230,6 +231,14 @@ export class KlaraAusfuehrung {
       );
     }
     const vorhanden = a.schritte.find((s) => s.schluessel === schluessel);
+    if (vorhanden && vorhanden.nr !== nr) {
+      throw new KlaraGespraechFehler(
+        409,
+        "schluessel_belegt",
+        "Dieser Schlüssel gehört zu einem anderen Planschritt.",
+      );
+    }
+
     if (
       vorhanden &&
       (vorhanden.stand !== "begonnen" ||
@@ -274,6 +283,30 @@ export class KlaraAusfuehrung {
       return { ...begonnen, wiederholt: true };
     }
     const fassung = begonnen.schritt.auftragFassung;
+    const rufe: KlaraRufe = async (methode, url, rumpf) => {
+      if (methode !== "GET") {
+        const aktuell = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
+        if (aktuell.abgebrochenAm || aktuell.unterbrochenAm) {
+          throw new KlaraGespraechFehler(
+            409,
+            aktuell.abgebrochenAm ? "abgebrochen" : "unterbrochen",
+            "Der Auftrag wurde angehalten. Keine weitere Änderung begonnen; bereits ausgelöste Wirkungen bleiben erhalten.",
+          );
+        }
+        if (
+          !aktuell.erlaubteAktionen.includes(p.aktion) ||
+          !aktuell.erlaubteZiele.some((z) => gleich(z, zielZumBeginn))
+        ) {
+          throw new KlaraGespraechFehler(
+            409,
+            "ausserhalb_auftrag",
+            "Die aktuelle Auftragsgrenze erlaubt diese Änderung nicht mehr.",
+          );
+        }
+      }
+      return produktRufe(methode, url, rumpf);
+    };
+
     const melde = (
       stand: "gespeichert" | "abgeschlossen" | "fehlgeschlagen",
       zusatz: {
@@ -321,6 +354,9 @@ export class KlaraAusfuehrung {
         hinweis: "fremdstand",
       });
     const ungeklaert = async (): Promise<Ergebnis> => {
+      await this.dienst.merkeStaende(kontoId, gespraechId, auftragId, schluessel, {
+        ausgangUnklar: true,
+      });
       const jetzt = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
       const schritt = jetzt.schritte.find((s) => s.schluessel === schluessel);
       if (!schritt) {
@@ -343,15 +379,36 @@ export class KlaraAusfuehrung {
     if (p.aktion === "entwurf_erstellen") {
       let entwurfId = bekannt?.id ?? null;
       let eigenerStand = bekannt?.stand ?? null;
+      const operationId = `klara-auftrag-${auftragId}-${p.nr}`;
+      const liesAnlage = async () => {
+        const liste = await rufe("GET", "/api/drafts");
+        if (liste.status !== 200 || !Array.isArray(liste.daten)) return null;
+        return (
+          liste.daten.find(
+            (d): d is Entwurf =>
+              istEntwurf(d) &&
+              d.createOperation?.id === operationId &&
+              d.createOperation.actor === kontoId,
+          ) ?? null
+        );
+      };
       if (!entwurfId) {
-        const angelegt = await rufe("POST", "/api/drafts", {
-          title: ziel.titel,
-          ...(p.inhalt ? { statement: p.inhalt } : {}),
-          // Der Vorgangsschlüssel ist an Auftrag und Planschritt gebunden: eine Wiederholung legt
-          // keinen zweiten Entwurf an.
-          operationId: `klara-auftrag-${auftragId}-${p.nr}`,
-          expectedOwner: kontoId,
-        });
+        // Ein früherer Versuch oder eine verlorene Antwort: zuerst den echten Vorgang lesen.
+        const gelesen = vorhanden ? await liesAnlage() : null;
+        const angelegt = gelesen
+          ? { status: 200, daten: gelesen }
+          : await rufe("POST", "/api/drafts", {
+              title: ziel.titel,
+              ...(p.inhalt ? { statement: p.inhalt } : {}),
+              operationId,
+              expectedOwner: kontoId,
+            });
+        if (angelegt.status >= 500) {
+          const bestaetigt = await liesAnlage();
+          if (!bestaetigt) return ungeklaert();
+          angelegt.status = 200;
+          angelegt.daten = bestaetigt;
+        }
         if ((angelegt.status !== 201 && angelegt.status !== 200) || !istEntwurf(angelegt.daten)) {
           return scheitert(codeAus(angelegt.status));
         }

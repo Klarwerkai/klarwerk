@@ -410,6 +410,7 @@ const GRENZGRUENDE = [
   "ausserhalb_auftrag",
   "fassung_veraltet",
   "erweiterung",
+  "unterbrochen",
 ] as const;
 
 /** Was die Grenze am Server zu einem Schritt oder einer Korrektur sagt — in der Sprache der Fläche. */
@@ -1004,6 +1005,19 @@ async function fuehreSchrittAus(
     if (fehler instanceof ApiError && fehler.status === 409) {
       const grund = String(fehler.details.grund ?? "");
       const meldung = grenzGrund(grund, fehler.message, t);
+      if (grund === "unterbrochen" || grund === "fassung_veraltet") {
+        try {
+          const aktuell = (await klaraAuftragApi.liste(a.gespraechId)).auftraege.find(
+            (x) => x.id === a.auftrag?.id,
+          );
+          if (gen !== generation) return "stopp";
+          if (aktuell) uebernimmAuftrag(lokalId, aktuell);
+        } catch {
+          /* Die alte Grenze bleibt gesperrt, bis bewusst neu gelesen wird. */
+        }
+        setzeLokal(lokalId, nr, { lage: "unklar", meldung });
+        return "stopp";
+      }
       if (grund === "abgebrochen") {
         setzeLokal(lokalId, nr, { lage: "nicht_ausgefuehrt", meldung });
         setze(lokalId, (x) => ({ ...x, abbruch: true }));
@@ -1042,7 +1056,7 @@ async function fuehreSchrittAus(
   }
   // Nacharbeit 4 (Ben): gespeichert, aber das Nachlesen blieb aus — Kennung bekannt, Stand
   // ungeklärt. „Erneut versuchen“ holt mit demselben Schlüssel nur das Nachlesen nach.
-  if (schritt.stand === "begonnen" && schritt.schreibwirkung && !schritt.geprueft) {
+  if (schritt.stand === "begonnen" && !schritt.geprueft) {
     setzeLokal(lokalId, nr, { lage: "unklar", meldung: t("klaraauftrag.fehler.unbestaetigt") });
     return "stopp";
   }
@@ -1083,10 +1097,14 @@ async function fuehreAus(lokalId: string, u: AuftragsUmgebung, gen: number): Pro
     if ((vorhanden && ENDE.includes(vorhanden.stand)) || lage === "entfallen") {
       continue;
     }
+    if (a.auftrag?.unterbrochenAm) break;
     // Abbrechen verhindert jeden WEITEREN Schritt — geprüft vor jedem Beginn, hier und am Server.
     if (a.abbruch || a.auftrag?.abgebrochenAm) {
       // Schon gespeichert, nur das Nachlesen fehlt: das ist kein weiterer Schritt — nachlesen.
-      if (vorhanden?.stand === "begonnen" && vorhanden.schreibwirkung) {
+      if (
+        vorhanden?.stand === "begonnen" &&
+        (vorhanden.schreibwirkung || vorhanden.ausgangUnklar)
+      ) {
         await fuehreSchrittAus(lokalId, s.nr, u, gen);
         continue;
       }
@@ -1114,7 +1132,10 @@ async function fuehreAus(lokalId: string, u: AuftragsUmgebung, gen: number): Pro
   }
   const ende = hole(lokalId);
   const unklar = Object.values(ende?.lokal ?? {}).some((l) => l.lage === "unklar");
-  setze(lokalId, (x) => ({ ...x, phase: unklar ? "angehalten" : "fertig" }));
+  setze(lokalId, (x) => ({
+    ...x,
+    phase: unklar || x.auftrag?.unterbrochenAm ? "angehalten" : "fertig",
+  }));
 }
 
 /** Nach „Ergebnis unklar“: derselbe Schritt mit demselben Schlüssel, danach die übrigen. */
@@ -1127,7 +1148,56 @@ export function wiederhole(lokalId: string, u: AuftragsUmgebung): void {
     void liesUngeklaerteNach(lokalId, u);
     return;
   }
-  void fuehreAus(lokalId, u, generation);
+  void fortsetzenNachReadback(lokalId, u);
+}
+
+/** Nur der bewusste Fortsetzen-Knopf startet offene Arbeit; Laden allein führt nichts aus. */
+async function fortsetzenNachReadback(lokalId: string, u: AuftragsUmgebung): Promise<void> {
+  const gen = generation;
+  const a = hole(lokalId);
+  if (!a?.auftrag || !a.gespraechId) return;
+  // Sofort gegen doppelte Klicks sperren, bevor die erste Netzanfrage läuft.
+  setze(lokalId, (x) => ({ ...x, phase: "pruefen" }));
+  try {
+    const gelesen = await klaraAuftragApi.liste(a.gespraechId);
+    if (gen !== generation) return;
+    let aktuell = gelesen.auftraege.find((x) => x.id === a.auftrag?.id);
+    if (!aktuell) throw new Error("Auftrag nicht mehr vorhanden.");
+    if (aktuell.unterbrochenAm && !aktuell.abgebrochenAm) {
+      aktuell = (await klaraAuftragApi.fortsetzen(a.gespraechId, aktuell.id, aktuell.fassung))
+        .auftrag;
+      if (gen !== generation) return;
+    }
+    const neu = ausGeladenem(aktuell, a.herkunft, a.gespraechId);
+    setze(lokalId, (x) => ({ ...x, ...neu, lokalId, phase: "angehalten" }));
+    if (neu.geplant.length === 0) {
+      await liesUngeklaerteNach(lokalId, u);
+    } else if (!aktuell.abgebrochenAm && ["vorgeschlagen", "laeuft"].includes(aktuell.stand)) {
+      await fuehreAus(lokalId, u, gen);
+    } else if (aktuell.abgebrochenAm) {
+      await liesUngeklaerteNach(lokalId, u);
+    } else {
+      setze(lokalId, (x) => ({ ...x, phase: "fertig" }));
+    }
+  } catch (fehler) {
+    if (gen === generation)
+      setze(lokalId, (x) => ({ ...x, phase: "angehalten", meldung: fehlerGrund(fehler, u.t) }));
+  }
+}
+
+/** Fortsetzbare Unterbrechung am selben gespeicherten Auftrag. */
+export async function unterbrichAuftrag(lokalId: string, u: AuftragsUmgebung): Promise<void> {
+  const gen = generation;
+  const a = hole(lokalId);
+  if (!a?.auftrag || !a.gespraechId) return;
+  try {
+    const r = await klaraAuftragApi.unterbrechen(a.gespraechId, a.auftrag.id, a.auftrag.fassung);
+    if (gen !== generation) return;
+    uebernimmAuftrag(lokalId, r.auftrag);
+    setze(lokalId, (x) => ({ ...x, phase: "angehalten" }));
+  } catch (fehler) {
+    if (gen === generation) setze(lokalId, (x) => ({ ...x, meldung: fehlerGrund(fehler, u.t) }));
+  }
 }
 
 /**
@@ -1142,7 +1212,7 @@ async function liesUngeklaerteNach(lokalId: string, u: AuftragsUmgebung): Promis
     return;
   }
   for (const s of a.auftrag.schritte) {
-    if (s.stand !== "begonnen" || !s.schreibwirkung || s.geprueft) {
+    if (s.stand !== "begonnen" || (!s.schreibwirkung && !s.ausgangUnklar) || s.geprueft) {
       continue;
     }
     try {
@@ -1168,7 +1238,7 @@ async function liesUngeklaerteNach(lokalId: string, u: AuftragsUmgebung): Promis
     const nochOffen =
       (auftrag?.stand === "laeuft" || auftrag?.stand === "vorgeschlagen") && !auftrag.abgebrochenAm;
     const wirkungOffen = (auftrag?.schritte ?? []).some(
-      (s) => s.stand === "begonnen" && s.schreibwirkung && !s.geprueft,
+      (s) => s.stand === "begonnen" && (s.schreibwirkung || s.ausgangUnklar) && !s.geprueft,
     );
     return { ...x, phase: nochOffen || wirkungOffen ? "angehalten" : "fertig" };
   });
@@ -1208,7 +1278,7 @@ export async function brecheAuftragAb(lokalId: string, u: AuftragsUmgebung): Pro
       }
       // Nacharbeit 4: ein gespeicherter Schritt, dessen Nachlesen aussteht, bleibt nachlesbar.
       const wirkungOffen = (x.auftrag?.schritte ?? []).some(
-        (s) => s.stand === "begonnen" && s.schreibwirkung && !s.geprueft,
+        (s) => s.stand === "begonnen" && (s.schreibwirkung || s.ausgangUnklar) && !s.geprueft,
       );
       return { ...x, lokal, phase: wirkungOffen ? "angehalten" : "fertig" };
     });
@@ -1259,6 +1329,7 @@ export async function korrigiereAuftrag(
     const { auftrag } = await klaraAuftragApi.korrigiere(a.gespraechId, a.auftrag.id, {
       erlaubteAktionen: aktionen,
       erlaubteZiele: ziele,
+      auftragFassung: a.auftrag.fassung,
       geplanteSchritte: bleiben.length,
       grund: u.t("klaraauftrag.korrektur.grund", {
         weg: offen.length - offen.filter((s) => behalten.includes(s.nr)).length,
@@ -1340,7 +1411,7 @@ function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string):
   // unabhängig davon, ob der Auftrag abgebrochen wurde. Ohne Plan in diesem Browser holt
   // „Erneut versuchen“ dann NUR das Nachlesen nach (`liesUngeklaerteNach`); kein weiterer Schritt.
   const wirkungOffen = x.schritte.some(
-    (s) => s.stand === "begonnen" && s.schreibwirkung && !s.geprueft,
+    (s) => s.stand === "begonnen" && (s.schreibwirkung || s.ausgangUnklar) && !s.geprueft,
   );
   return {
     lokalId: `geladen-${x.id}`,
@@ -1349,7 +1420,35 @@ function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string):
     herkunft,
     phase: offen || wirkungOffen ? "angehalten" : "fertig",
     meldung: null,
-    geplant: [],
+    geplant: (x.plan ?? []).map((p, i) => {
+      const nr = p.nr ?? i + 1;
+      const vorher = x.schritte.find((s) => s.nr === nr);
+      const ausSchritt =
+        p.ausSchritt === null
+          ? -1
+          : (x.plan ?? []).findIndex((q, j) => (q.nr ?? j + 1) === p.ausSchritt);
+      const erkannt: ErkannterSchritt = {
+        aktion: p.aktion,
+        suche:
+          p.ziel?.art === "neuer_entwurf"
+            ? "neu"
+            : p.ziel?.art === "neue_persoenliche_aufgabe"
+              ? "neue_aufgabe"
+              : "beliebig",
+        name: p.ziel?.titel ?? vorher?.ziel.titel ?? "",
+        ...(ausSchritt >= 0 ? { ausSchritt } : {}),
+        ...(p.inhalt ? { inhalt: p.inhalt } : {}),
+        ...(p.aenderung ? { aenderung: p.aenderung } : {}),
+      };
+      return {
+        nr,
+        schluessel: vorher?.schluessel ?? `plan-${nr}`,
+        erkannt,
+        ziel: p.ziel,
+        kandidaten: [],
+        aufgabenaktion: p.aufgabenaktion ?? null,
+      };
+    }),
     auftrag: x,
     gespraechId,
     lokal: {},

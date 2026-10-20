@@ -486,18 +486,16 @@ describe("A4 · K3/K4 — Abbrechen ist nicht Rückgängig", () => {
     });
     expect(zweiter.statusCode).toBe(409);
     expect((zweiter.json() as { grund: string }).grund).toBe("abgebrochen");
-    // Der schon begonnene Schritt endet mit dem, was wirklich geschah (am Server ausgeführt und
-    // nachgelesen) — es wird nicht still zurückgenommen.
-    const gemeldet = await fuehreAus(erik.token, gid, a.id, "s-1", 1);
-    const nach = gemeldet.auftrag;
-    expect(nach.stand).toBe("abgebrochen");
-    expect(nach.schritte.map((s) => [s.nr, s.stand])).toEqual([[1, "gespeichert"]]);
-    const entwurf = await auf(erik.token, "GET", `/api/drafts/${nach.schritte[0]?.ergebnis?.id}`);
-    expect(entwurf.statusCode).toBe(200);
-    const alle = (await auf(erik.token, "GET", "/api/drafts")).json() as {
-      payload: { title?: string };
-    }[];
-    expect(alle.map((d) => d.payload.title)).toEqual(["Wartung Presse 4"]);
+    // G / AW11-K03: „begonnen“ allein ist keine ausgelöste Wirkung. Nach dem Stopp darf
+    // ein früher nur protokollierter Schritt keine neue Anlage mehr auslösen.
+    const gemeldet = await auf(erik.token, "POST", `${schrittPfad(gid, a.id, "s-1")}/ausfuehrung`, {
+      nr: 1,
+      auftragFassung: 1,
+    });
+    expect(gemeldet.statusCode).toBe(409);
+    expect(gemeldet.json()).toMatchObject({ grund: "abgebrochen" });
+    const alle = (await auf(erik.token, "GET", "/api/drafts")).json() as unknown[];
+    expect(alle).toHaveLength(0);
     // Abbrechen ist wiederholbar und ändert nichts weiter.
     const nochmal = await auf(
       erik.token,
@@ -506,7 +504,7 @@ describe("A4 · K3/K4 — Abbrechen ist nicht Rückgängig", () => {
       {},
     );
     expect((nochmal.json() as { auftrag: KlaraAuftrag }).auftrag.schritte[0]?.stand).toBe(
-      "gespeichert",
+      "begonnen",
     );
   });
 

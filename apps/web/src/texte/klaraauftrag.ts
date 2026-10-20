@@ -11,6 +11,14 @@ export default {
   praefix: "klaraauftrag.",
   legacySchluessel: [],
   de: {
+    "klaraauftrag.grenze.unterbrochen": "Der Auftrag ist unterbrochen. Bitte bewusst fortsetzen.",
+    "klaraauftrag.fortschritt": "{{fertig}} von {{gesamt}} Schritten erledigt.",
+    "klaraauftrag.details": "Auftragsdetails",
+    "klaraauftrag.knopf.unterbrechen": "Unterbrechen",
+    "klaraauftrag.knopf.fortsetzen": "Fortsetzen",
+    "klaraauftrag.ereignis.unterbrochen": "Auftrag unterbrochen",
+    "klaraauftrag.ereignis.fortgesetzt": "Auftrag fortgesetzt",
+
     "klaraauftrag.titel": "Auftrag an Klara · {{quelle}}",
     "klaraauftrag.wortlaut": "Dein Auftrag: „{{text}}“",
     "klaraauftrag.ohneKi":
@@ -233,6 +241,14 @@ export default {
       "„Diktieren“ schreibt nur ins Eingabefeld. „Auftrag sprechen“ zeigt den Auftrag als Karte – erst „Senden“ führt ihn aus.",
   },
   en: {
+    "klaraauftrag.grenze.unterbrochen": "The order is paused. Resume it explicitly.",
+    "klaraauftrag.fortschritt": "{{fertig}} of {{gesamt}} steps completed.",
+    "klaraauftrag.details": "Order details",
+    "klaraauftrag.knopf.unterbrechen": "Pause",
+    "klaraauftrag.knopf.fortsetzen": "Resume",
+    "klaraauftrag.ereignis.unterbrochen": "Order paused",
+    "klaraauftrag.ereignis.fortgesetzt": "Order resumed",
+
     "klaraauftrag.titel": "Task for Klara · {{quelle}}",
     "klaraauftrag.wortlaut": "Your task: “{{text}}”",
     "klaraauftrag.ohneKi":
@@ -448,6 +464,14 @@ export default {
       "“Dictate” only writes into the input field. “Speak a task” shows the task as a card – only “Send” carries it out.",
   },
   nl: {
+    "klaraauftrag.grenze.unterbrochen": "De opdracht is onderbroken. Hervat deze bewust.",
+    "klaraauftrag.fortschritt": "{{fertig}} van {{gesamt}} stappen voltooid.",
+    "klaraauftrag.details": "Opdrachtdetails",
+    "klaraauftrag.knopf.unterbrechen": "Onderbreken",
+    "klaraauftrag.knopf.fortsetzen": "Hervatten",
+    "klaraauftrag.ereignis.unterbrochen": "Opdracht onderbroken",
+    "klaraauftrag.ereignis.fortgesetzt": "Opdracht hervat",
+
     "klaraauftrag.titel": "Opdracht voor Klara · {{quelle}}",
     "klaraauftrag.wortlaut": "Jouw opdracht: „{{text}}”",
     "klaraauftrag.ohneKi":

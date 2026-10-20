@@ -126,6 +126,7 @@ export interface KlaraAuftragSchritt {
    * gilt als ungeklärt; eine Wiederholung liest nur nach und schreibt nicht erneut.
    */
   readonly schreibwirkung?: KlaraSchreibwirkung | null;
+  readonly ausgangUnklar?: boolean;
   /**
    * produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: der Stand des Ziels VOR der Wirkung, vom
    * Server gelesen (Fassungszeit eines Entwurfs, Priorität/Zuweisung/Status einer Aufgabe). Fehlt er
@@ -240,7 +241,9 @@ export type KlaraAuftragEreignis =
   | "zurueckgenommen"
   | "abgebrochen"
   | "korrigiert"
-  | "auftrag_abgeschlossen";
+  | "auftrag_abgeschlossen"
+  | "unterbrochen"
+  | "fortgesetzt";
 
 export interface KlaraAuftragVerlaufseintrag {
   readonly ereignis: KlaraAuftragEreignis;
@@ -260,6 +263,8 @@ export interface KlaraAuftrag extends KlaraAuftragGrenze {
   readonly verantwortlich: string;
   readonly stand: KlaraAuftragStand;
   readonly abgebrochenAm: string | null;
+  /** Fortsetzbare Pause im vorhandenen Auftrag; keine neue Jobverwaltung. */
+  readonly unterbrochenAm?: string | null;
   readonly schritte: readonly KlaraAuftragSchritt[];
   /** Nacharbeit 2: der gebundene Plan (leer bei Aufträgen ohne serverseitige Ausführung). */
   readonly plan?: readonly KlaraPlanSchritt[];
@@ -292,7 +297,8 @@ export type KlaraAuftragGrund =
   | "ohne_plan"
   | "geaendert"
   | "nicht_ruecknehmbar"
-  | "ziel_fehlt";
+  | "ziel_fehlt"
+  | "unterbrochen";
 
 export class KlaraAuftragFehler extends Error {
   constructor(
@@ -492,7 +498,14 @@ function mitVerlauf(
 /** Stand neu ableiten; wird der Auftrag dabei abgeschlossen, steht das im Verlauf. */
 function abgeleitet(a: KlaraAuftrag, jetzt: string): KlaraAuftrag {
   const stand = auftragsStand(a);
-  const neu: KlaraAuftrag = { ...a, stand, geaendertAm: jetzt };
+  const neu: KlaraAuftrag = {
+    ...a,
+    stand,
+    geaendertAm: jetzt,
+    ...(a.unterbrochenAm && ["abgeschlossen", "teilweise", "fehlgeschlagen"].includes(stand)
+      ? { unterbrochenAm: null }
+      : {}),
+  };
   return stand === "abgeschlossen" && a.stand !== "abgeschlossen"
     ? mitVerlauf(neu, "auftrag_abgeschlossen", jetzt, null)
     : neu;
@@ -698,6 +711,7 @@ export interface KlaraKorrekturEingabe {
   ergebnis?: unknown;
   geplanteSchritte?: unknown;
   grund?: unknown;
+  auftragFassung?: unknown;
 }
 
 /**
@@ -710,6 +724,13 @@ export function korrigiere(
   eingabe: KlaraKorrekturEingabe,
   jetzt: string,
 ): KlaraAuftrag {
+  if (eingabe.auftragFassung !== undefined && eingabe.auftragFassung !== a.fassung) {
+    throw new KlaraAuftragFehler(
+      409,
+      "fassung_veraltet",
+      "Der Auftrag wurde inzwischen korrigiert. Bitte die aktuelle Fassung lesen.",
+    );
+  }
   if (a.abgebrochenAm) {
     throw new KlaraAuftragFehler(
       409,
@@ -854,6 +875,13 @@ export function setzeSchritt(
         409,
         "abgebrochen",
         "Der Auftrag wurde abgebrochen – es beginnt kein weiterer Schritt.",
+      );
+    }
+    if (a.unterbrochenAm) {
+      throw new KlaraAuftragFehler(
+        409,
+        "unterbrochen",
+        "Der Auftrag ist unterbrochen. Bitte ausdrücklich fortsetzen.",
       );
     }
     if (a.stand === "abgeschlossen") {
@@ -1070,6 +1098,7 @@ export function merkeSchreibwirkung(
 
 /** Was `merkeStaende` am Schritt festhalten darf. */
 export interface KlaraStaende {
+  ausgangUnklar?: boolean;
   vorherStand?: string | null;
   ruecknahmeStand?: string | null;
   nachher?: { title: string; statement: string } | null;
@@ -1107,4 +1136,37 @@ export function brecheAb(a: KlaraAuftrag, jetzt: string): KlaraAuftrag {
     );
   }
   return abgeleitet(mitVerlauf({ ...a, abgebrochenAm: jetzt }, "abgebrochen", jetzt, null), jetzt);
+}
+
+/** Pause und bewusste Wiederaufnahme unter der heutigen Auftragsfassung. Resultate bleiben erhalten. */
+export function unterbrechung(
+  a: KlaraAuftrag,
+  fortsetzen: boolean,
+  fassung: unknown,
+  jetzt: string,
+): KlaraAuftrag {
+  if (fassung !== a.fassung) {
+    throw new KlaraAuftragFehler(
+      409,
+      "fassung_veraltet",
+      "Bitte die aktuelle Auftragsfassung lesen.",
+    );
+  }
+  if (a.abgebrochenAm || ["abgeschlossen", "teilweise", "fehlgeschlagen"].includes(a.stand)) {
+    throw new KlaraAuftragFehler(
+      409,
+      a.abgebrochenAm ? "abgebrochen" : "abgeschlossen",
+      "Dieser Auftrag ist beendet. Seine Ergebnisse bleiben sichtbar.",
+    );
+  }
+  if (fortsetzen ? !a.unterbrochenAm : Boolean(a.unterbrochenAm)) return a;
+  return abgeleitet(
+    mitVerlauf(
+      { ...a, unterbrochenAm: fortsetzen ? null : jetzt },
+      fortsetzen ? "fortgesetzt" : "unterbrochen",
+      jetzt,
+      null,
+    ),
+    jetzt,
+  );
 }
