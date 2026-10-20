@@ -11,6 +11,7 @@ import type { KlaraAuftrag, KlaraAuftragSchritt } from "../klara-auftrag";
 import { bindeAuftragsnotizen } from "../klara-auftragsnotiz";
 import { bindeAuftragswissen } from "../klara-auftragswissen";
 import { KlaraAusfuehrung, type KlaraRufe, type KlaraVorWirkung } from "../klara-ausfuehrung";
+import { bindeBeschaffungsquellen } from "../klara-beschaffungsquellen";
 import {
   type KlaraGespraech,
   type KlaraGespraechDienst,
@@ -326,8 +327,12 @@ export function klaraGespraechRoutes(
             )
           )
             await dienst.hole(user.id, request.params.id);
+          if (eingabe.beschaffung) await dienst.hole(user.id, request.params.id);
           const gebunden = await bindeAuftragswissen(
-            await bindeAuftragsnotizen(eingabe, rufeFuer(request)),
+            await bindeAuftragsnotizen(
+              await bindeBeschaffungsquellen(eingabe, rufeFuer(request)),
+              rufeFuer(request),
+            ),
             rufeFuer(request),
           );
           const auftrag = await dienst.legeAuftragAn(user.id, request.params.id, gebunden);

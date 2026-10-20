@@ -37,6 +37,7 @@ import {
   type KlaraAuftragZiel,
   type KlaraAuftragsQuelle,
   type KlaraAuftragsnotiz,
+  type KlaraBeschaffungsziel,
   type KlaraSchrittStand,
   klaraAuftragApi,
 } from "../../api/klaraAuftrag";
@@ -47,6 +48,7 @@ import type { WissensVorschau, WissensZiel } from "../../api/klaraWissen";
 import type { DraftPayload } from "../../api/types";
 import { fallHref } from "../../lib/fallAbsprung";
 import { type ErkannterSchritt, erkenneAuftrag } from "../../lib/klaraAuftragErkennung";
+import { fehlendeBeschaffungsangaben } from "../../lib/klaraBeschaffungsauftrag";
 import { leseobjektJetzt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { isOpenGap, isUnresolvedConflict } from "../../lib/taskFilters";
@@ -238,6 +240,9 @@ export type Phase =
   | "fehler";
 
 export interface Ausfuehrung {
+  beschaffung?: KlaraBeschaffungsziel;
+  beschaffungsQuelle?: string;
+  beschaffungsKandidaten?: KlaraAuftragZiel[];
   lokalId: string;
   quelle: KlaraAuftragsQuelle;
   wortlaut: string;
@@ -571,6 +576,8 @@ export function starteAuftrag(
     herkunft,
     phase: "pruefen",
     meldung: null,
+    ...(erkannt.beschaffung ? { beschaffung: erkannt.beschaffung } : {}),
+    ...(erkannt.beschaffungsQuelle ? { beschaffungsQuelle: erkannt.beschaffungsQuelle } : {}),
     geplant: erkannt.schritte.map((e, i) => ({
       nr: i + 1,
       schluessel: neuerSchluessel(i + 1),
@@ -586,6 +593,72 @@ export function starteAuftrag(
   setzeZustand((z) => ({ ...z, liste: [a, ...z.liste].slice(0, 5) }));
   void klaere(lokalId, u);
   return "gestartet";
+}
+
+/** Gezielt nur kritische Lücken ergänzen; bekannte Werte und die ursprüngliche Eingabe bleiben. */
+export function ergaenzeBeschaffung(
+  lokalId: string,
+  werte: Partial<Pick<KlaraBeschaffungsziel, "produkt" | "bedarf" | "menge" | "termin">>,
+  u: AuftragsUmgebung,
+): void {
+  const a = hole(lokalId);
+  if (!a?.beschaffung || a.auftrag || a.abbruch || a.phase !== "rueckfrage") return;
+  const offen = fehlendeBeschaffungsangaben(a.beschaffung);
+  const b = { ...a.beschaffung };
+  for (const k of offen) if (werte[k] !== undefined) b[k] = werte[k]?.trim() ?? "";
+  setze(lokalId, (x) => ({ ...x, beschaffung: b, phase: "pruefen", meldung: null }));
+  void klaere(lokalId, u);
+}
+export function waehleBeschaffungsquelle(
+  lokalId: string,
+  index: number,
+  u: AuftragsUmgebung,
+): void {
+  const a = hole(lokalId);
+  const q = a?.beschaffungsKandidaten?.[index];
+  if (!a?.beschaffung || a.auftrag || a.abbruch || !q?.id || !q.stand) return;
+  setze(lokalId, (x) => ({
+    ...x,
+    beschaffung: {
+      ...(a.beschaffung as KlaraBeschaffungsziel),
+      quellen: [{ id: q.id as string, fassung: Number(q.stand), status: "gelesen" }],
+    },
+    beschaffungsKandidaten: [],
+    phase: "pruefen",
+    meldung: null,
+  }));
+  void klaere(lokalId, u);
+}
+/** Dieselbe Fassungstür; alte Ergebnisse bleiben erhalten, nur offene Nutzdaten ändern sich. */
+export async function korrigiereBeschaffung(
+  lokalId: string,
+  menge: string,
+  termin: string,
+  u: AuftragsUmgebung,
+): Promise<void> {
+  const gen = generation;
+  const a = hole(lokalId);
+  const alt = a?.auftrag;
+  if (!a || !alt?.beschaffung || !a.gespraechId || a.abbruch || !alt.unterbrochenAm) return;
+  try {
+    const { auftrag } = await klaraAuftragApi.korrigiere(a.gespraechId, alt.id, {
+      auftragFassung: alt.fassung,
+      erlaubteAktionen: alt.erlaubteAktionen,
+      erlaubteZiele: alt.erlaubteZiele,
+      geplanteSchritte: alt.geplanteSchritte,
+      grund: u.t("klaraauftrag.bes.korrekturGrund"),
+      beschaffung: { ...alt.beschaffung, menge: menge.trim(), termin },
+    });
+    if (gen !== generation) return;
+    uebernimmAuftrag(lokalId, auftrag);
+    setze(lokalId, (x) => ({
+      ...x,
+      beschaffung: auftrag.beschaffung as KlaraBeschaffungsziel,
+      meldung: u.t("klaraauftrag.bes.korrigiert"),
+    }));
+  } catch (e) {
+    if (gen === generation) setze(lokalId, (x) => ({ ...x, meldung: fehlerGrund(e, u.t) }));
+  }
 }
 
 /** Der bewusste vorhandene F08-Endknopf übergibt seine gesehene Bindung, ohne erneut zu raten. */
@@ -638,8 +711,53 @@ async function klaere(lokalId: string, u: AuftragsUmgebung): Promise<void> {
   if (!a) {
     return;
   }
+  let beschaffungsPlan: GeplanterSchritt[] | undefined;
+  if (a.beschaffung) {
+    if (fehlendeBeschaffungsangaben(a.beschaffung).length) {
+      setze(lokalId, (x) => ({ ...x, phase: "rueckfrage", meldung: null }));
+      return;
+    }
+    if (a.beschaffungsQuelle && !a.beschaffung.quellen.length) {
+      try {
+        const kandidaten = await wissensobjekte(a.beschaffungsQuelle);
+        if (!aktiverVorgang(lokalId, gen, "pruefen")) return;
+        if (kandidaten.length !== 1) {
+          setze(lokalId, (x) => ({
+            ...x,
+            phase: kandidaten.length ? "rueckfrage" : "unbekannt",
+            beschaffungsKandidaten: kandidaten,
+            meldung: u.t("klaraauftrag.bes.quelleOffen", { name: a.beschaffungsQuelle }),
+          }));
+          return;
+        }
+        const q = kandidaten[0];
+        if (!q?.id || !q.stand)
+          throw new Error(u.t("klaraauftrag.bes.quelleOffen", { name: a.beschaffungsQuelle }));
+        const gebunden = {
+          ...a.beschaffung,
+          quellen: [{ id: q.id, fassung: Number(q.stand), status: "gelesen" }],
+        };
+        setze(lokalId, (x) => ({ ...x, beschaffung: gebunden }));
+      } catch (e) {
+        if (aktiverVorgang(lokalId, gen, "pruefen"))
+          setze(lokalId, (x) => ({ ...x, phase: "fehler", meldung: fehlerGrund(e, u.t) }));
+        return;
+      }
+    }
+    beschaffungsPlan = a.geplant.map((p, i) => ({
+      ...p,
+      erkannt: {
+        ...p.erkannt,
+        name: u.t(i === 0 ? "klaraauftrag.bes.anforderung" : "klaraauftrag.bes.anfrage", {
+          produkt: a.beschaffung?.produkt,
+        }),
+      },
+    }));
+    const gebundenerPlan = beschaffungsPlan;
+    setze(lokalId, (x) => ({ ...x, geplant: gebundenerPlan }));
+  }
   const geplant: GeplanterSchritt[] = [];
-  for (const s of a.geplant) {
+  for (const s of beschaffungsPlan ?? a.geplant) {
     if (s.erkannt.ausSchritt !== undefined) {
       if (
         s.erkannt.aktion === "erinnerung_anlegen" &&
@@ -974,6 +1092,7 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
   const ziele = eindeutigeZiele(a.geplant);
   const aktionen = [...new Set(a.geplant.map((s) => s.erkannt.aktion))];
   const quellen = [
+    ...(a.beschaffung?.quellen.map((q) => `ko:${q.id}`) ?? []),
     t("klaraauftrag.quelle.eingabe", { quelle: t(`klaraauftrag.quelleArt.${a.quelle}`) }),
     ...a.geplant.flatMap((s) =>
       s.notizQuelle ? [`notiz:${s.notizQuelle.id}`] : s.wissen ? [`notiz:${s.wissen.notizId}`] : [],
@@ -993,6 +1112,7 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
       setzeZustand((z) => ({ ...z, geladenFuer: gespraechId }));
     }
     const { auftrag } = await klaraAuftragApi.lege(gespraechId, {
+      ...(a.beschaffung ? { beschaffung: a.beschaffung } : {}),
       quelle: a.quelle,
       wortlaut: kuerzen(a.wortlaut, 2000),
       ziel: kuerzen(a.geplant.map((s) => zielText(s, t)).join(" · "), 600),
@@ -1647,6 +1767,7 @@ function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string):
         ...(p.wissen ? { wissen: p.wissen } : {}),
       };
     }),
+    ...(x.beschaffung ? { beschaffung: x.beschaffung } : {}),
     auftrag: x,
     gespraechId,
     lokal: {},
