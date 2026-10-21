@@ -1339,22 +1339,28 @@ export function Ask(): JSX.Element {
   const [nichtHilfreich, setNichtHilfreich] = useState<NichtHilfreichOffen | null>(null);
   const [nichtHilfreichErledigt, setNichtHilfreichErledigt] =
     useState<NichtHilfreichErledigt | null>(null);
-  const quelleTitel = (koId: string): string =>
-    (kos.data ?? []).find((ko) => ko.id === koId)?.title ?? koId;
+  const quelleTitel = (koId: string): string | null =>
+    (kos.data ?? []).find((ko) => ko.id === koId)?.title ?? null;
   const nichtHilfreichMelden = useMutation({
-    mutationFn: ({ koId, alternative }: { koId: string; alternative: string | null }) =>
-      endpoints.ask.notHelpful({
+    mutationFn: ({ koId, alternative }: { koId: string; alternative: string | null }) => {
+      const titel = quelleTitel(koId);
+      // Auch ein vor dem Rechtewechsel gebundener Bestätigungsport darf kein POST starten.
+      if (!titel || !rueckmeldungFreigegeben(koId)) {
+        throw new Error(t("sprachfeedback.quelleUngeprueft"));
+      }
+      return endpoints.ask.notHelpful({
         koId,
         receipt,
         ...(alternative
           ? {
               alternative,
               entwurfTitel: t("sprachfeedback.entwurfTitel", {
-                titel: quelleTitel(koId),
+                titel,
               }),
             }
           : {}),
-      }),
+      });
+    },
     onSuccess: (r) => {
       setNichtHilfreich(null);
       setNichtHilfreichErledigt({ entwurfId: r.entwurfId });
@@ -1614,6 +1620,20 @@ export function Ask(): JSX.Element {
     ) === "ueberholt";
   const karteSichtbar =
     Boolean(result) && Boolean(contract) && !pruefungGestoert && !antwortUeberholt;
+  // Die offene Rückmeldung gehört zur selben Antwortfreigabe. Ihr eigener editierter Weg
+  // bleibt in der montierten Karte, während Titel und Bestätigung gesperrt sind.
+  function rueckmeldungFreigegeben(koId: string): boolean {
+    return (
+      rechtePruefung.current === null &&
+      konto !== null &&
+      konto === standFuer &&
+      karteSichtbar &&
+      result?.answered === true &&
+      (result.citedSources ?? []).includes(koId) &&
+      quelleTitel(koId) !== null &&
+      belegNochGueltig(receipt, antwortAm, Date.now())
+    );
+  }
   // Ben R2, F10: welche Sperrgründe liegen in der Torlage WIRKLICH vor — in fester Reihenfolge —,
   // und welcher Prüfweg passt dazu (nur Freigabe und Stufe entstehen in der Prüfung).
   const verschlossenGruende = (["freigabe", "stufe", "volltext"] as const).filter((grund) =>
@@ -2325,7 +2345,8 @@ export function Ask(): JSX.Element {
               frageVorher && q.trimStart().startsWith(frageVorher)
                 ? q.trimStart().slice(frageVorher.length)
                 : q;
-            const erkannt = tragend && belegGueltig ? erkenneNichtHilfreich(gesagt) : null;
+            const erkannt =
+              tragend && rueckmeldungFreigegeben(tragend) ? erkenneNichtHilfreich(gesagt) : null;
             if (tragend && erkannt) {
               setNichtHilfreichErledigt(null);
               setNichtHilfreich({ koId: tragend, alternative: erkannt.alternative });
@@ -2369,12 +2390,18 @@ export function Ask(): JSX.Element {
         {nichtHilfreich ? (
           <NichtHilfreichKarte
             key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
-            quelleTitel={quelleTitel(nichtHilfreich.koId)}
+            quelleTitel={
+              rueckmeldungFreigegeben(nichtHilfreich.koId)
+                ? quelleTitel(nichtHilfreich.koId)
+                : null
+            }
             alternative={nichtHilfreich.alternative}
             laeuft={nichtHilfreichMelden.isPending}
-            onBestaetigen={(alternative) =>
-              nichtHilfreichMelden.mutate({ koId: nichtHilfreich.koId, alternative })
-            }
+            onBestaetigen={(alternative) => {
+              if (rueckmeldungFreigegeben(nichtHilfreich.koId)) {
+                nichtHilfreichMelden.mutate({ koId: nichtHilfreich.koId, alternative });
+              }
+            }}
             onAlsFrage={() => {
               setNichtHilfreich(null);
               submitAsk(q);

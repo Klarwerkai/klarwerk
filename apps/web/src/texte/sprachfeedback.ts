@@ -12,6 +12,8 @@ export default {
   praefix: "sprachfeedback.",
   legacySchluessel: ["audit.action.answer_not_helpful"],
   de: {
+    "sprachfeedback.quelleUngeprueft":
+      "Die Quelle ist gerade nicht bestätigt. Dein Text bleibt erhalten; die Rückmeldung kann erst nach erneuter Prüfung gesendet werden.",
     "sprachfeedback.erkannt": "Verstanden: Die Antwort aus „{{titel}}“ war nicht hilfreich.",
     "sprachfeedback.wegLabel": "So hast du es gemacht (wird ein neuer Entwurf):",
     "sprachfeedback.keinEntwurfRecht":
@@ -28,6 +30,8 @@ export default {
     "audit.action.answer_not_helpful": "Antwort als nicht hilfreich vermerkt",
   },
   en: {
+    "sprachfeedback.quelleUngeprueft":
+      "The source is not currently confirmed. Your text is kept; feedback can be sent after it has been checked again.",
     "sprachfeedback.erkannt": "Understood: the answer from “{{titel}}” was not helpful.",
     "sprachfeedback.wegLabel": "This is how you did it (becomes a new draft):",
     "sprachfeedback.keinEntwurfRecht":
@@ -44,6 +48,8 @@ export default {
     "audit.action.answer_not_helpful": "Answer recorded as not helpful",
   },
   nl: {
+    "sprachfeedback.quelleUngeprueft":
+      "De bron is nu niet bevestigd. Je tekst blijft bewaard; de terugkoppeling kan na een nieuwe controle worden verzonden.",
     "sprachfeedback.erkannt": "Begrepen: het antwoord uit ‘{{titel}}’ was niet behulpzaam.",
     "sprachfeedback.wegLabel": "Zo heb je het gedaan (wordt een nieuw concept):",
     "sprachfeedback.keinEntwurfRecht":

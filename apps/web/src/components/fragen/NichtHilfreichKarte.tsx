@@ -22,8 +22,8 @@ export function NichtHilfreichKarte({
   onAlsFrage,
   onVerwerfen,
 }: {
-  /** Titel der tragenden Quelle, auf die sich die Rückmeldung bezieht. */
-  quelleTitel: string;
+  /** Nur eine heute freigegebene Quelle nennen; null sperrt die quellengebundene Ausgabe. */
+  quelleTitel: string | null;
   /** Der erkannte abweichende Weg; leer, wenn keiner genannt wurde. */
   alternative: string;
   laeuft: boolean;
@@ -43,7 +43,11 @@ export function NichtHilfreichKarte({
       data-testid="ask-nicht-hilfreich"
       className="mt-3 rounded-btn border border-hairline bg-surface px-4 py-3 text-[14px] text-text"
     >
-      <p className="font-semibold">{t("sprachfeedback.erkannt", { titel: quelleTitel })}</p>
+      <p className="font-semibold">
+        {quelleTitel === null
+          ? t("sprachfeedback.quelleUngeprueft")
+          : t("sprachfeedback.erkannt", { titel: quelleTitel })}
+      </p>
       {darfEntwurf ? (
         <label className="mt-2 block text-[13px] text-muted">
           {t("sprachfeedback.wegLabel")}
@@ -65,8 +69,10 @@ export function NichtHilfreichKarte({
         <button
           type="button"
           data-testid="ask-nicht-hilfreich-bestaetigen"
-          disabled={laeuft}
-          onClick={() => onBestaetigen(mitEntwurf ? weg.trim() : null)}
+          disabled={laeuft || quelleTitel === null}
+          onClick={() => {
+            if (quelleTitel !== null) onBestaetigen(mitEntwurf ? weg.trim() : null);
+          }}
           className="inline-flex items-center rounded-[10px] bg-brand px-4 py-2 text-[14px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           {mitEntwurf ? t("sprachfeedback.bestaetigenMitEntwurf") : t("sprachfeedback.bestaetigen")}
