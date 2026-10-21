@@ -70,7 +70,10 @@ async function aufbau(cloud: () => Promise<string>, lokal?: () => Promise<string
   return { reasoner, primary, repo, append, starts, vermerkeStart };
 }
 
-function startVorSchreiben(starts: Array<{ kennungen: number; schreibvorgaenge: number }>, n: number) {
+function startVorSchreiben(
+  starts: Array<{ kennungen: number; schreibvorgaenge: number }>,
+  n: number,
+) {
   expect(starts).toEqual(Array.from({ length: n }, () => ({ kennungen: 1, schreibvorgaenge: 0 })));
   expect(randomUUID).toHaveBeenCalledTimes(1);
 }
@@ -188,7 +191,9 @@ describe("R-1373 / PL1a: eine vorab gebildete Kennung je runTask-Lauf", () => {
 
       startVorSchreiben(env.starts, 1);
       expect(env.append).toHaveBeenCalledTimes(1);
-      expect((await einzigerLauf(env.repo))?.status).toBe(ausgang === "erfolg" ? "success" : "error");
+      expect((await einzigerLauf(env.repo))?.status).toBe(
+        ausgang === "erfolg" ? "success" : "error",
+      );
     });
   }
 
