@@ -142,6 +142,21 @@ export interface KlaraVorschlag {
   geltungsbereich?: string;
 }
 
+// BD12-02-K06: nach der Entscheidung hat sich eine Quelle einer Seite geändert. Die Entscheidung
+// ist damit ERNEUT ZU PRÜFEN — sie bleibt aber vollständig stehen (Geltung, Fassungen, Begründung,
+// Entscheider); der Vermerk kommt dazu und überschreibt nichts. Das Objekt selbst bekommt den
+// vorhandenen Merker „Stimmt das noch?" (Grund „konflikt").
+export interface ConflictReviewRequired {
+  seite: "a" | "b";
+  koId: string;
+  art: "quelle_hinzugefuegt" | "quelle_entfernt";
+  sourceIds: string[];
+  // Die Fassung des Objekts, als die Änderung einging.
+  koVersion: number | null;
+  by: string;
+  at: string;
+}
+
 export interface Conflict {
   id: string;
   koA: string;
@@ -183,6 +198,8 @@ export interface Conflict {
   // sie weist sich über `origin`/`detector` aus. Altbestand ohne das Feld bleibt gültig.
   createdBy?: string;
   createdAt: string;
+  /** Quellenänderung nach der Entscheidung; die Entscheidung selbst bleibt erhalten. */
+  neupruefung?: ConflictReviewRequired[];
 }
 
 export interface ConflictInput {

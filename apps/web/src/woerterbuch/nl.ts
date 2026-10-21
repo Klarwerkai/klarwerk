@@ -2782,6 +2782,12 @@ const nl: typeof de = {
   "ko.sourceUrl": "URL / referentie (optioneel)",
   "ko.sourceExcerpt": "Fragment / notitie (optioneel)",
   "ko.sourceAdd": "Externe bron toevoegen",
+  "ko.neubewertung.fehlt":
+    "Bronwijziging opgeslagen — de herbeoordeling van eerdere conflictbeslissingen is niet volledig uitgevoerd.",
+  "ko.neubewertung.hinweis":
+    "De bronwijziging is opgeslagen. Een eerdere conflictbeslissing over dit item is echter nog niet gemarkeerd voor een nieuwe controle, en het item staat nog niet in de vervolgcontrole.",
+  "ko.neubewertung.nachholen": "Herbeoordeling inhalen",
+  "ko.neubewertung.nachgeholt": "Herbeoordeling ingehaald.",
   "ko.sourceAdded": "Externe bron toegevoegd.",
   "ko.sourceRemove": "Bron verwijderen",
   "ko.sourceUnvalidated": "extern · niet peer-gevalideerd",

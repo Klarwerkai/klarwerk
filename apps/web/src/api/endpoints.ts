@@ -505,6 +505,10 @@ export type KoAction =
       };
     }
   | { action: "remove-source"; sourceId: string }
+  | {
+      action: "konflikt-neubewertung";
+      neubewertung: { art: "quelle_hinzugefuegt" | "quelle_entfernt"; sourceIds: string[] };
+    }
   // AUFTRAG-mega18 Block A-1: die VERBUND-OPERATION „Dokumentinhalt übernehmen". Sie ersetzt die
   // Dreier-Kette attach → n× add-source → revise auf ALLEN Wegen (Artikel-Anhängen, KO-Detail,
   // Capture-Finalizer). Der Aufruf läuft NICHT über `ko.act`, weil die Antwort kein

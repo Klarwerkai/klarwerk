@@ -175,6 +175,12 @@ export interface SourceSyncSummary {
   /** Nachfrage gescheitert oder über der Höchstzahl — nicht vermerkt. */
   unchecked: string[];
   /**
+   * BD12-02-K06: Quellseiten (Kennungen wie in den übrigen Listen), deren Löschvermerk gesetzt ist,
+   * deren Neubewertung früherer Konfliktentscheidungen aber aussteht — in diesem Lauf gescheitert
+   * oder (Probelauf) noch nicht nachgeholt. Fehlt, wenn nichts aussteht.
+   */
+  neubewertungOffen?: string[];
+  /**
    * R-0163 (Lauf 2): Seiten mit unveränderter Fassung, deren Anhänge sich geändert haben — die
    * Anhangsquellen am Objekt wurden angeglichen (`synced`; im Probelauf nur gemeldet).
    */
@@ -430,8 +436,27 @@ async function quellAbgleich(
   }
   // Anker dieses Bereichs, deren Seite im Lauf fehlte (bereits vermerkte zählen nicht erneut).
   const fehlend = new Map<string, { provider: string | null; koIds: string[] }>();
+  // BD12-02-K06 (Konfliktauftrag, Ben Nacharbeit 19): bereits als gelöscht vermerkte Anker, deren
+  // Neubewertung früher AUSFIEL (`neubewertungOffen`), werden in diesem Lauf nachgeholt.
+  // Nach Wiederkehr bewahrt der Anker den tatsächlich beobachteten Quellwegfall separat;
+  // der erreichbare Ursprung wird dabei weder neu gelöscht noch erneut als gelöscht gezählt.
+  const nachzuholen: { koId: string; externalId: string; sourceIds: string[] }[] = [];
   for (const ko of await deps.koService.list()) {
     for (const s of ko.sources ?? []) {
+      if (
+        s.externalId &&
+        (s.sourceRemovedAt || s.neubewertungQuellwegfallAm) &&
+        s.neubewertungOffen &&
+        s.spaceKey === scope &&
+        istConfluenceAnbieter(s.provider)
+      ) {
+        const offen = nachzuholen.find((n) => n.koId === ko.id && n.externalId === s.externalId);
+        if (offen) {
+          offen.sourceIds.push(s.id);
+        } else {
+          nachzuholen.push({ koId: ko.id, externalId: s.externalId, sourceIds: [s.id] });
+        }
+      }
       if (
         !s.externalId ||
         s.sourceRemovedAt ||
@@ -458,6 +483,7 @@ async function quellAbgleich(
   };
   const at = new Date().toISOString();
   let nachfragen = 0;
+  const neubewertungOffen: string[] = [];
   for (const [externalId, { provider, koIds }] of fehlend) {
     // Nacharbeit 6: hat der R-0162-Abgleich dieselbe Seite in diesem Lauf schon erfragt, gilt
     // seine Antwort — eine zweite Einzelnachfrage hätte nur dieselbe Antwort mit doppelter Last.
@@ -494,13 +520,62 @@ async function quellAbgleich(
           { provider, externalId },
           at,
           deps.actor,
+          deps.nachQuellwegfall !== undefined,
         );
         marked = marked || neu;
+        // BD12-02-K06: die im Ursprung weggefallene Quelle ändert die Grundlage früherer
+        // Konfliktentscheidungen an diesem Objekt — nur, wenn der Vermerk hier neu gesetzt wurde.
+        if (neu && deps.nachQuellwegfall) {
+          const quellen = ((await deps.koService.get(koId))?.sources ?? [])
+            .filter((s) => s.externalId === externalId && s.sourceRemovedAt === at)
+            .map((s) => s.id);
+          if (!(await neubewertungVersuchen(deps, koId, quellen))) {
+            neubewertungOffen.push(externalId);
+          }
+        }
       }
     }
     summary.removed.push({ externalId, koIds, marked });
   }
-  return summary;
+  // Ben, Nacharbeit 19: früher ausgefallene Neubewertungen nachholen. Im Probelauf nur melden.
+  for (const { koId, externalId, sourceIds } of nachzuholen) {
+    if (deps.dryRun || !deps.nachQuellwegfall) {
+      neubewertungOffen.push(externalId);
+      continue;
+    }
+    if (!(await neubewertungVersuchen(deps, koId, sourceIds))) {
+      neubewertungOffen.push(externalId);
+    }
+  }
+  // Nur bei einem Ausfall steht das Feld da — die bisherige Form des Abgleichs bleibt sonst gleich.
+  return neubewertungOffen.length > 0
+    ? { ...summary, neubewertungOffen: [...new Set(neubewertungOffen)] }
+    : summary;
+}
+
+/**
+ * BD12-02-K06 (Ben, Nacharbeit 19): die Neubewertung nach einem Quellwegfall versuchen. Gelingt
+ * sie, fällt der mit dem Löschvermerk gespeicherte Nachholbedarf weg; scheitert sie, bleibt er — so
+ * bleibt die Quellenänderung erhalten und der nächste Abgleich bzw. „Neubewertung nachholen" kann
+ * sie wieder aufnehmen. `true` = durchgeführt.
+ */
+async function neubewertungVersuchen(
+  deps: ConfluenceImportDeps,
+  koId: string,
+  sourceIds: string[],
+): Promise<boolean> {
+  if (!deps.nachQuellwegfall) {
+    return false;
+  }
+  try {
+    await deps.nachQuellwegfall(koId, sourceIds, deps.actor);
+    await deps.koService.merkeNeubewertungOffen(koId, sourceIds, false);
+    return true;
+  } catch {
+    // Der Merker steht bereits im selben CAS-Schreibvorgang wie der Löschvermerk.
+    // Auch ein gescheitertes Entfernen des Merkers bleibt sichtbar und wiederholbar.
+    return false;
+  }
 }
 
 export interface ConfluenceImportDeps {
@@ -514,6 +589,14 @@ export interface ConfluenceImportDeps {
    * ihn (Quellrevision + Ordnung); die spätere Entscheidung schreibt die Elementreferenz.
    */
   importId?: string;
+  /**
+   * BD12-02-K06 (Ben, Nacharbeit 17): nach einem tatsächlich gesetzten Löschvermerk
+   * (`markSourceRemoved`) die Neubewertung früherer Konfliktentscheidungen an diesem Objekt —
+   * derselbe Weg wie bei der Bearbeitung (`quellen-neubewertung.ts`). Optional: ohne Verdrahtung
+   * (Tests, Werkzeuge) bleibt der Abgleich, wie er war. Wirft er, steht das im Abgleich
+   * (`neubewertungOffen`), der Löschvermerk bleibt.
+   */
+  nachQuellwegfall?: (koId: string, sourceIds: string[], actor: string) => Promise<void>;
 }
 
 // Höchste bereits importierte sourceVersion je provider+externalId (aus den KO-Herkunftsankern).

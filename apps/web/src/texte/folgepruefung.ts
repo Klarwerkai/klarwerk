@@ -13,6 +13,9 @@ export default {
   // Protokollvorgang `ko.asset-assigned` ab, den `KoService.ordneAnlageZu` schreibt.
   legacySchluessel: ["audit.action.ko_asset_assigned"],
   de: {
+    "folgepruefung.grund.konflikt":
+      "Die Quellengrundlage einer früheren Entscheidung hat sich geändert — erneut prüfen",
+    "folgepruefung.grundKurz.konflikt": "Quellengrundlage geändert",
     "audit.action.ko_asset_assigned": "Anlage zugeordnet",
     "folgepruefung.neuLaden": "Neu laden",
     "folgepruefung.bibliothekOffen":
@@ -63,6 +66,9 @@ export default {
       "Keine gespeicherte Kopplung an „{{asset}}“ — es wurde nichts markiert.",
   },
   en: {
+    "folgepruefung.grund.konflikt":
+      "The source basis of an earlier decision has changed — review it again",
+    "folgepruefung.grundKurz.konflikt": "Source basis changed",
     "audit.action.ko_asset_assigned": "Asset assigned",
     "folgepruefung.neuLaden": "Reload",
     "folgepruefung.bibliothekOffen":
@@ -110,6 +116,9 @@ export default {
     "folgepruefung.keineKopplung": "No stored coupling to “{{asset}}” — nothing was marked.",
   },
   nl: {
+    "folgepruefung.grund.konflikt":
+      "De bronbasis van een eerdere beslissing is gewijzigd — opnieuw beoordelen",
+    "folgepruefung.grundKurz.konflikt": "Bronbasis gewijzigd",
     "audit.action.ko_asset_assigned": "Installatie toegewezen",
     "folgepruefung.neuLaden": "Opnieuw laden",
     "folgepruefung.bibliothekOffen":

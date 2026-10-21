@@ -47,6 +47,7 @@ export { isConflictWorkKind } from "./src/types";
 export { isVorrangWahl } from "./src/types";
 export type {
   Conflict,
+  ConflictReviewRequired,
   ConflictType,
   ConflictWorkKind,
   KlaraVorschlag,

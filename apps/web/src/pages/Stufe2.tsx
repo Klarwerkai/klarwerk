@@ -682,6 +682,18 @@ export function ImportRunPanel(): JSX.Element {
                 })}
               </p>
             ) : null}
+            {/* BD12-02-K06 (Ben, Nacharbeit 19): ausstehende Neubewertung nach Quellwegfall — nicht
+                still. Der Lauf steht dann auf PARTIAL; dieser Satz sagt, warum und wie es weitergeht. */}
+            {lauf.data?.sourceSync && neubewertungOffenZahl(lauf.data.sourceSync) > 0 ? (
+              <output
+                data-testid="f0140-neubewertung-offen"
+                className="mt-1 block text-[12.5px] text-trust-warn-text"
+              >
+                {t("confluenceimport.neubewertungOffen", {
+                  anzahl: neubewertungOffenZahl(lauf.data.sourceSync),
+                })}
+              </output>
+            ) : null}
             {lauf.data?.sourceSync?.listsTruncated ? (
               <p data-testid="f0140-listen-gekuerzt" className="mt-1 text-[12.5px] text-muted">
                 {t("w2.run.syncListsTruncated")}
@@ -3634,4 +3646,8 @@ function abgleichZahl(
   feld: AbgleichFeld,
 ): number {
   return sync.counts?.[feld] ?? sync[feld]?.length ?? 0;
+}
+
+function neubewertungOffenZahl(sync: NonNullable<ImportRunRecord["sourceSync"]>): number {
+  return sync.neubewertungOffenAnzahl ?? sync.neubewertungOffen?.length ?? 0;
 }

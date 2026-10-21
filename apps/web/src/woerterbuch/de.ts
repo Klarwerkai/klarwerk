@@ -3611,6 +3611,12 @@ const de = {
   "ko.sourceUrl": "URL / Referenz (optional)",
   "ko.sourceExcerpt": "Auszug / Notiz (optional)",
   "ko.sourceAdd": "Externe Quelle hinzufügen",
+  "ko.neubewertung.fehlt":
+    "Quellenänderung gespeichert — die Neubewertung früherer Konfliktentscheidungen wurde nicht vollständig ausgeführt.",
+  "ko.neubewertung.hinweis":
+    "Die Quellenänderung ist gespeichert. Eine frühere Konfliktentscheidung zu diesem Eintrag ist aber noch nicht als erneut zu prüfen vermerkt, und der Eintrag steht noch nicht in der Folgeprüfung.",
+  "ko.neubewertung.nachholen": "Neubewertung nachholen",
+  "ko.neubewertung.nachgeholt": "Neubewertung nachgeholt.",
   "ko.sourceAdded": "Externe Quelle hinzugefügt.",
   "ko.sourceRemove": "Quelle entfernen",
   "ko.sourceUnvalidated": "extern · nicht peer-validiert",
