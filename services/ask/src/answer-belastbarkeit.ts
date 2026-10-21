@@ -274,6 +274,12 @@ export type ArgumentStufe =
       gestuetztAuf: string[];
       /** Tragende Quellen ohne belegte Beziehung untereinander stehen unabhängig nebeneinander. */
       unabhaengig: boolean;
+      /**
+       * AW03-K01: tragende Quellen DERSELBEN Herkunft (gleiche Quellrevision, gleiche Quell-ID oder
+       * derselbe Anhang) — Kopien eines Belegs. Sie zählen zusammen als EINE Bestätigung. Fehlt
+       * das Feld, teilen keine zwei tragenden Quellen eine Herkunft.
+       */
+      gemeinsameHerkunft?: { herkunft: string; koIds: string[] }[];
     };
 
 /** Die Beziehungsarten der kuratierten Kanten (`KantenArt`, knowledge-object/kanten-types.ts). */
@@ -412,7 +418,8 @@ function argumentation(
   // Belegte Beziehungen: NUR aktive kuratierte Kanten, deren BEIDE Enden tragende Quellen sind.
   // Eine Kante zu einem fremden Objekt wäre eine Aussage über etwas, das die Antwort nicht trägt.
   const tragend = new Map(carryingKos.map((ko): [string, KnowledgeObject] => [ko.id, ko]));
-  const verbunden = new Set<string>();
+  // Die Paare, die eine aktive kuratierte Kante verbindet — Grundlage der Gruppen im Schluss.
+  const verbundenePaare: [string, string][] = [];
   const gesehen = new Set<string>();
   for (const k of input.beziehungen ?? []) {
     const von = tragend.get(k.quelleId);
@@ -421,8 +428,7 @@ function argumentation(
       continue;
     }
     gesehen.add(k.id);
-    verbunden.add(von.id);
-    verbunden.add(zu.id);
+    verbundenePaare.push([von.id, zu.id]);
     stufen.push({
       art: "beziehung",
       kanteId: k.id,
@@ -448,15 +454,100 @@ function argumentation(
       stufen.push({ art: "vorbehalt", grund });
     }
   }
+  // AW03-K01: Kopien desselben Belegs sind keine unabhängige Bestätigung. Teilen zwei tragende
+  // Quellen eine Herkunft, gehören sie in DIESELBE Gruppe — wie zwei Enden einer kuratierten Kante.
+  // Unabhängig ist der Schluss, wenn mindestens ZWEI solcher Gruppen bleiben: zwei Kopien aus A und
+  // zwei Kopien aus einer davon unabhängigen Quelle B sind zwei Ursprünge, nicht keiner.
+  const gemeinsam = gemeinsameHerkunft(geordnet);
+  const verbindungen: [string, string][] = [...verbundenePaare];
+  for (const gruppe of gemeinsam) {
+    const [erste, ...rest] = gruppe.koIds;
+    for (const id of rest) {
+      if (erste) {
+        verbindungen.push([erste, id]);
+      }
+    }
+  }
   stufen.push({
     art: "schluss",
     lage,
     einstufung,
     aussage: input.answer.answer?.trim() ? input.answer.answer.trim() : null,
     gestuetztAuf: geordnet.map((ko) => ko.id),
-    unabhaengig: geordnet.length > 1 && geordnet.some((ko) => !verbunden.has(ko.id)),
+    unabhaengig:
+      anzahlGruppen(
+        geordnet.map((ko) => ko.id),
+        verbindungen,
+      ) > 1,
+    ...(gemeinsam.length > 0 ? { gemeinsameHerkunft: gemeinsam } : {}),
   });
   return stufen;
+}
+
+/** Wie viele zusammenhängende Gruppen die Verbindungen über diesen Kennungen bilden. */
+function anzahlGruppen(ids: readonly string[], verbindungen: readonly [string, string][]): number {
+  const eltern = new Map(ids.map((id): [string, string] => [id, id]));
+  const wurzel = (id: string): string => {
+    let w = id;
+    while (eltern.get(w) !== w) {
+      w = eltern.get(w) ?? w;
+    }
+    return w;
+  };
+  for (const [a, b] of verbindungen) {
+    if (eltern.has(a) && eltern.has(b)) {
+      eltern.set(wurzel(a), wurzel(b));
+    }
+  }
+  return new Set(ids.map(wurzel)).size;
+}
+
+// ================================================================================================
+// AW03-K01 — DIE HERKUNFT EINES BELEGS, NICHT SEIN TITEL.
+// ================================================================================================
+//
+// Die Herkunft eines Wissensobjekts steht an seinen Ankern (`KoSource`), nie im Titel: zwei gleiche
+// Titel mit verschiedenen Quell-IDs sind zwei Herkünfte und bleiben getrennt. Gleich ist eine
+// Herkunft, wenn zwei Objekte
+//   · dieselbe festgeschriebene Quellrevision tragen (`sourceRecordId`, R-0169),
+//   · dieselbe Quellenidentität tragen (Anbieter + `externalId`), auch über Fassungen hinweg, oder
+//   · ihren Beleg aus DEMSELBEN Anhang ziehen (`objectId`, Belegstelle einer Dokumentübernahme).
+// Ein Objekt ohne Anker hat keine bekannte Herkunft — es wird mit niemandem zusammengelegt.
+function herkunftsSchluessel(ko: KnowledgeObject): string[] {
+  const schluessel = new Set<string>();
+  for (const q of ko.sources ?? []) {
+    const revision = q.sourceRecordId?.trim();
+    if (revision) {
+      schluessel.add(`revision:${revision}`);
+    }
+    const externalId = q.externalId?.trim();
+    if (externalId) {
+      schluessel.add(`quelle:${(q.provider ?? "").trim().toLowerCase()}:${externalId}`);
+    }
+    const anhang = q.objectId?.trim();
+    if (anhang) {
+      schluessel.add(`anhang:${anhang}`);
+    }
+  }
+  return [...schluessel];
+}
+
+function gemeinsameHerkunft(
+  kos: readonly KnowledgeObject[],
+): { herkunft: string; koIds: string[] }[] {
+  const nachSchluessel = new Map<string, string[]>();
+  for (const ko of kos) {
+    for (const s of herkunftsSchluessel(ko)) {
+      const ids = nachSchluessel.get(s) ?? [];
+      if (!ids.includes(ko.id)) {
+        ids.push(ko.id);
+      }
+      nachSchluessel.set(s, ids);
+    }
+  }
+  return [...nachSchluessel]
+    .filter(([, ids]) => ids.length > 1)
+    .map(([herkunft, koIds]) => ({ herkunft, koIds }));
 }
 
 function standVon(ko: KnowledgeObject): string {
