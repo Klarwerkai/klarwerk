@@ -1,4 +1,4 @@
-// RC1 · genau EINE neue Gegenprobe am aktuellen regulären Chat→Entwurf→Wissen-Port.
+// RC1 · die ursprüngliche Gegenprobe und genau EINE angrenzende Eigenentwurfs-Erhaltungskontrolle.
 // Echte InMemory-App/HTTP-Guards/Quellrechte, nur fiktive Inhalte. Keine Ausführung bei Definition.
 // Kein Modell/Provider/Socket: Reasoner ohne Modell, Mail/Push kontrolliert, fetch verboten.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ import { Reasoner } from "../../services/reasoner";
 type Konto = { id: string; token: string };
 type Entwurfsicht = {
   id: string;
-  payload: { title?: string; statement?: string; bodyHtml?: string | null };
+  payload: { title?: string; statement?: string; bodyHtml?: string | null; tags?: string[] };
 };
 const KENNWORT = "Rc1-nur-fiktives-Kennwort-3";
 const ZITAT = "Fiktive-RC1-Quellaussage-Linde: Prüfwert 61 nur vor Freigabe.";
@@ -166,6 +166,117 @@ it("RC1: reguläre Chatkopie schützt List/Resume/Promote nach echtem Quellentzu
     expect(detail.body).not.toContain(QUELLTITEL);
     expect(detail.body).not.toContain(quelle.id);
     expect(detail.body).toContain(EIGEN);
+  }
+  expect(apiAufrufe.filter((url) => url === "/api/ask")).toHaveLength(0);
+  expect(netz).not.toHaveBeenCalled();
+});
+
+it("RC1-Erhaltung: freies Tag und Beispielphrase sperren keinen Eigenentwurf; eine belegt unauflösbare Chatübernahme bleibt geschützt", async () => {
+  const titel = "Fiktiver selbst geschriebener Plan";
+  const eigen = "Meine eigene Skizze: am Freitag die freie Checkliste ergänzen.";
+  // Auch die normale Phrase ist frei beschreibbarer Inhalt, kein serverseitiger Übernahmebeleg.
+  const phrase = "Aus dem internen Chat übernommen: persönliche Nachricht von Beispiel vom 2026-10-21.";
+  const body = `<p>${eigen}</p><p>${phrase}</p>`;
+  const anlage = await auf(anna, "POST", "/api/drafts", {
+    title: titel, statement: eigen, bodyHtml: body, tags: ["chat", "eigene-skizze"],
+  });
+  expect(anlage.statusCode, anlage.body).toBe(201);
+  const eigenId = anlage.json<Entwurfsicht>().id;
+  const zuerst = await fortsetzen(eigenId);
+  expect(zuerst.payload.title).toBe(titel);
+  expect(zuerst.payload.bodyHtml).toContain(eigen);
+  expect(zuerst.payload.bodyHtml).toContain(phrase);
+  expect(zuerst.payload.tags).toEqual(["chat", "eigene-skizze"]);
+  const bearbeitet = `${body}<p>Meine eigene Ergänzung ohne Wissensquelle.</p>`;
+  const speichern = await auf(anna, "PUT", `/api/drafts/${eigenId}`, { bodyHtml: bearbeitet });
+  expect(speichern.statusCode, speichern.body).toBe(200);
+  expect(speichern.json<Entwurfsicht>().payload.bodyHtml).toContain("Meine eigene Ergänzung");
+  expect((await fortsetzen(eigenId)).payload.bodyHtml).toContain("Meine eigene Ergänzung");
+
+  // Daneben eine wirkliche reguläre Übernahme: Audit und Nachrichtenvermerk entstehen am Server.
+  const quelle = await services.ko.create({
+    title: QUELLTITEL, statement: ZITAT, type: "best_practice", category: "RC1 fiktiv",
+    confidentiality: "intern", author: admin.id,
+  });
+  const g = await auf(admin, "POST", "/api/chat/gespraeche", {
+    art: "direkt", teilnehmer: [anna.id],
+  });
+  expect(g.statusCode, g.body).toBe(201);
+  const gespraechId = g.json<{ id: string }>().id;
+  const m = await auf(admin, "POST", `/api/chat/gespraeche/${gespraechId}/nachrichten`, {
+    sendeKennung: "rc1-erhaltung-belegte-uebernahme", text: EIGEN,
+    ausschnitt: { text: ZITAT, quelle: QUELLTITEL, fiktiv: false, koId: quelle.id, fassung: quelle.version },
+  });
+  expect(m.statusCode, m.body).toBe(201);
+  const nachrichtId = m.json<{ nachricht: { id: string } }>().nachricht.id;
+  const u = await auf(anna, "POST", `/api/chat/nachrichten/${nachrichtId}/wissen`);
+  expect(u.statusCode, u.body).toBe(201);
+  const kopieId = u.json<{ entwurfId: string }>().entwurfId;
+  expect((await fortsetzen(kopieId)).payload.bodyHtml).toContain(ZITAT);
+  expect((await services.audit.list({ action: "chat.wissen_uebernommen", target: nachrichtId }))
+    .some((e) => e.payload.entwurf === kopieId)).toBe(true);
+  expect((await services.chat.nachricht(nachrichtId))?.uebernahmen
+    .some((e) => e.entwurfId === kopieId && e.von === anna.id)).toBe(true);
+  expect((await services.audit.list({ action: "chat.wissen_uebernommen" }))
+    .some((e) => e.payload.entwurf === eigenId)).toBe(false);
+  const rohVorher = await services.capture.getDraft(kopieId);
+  expect(rohVorher?.payload.bodyHtml).toContain(ZITAT);
+
+  // Kontrollierte Ablagegrenze: beide Nachrichten-Lesewege können die echte Herkunft nicht mehr
+  // auflösen. Der tatsächlich gespeicherte Auditbeleg und alle Entwürfe bleiben unangetastet.
+  const einzel = vi.spyOn(services.chat, "nachricht").mockResolvedValue(undefined);
+  const vermerke = vi.spyOn(services.chat, "uebernommeneNachrichten").mockResolvedValue([]);
+  try {
+    const liste = await auf(anna, "GET", "/api/drafts");
+    expect(liste.statusCode, liste.body).toBe(200);
+    const eintraege = liste.json<Entwurfsicht[]>();
+    expect(eintraege.find((d) => d.id === eigenId)?.payload.bodyHtml).toContain("Meine eigene Ergänzung");
+    expect(eintraege.find((d) => d.id === eigenId)?.payload.tags).toEqual(["chat", "eigene-skizze"]);
+    const kopie = eintraege.find((d) => d.id === kopieId);
+    expect(kopie).toBeDefined();
+    expect(JSON.stringify(kopie)).not.toContain(ZITAT);
+    expect(JSON.stringify(kopie)).not.toContain(QUELLTITEL);
+    expect(JSON.stringify(kopie)).not.toContain(quelle.id);
+    const fortgesetzt = await fortsetzen(kopieId);
+    expect(JSON.stringify(fortgesetzt)).not.toContain(ZITAT);
+    expect(JSON.stringify(fortgesetzt)).not.toContain(QUELLTITEL);
+    expect(JSON.stringify(fortgesetzt)).not.toContain(quelle.id);
+
+    const frei = await auf(anna, "PUT", `/api/drafts/${eigenId}`, {
+      bodyHtml: `${bearbeitet}<p>Auch jetzt kann ich meinen eigenen Plan bearbeiten.</p>`,
+    });
+    expect(frei.statusCode, frei.body).toBe(200);
+    expect(frei.json<Entwurfsicht>().payload.bodyHtml).toContain("Auch jetzt kann ich");
+    const gesperrt = await auf(anna, "PUT", `/api/drafts/${kopieId}`, {
+      bodyHtml: rohVorher?.payload.bodyHtml ?? "",
+    });
+    expect(gesperrt.statusCode, gesperrt.body).toBe(409);
+    expect(gesperrt.json<{ error: string }>().error).toBe("SOURCE_NOT_AVAILABLE");
+    const abgelehnt = await auf(anna, "POST", `/api/drafts/${kopieId}/promote`, {
+      operationId: "rc1-erhaltung-unklare-kopie", reviewerIds: [],
+      draftPayload: { type: "best_practice", category: "RC1 fiktiv", bodyHtml: rohVorher?.payload.bodyHtml ?? "" },
+    });
+    expect(abgelehnt.statusCode, abgelehnt.body).toBe(409);
+    expect(abgelehnt.json<{ error: string }>().error).toBe("SOURCE_NOT_AVAILABLE");
+    for (const antwort of [gesperrt, abgelehnt]) {
+      expect(antwort.body).not.toContain(ZITAT);
+      expect(antwort.body).not.toContain(QUELLTITEL);
+      expect(antwort.body).not.toContain(quelle.id);
+    }
+    expect(await services.capture.getDraft(kopieId)).toEqual(rohVorher);
+
+    const eingereicht = await auf(anna, "POST", `/api/drafts/${eigenId}/promote`, {
+      operationId: "rc1-erhaltung-freie-skizze", reviewerIds: [],
+      draftPayload: { type: "best_practice", category: "RC1 fiktiv" },
+    });
+    expect(eingereicht.statusCode, eingereicht.body).toBe(201);
+    const detail = await auf(anna, "GET", `/api/kos/${eingereicht.json<{ id: string }>().id}`);
+    expect(detail.statusCode, detail.body).toBe(200);
+    expect(detail.body).toContain(eigen);
+    expect(detail.body).toContain("Auch jetzt kann ich");
+  } finally {
+    einzel.mockRestore();
+    vermerke.mockRestore();
   }
   expect(apiAufrufe.filter((url) => url === "/api/ask")).toHaveLength(0);
   expect(netz).not.toHaveBeenCalled();
