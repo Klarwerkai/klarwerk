@@ -267,7 +267,7 @@ it("RC1-Erhaltung: freies Tag und Beispielphrase sperren keinen Eigenentwurf; ei
 
     const eingereicht = await auf(anna, "POST", `/api/drafts/${eigenId}/promote`, {
       operationId: "rc1-erhaltung-freie-skizze", reviewerIds: [],
-      draftPayload: { type: "best_practice", category: "RC1 fiktiv" },
+      draftPayload: { type: "best_practice", category: "RC1 fiktiv", confidentiality: "intern" },
     });
     expect(eingereicht.statusCode, eingereicht.body).toBe(201);
     const detail = await auf(anna, "GET", `/api/kos/${eingereicht.json<{ id: string }>().id}`);
