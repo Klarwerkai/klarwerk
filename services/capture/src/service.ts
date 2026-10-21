@@ -803,6 +803,7 @@ export class CaptureService {
   async entwuerfeMitGleichemInhalt(
     id: string,
     sichtbar: (draft: Draft) => boolean,
+    ausgabe?: (drafts: Draft[]) => Promise<Draft[]>,
   ): Promise<GleicherEntwurfsInhalt> {
     const draft = await this.require(id);
     let index = await this.repo.entwurfsIndexVon?.(id);
@@ -814,13 +815,20 @@ export class CaptureService {
     const kennungen = this.repo.entwuerfeMitInhalt
       ? await this.repo.entwuerfeMitInhalt(index.inhaltsHash, id)
       : [];
-    const entwuerfe: GleicherEntwurfsInhalt["entwuerfe"] = [];
+    const treffer: Draft[] = [];
     for (const kennung of kennungen) {
       const anderer = await this.repo.findById(kennung);
       if (anderer && sichtbar(anderer)) {
-        entwuerfe.push({ id: anderer.id, titel: anderer.payload.title ?? "" });
+        treffer.push(anderer);
       }
     }
+    // Der vorhandene HTTP-Caller liefert seine heutige Quellenprojektion gesammelt herein.
+    // Hashsuche und Eigentümerfilter bleiben am Rohbestand; nur die Ausgabe wird projiziert.
+    const geprueft = ausgabe ? await ausgabe(treffer) : treffer;
+    const entwuerfe: GleicherEntwurfsInhalt["entwuerfe"] = geprueft.map((draft) => ({
+      id: draft.id,
+      titel: draft.payload.title ?? "",
+    }));
     return { indexStatus: index.status, entwuerfe };
   }
 

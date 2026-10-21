@@ -1754,8 +1754,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
           return;
         }
-        const antwort = await capture.entwuerfeMitGleichemInhalt(request.params.id, (draft) =>
-          canSeeDraft(user, draft),
+        const antwort = await capture.entwuerfeMitGleichemInhalt(
+          request.params.id,
+          (draft) => canSeeDraft(user, draft),
+          (drafts) => entwuerfeAusgabe(drafts, user),
         );
         reply.code(200).send(antwort);
       },
