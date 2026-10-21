@@ -104,7 +104,9 @@ export class ChatEntwurfAusgabe {
       ...draft,
       payload: {
         ...eigen,
-        ...(draft.payload.confidentiality ? { confidentiality: draft.payload.confidentiality } : {}),
+        ...(draft.payload.confidentiality
+          ? { confidentiality: draft.payload.confidentiality }
+          : {}),
         tags: ["chat"],
       },
     };

@@ -19,7 +19,9 @@ let app: ReturnType<typeof buildApp>;
 let admin: Konto;
 let anna: Konto;
 const apiAufrufe: string[] = [];
-const netz = vi.fn(async () => { throw new Error("Kein äußerer Transport in der RC1-Probe"); });
+const netz = vi.fn(async () => {
+  throw new Error("Kein äußerer Transport in der RC1-Probe");
+});
 
 async function auf(
   wer: Konto | null,
@@ -39,7 +41,10 @@ async function anmelden(email: string): Promise<Konto> {
   const login = await auf(null, "POST", "/api/auth/login", { email, password: KENNWORT });
   expect(login.statusCode, login.body).toBe(200);
   const token = login.json<{ token: string }>().token;
-  const me = await app.inject({ url: "/api/auth/me", headers: { authorization: `Bearer ${token}` } });
+  const me = await app.inject({
+    url: "/api/auth/me",
+    headers: { authorization: `Bearer ${token}` },
+  });
   expect(me.statusCode, me.body).toBe(200);
   return { id: me.json<{ id: string }>().id, token };
 }
@@ -54,12 +59,17 @@ beforeEach(async () => {
   delete services.push;
   app = buildApp(services);
   const a = await auf(null, "POST", "/api/auth/register", {
-    name: "RC1 Admin fiktiv", email: "rc1-admin@klarwerk.test", password: KENNWORT,
+    name: "RC1 Admin fiktiv",
+    email: "rc1-admin@klarwerk.test",
+    password: KENNWORT,
   });
   expect(a.statusCode, a.body).toBe(201);
   admin = await anmelden("rc1-admin@klarwerk.test");
   const b = await auf(admin, "POST", "/api/users", {
-    name: "RC1 Anna fiktiv", email: "rc1-anna@klarwerk.test", password: KENNWORT, role: "experte",
+    name: "RC1 Anna fiktiv",
+    email: "rc1-anna@klarwerk.test",
+    password: KENNWORT,
+    role: "experte",
   });
   expect(b.statusCode, b.body).toBe(201);
   anna = await anmelden("rc1-anna@klarwerk.test");
@@ -80,12 +90,18 @@ async function fortsetzen(id: string): Promise<Entwurfsicht> {
 
 it("RC1: reguläre Chatkopie schützt List/Resume/Promote nach echtem Quellentzug, erhält Eigenes und erlaubt frische Wiedererteilung", async () => {
   const quelle = await services.ko.create({
-    title: QUELLTITEL, statement: ZITAT, type: "best_practice", category: "RC1 fiktiv",
-    confidentiality: "intern", author: admin.id,
+    title: QUELLTITEL,
+    statement: ZITAT,
+    type: "best_practice",
+    category: "RC1 fiktiv",
+    confidentiality: "intern",
+    author: admin.id,
   });
   const quellrecht = async (erlaubt: boolean) => {
     await services.ko.setQuellrechte(
-      quelle.id, { stufe: "intern", leser: erlaubt ? [admin.id, anna.id] : [admin.id] }, admin.id,
+      quelle.id,
+      { stufe: "intern", leser: erlaubt ? [admin.id, anna.id] : [admin.id] },
+      admin.id,
     );
     const r = await auf(anna, "GET", `/api/kos/${quelle.id}`);
     expect(r.statusCode, r.body).toBe(erlaubt ? 200 : 404);
@@ -94,12 +110,14 @@ it("RC1: reguläre Chatkopie schützt List/Resume/Promote nach echtem Quellentzu
   const fassung = (await services.ko.get(quelle.id))?.version;
   if (!fassung) throw new Error("Berechtigte fiktive Quellfassung fehlt");
   const g = await auf(admin, "POST", "/api/chat/gespraeche", {
-    art: "direkt", teilnehmer: [anna.id],
+    art: "direkt",
+    teilnehmer: [anna.id],
   });
   expect(g.statusCode, g.body).toBe(201);
   const gespraechId = g.json<{ id: string }>().id;
   const m = await auf(admin, "POST", `/api/chat/gespraeche/${gespraechId}/nachrichten`, {
-    sendeKennung: "rc1-regulaere-chatnachricht-1", text: EIGEN,
+    sendeKennung: "rc1-regulaere-chatnachricht-1",
+    text: EIGEN,
     ausschnitt: { text: ZITAT, quelle: QUELLTITEL, fiktiv: false, koId: quelle.id, fassung },
   });
   expect(m.statusCode, m.body).toBe(201);
@@ -139,7 +157,11 @@ it("RC1: reguläre Chatkopie schützt List/Resume/Promote nach echtem Quellentzu
   const p = await auf(anna, "POST", `/api/drafts/${entwurfId}/promote`, {
     operationId: "rc1-regulaeres-promote-1",
     reviewerIds: [],
-    draftPayload: { type: "best_practice", category: "RC1 fiktiv", bodyHtml: alterTab.payload.bodyHtml ?? "" },
+    draftPayload: {
+      type: "best_practice",
+      category: "RC1 fiktiv",
+      bodyHtml: alterTab.payload.bodyHtml ?? "",
+    },
   });
   // Ein neutral abgewiesener Übergang ist ebenso rechtmäßig, wenn der eigene Entwurf nutzbar
   // bleibt. 201 war die ursprüngliche Fixtureannahme, kein zusätzliches Originalkriterium.
@@ -175,10 +197,14 @@ it("RC1-Erhaltung: freies Tag und Beispielphrase sperren keinen Eigenentwurf; ei
   const titel = "Fiktiver selbst geschriebener Plan";
   const eigen = "Meine eigene Skizze: am Freitag die freie Checkliste ergänzen.";
   // Auch die normale Phrase ist frei beschreibbarer Inhalt, kein serverseitiger Übernahmebeleg.
-  const phrase = "Aus dem internen Chat übernommen: persönliche Nachricht von Beispiel vom 2026-10-21.";
+  const phrase =
+    "Aus dem internen Chat übernommen: persönliche Nachricht von Beispiel vom 2026-10-21.";
   const body = `<p>${eigen}</p><p>${phrase}</p>`;
   const anlage = await auf(anna, "POST", "/api/drafts", {
-    title: titel, statement: eigen, bodyHtml: body, tags: ["chat", "eigene-skizze"],
+    title: titel,
+    statement: eigen,
+    bodyHtml: body,
+    tags: ["chat", "eigene-skizze"],
   });
   expect(anlage.statusCode, anlage.body).toBe(201);
   const eigenId = anlage.json<Entwurfsicht>().id;
@@ -195,17 +221,29 @@ it("RC1-Erhaltung: freies Tag und Beispielphrase sperren keinen Eigenentwurf; ei
 
   // Daneben eine wirkliche reguläre Übernahme: Audit und Nachrichtenvermerk entstehen am Server.
   const quelle = await services.ko.create({
-    title: QUELLTITEL, statement: ZITAT, type: "best_practice", category: "RC1 fiktiv",
-    confidentiality: "intern", author: admin.id,
+    title: QUELLTITEL,
+    statement: ZITAT,
+    type: "best_practice",
+    category: "RC1 fiktiv",
+    confidentiality: "intern",
+    author: admin.id,
   });
   const g = await auf(admin, "POST", "/api/chat/gespraeche", {
-    art: "direkt", teilnehmer: [anna.id],
+    art: "direkt",
+    teilnehmer: [anna.id],
   });
   expect(g.statusCode, g.body).toBe(201);
   const gespraechId = g.json<{ id: string }>().id;
   const m = await auf(admin, "POST", `/api/chat/gespraeche/${gespraechId}/nachrichten`, {
-    sendeKennung: "rc1-erhaltung-belegte-uebernahme", text: EIGEN,
-    ausschnitt: { text: ZITAT, quelle: QUELLTITEL, fiktiv: false, koId: quelle.id, fassung: quelle.version },
+    sendeKennung: "rc1-erhaltung-belegte-uebernahme",
+    text: EIGEN,
+    ausschnitt: {
+      text: ZITAT,
+      quelle: QUELLTITEL,
+      fiktiv: false,
+      koId: quelle.id,
+      fassung: quelle.version,
+    },
   });
   expect(m.statusCode, m.body).toBe(201);
   const nachrichtId = m.json<{ nachricht: { id: string } }>().nachricht.id;
@@ -213,12 +251,21 @@ it("RC1-Erhaltung: freies Tag und Beispielphrase sperren keinen Eigenentwurf; ei
   expect(u.statusCode, u.body).toBe(201);
   const kopieId = u.json<{ entwurfId: string }>().entwurfId;
   expect((await fortsetzen(kopieId)).payload.bodyHtml).toContain(ZITAT);
-  expect((await services.audit.list({ action: "chat.wissen_uebernommen", target: nachrichtId }))
-    .some((e) => e.payload.entwurf === kopieId)).toBe(true);
-  expect((await services.chat.nachricht(nachrichtId))?.uebernahmen
-    .some((e) => e.entwurfId === kopieId && e.von === anna.id)).toBe(true);
-  expect((await services.audit.list({ action: "chat.wissen_uebernommen" }))
-    .some((e) => e.payload.entwurf === eigenId)).toBe(false);
+  expect(
+    (await services.audit.list({ action: "chat.wissen_uebernommen", target: nachrichtId })).some(
+      (e) => e.payload.entwurf === kopieId,
+    ),
+  ).toBe(true);
+  expect(
+    (await services.chat.nachricht(nachrichtId))?.uebernahmen.some(
+      (e) => e.entwurfId === kopieId && e.von === anna.id,
+    ),
+  ).toBe(true);
+  expect(
+    (await services.audit.list({ action: "chat.wissen_uebernommen" })).some(
+      (e) => e.payload.entwurf === eigenId,
+    ),
+  ).toBe(false);
   const rohVorher = await services.capture.getDraft(kopieId);
   expect(rohVorher?.payload.bodyHtml).toContain(ZITAT);
 
@@ -230,8 +277,13 @@ it("RC1-Erhaltung: freies Tag und Beispielphrase sperren keinen Eigenentwurf; ei
     const liste = await auf(anna, "GET", "/api/drafts");
     expect(liste.statusCode, liste.body).toBe(200);
     const eintraege = liste.json<Entwurfsicht[]>();
-    expect(eintraege.find((d) => d.id === eigenId)?.payload.bodyHtml).toContain("Meine eigene Ergänzung");
-    expect(eintraege.find((d) => d.id === eigenId)?.payload.tags).toEqual(["chat", "eigene-skizze"]);
+    expect(eintraege.find((d) => d.id === eigenId)?.payload.bodyHtml).toContain(
+      "Meine eigene Ergänzung",
+    );
+    expect(eintraege.find((d) => d.id === eigenId)?.payload.tags).toEqual([
+      "chat",
+      "eigene-skizze",
+    ]);
     const kopie = eintraege.find((d) => d.id === kopieId);
     expect(kopie).toBeDefined();
     expect(JSON.stringify(kopie)).not.toContain(ZITAT);
@@ -253,8 +305,13 @@ it("RC1-Erhaltung: freies Tag und Beispielphrase sperren keinen Eigenentwurf; ei
     expect(gesperrt.statusCode, gesperrt.body).toBe(409);
     expect(gesperrt.json<{ error: string }>().error).toBe("SOURCE_NOT_AVAILABLE");
     const abgelehnt = await auf(anna, "POST", `/api/drafts/${kopieId}/promote`, {
-      operationId: "rc1-erhaltung-unklare-kopie", reviewerIds: [],
-      draftPayload: { type: "best_practice", category: "RC1 fiktiv", bodyHtml: rohVorher?.payload.bodyHtml ?? "" },
+      operationId: "rc1-erhaltung-unklare-kopie",
+      reviewerIds: [],
+      draftPayload: {
+        type: "best_practice",
+        category: "RC1 fiktiv",
+        bodyHtml: rohVorher?.payload.bodyHtml ?? "",
+      },
     });
     expect(abgelehnt.statusCode, abgelehnt.body).toBe(409);
     expect(abgelehnt.json<{ error: string }>().error).toBe("SOURCE_NOT_AVAILABLE");
@@ -266,7 +323,8 @@ it("RC1-Erhaltung: freies Tag und Beispielphrase sperren keinen Eigenentwurf; ei
     expect(await services.capture.getDraft(kopieId)).toEqual(rohVorher);
 
     const eingereicht = await auf(anna, "POST", `/api/drafts/${eigenId}/promote`, {
-      operationId: "rc1-erhaltung-freie-skizze", reviewerIds: [],
+      operationId: "rc1-erhaltung-freie-skizze",
+      reviewerIds: [],
       draftPayload: { type: "best_practice", category: "RC1 fiktiv", confidentiality: "intern" },
     });
     expect(eingereicht.statusCode, eingereicht.body).toBe(201);

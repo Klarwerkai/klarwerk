@@ -1690,11 +1690,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         return;
       }
       const sichtbar = await entwurfAusgabe(fortsetzung.draft, user);
-      reply.code(200).send(
-        fortsetzung.anchorsMissing.length > 0
-          ? { ...sichtbar, anchorsMissing: fortsetzung.anchorsMissing }
-          : sichtbar,
-      );
+      reply
+        .code(200)
+        .send(
+          fortsetzung.anchorsMissing.length > 0
+            ? { ...sichtbar, anchorsMissing: fortsetzung.anchorsMissing }
+            : sichtbar,
+        );
     });
 
     // ============================================================================================
@@ -1798,7 +1800,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Auch Speichern darf die unverändert aufbewahrte Chatfassung bei Entzug nicht durch
           // eine alte oder bereits reduzierte Clientdarstellung ersetzen.
           if (
-            await chatVerarbeitungGesperrt(await capture.getDraft(request.params.id), user, reply, request)
+            await chatVerarbeitungGesperrt(
+              await capture.getDraft(request.params.id),
+              user,
+              reply,
+              request,
+            )
           )
             return;
           reply.code(200).send(
@@ -1911,9 +1918,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           sendeQuellsperre(reply);
           return;
         }
-        reply.code(200).send(
-          await entwurfAusgabe(await capture.restoreDraft(request.params.id), user),
-        );
+        reply
+          .code(200)
+          .send(await entwurfAusgabe(await capture.restoreDraft(request.params.id), user));
       } catch (error) {
         sendError(reply, error);
       }
@@ -1977,9 +1984,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           ) {
             return;
           }
-          reply.code(200).send(
-            await entwurfAusgabe(await capture.entwurfInPool(request.params.id, imPool), user),
-          );
+          reply
+            .code(200)
+            .send(
+              await entwurfAusgabe(await capture.entwurfInPool(request.params.id, imPool), user),
+            );
         } catch (error) {
           sendError(reply, error);
         }
@@ -2258,7 +2267,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // weder zurückschreiben noch in ein neues Wissensobjekt übertragen; der eigene Entwurf
           // bleibt einschließlich belegter Eigenarbeit und voller gespeicherter Fassung erhalten.
           if (
-            await chatVerarbeitungGesperrt(await capture.getDraft(request.params.id), user, reply, request)
+            await chatVerarbeitungGesperrt(
+              await capture.getDraft(request.params.id),
+              user,
+              reply,
+              request,
+            )
           )
             return;
           // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
@@ -2294,7 +2308,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             return;
           }
           if (
-            await chatVerarbeitungGesperrt(await capture.getDraft(request.params.id), user, reply, request)
+            await chatVerarbeitungGesperrt(
+              await capture.getDraft(request.params.id),
+              user,
+              reply,
+              request,
+            )
           )
             return;
           const input = await capture.toKoInput(request.params.id);
