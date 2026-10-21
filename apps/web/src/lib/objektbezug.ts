@@ -134,6 +134,43 @@ export function leserHref(bezug: Objektbezug): string {
 }
 
 /**
+ * AW03-K02 · „diese gespeicherte Fassung LESEN“ statt nur „aus dieser Fassung kommend“.
+ *
+ * `fassung` allein ist ein Rückweg-Vermerk: die Lesefläche zeigt den heutigen Stand und meldet eine
+ * Abweichung. `ansicht=gespeichert` bestellt zusätzlich die gespeicherte Fassung selbst
+ * (`components/GespeicherteFassung.tsx`, über `GET /api/kos/:id/versions` mit dessen Leserechten);
+ * `anker` hebt darin den Quellabschnitt hervor, aus dem der Absatz stammt.
+ */
+export const ANSICHT_PARAM = "ansicht";
+export const ANSICHT_GESPEICHERT = "gespeichert";
+export const ANKER_PARAM = "anker";
+
+export function gespeicherteFassungHref(
+  koId: string,
+  fassung: number,
+  ankerId: string | null = null,
+): string {
+  const params = new URLSearchParams();
+  params.set(FASSUNG_PARAM, String(fassung));
+  params.set(ANSICHT_PARAM, ANSICHT_GESPEICHERT);
+  if (ankerId) {
+    params.set(ANKER_PARAM, ankerId);
+  }
+  return mitAbfrage(`/wissen/${encodeURIComponent(koId)}`, params);
+}
+
+/** Die bestellte gespeicherte Fassung — nur mit ausdrücklicher Ansicht UND gültiger Fassung. */
+export function leseGespeicherteFassung(
+  params: URLSearchParams,
+): { readonly fassung: number; readonly ankerId: string | null } | null {
+  const fassung = leseFassung(params);
+  if (params.get(ANSICHT_PARAM) !== ANSICHT_GESPEICHERT || fassung === null) {
+    return null;
+  }
+  return { fassung, ankerId: kennung(params.get(ANKER_PARAM)) };
+}
+
+/**
  * Der Weg aus einer Antwortquelle zurück in die Lesefläche (Quellrückweg, K3).
  *
  * `belegAdresse` ist, was `belegstelleHref` (R-0326, `lib/belegstelle.ts`) für diese Quelle

@@ -56,6 +56,7 @@ import {
   erzwingeSichtbar,
   fassungsSchluessel,
 } from "./gesamtanweisung-types";
+import { type QuellankerFakten, quellabschnitteAus } from "./quellabschnitt";
 import type { Confidentiality } from "./types";
 
 // ================================================================================================
@@ -419,6 +420,8 @@ export function lesestand(
       aktualisierungsvorschlag: aktualisierung,
       inhalt: gebunden ? gebunden.inhalt : INHALT_UNBEKANNT,
       momentaufnahmen: gebunden?.momentaufnahmen ?? null,
+      // AW-03 (K02/K04): vom Absatz über die gebundene Fassung zu ihren Quellabschnitten.
+      quellabschnitte: gebunden?.quellabschnitte ?? null,
     });
   }
   const sichtbareIds = new Set(bausteine.map((b) => b.id));
@@ -853,6 +856,8 @@ export interface AnweisungKoFakten {
   readonly category: string;
   readonly confidentiality?: Confidentiality | null | undefined;
   readonly quellrechte?: AnweisungQuellrechte | null | undefined;
+  /** Der heutige führende Space wirkt auch auf gebundene Fassungen. */
+  readonly spaceId?: unknown;
   readonly bodyHtml?: string | null | undefined;
   /** Die Belegstellen — strukturell `KoSource` (`types.ts`); gelesen werden nur diese drei Felder. */
   readonly sources?: readonly AnweisungBelegstelle[] | null | undefined;
@@ -860,7 +865,9 @@ export interface AnweisungKoFakten {
   readonly attachments?: readonly AnweisungAnhang[] | null | undefined;
 }
 
-export interface AnweisungBelegstelle {
+// AW-03: die Belegstelle trägt dieselben Herkunftsfelder wie ein Anker (`QuellankerFakten`), damit
+// der Baustein die Quellabschnitte seiner gebundenen Fassung ausgeben kann.
+export interface AnweisungBelegstelle extends QuellankerFakten {
   readonly label?: string | null | undefined;
   readonly objectId?: string | null | undefined;
   readonly at?: string | null | undefined;
@@ -985,6 +992,7 @@ export async function fassungslagenFuer(
       // confluence-import-rechte (Ben, Nacharbeit 3): die AKTUELLEN Quellleser reisen mit — ohne
       // sie läse ein ausgeschlossener Controller die gebundene Fassung über die Anweisung.
       quellrechte: eintrag.quellrechte ?? null,
+      spaceId: eintrag.spaceId,
       aktuelleVersion: eintrag.version,
       gebunden: satz
         ? {
@@ -999,6 +1007,8 @@ export async function fassungslagenFuer(
             // das wäre die heutige Fassung und damit genau die stille Ersetzung aus F2.
             rumpfHtml: typeof satz.snapshot.bodyHtml === "string" ? satz.snapshot.bodyHtml : null,
             momentaufnahmen: momentaufnahmenAus(satz.snapshot),
+            // AW-03 (K02/K04): die Anker DIESES Fassungssatzes als öffnbare Quellabschnitte.
+            quellabschnitte: quellabschnitteAus(satz.snapshot.sources),
           }
         : null,
     };

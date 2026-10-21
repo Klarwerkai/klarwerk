@@ -19,6 +19,7 @@ import type { AnweisungLesestand, BausteinLesestand, KoVersionSnapshot } from ".
 import type { NameResolver } from "../../lib/koAuthor";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { type KoVersionPaarDiff, paarDiff } from "../../lib/koVersionDiff";
+import { gespeicherteFassungHref } from "../../lib/objektbezug";
 import { leerzustandsZeile } from "../EmptyStateCtas";
 import { SanitizedHtml } from "../SanitizedHtml";
 // JOB 4233: die ANZEIGE- UND STRUKTURREGELN der Gliederung kommen aus der EINEN Stelle des Hauses
@@ -65,6 +66,89 @@ export interface Aenderungsbearbeitung {
 }
 
 export const LESESTAND_MARKE = "ga-lesestand";
+
+/** Nur http(s) wird als Verweis auf das Original angeboten — jede andere Form bleibt Text. */
+function sichererVerweis(url: string | null): string | null {
+  return url && /^https?:\/\//i.test(url) ? url : null;
+}
+
+/**
+ * AW03-K02 · die Quellabschnitte der GEBUNDENEN Fassung, am Absatz.
+ *
+ * Je Anker: Bezeichnung, Quellfassung, Revision und der Stand — „geprüft" nur, wenn der Server eine
+ * überprüfbare Fundstelle gebunden hat, sonst ausdrücklich „ungeprüft". Zwei Öffnungswege:
+ *   · die verwendete, GESPEICHERTE Fassung in KLARWERK samt diesem Quellabschnitt
+ *     (`gespeicherteFassungHref` → `components/GespeicherteFassung.tsx`, gelesen über
+ *     `GET /api/kos/:id/versions` mit dessen Leserechten) — auch wenn es inzwischen eine neuere gibt;
+ *   · das Original in der Quelle, nur als http(s), mit den Rechten des Quellsystems; es zeigt den
+ *     heutigen Stand der Quelle.
+ * `null` heisst unbekannt und wird so gesagt; ein fehlendes Feld (älterer Server) wird nicht gedeutet.
+ */
+function Quellabschnitte({ baustein }: { baustein: BausteinLesestand }): JSX.Element | null {
+  const { t } = useTranslation();
+  const liste = baustein.quellabschnitte;
+  if (liste === undefined) {
+    return null;
+  }
+  if (liste === null) {
+    return (
+      <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-quellen-unbekannt`}>
+        {t("quellen.abschnitteUnbekannt")}
+      </p>
+    );
+  }
+  if (liste.length === 0) {
+    return null;
+  }
+  return (
+    <div data-testid={`${LESESTAND_MARKE}-quellabschnitte`}>
+      <p className={HINWEIS}>{t("quellen.abschnitteTitel")}</p>
+      <ul className={`${HINWEIS} list-none space-y-1`}>
+        {liste.map((q, i) => {
+          const original = sichererVerweis(q.url);
+          return (
+            <li
+              key={q.ankerId ?? `${q.bezeichnung}-${i}`}
+              data-testid={`${LESESTAND_MARKE}-quellabschnitt`}
+              data-stand={q.stand}
+              data-fundstelle={q.fundstelle ?? ""}
+            >
+              {q.bezeichnung || t("quellen.dateiOhneName")}
+              {q.quellfassung !== null
+                ? ` · ${t("quellen.quellfassung", { version: q.quellfassung })}`
+                : null}
+              {q.quellrevision
+                ? ` · ${t("quellen.revision", { revision: q.quellrevision })}`
+                : null}
+              {" · "}
+              {q.stand === "geprueft" ? t("quellen.standGeprueft") : t("quellen.standUngeprueft")}
+              {" · "}
+              <a
+                href={gespeicherteFassungHref(baustein.koId, baustein.koVersion, q.ankerId)}
+                data-testid={`${LESESTAND_MARKE}-fassung-oeffnen`}
+              >
+                {t("quellen.fassungOeffnen", { version: baustein.koVersion })}
+              </a>
+              {original ? (
+                <>
+                  {" · "}
+                  <a
+                    href={original}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid={`${LESESTAND_MARKE}-original-oeffnen`}
+                  >
+                    {t("quellen.originalOeffnen")}
+                  </a>
+                </>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 function Menge({
   schluessel,
@@ -485,6 +569,8 @@ function BausteinZeile({
           })}
         </p>
       ))}
+      {/* AW03-K02: vom Absatz zu den Quellabschnitten und Fassungen, aus denen er stammt. */}
+      <Quellabschnitte baustein={baustein} />
       {baustein.nachweisHash === null ? (
         <p className={HINWEIS}>{t("ga.baustein.nachweisFehlt")}</p>
       ) : null}

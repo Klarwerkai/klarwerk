@@ -54,6 +54,36 @@ export default {
     "quellen.momentaufnahme":
       "Hochgeladene Datei „{{name}}“: Momentaufnahme vom {{zeit}}. Spätere Änderungen an der Originaldatei werden nicht erkannt.",
     "quellen.dateiOhneName": "ohne Namen",
+    "quellen.abschnitteTitel": "Quellen dieser Fassung",
+    "quellen.abschnitteUnbekannt": "Quellen dieser Fassung: unbekannt",
+    "quellen.quellfassung": "Quellfassung {{version}}",
+    "quellen.revision": "Revision {{revision}}",
+    "quellen.standGeprueft": "Quellstand geprüft",
+    "quellen.standUngeprueft": "Quellstand ungeprüft",
+    "quellen.fassungOeffnen": "Fassung {{version}} öffnen",
+    "quellen.originalOeffnen": "Original in der Quelle öffnen (heutiger Stand)",
+    "quellen.gespeichert.titel": "Verwendete Fassung {{version}} · gespeichert am {{zeit}}",
+    "quellen.gespeichert.laedt": "Gespeicherte Fassung wird geladen …",
+    "quellen.gespeichert.fehler":
+      "Die gespeicherte Fassung ist für dich nicht zugänglich oder konnte nicht geladen werden.",
+    "quellen.gespeichert.fehlt": "Fassung {{version}} ist nicht gespeichert.",
+    "quellen.gespeichert.gewaehlt": "Quellabschnitt dieses Absatzes",
+    "quellen.gespeichert.hinweis":
+      "Du liest die gespeicherte Fassung {{version}}. Der heutige Stand des Eintrags steht darunter.",
+    "quellen.gespeichert.quellinhaltOeffnen": "Damaligen Quellinhalt öffnen",
+    "quellen.gespeichert.quellinhaltLaedt": "Damaliger Quellinhalt wird geladen …",
+    "quellen.gespeichert.quellinhaltFehler":
+      "Der damalige Quellinhalt ist für dich nicht zugänglich oder an diesem Eintrag nicht erhalten.",
+    "quellen.gespeichert.quellinhaltTitel":
+      "Damaliger Quellinhalt der Revision {{revision}}, übernommen in Fassung {{fassung}}",
+    "quellen.gespeichert.quellinhaltNichtErhalten":
+      "Damaliger Quellinhalt nicht erhalten: Dieser Anker trägt weder eine Belegstelle noch eine festgeschriebene Revision.",
+    "quellen.gespeichert.abgleichBestaetigt":
+      "Wörtlich bestätigt: Der Inhaltsabdruck gleicht dem der Quellrevision.",
+    "quellen.gespeichert.abgleichAbweichend":
+      "Wie übernommen, nicht wörtlich bestätigt: Der Inhaltsabdruck weicht von dem der Quellrevision ab, zum Beispiel nach der Bereinigung des HTML.",
+    "quellen.gespeichert.abgleichUnbekannt":
+      "Die Quellrevision ist nicht mehr auffindbar; ein Abgleich mit ihrem Inhaltsabdruck ist nicht möglich.",
   },
   en: {
     "quellen.titel": "Source changes",
@@ -94,6 +124,36 @@ export default {
     "quellen.momentaufnahme":
       "Uploaded file “{{name}}”: snapshot from {{zeit}}. Later changes to the original file are not detected.",
     "quellen.dateiOhneName": "unnamed",
+    "quellen.abschnitteTitel": "Sources of this version",
+    "quellen.abschnitteUnbekannt": "Sources of this version: unknown",
+    "quellen.quellfassung": "Source version {{version}}",
+    "quellen.revision": "Revision {{revision}}",
+    "quellen.standGeprueft": "Source state verified",
+    "quellen.standUngeprueft": "Source state unverified",
+    "quellen.fassungOeffnen": "Open version {{version}}",
+    "quellen.originalOeffnen": "Open original in the source (its state today)",
+    "quellen.gespeichert.titel": "Version {{version}} in use · saved on {{zeit}}",
+    "quellen.gespeichert.laedt": "Loading saved version …",
+    "quellen.gespeichert.fehler":
+      "The saved version is not accessible to you or could not be loaded.",
+    "quellen.gespeichert.fehlt": "Version {{version}} is not saved.",
+    "quellen.gespeichert.gewaehlt": "Source section of this paragraph",
+    "quellen.gespeichert.hinweis":
+      "You are reading saved version {{version}}. The entry as it is today follows below.",
+    "quellen.gespeichert.quellinhaltOeffnen": "Open source content as it was then",
+    "quellen.gespeichert.quellinhaltLaedt": "Loading source content as it was then …",
+    "quellen.gespeichert.quellinhaltFehler":
+      "The source content as it was then is not accessible to you or not kept for this entry.",
+    "quellen.gespeichert.quellinhaltTitel":
+      "Source content of revision {{revision}} as it was then, taken over in version {{fassung}}",
+    "quellen.gespeichert.quellinhaltNichtErhalten":
+      "Source content as it was then not kept: this anchor carries neither a quoted passage nor a recorded revision.",
+    "quellen.gespeichert.abgleichBestaetigt":
+      "Verified word for word: the content fingerprint matches that of the source revision.",
+    "quellen.gespeichert.abgleichAbweichend":
+      "As taken over, not verified word for word: the content fingerprint differs from that of the source revision, for example after HTML cleanup.",
+    "quellen.gespeichert.abgleichUnbekannt":
+      "The source revision can no longer be found; a comparison with its content fingerprint is not possible.",
   },
   nl: {
     "quellen.titel": "Bronwijzigingen",
@@ -135,5 +195,35 @@ export default {
     "quellen.momentaufnahme":
       "Geüploade bestand „{{name}}”: momentopname van {{zeit}}. Latere wijzigingen aan het originele bestand worden niet herkend.",
     "quellen.dateiOhneName": "zonder naam",
+    "quellen.abschnitteTitel": "Bronnen van deze versie",
+    "quellen.abschnitteUnbekannt": "Bronnen van deze versie: onbekend",
+    "quellen.quellfassung": "Bronversie {{version}}",
+    "quellen.revision": "Revisie {{revision}}",
+    "quellen.standGeprueft": "Bronstand gecontroleerd",
+    "quellen.standUngeprueft": "Bronstand niet gecontroleerd",
+    "quellen.fassungOeffnen": "Versie {{version}} openen",
+    "quellen.originalOeffnen": "Origineel in de bron openen (stand van vandaag)",
+    "quellen.gespeichert.titel": "Gebruikte versie {{version}} · opgeslagen op {{zeit}}",
+    "quellen.gespeichert.laedt": "Opgeslagen versie wordt geladen …",
+    "quellen.gespeichert.fehler":
+      "De opgeslagen versie is voor jou niet toegankelijk of kon niet worden geladen.",
+    "quellen.gespeichert.fehlt": "Versie {{version}} is niet opgeslagen.",
+    "quellen.gespeichert.gewaehlt": "Brononderdeel van deze alinea",
+    "quellen.gespeichert.hinweis":
+      "Je leest de opgeslagen versie {{version}}. De stand van vandaag staat eronder.",
+    "quellen.gespeichert.quellinhaltOeffnen": "Broninhoud van toen openen",
+    "quellen.gespeichert.quellinhaltLaedt": "Broninhoud van toen wordt geladen …",
+    "quellen.gespeichert.quellinhaltFehler":
+      "De broninhoud van toen is voor jou niet toegankelijk of bij dit item niet bewaard.",
+    "quellen.gespeichert.quellinhaltTitel":
+      "Broninhoud van revisie {{revision}} van toen, overgenomen in versie {{fassung}}",
+    "quellen.gespeichert.quellinhaltNichtErhalten":
+      "Broninhoud van toen niet bewaard: dit anker heeft geen citaat en geen vastgelegde revisie.",
+    "quellen.gespeichert.abgleichBestaetigt":
+      "Letterlijk bevestigd: de inhoudsvingerafdruk komt overeen met die van de bronrevisie.",
+    "quellen.gespeichert.abgleichAbweichend":
+      "Zoals overgenomen, niet letterlijk bevestigd: de inhoudsvingerafdruk wijkt af van die van de bronrevisie, bijvoorbeeld na het opschonen van de HTML.",
+    "quellen.gespeichert.abgleichUnbekannt":
+      "De bronrevisie is niet meer te vinden; vergelijken met haar inhoudsvingerafdruk is niet mogelijk.",
   },
 } satisfies Textmodul;

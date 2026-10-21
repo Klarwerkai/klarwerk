@@ -132,6 +132,7 @@ import type {
   OverlapSettings,
   PruefdauerAuswertung,
   PublicUser,
+  QuellrevisionInhalt,
   ReasonerAusfuehrungAntwort,
   ReasonerConfigStatus,
   ReasonerKiLage,
@@ -764,6 +765,11 @@ export const endpoints = {
     list: (f?: KoFilter) => api.get<KnowledgeObject[]>(`/kos${qs(f)}`),
     get: (id: string) => api.get<KnowledgeObject>(`/kos/${id}`),
     versions: (id: string) => api.get<KoVersionSnapshot[]>(`/kos/${id}/versions`),
+    // AW03-K02: der Quellinhalt einer vom Objekt verwendeten Quellrevision.
+    quellrevision: (id: string, sourceRecordId: string) =>
+      api.get<QuellrevisionInhalt>(
+        `/kos/${encodeURIComponent(id)}/quellrevisionen/${encodeURIComponent(sourceRecordId)}`,
+      ),
     evidence: (id: string) => api.get<EvidenceRecord[]>(`/kos/${id}/evidence`),
     // AUFTRAG-mega68: begrenzte Nachbarschaft eines Objekts (Anwendersicht des Wissensnetzes).
     neighbors: (id: string) => api.get<Neighborhood>(`/kos/${id}/neighbors`),

@@ -39,6 +39,9 @@ export type { DocumentEvidenceFacts } from "./src/document-append";
 // Stufenentscheidung (die sie als TATSACHE braucht) und dem Speicherweg (der sie festhält).
 export { confirmedSourceAnchor } from "./src/source-anchor";
 export type { AnchorCandidateAttachment } from "./src/source-anchor";
+// AW-03 (K02/K04): der Quellabschnitt eines Herkunftsankers — eine Regel für Antwort und Anweisung.
+export { fundstelleDesAnkers, quellabschnitteAus } from "./src/quellabschnitt";
+export type { Quellabschnitt, QuellankerFakten } from "./src/quellabschnitt";
 // P-WIKI-STELLENBEZUG: die Form einer Stelle im Text (Route) und ihre Prüfung (Dienst).
 export {
   STELLE_SEITE_MAX,
