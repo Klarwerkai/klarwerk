@@ -51,7 +51,7 @@ beforeEach(async () => {
   // Nur die Testbühne: kein konfigurierter Cloud-/Local-Modellclient oder äußerer Versand.
   services.reasoner = new Reasoner();
   services.mailer = { send: async () => {} };
-  services.push = undefined;
+  delete services.push;
   app = buildApp(services);
   const a = await auf(null, "POST", "/api/auth/register", {
     name: "RC1 Admin fiktiv", email: "rc1-admin@klarwerk.test", password: KENNWORT,
