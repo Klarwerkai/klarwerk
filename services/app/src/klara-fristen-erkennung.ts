@@ -72,6 +72,9 @@ export type FristKlaergrund =
   | "widerspruch"
   | "importidentitaet_unklar";
 
+const DATUM =
+  /(?<![\d/.-])(?:\d{4}-\d{2}-\d{2}|\d{1,2}\.\d{1,2}\.\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})(?![\d/-]|\.\d)/gu;
+
 /** Absichtlich enge belegbare Syntax; unsupported bedeutet Klärung, niemals geschätztes Datum. */
 const ANLAESSE: readonly [FristArt, RegExp][] = [
   [
@@ -80,7 +83,13 @@ const ANLAESSE: readonly [FristArt, RegExp][] = [
   ],
   ["kuendigungsfenster", /\b(?:Kündigungsfenster|Kündigungsfrist|kündbar bis)\b/giu],
   ["vertragsende", /\b(?:Vertragsende|Vertrag endet)\b/giu],
-  ["ablauf", /\b(?:Ablaufdatum|Ablauf|läuft ab|läuft am|gültig bis|Lizenzende)\b/giu],
+  [
+    "ablauf",
+    new RegExp(
+      String.raw`\b(?:Ablaufdatum|Ablauf|läuft ab|läuft am|gültig bis|Lizenzende|bis\s+(?:zum\s+)?${DATUM.source}\s+gültig)\b`,
+      "giu",
+    ),
+  ],
   ["erneuerung", /\b(?:Erneuerungstermin|Erneuerung|erneuern bis)\b/giu],
   ["pruefung", /\b(?:Prüftermin|Prüfung fällig|prüfen bis)\b/giu],
   ["normankuendigung", /\b(?:Normankündigung|angekündigt für)\b/giu],
@@ -91,8 +100,6 @@ const ANLAESSE: readonly [FristArt, RegExp][] = [
 ];
 const OBJEKT =
   /\b(Lizenz|Zertifikat|Vertrag|Norm|Anlage|Anleitung|Einarbeitung|Expertenübergabe)\s+([\p{L}\p{N}](?:[\p{L}\p{N}_.\/-]{0,78}[\p{L}\p{N}])?)/giu;
-const DATUM =
-  /(?<![\d/.-])(?:\d{4}-\d{2}-\d{2}|\d{1,2}\.\d{1,2}\.\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})(?![\d/-]|\.\d)/gu;
 
 export function fristHash(...teile: readonly string[]): string {
   return createHash("sha256").update(JSON.stringify(teile)).digest("hex");
