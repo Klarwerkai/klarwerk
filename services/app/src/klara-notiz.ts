@@ -53,6 +53,8 @@ export interface KlaraNotizQuelle {
 
 export interface KlaraNotiz {
   readonly wissensHerkunft?: KlaraWissensHerkunft;
+  /** Nur serverseitig aus g/n: null = ohne Antwortbezug, fehlend = ungeklärter Altbestand. */
+  readonly antwortId?: string | null;
   readonly id: string;
   readonly kontoId: string;
   /** Der Vorgangsschlüssel des Anlegens — eine Wiederholung mit ihm legt nichts Zweites an. */
@@ -69,6 +71,13 @@ export interface KlaraNotiz {
   readonly angelegtAm: string;
   readonly geaendertAm: string;
   readonly fassung: number;
+}
+
+export function notizIstQuellengebunden(n: KlaraNotiz): boolean {
+  return (
+    !!n.wissensHerkunft ||
+    (!!n.quelle && (n.antwortId !== null || !!n.objektbezug.koId))
+  );
 }
 
 export const KLARA_NOTIZ_INHALT_MAX = 20_000;
@@ -529,6 +538,7 @@ export class KlaraNotizDienst {
     let inhalt: string;
     let objektbezug: KlaraObjektbezug;
     let quelle: KlaraNotizQuelle | null = null;
+    let antwortId: string | null = null;
     if (weg === "gespraech") {
       // Aus dem Gespräch: Wortlaut und Bezug kommen aus der EIGENEN gespeicherten Nachricht.
       const q = eingabe.quelle as Partial<Record<keyof KlaraNotizQuelle, unknown>> | undefined;
@@ -555,6 +565,12 @@ export class KlaraNotizDienst {
       inhalt = nachricht.text;
       objektbezug = nachricht.objektbezug;
       quelle = { gespraechId: q.gespraechId, nachrichtId: q.nachrichtId };
+      if (nachricht.modus === "ki" || nachricht.modus === "ohne_ki") {
+        if (!nachricht.antwortId) {
+          throw new KlaraNotizFehler(404, "quelle_unbekannt", "Gesprächsnachricht nicht gefunden.");
+        }
+        antwortId = nachricht.antwortId;
+      }
     } else {
       if (eingabe.quelle !== undefined) {
         throw eingabeFehler("quelle gehört nur zum Weg gespraech.");
@@ -593,6 +609,7 @@ export class KlaraNotizDienst {
       offeneFragen,
       objektbezug,
       quelle,
+      ...(quelle ? { antwortId } : {}),
       angelegtAm: jetzt,
       geaendertAm: jetzt,
       fassung: 1,

@@ -1931,6 +1931,18 @@ export function assembleServices(
   });
   const autorenNamen = autorenNamenAus(auth);
   const klaraNotizenBasis = opts.klaraNotizen ?? new InMemoryKlaraNotizRepo();
+  const klaraGespraeche = opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo();
+  const klaraAntwortAusgabe = new KlaraGespraechAusgabe({
+    antworten: repos.answerSnapshots,
+    rechte: new KlaraFristenQuellen({
+      auth,
+      ko,
+      notizen: klaraNotizenBasis,
+      gespraeche: klaraGespraeche,
+      spaces,
+    }),
+    ko,
+  });
   const library = new LibraryService({
     koService: ko,
     dokumente,
@@ -2079,7 +2091,7 @@ export function assembleServices(
     // R-1656: der Co-Reading-Zähler — Postgres, wenn injiziert, sonst im Speicher.
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
-    klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    klaraGespraeche,
     vormachenRoutinen: opts.vormachenRoutinen ?? new InMemoryRoutinenRepo(),
     sitzungsablage: repos.sessions,
     // produkt:20261010:klara-eigener-kalender — Postgres, wenn injiziert, sonst im Speicher.
@@ -2088,6 +2100,10 @@ export function assembleServices(
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
     klaraNotizenRoh: klaraNotizenBasis,
     klaraNotizen: new QuellgeschuetzteKlaraNotizen(klaraNotizenBasis, async (n) => {
+      const antwortQuellen = n.quelle
+        ? await klaraAntwortAusgabe.notizQuellen(n, klaraGespraeche)
+        : [];
+      if (!antwortQuellen) return false;
       const konto = await repos.users.findById(n.kontoId);
       if (!konto?.approved) return false;
       const b = n.wissensHerkunft?.besprechung;
@@ -2113,7 +2129,7 @@ export function assembleServices(
         const quelle = await ko.get(q.id);
         if (!quelle || !darfSehen(user, quelle)) return false;
       }
-      return true;
+      return !n.quelle || klaraAntwortAusgabe.quellenLesbar(n.kontoId, antwortQuellen);
     }),
     // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
     klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
@@ -4312,6 +4328,11 @@ export function buildApp(
     gespraeche: services.klaraGespraeche,
     spaces: services.spaces,
   });
+  const gespraechAusgabe = new KlaraGespraechAusgabe({
+    antworten: services.answerSnapshots,
+    rechte: fristenQuellen,
+    ko: services.ko,
+  });
   const dNormAnschluss: { port?: KlaraDNormAuftragsPort } = {};
   const dNormDeps = {
     normPruefauftrag: () => dNormAnschluss.port,
@@ -4344,6 +4365,7 @@ export function buildApp(
     aufgaben: services.klaraAufgaben,
     gespraeche: services.klaraGespraeche,
     spaces: services.spaces,
+    antwortAusgabe: gespraechAusgabe,
   });
   const erinnerungQuellschutz = erinnerungQuellen.pruefe.bind(erinnerungQuellen);
   const erinnerungDienst = new KlaraErinnerungDienst({
@@ -6008,6 +6030,10 @@ export function buildApp(
           repo: services.gedaechtnis,
           antworten: services.answerSnapshots,
         }),
+        antwortLesbar: async (kontoId, antwortId) => {
+          const quellen = await gespraechAusgabe.antwortQuellen(kontoId, antwortId);
+          return quellen !== null && gespraechAusgabe.quellenLesbar(kontoId, quellen);
+        },
         audit: services.audit,
       },
       guards,
@@ -6032,11 +6058,7 @@ export function buildApp(
     klaraGespraechRoutes(
       {
         dienst: klaraGespraechDienst,
-        ausgabe: new KlaraGespraechAusgabe({
-          antworten: services.answerSnapshots,
-          rechte: fristenQuellen,
-          ko: services.ko,
-        }),
+        ausgabe: gespraechAusgabe,
         audit: services.audit,
         vorWirkung,
       },
@@ -6244,6 +6266,7 @@ export function buildApp(
         audit: services.audit,
         loesche: (kontoId, id) => klaraBesprechung.loesche(kontoId, id),
         lesbar: async (user, n) => {
+          if (!(await services.klaraNotizen.hole(user.id, n.id))) return false;
           if (!n.wissensHerkunft) return true;
           try {
             await klaraWissen.original(user, n.id);
@@ -6262,6 +6285,7 @@ export function buildApp(
   const klaraAufgabeDienst = new KlaraAufgabeDienst({
     repo: services.klaraAufgaben,
     notizen: services.klaraNotizen,
+    notizenRoh: services.klaraNotizenRoh ?? services.klaraNotizen,
     gespraeche: services.klaraGespraeche,
   });
   app.register(

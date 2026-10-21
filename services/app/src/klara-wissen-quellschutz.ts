@@ -12,7 +12,7 @@ export class QuellgeschuetzteKlaraNotizen implements KlaraNotizRepo {
     private readonly erlaubt: (n: KlaraNotiz) => Promise<boolean>,
   ) {}
   private async lesbar(n: KlaraNotiz | null) {
-    return n && (!n.wissensHerkunft || (await this.erlaubt(n))) ? n : null;
+    return n && ((!n.wissensHerkunft && !n.quelle) || (await this.erlaubt(n))) ? n : null;
   }
   async hole(kontoId: string, id: string) {
     return this.lesbar(await this.basis.hole(kontoId, id));
@@ -29,10 +29,10 @@ export class QuellgeschuetzteKlaraNotizen implements KlaraNotizRepo {
     return this.basis.anzahl(kontoId);
   }
   async lege(n: KlaraNotiz, b?: NotizSchreibbedingung) {
-    return (!n.wissensHerkunft || (await this.erlaubt(n))) && this.basis.lege(n, b);
+    return ((!n.wissensHerkunft && !n.quelle) || (await this.erlaubt(n))) && this.basis.lege(n, b);
   }
   async ersetze(n: KlaraNotiz, b?: NotizSchreibbedingung) {
-    return (!n.wissensHerkunft || (await this.erlaubt(n))) && this.basis.ersetze(n, b);
+    return ((!n.wissensHerkunft && !n.quelle) || (await this.erlaubt(n))) && this.basis.ersetze(n, b);
   }
   entferne(kontoId: string, id: string) {
     return this.basis.entferne(kontoId, id);

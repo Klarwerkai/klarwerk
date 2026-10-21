@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { KlaraGespraechRepo, KlaraObjektbezug } from "./klara-gespraech";
-import type { KlaraNotizRepo, NotizSchreibbedingung } from "./klara-notiz";
+import {
+  type KlaraNotizRepo,
+  type NotizSchreibbedingung,
+  notizIstQuellengebunden,
+} from "./klara-notiz";
 
 // ================================================================================================
 // produkt:20261008:klara-aufgaben (Klara 07) — PERSÖNLICHE AUFGABEN UNTER DER EIGENEN PERSON.
@@ -347,6 +351,7 @@ export interface KlaraAufgabeDienstDeps {
   readonly repo: KlaraAufgabeRepo;
   /** Die eigenen Notizen — für Aufgaben aus einer Notiz. */
   readonly notizen?: Pick<KlaraNotizRepo, "hole">;
+  readonly notizenRoh?: Pick<KlaraNotizRepo, "hole">;
   /** Die eigenen Gespräche — für Aufgaben aus einem Klara-Auftrag. */
   readonly gespraeche?: Pick<KlaraGespraechRepo, "hole">;
   readonly jetzt?: () => number;
@@ -430,6 +435,7 @@ export interface KlaraAufgabeSchreibfreigabe {
 export class KlaraAufgabeDienst {
   private readonly repo: KlaraAufgabeRepo;
   private readonly notizen: KlaraAufgabeDienstDeps["notizen"];
+  private readonly notizenRoh: KlaraAufgabeDienstDeps["notizenRoh"];
   private readonly gespraeche: KlaraAufgabeDienstDeps["gespraeche"];
   private readonly jetzt: () => number;
   private readonly neueId: () => string;
@@ -437,6 +443,7 @@ export class KlaraAufgabeDienst {
   constructor(deps: KlaraAufgabeDienstDeps) {
     this.repo = deps.repo;
     this.notizen = deps.notizen;
+    this.notizenRoh = deps.notizenRoh;
     this.gespraeche = deps.gespraeche;
     this.jetzt = deps.jetzt ?? Date.now;
     this.neueId = deps.neueId ?? randomUUID;
@@ -446,14 +453,16 @@ export class KlaraAufgabeDienst {
     return new Date(this.jetzt()).toISOString();
   }
 
+  private async lesbar(a: KlaraAufgabe): Promise<boolean> {
+    if (a.bezug.art !== "notiz") return true;
+    const roh = await this.notizenRoh?.hole(a.kontoId, a.bezug.notizId);
+    const gebunden = a.privatNotizGebunden || (!!roh && notizIstQuellengebunden(roh));
+    return !gebunden || !!(await this.notizen?.hole(a.kontoId, a.bezug.notizId));
+  }
+
   async hole(kontoId: string, id: string): Promise<KlaraAufgabe> {
     const a = await this.repo.hole(kontoId, id);
-    if (
-      !a ||
-      (a.privatNotizGebunden &&
-        a.bezug.art === "notiz" &&
-        !(await this.notizen?.hole(kontoId, a.bezug.notizId)))
-    ) {
+    if (!a || !(await this.lesbar(a))) {
       // Fremd und unbekannt antworten gleich — die Kennung verrät nichts über fremde Aufgaben.
       throw new KlaraAufgabeFehler(404, "unbekannt", "Aufgabe nicht gefunden.");
     }
@@ -463,14 +472,7 @@ export class KlaraAufgabeDienst {
   async liste(kontoId: string, status: unknown): Promise<KlaraAufgabe[]> {
     const s = wahl(status === "" ? undefined : status, KLARA_AUFGABE_STATUS, "status");
     const roh = await this.repo.liste(kontoId, s, KLARA_AUFGABE_LISTE_MAX);
-    const erlaubt = await Promise.all(
-      roh.map(
-        async (a) =>
-          !a.privatNotizGebunden ||
-          a.bezug.art !== "notiz" ||
-          !!(await this.notizen?.hole(kontoId, a.bezug.notizId)),
-      ),
-    );
+    const erlaubt = await Promise.all(roh.map((a) => this.lesbar(a)));
     return roh.filter((_, i) => erlaubt[i]).sort(aufgabenOrdnung);
   }
 
@@ -534,7 +536,7 @@ export class KlaraAufgabeDienst {
           "Teiltranskript vor der Aufgabenübernahme vollständig verarbeiten.",
         );
       }
-      quellengebunden ||= !!notiz.wissensHerkunft;
+      quellengebunden ||= notizIstQuellengebunden(notiz);
       titel =
         eingabe.titel === undefined ? kurz(notiz.titel || notiz.inhalt) : titelAus(eingabe.titel);
       if (titel.length === 0) {

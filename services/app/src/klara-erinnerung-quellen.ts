@@ -2,6 +2,7 @@ import type { KlaraAufgabeRepo } from "./klara-aufgabe";
 import type { KlaraErinnerung, KlaraErinnerungMeldung } from "./klara-erinnerung";
 import type { GeleseneFristenQuelle } from "./klara-fristen-dienst";
 import { type FristenQuellenDeps, KlaraFristenQuellen } from "./klara-fristen-quellen";
+import type { KlaraGespraechAusgabe } from "./klara-gespraech-ausgabe";
 import type { KlaraNotizRepo, NotizSchreibbedingung } from "./klara-notiz";
 
 /** Heutige vorhandene Quellrechte, niemals eine gespeicherte Freigabe. */
@@ -19,6 +20,7 @@ export type ErinnerungQuellschutz = (
 interface QuellenDeps extends FristenQuellenDeps {
   readonly notizenRoh: Pick<KlaraNotizRepo, "hole">;
   readonly aufgaben: Pick<KlaraAufgabeRepo, "hole">;
+  readonly antwortAusgabe?: Pick<KlaraGespraechAusgabe, "notizQuellen">;
 }
 
 /**
@@ -52,14 +54,21 @@ export class KlaraErinnerungQuellen {
       notizen.add(id);
       for (const q of roh.wissensHerkunft?.aussagen.flatMap((a) => a.quellen) ?? []) ids.add(q.id);
       if (roh.objektbezug.koId) ids.add(roh.objektbezug.koId);
+      if (roh.quelle) {
+        const quellen = await this.d.antwortAusgabe?.notizQuellen(roh, this.d.gespraeche);
+        if (!quellen) return false;
+        gebunden ||= quellen.length > 0;
+        for (const q of quellen) ids.add(q.id);
+      }
       return true;
     };
     const aufgabe = async (id: string): Promise<boolean> => {
       const a = await this.d.aufgaben.hole(e.kontoId, id);
       if (!a) return true;
       if (a.objektbezug?.koId) ids.add(a.objektbezug.koId);
-      if (a.privatNotizGebunden && a.bezug.art === "notiz") {
-        if (!(await this.d.notizenRoh.hole(e.kontoId, a.bezug.notizId))) return false;
+      if (a.bezug.art === "notiz") {
+        if (a.privatNotizGebunden && !(await this.d.notizenRoh.hole(e.kontoId, a.bezug.notizId)))
+          return false;
         if (!(await notiz(a.bezug.notizId))) return false;
       }
       return true;
