@@ -260,6 +260,16 @@ export function deuteRoutinenAenderung(text: string): RoutinenAenderung {
   if (t.length === 0) {
     return { art: "unklar" };
   }
+  // Ein negiertes Statuswort bestellt keine Gegenhandlung. „Nicht mehr ausführen“ und
+  // Abschnittsänderungen mit „nicht mehr“ bleiben in ihren bestehenden Zweigen.
+  if (
+    /\bnicht\b/.test(t) &&
+    /\b(pausier|pause|aussetz|anhalten|fortsetz|weiter machen|wieder aufnehmen|weitermachen|beende|stopp|abschalten)/.test(
+      t,
+    )
+  ) {
+    return { art: "unklar" };
+  }
   const tage = Object.entries(TAGE).filter(([name]) => new RegExp(`\\b${name}s?\\b`).test(t));
   const kuenftig = /\b(kuenftig|ab jetzt|ab sofort|immer|stattdessen|nur noch)\b/.test(t);
   if (tage.length === 1 && kuenftig) {
