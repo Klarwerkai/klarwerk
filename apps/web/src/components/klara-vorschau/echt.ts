@@ -102,6 +102,49 @@ let generation = 0;
 let inhaltsGeneration = 0;
 let leseFolge = 0;
 
+// Bestehende Gesprächsfrist (PV-05-03): keine allgemeine Frist für die Fragenseite.
+export const KLARA_PRUEFTAKT_MS = 15_000;
+export const KLARA_AUFFRISCHEN_MS = 60_000;
+let vollstaendigGeprueftAm: number | null = null;
+let fristAbgelaufen = false;
+let fristUhr: ReturnType<typeof setTimeout> | null = null;
+
+function pruefzeitVerwerfen(): void {
+  if (fristUhr !== null) clearTimeout(fristUhr);
+  fristUhr = null;
+  vollstaendigGeprueftAm = null;
+  fristAbgelaufen = false;
+}
+
+/** Auch eine hängende Lesung oder Speicherung verschiebt den tatsächlichen Ablauf nicht. */
+export function pruefeFrist(): void {
+  if (vollstaendigGeprueftAm === null || Date.now() - vollstaendigGeprueftAm < KLARA_AUFFRISCHEN_MS)
+    return;
+  if (fristUhr !== null) clearTimeout(fristUhr);
+  fristUhr = null;
+  vollstaendigGeprueftAm = null;
+  fristAbgelaufen = true;
+  inhaltsGeneration += 1;
+  leseFolge += 1;
+  quellprojektionenVerwerfen();
+}
+
+function stelleFristwaechter(): void {
+  if (fristUhr !== null) clearTimeout(fristUhr);
+  if (vollstaendigGeprueftAm === null) return;
+  const gen = generation;
+  const geprueft = vollstaendigGeprueftAm;
+  fristUhr = setTimeout(
+    () => {
+      fristUhr = null;
+      if (gen !== generation || geprueft !== vollstaendigGeprueftAm) return;
+      pruefeFrist();
+      if (!fristAbgelaufen) stelleFristwaechter();
+    },
+    Math.max(0, geprueft + KLARA_AUFFRISCHEN_MS - Date.now()),
+  );
+}
+
 /** Ein Ablauf, dessen Konto inzwischen vergessen wurde. Wird nie angezeigt, nur beendet. */
 class Veraltet extends Error {
   constructor() {
@@ -121,7 +164,9 @@ function pruefe(gen: number): void {
 }
 
 function setze(f: (z: EchtZustand) => EchtZustand): void {
-  const neu = f(zustand);
+  const roh = f(zustand);
+  // Auch späte lokale Antworten ohne Ablagebeleg dürfen einen abgelaufenen Stand nicht öffnen.
+  const neu = fristAbgelaufen ? ohneQuellenprojektionen(roh) : roh;
   if (neu === zustand) {
     return;
   }
@@ -158,6 +203,7 @@ export function beimVergessen(f: () => void): void {
 
 /** Abmelden, Kontowechsel, Tests: alles Gelesene vergessen, eine laufende Anfrage stoppen. */
 export function vergiss(): void {
+  pruefzeitVerwerfen();
   generation += 1;
   inhaltsGeneration += 1;
   leseFolge += 1;
@@ -270,9 +316,9 @@ function istGespraech(roh: unknown): roh is KlaraGespraech {
 }
 
 /** Abgeleitete Altprojektionen während einer heutigen Prüfung nicht als Inhalt verwenden. */
-function quellprojektionenVerwerfen(): void {
+function ohneQuellenprojektionen(z: EchtZustand): EchtZustand {
   const neutral: KlaraObjektbezug = { pfad: "/fragen", seitenName: "Fragen", objekt: "Gespräch" };
-  setze((z) => ({
+  return {
     ...z,
     gespraech: z.gespraech
       ? {
@@ -307,11 +353,25 @@ function quellprojektionenVerwerfen(): void {
           }
         : n,
     ),
-  }));
+  };
+}
+
+function quellprojektionenVerwerfen(): void {
+  setze(ohneQuellenprojektionen);
+}
+
+function bestaetigeVollpruefung(begonnenAm: number): void {
+  // Nur die tatsächlich vollständige heutige Projektion bestätigt. Der bekannte Beginn ist
+  // konservativ: Transportwartezeit wird niemals zu zusätzlicher Gültigkeit.
+  if (Date.now() - begonnenAm >= KLARA_AUFFRISCHEN_MS) throw new Veraltet();
+  vollstaendigGeprueftAm = begonnenAm;
+  fristAbgelaufen = false;
+  stelleFristwaechter();
 }
 
 /** Eine Serverprojektion ersetzt gespeicherte Zeilen; noch lokale eigene Arbeit bleibt daneben. */
-function uebernimmGespraech(g: KlaraGespraech, lokalId?: string): void {
+function uebernimmGespraech(g: KlaraGespraech, begonnenAm: number, lokalId?: string): void {
+  bestaetigeVollpruefung(begonnenAm);
   // Auch unveränderte Nachrichten-IDs können eine neuere Rechteprojektion tragen.
   inhaltsGeneration += 1;
   setze((z) => {
@@ -333,7 +393,7 @@ function uebernimmGespraech(g: KlaraGespraech, lokalId?: string): void {
       ladeFehler: null,
       nachrichten: [
         ...nachrichten,
-        ...z.nachrichten.filter(
+        ...ohneQuellenprojektionen(z).nachrichten.filter(
           (n) => n.gespeichert !== "ja" && n.id !== lokalId && !ids.has(n.id),
         ),
       ],
@@ -346,9 +406,12 @@ async function uebernimmAntwort(
   g: KlaraGespraech,
   gen: number,
   inhalt: number,
+  begonnenAm: number,
   lokalId?: string,
 ): Promise<void> {
   pruefe(gen);
+  pruefeFrist();
+  let pruefbeginn = begonnenAm;
   let aktuell = g;
   if (zustand.gespraech && zustand.gespraech.id !== g.id) throw new Veraltet();
   const fehlend = zustand.nachrichten.some(
@@ -357,6 +420,7 @@ async function uebernimmAntwort(
   if (inhalt !== inhaltsGeneration || fehlend) {
     const folge = leseFolge;
     const stand = inhaltsGeneration;
+    pruefbeginn = Date.now();
     const { gespraech } = await klaraGespraechApi.hole(g.id);
     pruefe(gen);
     if (stand !== inhaltsGeneration || folge !== leseFolge) throw new Veraltet();
@@ -368,7 +432,7 @@ async function uebernimmAntwort(
     )
       throw new Veraltet();
   }
-  uebernimmGespraech(aktuell, lokalId);
+  uebernimmGespraech(aktuell, pruefbeginn, lokalId);
 }
 
 /** Initial einmal je Konto; explizite Wiederprüfung hat denselben heutigen Serverleser. */
@@ -378,6 +442,30 @@ export function ladeEcht(kontoId: string, t: TFunction): Promise<void> {
 
 export function pruefeEcht(kontoId: string, t: TFunction): Promise<void> {
   return ladeGespraech(kontoId, t, true);
+}
+
+/** Der vorhandene Gesprächsanlass: 15 s sowie Fokus/Sichtbarkeit, höchstens eine eigene Lesung. */
+export function starteQuellpruefung(kontoId: string, t: TFunction): () => void {
+  let offen = true;
+  let pruefung: Promise<void> | null = null;
+  const anlass = (): void => {
+    pruefeFrist();
+    if (!offen || zustand.kontoId !== kontoId || document.visibilityState === "hidden" || pruefung)
+      return;
+    pruefung = pruefeEcht(kontoId, t).finally(() => {
+      pruefung = null;
+    });
+  };
+  pruefeFrist();
+  const uhr = setInterval(anlass, KLARA_PRUEFTAKT_MS);
+  window.addEventListener("focus", anlass);
+  document.addEventListener("visibilitychange", anlass);
+  return () => {
+    offen = false;
+    clearInterval(uhr);
+    window.removeEventListener("focus", anlass);
+    document.removeEventListener("visibilitychange", anlass);
+  };
 }
 
 async function ladeGespraech(kontoId: string, t: TFunction, erneut: boolean): Promise<void> {
@@ -396,6 +484,7 @@ async function ladeGespraech(kontoId: string, t: TFunction, erneut: boolean): Pr
     quellprojektionenVerwerfen();
   }
   const inhalt = inhaltsGeneration;
+  const begonnenAm = Date.now();
   setze((z) => ({ ...z, kontoId, laden: "laedt", ladeFehler: null }));
   try {
     const roh: unknown = id
@@ -411,7 +500,7 @@ async function ladeGespraech(kontoId: string, t: TFunction, erneut: boolean): Pr
       zustand.kontoId !== kontoId
     )
       return;
-    if (g) await uebernimmAntwort(g, gen, inhalt);
+    if (g) await uebernimmAntwort(g, gen, inhalt, begonnenAm);
     else if (!zustand.gespraech) setze((z) => ({ ...z, gespraech: null }));
     if (gueltig(gen) && folge === leseFolge) setze((z) => ({ ...z, laden: "bereit" }));
   } catch (fehler) {
@@ -432,9 +521,11 @@ async function sichereGespraech(bezug: KlaraObjektbezug, gen: number): Promise<s
   if (vorhanden) {
     return vorhanden;
   }
+  const begonnenAm = Date.now();
   const { gespraech } = await klaraGespraechApi.beginne(bezug);
   pruefe(gen);
-  setze((z) => ({ ...z, gespraech: ohneNachrichten(gespraech) }));
+  bestaetigeVollpruefung(begonnenAm);
+  setze((z) => ({ ...ohneQuellenprojektionen(z), gespraech: ohneNachrichten(gespraech) }));
   return gespraech.id;
 }
 
@@ -478,14 +569,15 @@ async function legeAb(lokalId: string, e: KlaraNachrichtEingabe, gen: number): P
   try {
     const id = await sichereGespraech(e.objektbezug, gen);
     const inhalt = inhaltsGeneration;
+    const begonnenAm = Date.now();
     const { nachricht, gespraech } = await klaraGespraechApi.nachricht(id, e);
     if (!gueltig(gen)) {
       return "veraltet";
     }
-    await uebernimmAntwort(gespraech, gen, inhalt, lokalId);
     // Das vollständige Echo enthält auch die gerade angelegte Nachricht.
     if (!gespraech.nachrichten.some((n) => n.id === nachricht.id))
       throw new Error("Unvollständiges Gesprächsecho.");
+    await uebernimmAntwort(gespraech, gen, inhalt, begonnenAm, lokalId);
     return "ja";
   } catch (fehler) {
     if (fehler instanceof Veraltet || !gueltig(gen)) {
@@ -541,6 +633,7 @@ async function setzeSchritt(
   try {
     const id = await sichereGespraech(bezug, gen);
     const inhalt = inhaltsGeneration;
+    const begonnenAm = Date.now();
     const { gespraech } = await klaraGespraechApi.schritt(id, {
       art,
       text: text.slice(0, 8_000),
@@ -550,7 +643,7 @@ async function setzeSchritt(
     if (!gueltig(gen)) {
       return;
     }
-    await uebernimmAntwort(gespraech, gen, inhalt);
+    await uebernimmAntwort(gespraech, gen, inhalt, begonnenAm);
     setze((z) => ({ ...z, schrittGespeichert: true }));
   } catch {
     if (gueltig(gen)) {
@@ -573,11 +666,12 @@ export async function einwilligen(
   try {
     const id = await sichereGespraech(bezug, gen);
     const inhalt = inhaltsGeneration;
+    const begonnenAm = Date.now();
     const { gespraech } = await klaraGespraechApi.einwilligung(id, erteilt);
     if (!gueltig(gen)) {
       return false;
     }
-    await uebernimmAntwort(gespraech, gen, inhalt);
+    await uebernimmAntwort(gespraech, gen, inhalt, begonnenAm);
     return true;
   } catch (fehler) {
     if (fehler instanceof Veraltet || !gueltig(gen)) {
@@ -595,16 +689,19 @@ export async function einwilligen(
 
 export async function neuesGespraech(bezug: KlaraObjektbezug, t: TFunction): Promise<void> {
   const gen = ++generation;
+  stelleFristwaechter();
   leseFolge += 1;
   laufend?.abort();
   laufend = null;
   setze((z) => ({ ...z, laeuftSeit: null, verarbeitetSeit: null }));
   setze((z) => ({ ...z, hinweis: null }));
   try {
+    const begonnenAm = Date.now();
     const { gespraech } = await klaraGespraechApi.beginne(bezug);
     if (!gueltig(gen)) {
       return;
     }
+    bestaetigeVollpruefung(begonnenAm);
     setze((z) => ({
       ...z,
       gespraech: ohneNachrichten(gespraech),
@@ -626,6 +723,7 @@ export async function loescheGespraech(t: TFunction): Promise<void> {
     return;
   }
   const gen = ++generation;
+  stelleFristwaechter();
   leseFolge += 1;
   laufend?.abort();
   laufend = null;
@@ -635,6 +733,7 @@ export async function loescheGespraech(t: TFunction): Promise<void> {
     if (!gueltig(gen)) {
       return;
     }
+    pruefzeitVerwerfen();
     setze((z) => ({
       ...z,
       gespraech: null,

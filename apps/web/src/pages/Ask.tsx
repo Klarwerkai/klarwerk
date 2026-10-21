@@ -138,6 +138,7 @@ import {
   beobachtungAus,
   fragenSpeicher,
   kontextGesetzt,
+  merkeAntwortRechtewechsel,
   quellenStandAus,
   startadresseMarke,
   startadresseMerken,
@@ -1031,13 +1032,7 @@ export function Ask(): JSX.Element {
       // React-Effekt darf ihn nicht wieder nutzbar machen. Eigenen Entwurf und Faden behalten.
       const jetzt = arbeitskontoJetzt.current;
       if (jetzt.konto !== null && jetzt.konto === jetzt.standFuer) {
-        const stand = arbeitsstandLesen(fragenSpeicher(), jetzt.konto);
-        if (stand?.antwort) {
-          arbeitsstandSchreiben(fragenSpeicher(), jetzt.konto, {
-            ...stand,
-            antwort: { ...stand.antwort, rechtepruefungAusstehend: true },
-          });
-        }
+        merkeAntwortRechtewechsel(fragenSpeicher(), jetzt.konto);
       }
     });
     const abfrageAbmelden = qc.getQueryCache().subscribe((ereignis) => {
@@ -2391,9 +2386,7 @@ export function Ask(): JSX.Element {
           <NichtHilfreichKarte
             key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
             quelleTitel={
-              rueckmeldungFreigegeben(nichtHilfreich.koId)
-                ? quelleTitel(nichtHilfreich.koId)
-                : null
+              rueckmeldungFreigegeben(nichtHilfreich.koId) ? quelleTitel(nichtHilfreich.koId) : null
             }
             alternative={nichtHilfreich.alternative}
             laeuft={nichtHilfreichMelden.isPending}
