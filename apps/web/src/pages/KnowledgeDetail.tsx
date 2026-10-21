@@ -6,6 +6,7 @@ import { useKo } from "../api/hooks";
 import { useRole } from "../app/RoleContext";
 import { AufgegangenHinweis } from "../components/AufgegangenHinweis";
 import { ChatGespraechKnopf } from "../components/ChatGespraechKnopf";
+import { GespeicherteFassung } from "../components/GespeicherteFassung";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
@@ -15,7 +16,14 @@ import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
 import { STELLE_PARAM } from "../lib/belegstelle";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
-import { FASSUNG_PARAM, fassungsLage, leseFassung } from "../lib/objektbezug";
+import {
+  ANKER_PARAM,
+  ANSICHT_PARAM,
+  FASSUNG_PARAM,
+  fassungsLage,
+  leseFassung,
+  leseGespeicherteFassung,
+} from "../lib/objektbezug";
 import { useGelesenerStand } from "../lib/useGelesenerStand";
 
 // ==================================================================================================
@@ -70,6 +78,9 @@ export function KnowledgeDetail(): JSX.Element {
     // für beide Wege (`lib/belegstelle.ts` und `lib/objektbezug.ts` nennen denselben Namen).
     p.delete(STELLE_PARAM);
     p.delete(FASSUNG_PARAM);
+    // AW03-K02: die bestellte gespeicherte Fassung gehört ebenso nur zu DIESEM Eintrag.
+    p.delete(ANSICHT_PARAM);
+    p.delete(ANKER_PARAM);
     p.delete("abschnitt");
     return p.toString();
   })();
@@ -99,6 +110,7 @@ export function KnowledgeDetail(): JSX.Element {
   // Arbeitswege am selben Artikel: genannte Fassung (Adresse) gegen die, die die Lesefläche
   // gerade zeigt (`meldeGelesenenStand` — kein eigener Abruf). Ein anderer Artikel zählt nicht.
   const genannteFassung = leseFassung(params);
+  const gespeichert = leseGespeicherteFassung(params);
   const gelesen = useGelesenerStand();
   const aktuelleFassung = gelesen?.koId === id ? gelesen.fassung : null;
   // Sprachwechsel UND Eintragswechsel setzen die Wahl „Original anzeigen" zurück: sie gehörte zur
@@ -195,6 +207,15 @@ export function KnowledgeDetail(): JSX.Element {
             aktuell: aktuelleFassung,
           })}
         </p>
+      ) : null}
+      {/* AW03-K02: aus einem Absatz geöffnet — die tatsächlich verwendete, gespeicherte Fassung
+          steht lesbar VOR dem heutigen Stand (`components/GespeicherteFassung.tsx`). */}
+      {gespeichert ? (
+        <GespeicherteFassung
+          koId={id}
+          fassung={gespeichert.fassung}
+          ankerId={gespeichert.ankerId}
+        />
       ) : null}
       {/* R-1107: ist dieser Eintrag in einem Führungsartikel aufgegangen, sagt die Zeile worin. */}
       <AufgegangenHinweis koId={id} />

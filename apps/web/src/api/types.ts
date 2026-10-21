@@ -248,6 +248,27 @@ export interface KoVersionSnapshot {
   note: string;
 }
 
+/**
+ * AW03-K02 · der Quellinhalt einer vom Objekt verwendeten Quellrevision
+ * (`GET /api/kos/:id/quellrevisionen/:sourceRecordId`, `services/app/src/routes/quellrevision-routes.ts`).
+ * `abgleich` sagt, ob der Inhalt WÖRTLICH dem Abdruck der Revision gleicht.
+ */
+export interface QuellrevisionInhalt {
+  sourceRecordId: string;
+  quelle: {
+    sourceSystem: string;
+    externalId: string;
+    sourceVersion: number;
+    title: string;
+    url: string | null;
+    importedAt: string;
+  } | null;
+  uebernommenInFassung: number;
+  uebernommenAm: string;
+  inhalt: { title: string; statement: string; bodyHtml: string | null };
+  abgleich: "bestaetigt" | "abweichend" | "revision_unbekannt";
+}
+
 // SCRUM-164/165: technisches ModelRun-Protokoll (nur Metadaten, keine Prompt-/Antworttexte).
 //
 // JOB 3069: URSPRUNG DER AUFGABENBENENNUNG IST `services/model-runs/src/types.ts:7-15` — dort
@@ -4913,6 +4934,24 @@ export interface BausteinLesestand {
    * `null` und ein fehlendes Feld heissen UNBEKANNT, `[]` heisst „keine".
    */
   momentaufnahmen?: Momentaufnahme[] | null;
+  /**
+   * AW03-K02 · die Quellabschnitte der gebundenen Fassung (Server: `BausteinLesestand.quellabschnitte`).
+   * `null` = unbekannt; ein fehlendes Feld kommt von einem älteren Server und wird nicht gedeutet.
+   */
+  quellabschnitte?: Quellabschnitt[] | null;
+}
+
+/** AW03-K02 · ein öffnbarer Quellabschnitt (Server: `knowledge-object/src/quellabschnitt.ts`). */
+export interface Quellabschnitt {
+  ankerId: string | null;
+  bezeichnung: string;
+  anbieter: string | null;
+  quellId: string | null;
+  quellfassung: number | null;
+  quellrevision: string | null;
+  url: string | null;
+  fundstelle: string | null;
+  stand: "geprueft" | "ungeprueft";
 }
 
 /** Eine hochgeladene Datei: Stand des Hochladens, ohne Verbindung zum Original. */

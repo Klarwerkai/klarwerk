@@ -190,6 +190,13 @@ export const useKoVersions = (id: string) =>
     queryFn: () => endpoints.ko.versions(id),
     enabled: id.length > 0,
   });
+// AW03-K02: der Quellinhalt einer verwendeten Quellrevision — erst auf Wunsch (`enabled`).
+export const useQuellrevision = (koId: string, sourceRecordId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["ko", koId, "quellrevision", sourceRecordId],
+    queryFn: () => endpoints.ko.quellrevision(koId, sourceRecordId),
+    enabled: enabled && koId.length > 0 && sourceRecordId.length > 0,
+  });
 export const useKoEvidence = (id: string) =>
   useQuery({
     queryKey: ["ko", id, "evidence"],

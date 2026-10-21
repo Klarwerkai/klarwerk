@@ -646,6 +646,7 @@ import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes"
 import { pushRoutes } from "./routes/push-routes";
 // ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
 import { qualitaetsaufgabenRoutes } from "./routes/qualitaetsaufgaben-routes";
+import { quellrevisionRoutes } from "./routes/quellrevision-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
@@ -5529,6 +5530,10 @@ export function buildApp(
   // UHR UND KENNUNG WERDEN INJIZIERT und nicht im Gegenstand gebildet: die festgehaltenen
   // Prüfstände tragen Zeiten, und ein Test, der sie nicht stellen kann, prüft die Uhr statt den
   // Vertrag. Hier steht die echte Umwelt.
+  // AW03-K02: derselbe Bestand und heutige Leserechte wie an der KO-Fassungsroute.
+  app.register(
+    quellrevisionRoutes({ ko: services.ko, externalSources: services.externalSources, guards }),
+  );
   app.register(gesamtanweisungRoutes, {
     dienst: new GesamtanweisungDienst({
       repo: services.anweisungen,

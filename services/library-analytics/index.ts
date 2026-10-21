@@ -13,6 +13,8 @@ export {
   NEIGHBOR_LIMIT,
   UBIQUITY_MAX_SHARE,
   UBIQUITY_MIN_COUNT,
+  // AW03-K02: der Inhaltsabdruck einer Quellrevision — die Prüfregel des Quellinhalt-Lesewegs.
+  quellinhaltAbdruck,
 } from "./src/service";
 export type { LibraryServiceDeps } from "./src/service";
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Schlüsselteil aller Import-Schlüssel.

@@ -34,6 +34,7 @@
 // (`services/app/src/sichtbarkeit.ts:50`) sind: sonst müsste die Route beim Durchreichen eine
 // Zeichenkette auf die Stufe verengen, und diese Verengung wäre eine zweite Auslegung von
 // `isConfidential`.
+import type { Quellabschnitt } from "./quellabschnitt";
 import type { Confidentiality } from "./types";
 
 // ================================================================================================
@@ -164,6 +165,11 @@ export interface GebundeneFassung {
    * Aus demselben Fassungssatz wie Titel und Rumpf — nicht aus der heutigen Fassung.
    */
   readonly momentaufnahmen?: readonly Momentaufnahme[] | null;
+  /**
+   * AW-03 (K02/K04) · die Quellabschnitte DIESER Fassung — aus ihrem Fassungssatz, nicht aus der
+   * heutigen Fassung. Optional wie `momentaufnahmen`; fehlt es, ist es UNBEKANNT.
+   */
+  readonly quellabschnitte?: readonly Quellabschnitt[] | null;
 }
 
 /**
@@ -200,6 +206,8 @@ export interface KoFassungslage {
   readonly author?: string | null | undefined;
   /** Die AKTUELLEN Quellleser des Eintrags (confluence-import-rechte) — Teil derselben Fakten. */
   readonly quellrechte?: AnweisungQuellrechte | null | undefined;
+  /** Aktueller führender Space — dieselbe UND-Bedingung wie am lebenden KO. */
+  readonly spaceId?: unknown;
   readonly aktuelleVersion: number | null;
   readonly gebunden: GebundeneFassung | null;
 }
@@ -225,6 +233,8 @@ export interface AnweisungSichtbarkeitsFakten {
   readonly confidentiality?: Confidentiality | null | undefined;
   readonly author?: string | null | undefined;
   readonly quellrechte?: AnweisungQuellrechte | null | undefined;
+  /** Aktueller führender Space — dieselbe UND-Bedingung wie am lebenden KO. */
+  readonly spaceId?: unknown;
 }
 
 export type AnweisungSichtbar = (fakten: AnweisungSichtbarkeitsFakten) => boolean;
@@ -277,6 +287,12 @@ export interface BausteinLesestand {
   readonly inhalt: BausteinInhalt;
   /** Die hochgeladenen Dateien der GEBUNDENEN Fassung. `null` = unbekannt, `[]` = keine. */
   readonly momentaufnahmen: readonly Momentaufnahme[] | null;
+  /**
+   * AW-03 (K02/K04) · die Quellabschnitte der GEBUNDENEN Fassung: Quell-ID, Quellfassung,
+   * festgeschriebene Revision, Adresse und Fundstelle je Anker — der Weg vom Absatz zur Quelle.
+   * Ein Anker ohne überprüfbaren Stand steht mit `stand: "ungeprueft"` da. `null` = unbekannt.
+   */
+  readonly quellabschnitte?: readonly Quellabschnitt[] | null;
 }
 
 // ================================================================================================
