@@ -2685,6 +2685,8 @@ export type ArgumentStufe =
       aussage: string | null;
       gestuetztAuf: string[];
       unabhaengig: boolean;
+      /** AW03-K01: tragende Quellen derselben Herkunft (Belegkopien) — zählen als eine Bestätigung. */
+      gemeinsameHerkunft?: { herkunft: string; koIds: string[] }[];
     };
 
 export interface AntwortZuschnitt {
