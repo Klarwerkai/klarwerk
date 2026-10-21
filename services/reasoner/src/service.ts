@@ -1778,11 +1778,12 @@ export class Reasoner {
       fehlversuch?: (fehler: unknown) => void;
     },
     // ANTWORTBELEG (R-0317): die vom Aufrufer vergebene Kennung des ERFOLGSdatensatzes. So kann der
-    // Aufrufer genau den Laufprotokoll-Eintrag benennen, der sein Ergebnis belegt. Ohne sie vergibt
-    // `recordRun` wie bisher selbst eine Kennung. Hinter `lenkung`, damit deren Aufrufer
-    // unverändert bleiben.
+    // Aufrufer genau den Laufprotokoll-Eintrag benennen, der sein Ergebnis belegt. Dieselbe Kennung
+    // gilt auch für die Fehlerausgänge dieses Laufs. Ohne sie wird die Kennung hier vor dem ersten
+    // Versuch gebildet. Hinter `lenkung`, damit deren Aufrufer unverändert bleiben.
     erfolgsLaufId?: string,
   ): Promise<T> {
+    const laufId = erfolgsLaufId ?? randomUUID();
     const startedAt = new Date().toISOString();
     // D5: die Abschalt-Epoche beim Start dieses Laufs — vor jedem Warten (s. `kiAbschaltStand`).
     const kiBeginn = this.kiAbschaltEpoche;
@@ -1862,6 +1863,7 @@ export class Reasoner {
           startedAt,
           "error",
           {
+            id: laufId,
             fallback: i > 0,
             demo: false,
             provider: provider.name,
@@ -1943,7 +1945,7 @@ export class Reasoner {
           startedAt,
           "success",
           {
-            ...(erfolgsLaufId ? { id: erfolgsLaufId } : {}),
+            id: laufId,
             fallback: i > 0,
             demo: result.demo,
             provider: provider.name,
@@ -1989,6 +1991,7 @@ export class Reasoner {
             startedAt,
             "error",
             {
+              id: laufId,
               fallback: i > 0,
               demo: false,
               provider: provider.name,
@@ -2031,6 +2034,7 @@ export class Reasoner {
       startedAt,
       "error",
       {
+        id: laufId,
         fallback: chain.length > 1,
         demo: true,
         provider: this.fallback.name,
