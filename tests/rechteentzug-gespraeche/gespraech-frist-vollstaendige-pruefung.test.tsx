@@ -142,4 +142,9 @@ it("RC3-P1: 15-s-Anlass und tatsächlicher60-s-Ablauf; Fehler, Teilecho, hängen
   expect(abrufe.length).toBe(vorFokus + 2);
   expect(text()).toContain(EIGEN);
   expect(abrufe.some((a) => a.url === "/api/ask" || !a.url.startsWith("/api/"))).toBe(false);
+  const vorVergessen = abrufe.length;
+  vergiss();
+  window.dispatchEvent(new Event("focus"));
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(abrufe.length).toBe(vorVergessen);
 });

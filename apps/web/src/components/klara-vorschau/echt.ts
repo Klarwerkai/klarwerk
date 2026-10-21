@@ -446,7 +446,7 @@ export function starteQuellpruefung(kontoId: string, t: TFunction): () => void {
   let pruefung: Promise<void> | null = null;
   const anlass = (): void => {
     pruefeFrist();
-    if (!offen || document.visibilityState === "hidden" || pruefung) return;
+    if (!offen || zustand.kontoId !== kontoId || document.visibilityState === "hidden" || pruefung) return;
     pruefung = pruefeEcht(kontoId, t).finally(() => { pruefung = null; });
   };
   pruefeFrist();
