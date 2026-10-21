@@ -33,6 +33,10 @@ type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const PRAEFIX = "kw.fragen.arbeitsstand.v1:";
 
+// Nur tatsächlich erkannte, noch nicht haltbar markierte Wechsel dieses laufenden Arbeitsstands.
+// Die Inhalte bleiben allein im bestehenden Kontoeintrag; ein Schreibfehler hebt die Sperre nicht auf.
+const ungespeicherteAntwortSperren = new Set<string>();
+
 /** Die zuletzt angezeigte Antwort — genau das, was die Fläche zum Zeichnen braucht. */
 export interface GespeicherteAntwort {
   /** Bekannter Rechtewechsel: erst neue Quellenabrufe dürfen diese Antwort wieder freigeben. */
@@ -496,7 +500,10 @@ export function arbeitsstandLesen(
     if (!istObjekt(wert) || typeof wert.entwurf !== "string") {
       return null;
     }
-    const antwort = antwortAus(wert.antwort);
+    const gelesen = antwortAus(wert.antwort);
+    const antwort: GespeicherteAntwort | null = gelesen && ungespeicherteAntwortSperren.has(konto)
+      ? { ...gelesen, rechtepruefungAusstehend: true }
+      : gelesen;
     // Runde-2-Einträge trugen EINE Marke unter `startfrage` — sie wird übernommen, nicht verloren.
     const startadressen = Array.isArray(wert.startadressen)
       ? wert.startadressen.filter((m): m is string => typeof m === "string")
@@ -528,8 +535,10 @@ export function arbeitsstandLesen(
 
 /** Nur der tatsächlich erkannte Wechsel markiert den vorhandenen eigenen Antwortstand. */
 export function merkeAntwortRechtewechsel(storage: StorageLike | undefined, konto: string | null): void {
+  if (konto === null) return;
   const stand = arbeitsstandLesen(storage, konto);
   if (!stand?.antwort || stand.antwort.rechtepruefungAusstehend) return;
+  ungespeicherteAntwortSperren.add(konto);
   arbeitsstandSchreiben(storage, konto, {
     ...stand,
     antwort: { ...stand.antwort, rechtepruefungAusstehend: true },
@@ -547,8 +556,17 @@ export function arbeitsstandSchreiben(
   konto: string | null,
   stand: FragenArbeitsstand,
 ): void {
+  if (schreibversuch(storage, konto, stand) && konto !== null)
+    ungespeicherteAntwortSperren.delete(konto);
+}
+
+function schreibversuch(
+  storage: StorageLike | undefined,
+  konto: string | null,
+  stand: FragenArbeitsstand,
+): boolean {
   if (!storage || !konto) {
-    return;
+    return false;
   }
   try {
     const schluessel = arbeitsstandSchluessel(konto);
@@ -563,7 +581,7 @@ export function arbeitsstandSchreiben(
       !mitSzenario
     ) {
       storage.removeItem(schluessel);
-      return;
+      return true;
     }
     // Leere Auswahl und leeres Szenario werden nicht abgelegt — „nichts gewählt" hat genau eine
     // Darstellung (das Feld fehlt).
@@ -575,8 +593,10 @@ export function arbeitsstandSchreiben(
         ...(mitSzenario ? { szenario } : {}),
       }),
     );
+    return true;
   } catch {
     // Speicher voll/verweigert → der Stand lebt dann nur in dieser Sitzung.
+    return false;
   }
 }
 
