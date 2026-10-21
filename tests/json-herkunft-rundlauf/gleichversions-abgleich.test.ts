@@ -22,9 +22,9 @@ const OHNE_AEHNLICHKEIT: DublettenPruefung = () => ({ dublette: false });
 
 function quelle(fassung = 1): ImportItem {
   return {
-    title: "Fiktiver Wartungsplan " + fassung,
-    statement: "Fiktive Aussage der Quellfassung " + fassung + ".",
-    bodyHtml: "<p>Fiktiver Quellinhalt " + fassung + ".</p>",
+    title: `Fiktiver Wartungsplan ${fassung}`,
+    statement: `Fiktive Aussage der Quellfassung ${fassung}.`,
+    bodyHtml: `<p>Fiktiver Quellinhalt ${fassung}.</p>`,
     type: "best_practice",
     category: "Wartung",
     provider: "Confluence",
@@ -121,7 +121,7 @@ describe("WA-1 · Inhaltsabgleich am bestehenden Gleichversionsanker", () => {
     // bekommen, sobald derselbe Bestand später mit einer Revisionsablage verbunden wird.
     const ohneRevision = new LibraryService({ koService: ctx.koService });
     const item = quelle();
-    await ohneRevision.importJson([item], AKTEUR, OHNE_AEHNLICHKEIT);
+    expect((await ohneRevision.importJson([item], AKTEUR, OHNE_AEHNLICHKEIT)).imported).toBe(1);
     const vorher = await zustand(ctx);
     expect(vorher.kos[0]?.sources[0]).not.toHaveProperty("sourceRecordId");
     expect(vorher.revisionen).toEqual([]);
