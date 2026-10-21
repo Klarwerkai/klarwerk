@@ -137,6 +137,7 @@ export interface KoSource {
   attachment?: { externalId: string; mime?: string; size?: number };
   sourceRemovedAt?: string;
   neubewertungOffen?: true;
+  neubewertungQuellwegfallAm?: string;
   author: string;
   at: string;
 }

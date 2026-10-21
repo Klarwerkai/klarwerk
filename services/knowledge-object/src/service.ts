@@ -8344,7 +8344,11 @@ export class KoService {
       if (offen) {
         return { ...s, neubewertungOffen: true };
       }
-      const { neubewertungOffen: _erledigt, ...ohne } = s;
+      const {
+        neubewertungOffen: _erledigt,
+        neubewertungQuellwegfallAm: _nachgeholterQuellwegfall,
+        ...ohne
+      } = s;
       return ohne;
     });
     if (!geaendert) {
@@ -8379,8 +8383,12 @@ export class KoService {
         if (!trifft(s) || !s.sourceRemovedAt) {
           return s;
         }
-        const { sourceRemovedAt: _aufgehoben, ...rest } = s;
-        return rest;
+        const { sourceRemovedAt, ...rest } = s;
+        // Die Seite ist wieder erreichbar. Ihr früherer, noch nicht ausgeführter Nachlauf
+        // bleibt an den hier tatsächlich gelesenen Löschzeitpunkt gebunden — keine neue Löschung.
+        return s.neubewertungOffen
+          ? { ...rest, neubewertungQuellwegfallAm: s.neubewertungQuellwegfallAm ?? sourceRemovedAt }
+          : rest;
       }),
     };
     await this.repo.update(updated);

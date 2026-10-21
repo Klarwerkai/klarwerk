@@ -1816,7 +1816,7 @@ export function MehrAbschnitte({
                               disabled={neubewertungNachholen.isPending}
                               onClick={() =>
                                 neubewertungNachholen.mutate({
-                                  art: s.sourceRemovedAt
+                                  art: s.sourceRemovedAt || s.neubewertungQuellwegfallAm
                                     ? "quelle_entfernt"
                                     : "quelle_hinzugefuegt",
                                   sourceIds: [s.id],

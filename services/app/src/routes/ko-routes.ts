@@ -4673,13 +4673,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 : new Set<string | undefined>();
             // Ben, Nacharbeit 19: eine „entfernte" Quelle ist entweder vom Objekt genommen ODER ein
             // weiter gespeicherter Herkunftsanker, dessen Seite im Ursprung gelöscht ist
-            // (`sourceRemovedAt`) — der Anker bleibt als Herkunft stehen, die Quelle gilt nicht mehr.
+            // (`sourceRemovedAt`). Nach Wiederkehr zählt nur der ausdrücklich noch ausstehende,
+            // am beobachteten Löschzeitpunkt gebundene Nachlauf; keine neue Quellenentfernung.
             const passt = (sourceIds as string[]).every((s) => {
               const q = quellen.get(s);
               return art === "quelle_hinzugefuegt"
-                ? q !== undefined && !q.sourceRemovedAt
+                ? q !== undefined &&
+                  !q.sourceRemovedAt &&
+                  !(q.neubewertungOffen && q.neubewertungQuellwegfallAm)
                 : q !== undefined
-                  ? Boolean(q.sourceRemovedAt)
+                  ? Boolean(
+                      q.sourceRemovedAt ||
+                        (q.neubewertungOffen && q.neubewertungQuellwegfallAm),
+                    )
                   : entfernteBelege.has(s);
             });
             if (!objekt || !passt) {

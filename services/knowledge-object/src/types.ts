@@ -558,6 +558,8 @@ export interface KoSource {
   sourceRemovedAt?: string;
   /** Der Nachlauf zu dieser Quellenänderung ist noch nicht vollständig ausgeführt. */
   neubewertungOffen?: true;
+  /** Bereits beobachteter Quellwegfall, dessen Nachlauf trotz Wiederkehr noch aussteht. */
+  neubewertungQuellwegfallAm?: string;
   // R-0142 (Confluence-Import, Lauf 5 R3): der Importlauf der ANNAHME, die diesen Anker zuletzt
   // geschrieben hat (Erstanlage oder Fortschreibung). Eine Kennung, kein Inhalt; die Laufdomäne
   // (`library-analytics`, `ImportRunItemRef`) trägt den Ausgang. Fehlt bei Ankern von vor dieser

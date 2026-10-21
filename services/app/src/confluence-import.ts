@@ -437,14 +437,15 @@ async function quellAbgleich(
   // Anker dieses Bereichs, deren Seite im Lauf fehlte (bereits vermerkte zählen nicht erneut).
   const fehlend = new Map<string, { provider: string | null; koIds: string[] }>();
   // BD12-02-K06 (Konfliktauftrag, Ben Nacharbeit 19): bereits als gelöscht vermerkte Anker, deren
-  // Neubewertung früher AUSFIEL (`neubewertungOffen`), werden in diesem Lauf nachgeholt — der
-  // Löschvermerk bleibt, die Seite wird nicht erneut nachgefragt.
+  // Neubewertung früher AUSFIEL (`neubewertungOffen`), werden in diesem Lauf nachgeholt.
+  // Nach Wiederkehr bewahrt der Anker den tatsächlich beobachteten Quellwegfall separat;
+  // der erreichbare Ursprung wird dabei weder neu gelöscht noch erneut als gelöscht gezählt.
   const nachzuholen: { koId: string; externalId: string; sourceIds: string[] }[] = [];
   for (const ko of await deps.koService.list()) {
     for (const s of ko.sources ?? []) {
       if (
         s.externalId &&
-        s.sourceRemovedAt &&
+        (s.sourceRemovedAt || s.neubewertungQuellwegfallAm) &&
         s.neubewertungOffen &&
         s.spaceKey === scope &&
         istConfluenceAnbieter(s.provider)
