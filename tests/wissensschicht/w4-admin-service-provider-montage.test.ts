@@ -144,9 +144,7 @@ function schreiben(f: Instanz, body: unknown, auth = f.admin) {
 }
 
 function providerVon(f: Instanz): ModelProvider[] {
-  return montage.provider
-    .filter((p) => p.quelle === f.services.verhalten)
-    .map((p) => p.provider);
+  return montage.provider.filter((p) => p.quelle === f.services.verhalten).map((p) => p.provider);
 }
 
 describe("W4 · heutige Ports sind erhaltend verbunden", () => {
