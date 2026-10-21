@@ -110,7 +110,7 @@ async function notizUnveraendert(n: Notiz) {
   expect(netz).not.toHaveBeenCalled();
 }
 
-it("A: übernimmt bis-zum-Datum und bis-ISO-Datum gültige eigene Belege je einmal mit Originalabschnitt", async () => {
+it("A: übernimmt beide Satzfolgen mit Beleg und je einem Kalendereintrag", async () => {
   const saetze = [
     {
       text: "Lizenz L-17 ist bis zum 31.12.2026 gültig.",
@@ -162,7 +162,7 @@ it("A: übernimmt bis-zum-Datum und bis-ISO-Datum gültige eigene Belege je einm
   await notizUnveraendert(n);
 });
 
-it("B: hält Negation, unbekannte Geltung und widersprüchliche Daten als Klärung ohne Kalendertermin fest", async () => {
+it("B: klärt Negation, Vorbehalt und Datumswiderspruch ohne Termin", async () => {
   const saetze = [
     {
       id: "L-17",
