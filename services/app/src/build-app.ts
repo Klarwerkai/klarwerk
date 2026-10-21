@@ -2116,7 +2116,8 @@ export function assembleServices(
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
     klaraNotizenRoh: klaraNotizenBasis,
     klaraNotizen: new QuellgeschuetzteKlaraNotizen(klaraNotizenBasis, async (n) => {
-      const antwortQuellen = n.quelle
+      const hatAntwortbezug = !!n.quelle || (n.antwortId !== undefined && n.antwortId !== null);
+      const antwortQuellen = hatAntwortbezug
         ? await klaraAntwortAusgabe.notizQuellen(n, klaraGespraeche)
         : [];
       if (!antwortQuellen) return false;
@@ -2145,7 +2146,7 @@ export function assembleServices(
         const quelle = await ko.get(q.id);
         if (!quelle || !darfSehen(user, quelle)) return false;
       }
-      return !n.quelle || klaraAntwortAusgabe.quellenLesbar(n.kontoId, antwortQuellen);
+      return !hatAntwortbezug || klaraAntwortAusgabe.quellenLesbar(n.kontoId, antwortQuellen);
     }),
     // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
     klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),

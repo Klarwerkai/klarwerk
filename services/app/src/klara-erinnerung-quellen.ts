@@ -54,7 +54,7 @@ export class KlaraErinnerungQuellen {
       notizen.add(id);
       for (const q of roh.wissensHerkunft?.aussagen.flatMap((a) => a.quellen) ?? []) ids.add(q.id);
       if (roh.objektbezug.koId) ids.add(roh.objektbezug.koId);
-      if (roh.quelle) {
+      if (roh.quelle || (roh.antwortId !== undefined && roh.antwortId !== null)) {
         const quellen = await this.d.antwortAusgabe?.notizQuellen(roh, this.d.gespraeche);
         if (!quellen) return false;
         gebunden ||= quellen.length > 0;

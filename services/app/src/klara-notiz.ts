@@ -76,6 +76,7 @@ export interface KlaraNotiz {
 export function notizIstQuellengebunden(n: KlaraNotiz): boolean {
   return (
     !!n.wissensHerkunft ||
+    (n.antwortId !== undefined && n.antwortId !== null) ||
     (!!n.quelle && (n.antwortId !== null || !!n.objektbezug.koId))
   );
 }
