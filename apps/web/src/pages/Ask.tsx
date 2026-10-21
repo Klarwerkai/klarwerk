@@ -2386,9 +2386,7 @@ export function Ask(): JSX.Element {
           <NichtHilfreichKarte
             key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
             quelleTitel={
-              rueckmeldungFreigegeben(nichtHilfreich.koId)
-                ? quelleTitel(nichtHilfreich.koId)
-                : null
+              rueckmeldungFreigegeben(nichtHilfreich.koId) ? quelleTitel(nichtHilfreich.koId) : null
             }
             alternative={nichtHilfreich.alternative}
             laeuft={nichtHilfreichMelden.isPending}

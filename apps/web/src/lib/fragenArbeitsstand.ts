@@ -501,9 +501,10 @@ export function arbeitsstandLesen(
       return null;
     }
     const gelesen = antwortAus(wert.antwort);
-    const antwort: GespeicherteAntwort | null = gelesen && ungespeicherteAntwortSperren.has(konto)
-      ? { ...gelesen, rechtepruefungAusstehend: true }
-      : gelesen;
+    const antwort: GespeicherteAntwort | null =
+      gelesen && ungespeicherteAntwortSperren.has(konto)
+        ? { ...gelesen, rechtepruefungAusstehend: true }
+        : gelesen;
     // Runde-2-Einträge trugen EINE Marke unter `startfrage` — sie wird übernommen, nicht verloren.
     const startadressen = Array.isArray(wert.startadressen)
       ? wert.startadressen.filter((m): m is string => typeof m === "string")
@@ -534,7 +535,10 @@ export function arbeitsstandLesen(
 }
 
 /** Nur der tatsächlich erkannte Wechsel markiert den vorhandenen eigenen Antwortstand. */
-export function merkeAntwortRechtewechsel(storage: StorageLike | undefined, konto: string | null): void {
+export function merkeAntwortRechtewechsel(
+  storage: StorageLike | undefined,
+  konto: string | null,
+): void {
   if (konto === null) return;
   const stand = arbeitsstandLesen(storage, konto);
   if (!stand?.antwort || stand.antwort.rechtepruefungAusstehend) return;

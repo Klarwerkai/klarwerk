@@ -134,12 +134,15 @@ function stelleFristwaechter(): void {
   if (vollstaendigGeprueftAm === null) return;
   const gen = generation;
   const geprueft = vollstaendigGeprueftAm;
-  fristUhr = setTimeout(() => {
-    fristUhr = null;
-    if (gen !== generation || geprueft !== vollstaendigGeprueftAm) return;
-    pruefeFrist();
-    if (!fristAbgelaufen) stelleFristwaechter();
-  }, Math.max(0, geprueft + KLARA_AUFFRISCHEN_MS - Date.now()));
+  fristUhr = setTimeout(
+    () => {
+      fristUhr = null;
+      if (gen !== generation || geprueft !== vollstaendigGeprueftAm) return;
+      pruefeFrist();
+      if (!fristAbgelaufen) stelleFristwaechter();
+    },
+    Math.max(0, geprueft + KLARA_AUFFRISCHEN_MS - Date.now()),
+  );
 }
 
 /** Ein Ablauf, dessen Konto inzwischen vergessen wurde. Wird nie angezeigt, nur beendet. */
@@ -446,8 +449,11 @@ export function starteQuellpruefung(kontoId: string, t: TFunction): () => void {
   let pruefung: Promise<void> | null = null;
   const anlass = (): void => {
     pruefeFrist();
-    if (!offen || zustand.kontoId !== kontoId || document.visibilityState === "hidden" || pruefung) return;
-    pruefung = pruefeEcht(kontoId, t).finally(() => { pruefung = null; });
+    if (!offen || zustand.kontoId !== kontoId || document.visibilityState === "hidden" || pruefung)
+      return;
+    pruefung = pruefeEcht(kontoId, t).finally(() => {
+      pruefung = null;
+    });
   };
   pruefeFrist();
   const uhr = setInterval(anlass, KLARA_PRUEFTAKT_MS);

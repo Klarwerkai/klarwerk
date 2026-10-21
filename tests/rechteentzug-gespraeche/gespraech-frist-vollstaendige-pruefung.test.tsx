@@ -21,11 +21,30 @@ const G: KlaraGespraech = {
   id: "rc3-p1-gespraech",
   objektbezug: FREI,
   nachrichten: [
-    { id: "p1-frage", von: "du", modus: "frage", text: EIGEN, objektbezug: FREI,
-      antwortId: null, quellen: [], wissensklasse: null, grund: null, angelegtAm: "2026-10-21T09:00:00Z" },
-    { id: "p1-antwort", von: "klara", modus: "ohne_ki", text: MARKE, objektbezug: FREI,
-      antwortId: "p1-eigener-beleg", quellen: ["p1-nord", "p1-frei"], wissensklasse: "gesichert",
-      grund: null, angelegtAm: "2026-10-21T09:00:00Z" },
+    {
+      id: "p1-frage",
+      von: "du",
+      modus: "frage",
+      text: EIGEN,
+      objektbezug: FREI,
+      antwortId: null,
+      quellen: [],
+      wissensklasse: null,
+      grund: null,
+      angelegtAm: "2026-10-21T09:00:00Z",
+    },
+    {
+      id: "p1-antwort",
+      von: "klara",
+      modus: "ohne_ki",
+      text: MARKE,
+      objektbezug: FREI,
+      antwortId: "p1-eigener-beleg",
+      quellen: ["p1-nord", "p1-frei"],
+      wissensklasse: "gesichert",
+      grund: null,
+      angelegtAm: "2026-10-21T09:00:00Z",
+    },
   ],
   letzterSchritt: null,
   einwilligungAm: "2026-10-21T09:00:00Z",
@@ -40,7 +59,10 @@ let freigeben: (() => void) | null = null;
 let eingetreten: Promise<void>;
 let hinein: () => void;
 const abrufe: { url: string; method: string }[] = [];
-const text = () => leseEcht().nachrichten.map((n) => n.text).join("\n");
+const text = () =>
+  leseEcht()
+    .nachrichten.map((n) => n.text)
+    .join("\n");
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
@@ -49,10 +71,14 @@ beforeEach(async () => {
   abrufe.length = 0;
   put = "voll";
   halten = false;
-  eingetreten = new Promise<void>((r) => { hinein = r; });
+  eingetreten = new Promise<void>((r) => {
+    hinein = r;
+  });
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
-  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
-    now: new Date("2026-10-21T09:00:00Z") });
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    now: new Date("2026-10-21T09:00:00Z"),
+  });
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -61,19 +87,36 @@ beforeEach(async () => {
     let status = 200;
     if (url === "/api/auth/me") daten = { id: KONTO, role: "experte" };
     else if (url === "/api/kos") daten = [];
-    else if (method === "GET" && (url === "/api/me/klara/gespraech" || url === `/api/me/klara/gespraeche/${G.id}`)) {
+    else if (
+      method === "GET" &&
+      (url === "/api/me/klara/gespraech" || url === `/api/me/klara/gespraeche/${G.id}`)
+    ) {
       daten = { gespraech: structuredClone(G) };
       if (halten) {
         hinein();
-        await new Promise<void>((r) => { freigeben = r; });
+        await new Promise<void>((r) => {
+          freigeben = r;
+        });
       }
     } else if (method === "PUT" && url.endsWith("/einwilligung")) {
       status = put === "fehler" ? 503 : 200;
-      daten = put === "fehler" ? { error: "UNAVAILABLE", message: "Fiktive vorübergehende Störung" }
-        : { gespraech: { ...structuredClone(G), nachrichten: put === "teil" ? [G.nachrichten[0]] : G.nachrichten } };
+      daten =
+        put === "fehler"
+          ? { error: "UNAVAILABLE", message: "Fiktive vorübergehende Störung" }
+          : {
+              gespraech: {
+                ...structuredClone(G),
+                nachrichten: put === "teil" ? [G.nachrichten[0]] : G.nachrichten,
+              },
+            };
     } else throw new Error(`Kein weiterer RC3-P1-Port erlaubt: ${method} ${url}`);
-    return new Response(JSON.stringify(daten), { status,
-      headers: { "content-type": "application/json", "x-klarwerk-rechtekontext": "p1-gleicher-kontext" } });
+    return new Response(JSON.stringify(daten), {
+      status,
+      headers: {
+        "content-type": "application/json",
+        "x-klarwerk-rechtekontext": "p1-gleicher-kontext",
+      },
+    });
   });
 });
 
@@ -98,7 +141,9 @@ it("RC3-P1: 15-s-Anlass und tatsächlicher60-s-Ablauf; Fehler, Teilecho, hängen
   const roh = structuredClone(G);
   stoppen = starteQuellpruefung(KONTO, t);
   await vi.advanceTimersByTimeAsync(15_000);
-  expect(abrufe.filter((a) => a.method === "GET" && a.url.startsWith("/api/me/klara/"))).toHaveLength(2);
+  expect(
+    abrufe.filter((a) => a.method === "GET" && a.url.startsWith("/api/me/klara/")),
+  ).toHaveLength(2);
   expect(text()).toContain(MARKE);
   // Abbau des Darstellers beendet dessen Prüftakt, nicht die Gültigkeitsgrenze des Kontocaches.
   stoppen();
