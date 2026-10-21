@@ -465,6 +465,10 @@ function tageszeitAus(t: string): Tageszeit {
 }
 
 function uhrzeitAus(t: string): { h: number; m: number; eindeutig: boolean } | null {
+  // Sekunden und Bruchteile sind kein HH:MM; auch Fallbacks dürfen sie nicht abschneiden.
+  if (/\d{1,2}:\d{2}(?::\d|[.,]\d)/u.test(t)) {
+    return null;
+  }
   // „9:30", „09:30 Uhr" — mit Punkt nur vor „Uhr", damit ein Datum („14.10.") keine Uhrzeit wird.
   const hhmm = /\b(\d{1,2}):(\d{2})(?:\s*uhr)?\b/.exec(t) ?? /\b(\d{1,2})\.(\d{2})\s*uhr\b/.exec(t);
   if (hhmm) {
