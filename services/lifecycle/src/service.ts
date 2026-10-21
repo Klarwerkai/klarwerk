@@ -286,6 +286,13 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     await this.markiere([{ koId }], actor, { grund: "bibliothek" });
   }
 
+  /** Quellenänderung nach einer menschlichen Konfliktentscheidung; keine Neubestätigung. */
+  async konfliktgrundlageGeaendert(koId: string, actor: string, aenderung: string): Promise<void> {
+    await this.unterSperre(koId, async () => {
+      await this.markiere([{ koId }], actor, { grund: "konflikt", aenderung });
+    });
+  }
+
   /**
    * produkt:20261010:aenderungsfolgen-sichtbar: die offenen Fälle mit Stand und Anlässen —
    * SCHREIBFREI. Anders als `pendingRevalidation()` räumt dieser Weg keine verwaisten Merker: er

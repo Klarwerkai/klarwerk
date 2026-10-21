@@ -132,6 +132,15 @@ function laufNachAussen(run: ImportRun, abgleich: ImportRunSourceSync | undefine
           attachmentsIncomplete: [...abgleich.attachmentsIncomplete],
           counts: { ...abgleich.counts },
           listsTruncated: abgleich.listsTruncated,
+          // BD12-02-K06 (Konfliktauftrag, Ben Nacharbeit 19): eine ausstehende Neubewertung nach
+          // Quellwegfall — nur Quell-Kennungen, nur wenn etwas aussteht (sonst bisherige Form).
+          ...(abgleich.neubewertungOffen
+            ? {
+                neubewertungOffen: [...abgleich.neubewertungOffen],
+                neubewertungOffenAnzahl:
+                  abgleich.neubewertungOffenAnzahl ?? abgleich.neubewertungOffen.length,
+              }
+            : {}),
         }
       : null,
   };

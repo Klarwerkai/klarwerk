@@ -52,6 +52,9 @@ export interface ConfluenceImportRouteDeps {
   library: LibraryService;
   koService: KoService;
   guards: Guards;
+  // BD12-02-K06: Neubewertung früherer Konfliktentscheidungen nach einem Quellwegfall im Ursprung
+  // (`ConfluenceImportDeps.nachQuellwegfall`). Die Kompositionswurzel reicht sie durch.
+  nachQuellwegfall?: (koId: string, sourceIds: string[], actor: string) => Promise<void>;
   // Injizierbar für Tests (Fixture-Adapter); Standard = env-basierte, gecappte Adapter-Factory.
   makeAdapter?: () => ConfluenceSourceAdapter | undefined;
   // IC-3: Reasoner für die optionale Prompt→Kriterien-Ableitung (READ-ONLY Auswahl-Vorschau). Ohne
@@ -355,8 +358,15 @@ const SOURCE_SYNC_INCOMPLETE = "SOURCE_SYNC_INCOMPLETE";
 function abgleichUnvollstaendig(summary: ImportRunSummary): boolean {
   const sync = summary.sourceSync;
   // Lauf 3 R2 (Bens B8): ein gescheiterter Nachzug (Anhänge/Restriktion) zählt ebenso.
+  // BD12-02-K06 (Konfliktauftrag, Ben Nacharbeit 19): ebenso eine ausstehende Neubewertung früherer
+  // Konfliktentscheidungen nach einem Quellwegfall — sonst hieße der Lauf `COMPLETED`, obwohl eine
+  // alte Entscheidung ohne die nötige Neubewertung stehen bleibt.
   return (
-    sync !== undefined && (!sync.checked || sync.unchecked.length > 0 || sync.syncFailed.length > 0)
+    sync !== undefined &&
+    (!sync.checked ||
+      sync.unchecked.length > 0 ||
+      sync.syncFailed.length > 0 ||
+      (sync.neubewertungOffen?.length ?? 0) > 0)
   );
 }
 
@@ -390,6 +400,14 @@ function abgleichFuerDenLauf(summary: ImportRunSummary): ImportRunSourceSync | u
       attachmentsIncomplete: sync.attachmentsIncomplete.length,
     },
     listsTruncated: false,
+    // BD12-02-K06 (Ben, Nacharbeit 19): dauerhaft im Laufbericht — wie die übrigen Listen nur
+    // Quell-Kennungen. Fehlt, wenn nichts aussteht (bisherige Form unverändert).
+    ...((sync.neubewertungOffen?.length ?? 0) > 0
+      ? {
+          neubewertungOffen: [...(sync.neubewertungOffen ?? [])],
+          neubewertungOffenAnzahl: sync.neubewertungOffen?.length ?? 0,
+        }
+      : {}),
   };
 }
 
@@ -412,6 +430,9 @@ function abgleichGrund(summary: ImportRunSummary): { code: string; reason: strin
         : "Löschabgleich nicht durchgeführt — über Löschungen in der Quelle sagt dieser Lauf nichts.",
       sync.syncFailed.length > 0
         ? `Nachzug von Anhängen oder Restriktion an ${sync.syncFailed.length} Seite(n) gescheitert — dort gilt der alte Stand.`
+        : null,
+      (sync.neubewertungOffen?.length ?? 0) > 0
+        ? `Neubewertung früherer Konfliktentscheidungen nach Quellwegfall an ${sync.neubewertungOffen?.length} Seite(n) ausstehend — der nächste Lauf oder „Neubewertung nachholen“ am Eintrag holt sie nach.`
         : null,
     ]
       .filter((teil): teil is string => teil !== null)
@@ -562,6 +583,7 @@ async function fuehreLaufAus(
       actor,
       // R-0142 (Lauf 5): die Kandidaten dieses Laufs tragen seine Kennung (`laufbindung.ts`).
       importId,
+      ...(deps.nachQuellwegfall ? { nachQuellwegfall: deps.nachQuellwegfall } : {}),
     });
     const sync = abgleichFuerDenLauf(summary);
     const grund = abgleichGrund(summary);
@@ -994,6 +1016,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             koService: deps.koService,
             dryRun,
             actor: user.id,
+            ...(deps.nachQuellwegfall ? { nachQuellwegfall: deps.nachQuellwegfall } : {}),
           });
           reply.code(200).send(summary);
           return reply;

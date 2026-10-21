@@ -92,6 +92,7 @@ import type { FreigabeWeg, TorUrteil } from "../freigaberegel-dienst";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
+import { type QuellenAenderung, quellenNeubewertung } from "../quellen-neubewertung";
 import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 import type { Quellenlage } from "../technische-daten-quellen";
 import { verifizierungFuer } from "../verifizierungsmarke";
@@ -601,6 +602,7 @@ type KoAktion =
   | "add-source"
   | "append-document"
   | "remove-source"
+  | "konflikt-neubewertung"
   | "category"
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
@@ -710,6 +712,7 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "add-source": "tor",
   "append-document": "tor",
   "remove-source": "tor",
+  "konflikt-neubewertung": "tor",
   category: "tor",
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
@@ -935,6 +938,7 @@ interface PutBody {
     abrufbeleg?: string;
   };
   sourceId?: string;
+  neubewertung?: { art?: unknown; sourceIds?: unknown };
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern.
   level?: string;
   // JOB 557: das Eigentümer-Aggregat. BEWUSST `unknown` — die Form entscheidet ausschliesslich
@@ -1434,6 +1438,27 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Bewertung, damit derselbe Konflikt genau einmal in den Vertrauenswert eingeht.
       await validation.wahrheitskonfliktFolge(konflikt.koA, userId);
       await validation.wahrheitskonfliktFolge(konflikt.koB, userId);
+    }
+  }
+
+  /** Gemeinsamer Nachlauf nach einem gespeicherten Quellen-Commit, niemals dessen Rücknahme. */
+  async function quellenFolge(
+    koId: string,
+    userId: string,
+    art: QuellenAenderung,
+    sourceIds: string[],
+    log: { error: (obj: object, msg: string) => void },
+  ): Promise<boolean> {
+    try {
+      // Vorhandene Anker tragen den ausstehenden Nachlauf auch nach einem Reload.
+      // Ein entfernter Anker wird hier weder neu angelegt noch durch eine geratene ID ersetzt.
+      await ko.merkeNeubewertungOffen(koId, sourceIds, true);
+      await quellenNeubewertung({ conflicts, lifecycle }, koId, userId, art, sourceIds);
+      await ko.merkeNeubewertungOffen(koId, sourceIds, false);
+      return true;
+    } catch (error) {
+      log.error({ err: error, koId }, "Neubewertung nach Quellenänderung");
+      return false;
     }
   }
 
@@ -4324,26 +4349,32 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               });
               return;
             }
-            reply.code(200).send(
-              await ko.addSource(id, user.id, {
-                label: body.source.label,
-                url: body.source.url ?? null,
-                excerpt: body.source.excerpt ?? null,
-                // Serverseitig abgeleitet — nie übernommen.
-                provider: attributeExternalSource(body.source.url),
-                // JOB 4077: der ANKER-KANDIDAT. Hier wird er WEITERGEREICHT, nicht geglaubt: der
-                // Dienst schlägt ihn in der Anhangsliste dieses Objekts nach und speichert ihn nur,
-                // wenn er dort liegt (`service.ts`, `addSource`). Bis hierher endete die Kette an
-                // dieser Zeile — der Server hatte die Zugehörigkeit vierzehn Zeilen weiter oben
-                // geprüft und vergaß sie beim Speichern.
-                objectId: body.source.objectId ?? null,
-                // REF-01 (Ben nacharbeit-7 K2): eine Abrufzeit NUR mit gültigem Abrufbeleg des
-                // Servers, für genau diese Adresse und einen Anfang des abgerufenen Inhalts.
-                abruf: pruefeAbrufbeleg(body.source.abrufbeleg, {
-                  url: body.source.url,
-                  excerpt: body.source.excerpt,
-                }),
+            const mitQuelle = await ko.addSource(id, user.id, {
+              label: body.source.label,
+              url: body.source.url ?? null,
+              excerpt: body.source.excerpt ?? null,
+              // Serverseitig abgeleitet — nie übernommen.
+              provider: attributeExternalSource(body.source.url),
+              // JOB 4077: der ANKER-KANDIDAT. Hier wird er WEITERGEREICHT, nicht geglaubt: der
+              // Dienst schlägt ihn in der Anhangsliste dieses Objekts nach und speichert ihn nur,
+              // wenn er dort liegt (`service.ts`, `addSource`). Bis hierher endete die Kette an
+              // dieser Zeile — der Server hatte die Zugehörigkeit vierzehn Zeilen weiter oben
+              // geprüft und vergaß sie beim Speichern.
+              objectId: body.source.objectId ?? null,
+              // REF-01 (Ben nacharbeit-7 K2): eine Abrufzeit NUR mit gültigem Abrufbeleg des
+              // Servers, für genau diese Adresse und einen Anfang des abgerufenen Inhalts.
+              abruf: pruefeAbrufbeleg(body.source.abrufbeleg, {
+                url: body.source.url,
+                excerpt: body.source.excerpt,
               }),
+            });
+            const sourceId = mitQuelle.sources.at(-1)?.id;
+            const folgeOk = sourceId
+              ? await quellenFolge(id, user.id, "quelle_hinzugefuegt", [sourceId], request.log)
+              : true;
+            const aktuell = (await ko.get(id).catch(() => undefined)) ?? mitQuelle;
+            reply.code(200).send(
+              folgeOk ? aktuell : { ...aktuell, followUpsFailed: ["konfliktentscheidung"] },
             );
             return;
           }
@@ -4575,6 +4606,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                   followUpsFailed.push("ai-check");
                 }
               }
+              if (
+                commit.sourceIds.length > 0 &&
+                !(await quellenFolge(
+                  id,
+                  user.id,
+                  "quelle_hinzugefuegt",
+                  [...commit.sourceIds],
+                  request.log,
+                ))
+              ) {
+                followUpsFailed.push("konfliktentscheidung");
+              }
             }
             // DAS EINDEUTIGE COMMIT-ERGEBNIS. Der Aufrufer erfährt ohne Rückfrage, was gilt:
             // welche Version, welcher Anker, welche Belegstellen — und ob das eine Wiederholung
@@ -4594,6 +4637,65 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             });
             return;
           }
+          // BD12-02-K06 (Ben, Nacharbeit 17): die Neubewertung nach einer bereits GESPEICHERTEN
+          // Quellenänderung nachholen — dasselbe Recht wie die Änderung selbst. Die Angabe muss zum
+          // Objekt passen: eine ergänzte Quelle hängt an ihm; bei einer nicht mehr vorhandenen
+          // Quelle belegt die vorhandene Belegablage ihre frühere Zugehörigkeit. Die Quelle wird
+          // nicht noch einmal geändert. Wiederholbar: Vermerk und Anlass entstehen nicht doppelt.
+          case "konflikt-neubewertung": {
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            const roh = body.neubewertung as { art?: unknown; sourceIds?: unknown } | undefined;
+            const art = roh?.art;
+            const sourceIds = roh?.sourceIds;
+            if (
+              (art !== "quelle_hinzugefuegt" && art !== "quelle_entfernt") ||
+              !Array.isArray(sourceIds) ||
+              sourceIds.length === 0 ||
+              sourceIds.length > 50 ||
+              !sourceIds.every((s) => typeof s === "string" && s.length > 0 && s.length <= 200)
+            ) {
+              return badRequest(
+                "neubewertung muss { art: quelle_hinzugefuegt|quelle_entfernt, sourceIds } sein.",
+              );
+            }
+            const objekt = await ko.get(id);
+            const quellen = new Map((objekt?.sources ?? []).map((s) => [s.id, s]));
+            const entfernteBelege =
+              art === "quelle_entfernt" && (sourceIds as string[]).some((s) => !quellen.has(s))
+                ? new Set(
+                    (await ko.evidenceOf(id))
+                      .filter((e) => e.kind === "source")
+                      .map((e) => e.sourceId),
+                  )
+                : new Set<string | undefined>();
+            // Ben, Nacharbeit 19: eine „entfernte" Quelle ist entweder vom Objekt genommen ODER ein
+            // weiter gespeicherter Herkunftsanker, dessen Seite im Ursprung gelöscht ist
+            // (`sourceRemovedAt`) — der Anker bleibt als Herkunft stehen, die Quelle gilt nicht mehr.
+            const passt = (sourceIds as string[]).every((s) => {
+              const q = quellen.get(s);
+              return art === "quelle_hinzugefuegt"
+                ? q !== undefined && !q.sourceRemovedAt
+                : q !== undefined
+                  ? Boolean(q.sourceRemovedAt)
+                  : entfernteBelege.has(s);
+            });
+            if (!objekt || !passt) {
+              return badRequest("Die genannte Quellenänderung passt nicht zu diesem Objekt.");
+            }
+            if (!(await quellenFolge(id, user.id, art, sourceIds as string[], request.log))) {
+              reply.code(503).send({
+                error: "NEUBEWERTUNG_FEHLGESCHLAGEN",
+                message:
+                  "Die Neubewertung konnte nicht ausgeführt werden. Die Quellenänderung bleibt gespeichert; bitte später erneut versuchen.",
+              });
+              return;
+            }
+            reply.code(200).send({ koId: id, nachgeholt: true });
+            return;
+          }
           case "remove-source": {
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
@@ -4602,7 +4704,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.sourceId) {
               return badRequest("sourceId fehlt.");
             }
-            reply.code(200).send(await ko.removeSource(id, body.sourceId, user.id));
+            const warVorhanden = (await ko.get(id))?.sources.some((s) => s.id === body.sourceId);
+            const ohneQuelle = await ko.removeSource(id, body.sourceId, user.id);
+            const folgeOk =
+              !warVorhanden ||
+              (await quellenFolge(
+                id,
+                user.id,
+                "quelle_entfernt",
+                [body.sourceId],
+                request.log,
+              ));
+            const aktuell = (await ko.get(id).catch(() => undefined)) ?? ohneQuelle;
+            reply.code(200).send(
+              folgeOk ? aktuell : { ...aktuell, followUpsFailed: ["konfliktentscheidung"] },
+            );
             return;
           }
           case "category": {

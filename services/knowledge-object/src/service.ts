@@ -8291,6 +8291,8 @@ export class KoService {
     anchor: { provider: string | null; externalId: string },
     at: string,
     actor: string,
+    // Nur der verdrahtete Konflikt-Nachlauf: Löschung und Nachholbedarf teilen denselben CAS.
+    neubewertungOffen = false,
   ): Promise<boolean> {
     const ko = await this.require(id);
     const trifft = (s: KoSource) =>
@@ -8302,7 +8304,13 @@ export class KoService {
     const updated: KnowledgeObject = {
       ...ko,
       sources: (ko.sources ?? []).map((s) =>
-        trifft(s) && !s.sourceRemovedAt ? { ...s, sourceRemovedAt: at } : s,
+        trifft(s) && !s.sourceRemovedAt
+          ? {
+              ...s,
+              sourceRemovedAt: at,
+              ...(neubewertungOffen ? { neubewertungOffen: true as const } : {}),
+            }
+          : s,
       ),
     };
     await this.repo.update(updated);
@@ -8312,6 +8320,37 @@ export class KoService {
       target: id,
       payload: { provider: anchor.provider, externalId: anchor.externalId, at },
     });
+    return true;
+  }
+
+  /**
+   * BD12-02-K06 (Konfliktauftrag, Ben Nacharbeit 19): die Neubewertung nach einer Quellenänderung
+   * als ausstehend vermerken (`offen: true`) oder nach dem Nachholen wegnehmen. Nur an den genannten
+   * Quellen; Quelle, Löschvermerk und Inhalt bleiben, wie sie sind. `false`, wenn nichts zu ändern war.
+   */
+  async merkeNeubewertungOffen(
+    id: string,
+    sourceIds: readonly string[],
+    offen: boolean,
+  ): Promise<boolean> {
+    const ko = await this.require(id);
+    const betroffen = new Set(sourceIds);
+    let geaendert = false;
+    const sources = (ko.sources ?? []).map((s): KoSource => {
+      if (!betroffen.has(s.id) || Boolean(s.neubewertungOffen) === offen) {
+        return s;
+      }
+      geaendert = true;
+      if (offen) {
+        return { ...s, neubewertungOffen: true };
+      }
+      const { neubewertungOffen: _erledigt, ...ohne } = s;
+      return ohne;
+    });
+    if (!geaendert) {
+      return false;
+    }
+    await this.repo.update({ ...ko, sources });
     return true;
   }
 

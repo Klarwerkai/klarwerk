@@ -552,6 +552,7 @@ import {
   PgQuellabgleichRepo,
   type QuellabgleichRepo,
 } from "./quellabgleich-ablage";
+import { quellenNeubewertung } from "./quellen-neubewertung";
 import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
@@ -7056,6 +7057,9 @@ export function buildApp(
         importRuns: services.importRuns,
         // R-0162: dieselbe Ablage, aus der der Leseweg unten den Abgleich liest.
         quellabgleich: services.quellabgleich,
+        nachQuellwegfall: async (koId, sourceIds, actor) => {
+          await quellenNeubewertung(services, koId, actor, "quelle_entfernt", sourceIds);
+        },
         // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
         betreiberSchalter: services.confluenceImportSchalter,
       }),

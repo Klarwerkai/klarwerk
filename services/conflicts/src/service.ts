@@ -26,6 +26,7 @@ import {
   ConflictError,
   type ConflictInput,
   type ConflictResolutionReason,
+  type ConflictReviewRequired,
   type ConflictType,
   type ConflictWorkKind,
   type KonfliktVorrang,
@@ -349,6 +350,63 @@ export class ConflictService {
     });
     await this.merkeAbschluss(conflict, "decided");
     return saved;
+  }
+
+  // BD12-02-K06 (Ben, Nacharbeit 16): eine Quelle eines Objekts hat sich geändert, über dessen
+  // Konflikt bereits ENTSCHIEDEN wurde. Jede solche Entscheidung bekommt einen Vermerk „erneut zu
+  // prüfen" — mit Seite, Art der Änderung, Quellen, Fassung, Person und Zeitpunkt. Status, Geltung,
+  // Vorrang, Begründung, Entscheider und Vertrauensfolge bleiben unverändert: die bisherige
+  // Entscheidung bleibt nachvollziehbar, sie wird nicht stillschweigend weiter als bestätigt geführt.
+  // Systemische Abschlüsse und Fehlalarme sind keine Entscheidung und bleiben unberührt.
+  async vermerkeNeupruefung(
+    koId: string,
+    by: string,
+    eingabe: { art: ConflictReviewRequired["art"]; sourceIds: string[] },
+  ): Promise<Conflict[]> {
+    const betroffen = (await this.geloesteFuer([koId])).filter(
+      (c) => c.resolutionReason === "decided",
+    );
+    if (betroffen.length === 0) {
+      return [];
+    }
+    const koVersion = (await this.currentVersion?.(koId)) ?? null;
+    const at = new Date(this.now()).toISOString();
+    const vermerkt: Conflict[] = [];
+    // Ben, Nacharbeit 17: wiederholbar. Ein Nachholen nach einem Teilfehler vermerkt dieselbe
+    // Änderung (Seite, Art, Quellen) nicht ein zweites Mal — die Entscheidung zählt trotzdem als
+    // betroffen, damit auch der Merker am Objekt nachgeholt wird.
+    const gleicheQuellen = (a: readonly string[], b: readonly string[]) =>
+      a.length === b.length && [...a].sort().join("\n") === [...b].sort().join("\n");
+    for (const c of betroffen) {
+      if (
+        (c.neupruefung ?? []).some(
+          (n) =>
+            n.koId === koId &&
+            n.art === eingabe.art &&
+            gleicheQuellen(n.sourceIds, eingabe.sourceIds),
+        )
+      ) {
+        vermerkt.push(c);
+        continue;
+      }
+      const vermerk: ConflictReviewRequired = {
+        seite: c.koA === koId ? "a" : "b",
+        koId,
+        art: eingabe.art,
+        sourceIds: eingabe.sourceIds,
+        koVersion,
+        by,
+        at,
+      };
+      vermerkt.push(await this.save({ ...c, neupruefung: [...(c.neupruefung ?? []), vermerk] }));
+      await this.audit?.record({
+        actor: by,
+        action: "conflict.review-required",
+        target: c.id,
+        payload: { koIds: [c.koA, c.koB], koId, art: eingabe.art, koVersion },
+      });
+    }
+    return vermerkt;
   }
 
   // R-1103/R-1105: der menschliche Abschluss gilt für den Stand, unter dem der Befund erkannt wurde —

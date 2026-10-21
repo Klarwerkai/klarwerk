@@ -17,7 +17,12 @@ export interface LearningPath {
  * ADMIN-10: „rueckmeldung" — eine belegte Rückmeldung (`answer.reported`) wurde in der
  * Qualitätsübersicht als Aufgabe übernommen; der Beleg nennt ihre `meldungId`.
  */
-export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek" | "rueckmeldung";
+export type RevalidierungsGrund =
+  | "anlage"
+  | "nachbar"
+  | "bibliothek"
+  | "rueckmeldung"
+  | "konflikt";
 
 // ================================================================================================
 // produkt:20261010:aenderungsfolgen-sichtbar — DER ANLASS EINES OFFENEN FALLS UND SEIN STAND.

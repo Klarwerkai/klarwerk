@@ -80,6 +80,11 @@ import { lesekontextMerken } from "../../lib/lesekontext";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { nochNichtFachlichGeprueft } from "../../lib/pruefeinordnung";
 import {
+  type OffeneNeubewertung,
+  ergaenzteQuelle,
+  neubewertungFehlt,
+} from "../../lib/quellenNeubewertung";
+import {
   type SourceContributionInput,
   formatSourceComment,
   isSourceContributionValid,
@@ -527,6 +532,7 @@ export function MehrAbschnitte({
     void qc.invalidateQueries({ queryKey: ["kos"] });
     void qc.invalidateQueries({ queryKey: ["library"] });
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
+    void qc.invalidateQueries({ queryKey: ["lifecycle"] });
     // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 4): Eine Übergabe (`transfer`) ändert, bei WEM
     // eine Rückgabe liegt. Die Liste der Aufgabenseite und die Zahl im Kopfband
     // (`["me", "returned-tasks", …]`, api/hooks.ts) blieben sonst bis zum Ablauf der Frischefrist
@@ -572,19 +578,55 @@ export function MehrAbschnitte({
   // darauf zeigen kann: ein abgewiesener Knopf ohne verbundenen Grund ist eine Sackgasse, keine
   // Erklärung (externalAttachGate.ts:9-12).
   const sourceGateHintId = useId();
+  // BD12-02-K06 / K08 (Ben, Nacharbeit 17): ist die Quelle gespeichert, die Neubewertung früherer
+  // Konfliktentscheidungen aber ausgefallen, sagt die Fläche genau das und bietet das Nachholen an
+  // — ohne die Quellenänderung erneut auszuführen (lib/quellenNeubewertung.ts).
+  const [neubewertungOffen, setNeubewertungOffen] = useState<OffeneNeubewertung | null>(null);
+  const nachQuellenaenderung = (
+    antwort: unknown,
+    offen: OffeneNeubewertung | null,
+    erfolg?: string,
+  ): void => {
+    if (neubewertungFehlt(antwort) && offen) {
+      setNeubewertungOffen(offen);
+      push("error", t("ko.neubewertung.fehlt"));
+      return;
+    }
+    if (erfolg) {
+      push("success", erfolg);
+    }
+  };
   const addSource = useMutation({
     mutationFn: () =>
       endpoints.ko.act(id, { action: "add-source", source: toSourcePayload(sourceForm) }),
-    onSuccess: () => {
+    onSuccess: (antwort: unknown) => {
       invalidate();
       setSourceForm({ ...EMPTY_SOURCE_FORM });
-      push("success", t("ko.sourceAdded"));
+      const quelle = ergaenzteQuelle(antwort);
+      nachQuellenaenderung(
+        antwort,
+        quelle ? { art: "quelle_hinzugefuegt", sourceIds: [quelle] } : null,
+        t("ko.sourceAdded"),
+      );
     },
     onError: fehlerToast,
   });
   const removeSource = useMutation({
     mutationFn: (sourceId: string) => endpoints.ko.act(id, { action: "remove-source", sourceId }),
-    onSuccess: invalidate,
+    onSuccess: (antwort: unknown, sourceId) => {
+      invalidate();
+      nachQuellenaenderung(antwort, { art: "quelle_entfernt", sourceIds: [sourceId] });
+    },
+    onError: fehlerToast,
+  });
+  const neubewertungNachholen = useMutation({
+    mutationFn: (offen: OffeneNeubewertung) =>
+      endpoints.ko.act(id, { action: "konflikt-neubewertung", neubewertung: offen }),
+    onSuccess: () => {
+      invalidate();
+      setNeubewertungOffen(null);
+      push("success", t("ko.neubewertung.nachgeholt"));
+    },
     onError: fehlerToast,
   });
 
@@ -602,9 +644,14 @@ export function MehrAbschnitte({
         action: "add-source",
         source: toAddSourceRequest(externalToSourcePayload(result)),
       }),
-    onSuccess: () => {
+    onSuccess: (antwort: unknown) => {
       invalidate();
-      push("success", t("ko.sourceAdded"));
+      const quelle = ergaenzteQuelle(antwort);
+      nachQuellenaenderung(
+        antwort,
+        quelle ? { art: "quelle_hinzugefuegt", sourceIds: [quelle] } : null,
+        t("ko.sourceAdded"),
+      );
     },
     onError: fehlerToast,
   });
@@ -1753,6 +1800,35 @@ export function MehrAbschnitte({
                       {s.excerpt ? (
                         <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p>
                       ) : null}
+                      {/* BD12-02-K06 (Ben, Nacharbeit 19): die Neubewertung nach dieser
+                          Quellenänderung steht aus (z. B. im Ursprung gelöscht, Neubewertung
+                          ausgefallen) — sichtbar am Anker, nachholbar über denselben Weg. */}
+                      {s.neubewertungOffen ? (
+                        <span
+                          data-testid="bib-quelle-neubewertung-offen"
+                          className="mt-1 block text-[11.5px] text-trust-warn-text"
+                        >
+                          {t("ko.neubewertung.hinweis")}
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              data-testid="bib-quelle-neubewertung-nachholen"
+                              disabled={neubewertungNachholen.isPending}
+                              onClick={() =>
+                                neubewertungNachholen.mutate({
+                                  art: s.sourceRemovedAt
+                                    ? "quelle_entfernt"
+                                    : "quelle_hinzugefuegt",
+                                  sourceIds: [s.id],
+                                })
+                              }
+                              className="ml-1 font-semibold underline disabled:opacity-40"
+                            >
+                              {t("ko.neubewertung.nachholen")}
+                            </button>
+                          ) : null}
+                        </span>
+                      ) : null}
                     </div>
                     {canEdit ? (
                       <button
@@ -1771,6 +1847,27 @@ export function MehrAbschnitte({
             })}
           </ul>
         )}
+        {/* BD12-02-K06 / K08: Quelle gespeichert, Neubewertung ausgefallen — sichtbar, nachholbar. */}
+        {neubewertungOffen ? (
+          <div
+            role="alert"
+            data-testid="bib-neubewertung-offen"
+            className="mt-3 rounded-btn border border-hairline px-3 py-2 text-[12.5px] text-trust-warn-text"
+          >
+            <p>{t("ko.neubewertung.hinweis")}</p>
+            {canEdit ? (
+              <button
+                type="button"
+                data-testid="bib-neubewertung-nachholen"
+                disabled={neubewertungNachholen.isPending}
+                onClick={() => neubewertungNachholen.mutate(neubewertungOffen)}
+                className="mt-1 font-semibold underline disabled:opacity-40"
+              >
+                {t("ko.neubewertung.nachholen")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {/* R-0142 (Lauf 5): woher das importierte Wissen stammt — Fassung, Lauf, Ausgang. */}
         <ImportErgebnis ko={ko} />
         {canEdit ? (

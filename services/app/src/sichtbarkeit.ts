@@ -683,6 +683,7 @@ export function redigiereUeberschneidung<T extends UeberschneidungsFelder>(
 }
 
 export interface KonfliktFelder {
+  neupruefung?: { seite: "a" | "b"; sourceIds: string[] }[] | undefined;
   koA: string;
   koB: string;
   description: string;
@@ -728,6 +729,13 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
     description: "",
     ...(detector
       ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" }, ...vorschlagSicht } }
+      : {}),
+    ...(konflikt.neupruefung
+      ? {
+          neupruefung: konflikt.neupruefung.map((n) =>
+            freigabe[n.seite] ? n : { ...n, sourceIds: [] as string[] },
+          ),
+        }
       : {}),
     redacted: true,
   };

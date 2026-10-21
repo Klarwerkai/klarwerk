@@ -136,6 +136,7 @@ export interface KoSource {
   attachmentOf?: string;
   attachment?: { externalId: string; mime?: string; size?: number };
   sourceRemovedAt?: string;
+  neubewertungOffen?: true;
   author: string;
   at: string;
 }
@@ -1163,6 +1164,16 @@ export interface ConflictDetector {
   };
 }
 
+export interface ConflictReviewRequired {
+  seite: "a" | "b";
+  koId: string;
+  art: "quelle_hinzugefuegt" | "quelle_entfernt";
+  sourceIds: string[];
+  koVersion: number | null;
+  by: string;
+  at: string;
+}
+
 export interface Conflict {
   id: string;
   koA: string;
@@ -1192,6 +1203,7 @@ export interface Conflict {
     | "edited_no_conflict"
     | "withdrawn"
     | "superseded";
+  neupruefung?: ConflictReviewRequired[];
   // Die Feldredaktion des Servers (`redigiereKonflikt`): Inhalt zurückgehalten, Struktur bleibt.
   redacted?: true;
 }
@@ -1207,7 +1219,7 @@ export interface RevalidierungBestaetigt {
 /** produkt:20261010:aenderungsfolgen-sichtbar: ein Anlass eines offenen Falls (ohne meldende Person). */
 export interface FolgepruefungsAnlass {
   // ADMIN-10: „rueckmeldung" — aus einer belegten Rückmeldung übernommene Prüfung.
-  grund: "anlage" | "nachbar" | "bibliothek" | "rueckmeldung";
+  grund: "anlage" | "nachbar" | "bibliothek" | "rueckmeldung" | "konflikt";
   am: string;
   assetRef: string | null;
   kopplungBesteht: boolean | null;
@@ -3537,6 +3549,8 @@ export interface ImportRunRecord {
       attachmentsIncomplete?: number;
     };
     listsTruncated?: boolean;
+    neubewertungOffen?: string[];
+    neubewertungOffenAnzahl?: number;
   } | null;
 }
 

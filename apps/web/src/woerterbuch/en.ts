@@ -2788,6 +2788,12 @@ const en: typeof de = {
   "ko.sourceUrl": "URL / reference (optional)",
   "ko.sourceExcerpt": "Excerpt / note (optional)",
   "ko.sourceAdd": "Add external source",
+  "ko.neubewertung.fehlt":
+    "Source change saved — the re-assessment of earlier conflict decisions was not fully carried out.",
+  "ko.neubewertung.hinweis":
+    "The source change is saved. An earlier conflict decision on this entry is not yet marked for a new review, and the entry is not yet in the follow-up review.",
+  "ko.neubewertung.nachholen": "Complete the re-assessment",
+  "ko.neubewertung.nachgeholt": "Re-assessment completed.",
   "ko.sourceAdded": "External source added.",
   "ko.sourceRemove": "Remove source",
   "ko.sourceUnvalidated": "external · not peer-validated",

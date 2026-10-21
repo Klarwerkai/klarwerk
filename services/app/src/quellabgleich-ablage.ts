@@ -61,6 +61,13 @@ export interface ImportRunSourceSync {
    */
   readonly counts: Readonly<Record<SourceSyncListe, number>>;
   readonly listsTruncated: boolean;
+  /**
+   * BD12-02-K06 (Konfliktauftrag, Ben Nacharbeit 19): Seiten, deren Neubewertung früherer
+   * Konfliktentscheidungen nach dem Quellwegfall aussteht. Nur vorhanden, wenn etwas aussteht —
+   * dann mit Gesamtzahl (`neubewertungOffenAnzahl`) wie die übrigen Listen gedeckelt.
+   */
+  readonly neubewertungOffen?: readonly string[];
+  readonly neubewertungOffenAnzahl?: number;
 }
 
 export const MAX_SOURCE_SYNC_IDS = 200;
@@ -92,12 +99,23 @@ export function sourceSyncSnapshot(sync: unknown): ImportRunSourceSync {
     counts[feld] = zahl;
     listsTruncated = listsTruncated || listen[feld].length < zahl;
   }
+  // BD12-02-K06: die ausstehende Neubewertung — nur, wenn etwas aussteht; dieselbe Deckelregel.
+  const offen = gueltig(roh.neubewertungOffen);
+  const offenGemeldet = roh.neubewertungOffenAnzahl;
+  const offenZahl =
+    typeof offenGemeldet === "number" &&
+    Number.isSafeInteger(offenGemeldet) &&
+    offenGemeldet >= offen.length
+      ? offenGemeldet
+      : offen.length;
+  const offenListe = offen.slice(0, MAX_SOURCE_SYNC_IDS);
   return {
     checked: roh.checked === true,
     reason: typeof roh.reason === "string" ? roh.reason.slice(0, 64) : null,
     ...listen,
     counts,
-    listsTruncated,
+    listsTruncated: listsTruncated || offenListe.length < offenZahl,
+    ...(offenZahl > 0 ? { neubewertungOffen: offenListe, neubewertungOffenAnzahl: offenZahl } : {}),
   };
 }
 

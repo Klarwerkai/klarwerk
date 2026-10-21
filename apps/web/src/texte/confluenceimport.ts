@@ -73,6 +73,9 @@ export default {
       "Die Zahlen oben sind vollständig; die Liste der betroffenen Seiten ist gekürzt gespeichert.",
     "w2.run.attachmentsIncomplete":
       "An {{anzahl}} Seite(n) konnte die Anhangsliste nicht vollständig gelesen werden — dort wurde kein Anhang entfernt, es können aber Anhänge fehlen.",
+    // BD12-02-K06 (Konfliktauftrag, Ben Nacharbeit 19).
+    "confluenceimport.neubewertungOffen":
+      "An {{anzahl}} in der Quelle gelöschten Seite(n) steht die Neubewertung früherer Konfliktentscheidungen aus — der Lauf ist deshalb nicht vollständig. Der nächste Lauf oder „Neubewertung nachholen“ am Eintrag holt sie nach.",
     // R-0142 (Lauf 5): das Importergebnis auf der Wissensseite.
     "ko.importResult.lead": "Aus welchem Importlauf und welcher Quellfassung dieses Wissen stammt.",
     "ko.importResult.revision": "Quellfassung {{version}}, aufgenommen {{zeit}}",
@@ -128,6 +131,8 @@ export default {
       "The numbers above are complete; the stored list of affected pages is shortened.",
     "w2.run.attachmentsIncomplete":
       "On {{anzahl}} page(s) the attachment list could not be read completely — no attachment was removed there, but attachments may be missing.",
+    "confluenceimport.neubewertungOffen":
+      "For {{anzahl}} page(s) deleted at the source, the re-assessment of earlier conflict decisions is still pending — so this run is not complete. The next run or “Complete the re-assessment” on the entry catches up.",
     "ko.importResult.lead": "Which import run and which source version this knowledge comes from.",
     "ko.importResult.revision": "Source version {{version}}, captured {{zeit}}",
     "ko.importResult.noRevision":
@@ -182,6 +187,8 @@ export default {
       "De aantallen hierboven zijn volledig; de opgeslagen lijst van betrokken pagina's is ingekort.",
     "w2.run.attachmentsIncomplete":
       "Op {{anzahl}} pagina('s) kon de bijlagenlijst niet volledig worden gelezen — daar is geen bijlage verwijderd, maar er kunnen bijlagen ontbreken.",
+    "confluenceimport.neubewertungOffen":
+      "Voor {{anzahl}} in de bron verwijderde pagina('s) staat de herbeoordeling van eerdere conflictbeslissingen nog open — deze run is daarom niet volledig. De volgende run of ‘Herbeoordeling inhalen’ bij het item haalt dit in.",
     "ko.importResult.lead": "Uit welke importrun en welke bronversie deze kennis afkomstig is.",
     "ko.importResult.revision": "Bronversie {{version}}, opgenomen {{zeit}}",
     "ko.importResult.noRevision":
