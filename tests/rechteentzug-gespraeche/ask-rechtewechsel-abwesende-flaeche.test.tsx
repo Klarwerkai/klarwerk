@@ -55,7 +55,7 @@ function gib(url?: string) {
 async function zeige(fragen: boolean) {
   await act(async () => {
     root?.render(createElement(QueryClientProvider, { client },
-      createElement(RechtekontextWache, { kontoId: KONTO }),
+      createElement<{ kontoId: string }>(RechtekontextWache, { kontoId: KONTO }),
       createElement(MemoryRouter, { initialEntries: ["/fragen"] },
         createElement(ToastProvider, null, fragen ? createElement(Ask) : createElement("div", null, "Andere Seite")))));
   });
