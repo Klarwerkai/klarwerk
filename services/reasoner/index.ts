@@ -147,6 +147,24 @@ export {
   normalizeAssistPresets,
   PgAssistPresetRepo,
 } from "./src/presets";
+// R-0468: das KI-Verhalten als versionierte Daten neben dem Modell (Verhaltensartefakte).
+export {
+  InMemoryVerhaltensartefaktRepo,
+  PgVerhaltensartefaktRepo,
+  VERHALTENSARTEFAKTE_SCHEMA,
+  VERHALTENS_ARTEN,
+  VERHALTENS_AUFGABEN,
+  VERHALTENS_STATUS,
+  type Verhaltensartefakt,
+  type VerhaltensartefaktEingabe,
+  type VerhaltensartefaktRepo,
+  type VerhaltensAufgabe,
+  VerhaltensDienst,
+  VerhaltensFehler,
+  type VerhaltensQuelle,
+  mitVerhalten,
+  verhaltensblock,
+} from "./src/verhaltensartefakte";
 // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) — überlebt Neustart/Deploy.
 export {
   InMemoryReasonerPolicyRepo,

@@ -55,6 +55,13 @@ import {
   type StructureKnowledgeType,
   type StructureResult,
 } from "./types";
+// R-0468: das KI-Verhalten als Daten neben dem Modell — hinter die eingebaute Anweisung gehängt.
+import {
+  type VerhaltensAufgabe,
+  type VerhaltensQuelle,
+  mitVerhalten,
+  verhaltensblock,
+} from "./verhaltensartefakte";
 
 // Abstrakter Modell-Client: kapselt den eigentlichen (anbieterspezifischen) Aufruf.
 // FR-RSN-02/06: anbieteragnostisch; der Schlüssel lebt nur im Client (serverseitig).
@@ -2216,10 +2223,28 @@ function clamp01(value: number): number {
 export class ModelProvider implements ReasonerProvider {
   readonly name: string;
   private readonly client: ModelClient | undefined;
+  // R-0468: die Verhaltensartefakte. Die Kompositionswurzel gibt JEDEM Provider (lokal, Claude,
+  // ChatGPT) DIESELBE Quelle — ein Modellwechsel tauscht den Client, nicht das Verhalten. Ohne Quelle
+  // ist jede Anweisung Zeichen für Zeichen die eingebaute.
+  private readonly verhalten: VerhaltensQuelle | undefined;
 
-  constructor(client?: ModelClient) {
+  constructor(client?: ModelClient, verhalten?: VerhaltensQuelle) {
     this.client = client;
     this.name = client?.name ?? "model";
+    this.verhalten = verhalten;
+  }
+
+  // R-0468: eingebaute Anweisung + die freigegebenen Artefakte der Aufgabe (`verhaltensblock`).
+  private async anweisung(
+    aufgabe: VerhaltensAufgabe,
+    system: string,
+    locale: ReasonerLocale,
+  ): Promise<string> {
+    if (!this.verhalten) {
+      return system;
+    }
+    const artefakte = await this.verhalten.wirksameFuer(aufgabe);
+    return mitVerhalten(system, verhaltensblock(aufgabe, artefakte, locale));
   }
 
   isAvailable(): boolean {
@@ -2276,7 +2301,8 @@ export class ModelProvider implements ReasonerProvider {
     confidential = false,
   ): Promise<StructureResult> {
     const client = this.requireClient();
-    const raw = await client.complete(structureSystem(locale), rawText, confidential);
+    const system = await this.anweisung("structure", structureSystem(locale), locale);
+    const raw = await client.complete(system, rawText, confidential);
     const parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
     const firstSentence = rawText.split(/[.!?]/)[0]?.trim() ?? rawText.trim();
     const knowledgeType = asStructureKnowledgeType(parsed.knowledgeType);
@@ -2421,9 +2447,10 @@ export class ModelProvider implements ReasonerProvider {
     // SCRUM-312: optionale Anweisung als zusätzliche Leitplanke an das System-Prompt hängen —
     // der „keine Inhalte/Fakten erfinden"-Schutz aus assistSystem bleibt vollständig erhalten.
     const guidance = instruction?.trim();
-    const system = guidance
+    const eingebaut = guidance
       ? `${assistSystem(locale)}\n${assistGuidance(locale, guidance)}`
       : assistSystem(locale);
+    const system = await this.anweisung("assist", eingebaut, locale);
     // JOB 3276: das Budget richtet sich nach der Eingabe (s. assistAntwortBudget) — ein Denkmodell
     // braucht Kopfraum für Denken UND Antwort, sonst kommt eine 200er-Antwort ohne Inhalt zurück.
     const budget = assistAntwortBudget(text);
@@ -2765,9 +2792,10 @@ export class ModelProvider implements ReasonerProvider {
       .join("\n");
     // JOB 3366: der Aufruf läuft in der Abbruch-Spur (JOB 3276 R3). Ein Fragment (finish_reason
     // `length` MIT Inhalt) kommt damit als BEFUND hier an; der Text selbst bleibt unangetastet.
+    const system = await this.anweisung("answer", answerSystem(locale), locale);
     const { wert: rohAntwort, abbruch } = await mitAbbruchBefund(() =>
       client.complete(
-        answerSystem(locale),
+        system,
         `${labels.question}: ${question}\n\n${
           dokumenttext ? `${labels.selection}:\n${dokumenttext}\n\n` : ""
         }${labels.sources}:\n${grounding}`,
@@ -2925,7 +2953,8 @@ export class ModelProvider implements ReasonerProvider {
     const client = this.requireClient();
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
     // SCRUM-492: etwas mehr Spielraum für den optionalen kollision-Block (vorher 512).
-    const raw = await client.complete(conflictSystem(locale), user, confidential, 640);
+    const system = await this.anweisung("conflict", conflictSystem(locale), locale);
+    const raw = await client.complete(system, user, confidential, 640);
     return parseConflictResponse(raw);
   }
 
@@ -2939,7 +2968,8 @@ export class ModelProvider implements ReasonerProvider {
   ): Promise<DuplicateJudgeResult | null> {
     const client = this.requireClient();
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
-    const raw = await client.complete(duplicateSystem(locale), user, confidential, 768);
+    const system = await this.anweisung("duplicate", duplicateSystem(locale), locale);
+    const raw = await client.complete(system, user, confidential, 768);
     return parseDuplicateResponse(raw);
   }
 
