@@ -492,7 +492,8 @@ export class KlaraAufgabeDienst {
       ...a,
       titel: a.eigeneFelder?.includes("titel") ? a.titel : "Quelle nicht verfügbar",
       inhalt: a.eigeneFelder?.includes("inhalt") ? a.inhalt : "",
-      bezug: a.bezug.art === "notiz" ? { ...a.bezug, notizTitel: "Quelle nicht verfügbar" } : a.bezug,
+      bezug:
+        a.bezug.art === "notiz" ? { ...a.bezug, notizTitel: "Quelle nicht verfügbar" } : a.bezug,
       objektbezug: { pfad: "/fragen", seitenName: "Fragen", objekt: "Eigene Aufgabe" },
     };
   }
@@ -517,8 +518,9 @@ export class KlaraAufgabeDienst {
     const roh = await this.repo.liste(kontoId, s, KLARA_AUFGABE_LISTE_MAX);
     const herkunft = await Promise.all(roh.map((a) => this.herkunft(a)));
     return roh
-      .flatMap((a, i) => herkunft[i] === "gesperrt"
-        ? [] : [this.ausgabe(a, herkunft[i] ?? "ungeklaert")])
+      .flatMap((a, i) =>
+        herkunft[i] === "gesperrt" ? [] : [this.ausgabe(a, herkunft[i] ?? "ungeklaert")],
+      )
       .sort(aufgabenOrdnung);
   }
 
@@ -709,11 +711,15 @@ export class KlaraAufgabeDienst {
     const gewollt: Felder = {
       // Neutrale UI-Felder beim Rundlauf bewahren den gespeicherten Text, statt ihn zu ersetzen.
       titel:
-        eingabe.titel === undefined || (herkunft === "ungeklaert" && eingabe.titel === angezeigt.titel)
-          ? alt.titel : titelAus(eingabe.titel),
+        eingabe.titel === undefined ||
+        (herkunft === "ungeklaert" && eingabe.titel === angezeigt.titel)
+          ? alt.titel
+          : titelAus(eingabe.titel),
       inhalt:
-        eingabe.inhalt === undefined || (herkunft === "ungeklaert" && eingabe.inhalt === angezeigt.inhalt)
-          ? alt.inhalt : inhaltAus(eingabe.inhalt),
+        eingabe.inhalt === undefined ||
+        (herkunft === "ungeklaert" && eingabe.inhalt === angezeigt.inhalt)
+          ? alt.inhalt
+          : inhaltAus(eingabe.inhalt),
       prioritaet:
         wahl(eingabe.prioritaet, KLARA_AUFGABE_PRIORITAETEN, "prioritaet") ?? alt.prioritaet,
       status: wahl(eingabe.status, KLARA_AUFGABE_STATUS, "status") ?? alt.status,
@@ -749,7 +755,8 @@ export class KlaraAufgabeDienst {
       geaendertAm: jetzt,
       fassung: alt.fassung + 1,
       ...(alt.bezug.art === "notiz" && herkunft !== "ungeklaert"
-        ? { privatNotizGebunden: herkunft === "gebunden" } : {}),
+        ? { privatNotizGebunden: herkunft === "gebunden" }
+        : {}),
       ...(eigeneFelder.size > 0 ? { eigeneFelder: [...eigeneFelder] } : {}),
     };
     if (!(await this.repo.ersetze(neu))) {

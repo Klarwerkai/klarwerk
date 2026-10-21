@@ -32,9 +32,7 @@ const NICHT_VERFUEGBAR = "Dieser gespeicherte Inhalt ist derzeit nicht verfügba
 const NEUTRAL: KlaraObjektbezug = { pfad: "/fragen", seitenName: "Fragen", objekt: "Gespräch" };
 
 function objektQuellen(b: KlaraObjektbezug): Quelle[] {
-  return b.koId
-    ? [{ id: b.koId, ...(b.fassung !== undefined ? { fassung: b.fassung } : {}) }]
-    : [];
+  return b.koId ? [{ id: b.koId, ...(b.fassung !== undefined ? { fassung: b.fassung } : {}) }] : [];
 }
 
 /**
@@ -74,7 +72,8 @@ export class KlaraGespraechAusgabe {
         (q) => refs.has(q.koId) && q.fassung === refs.get(q.koId),
       ) ||
       snapshot.evidence.some(
-        (q) => !Number.isSafeInteger(q.knowledgeObjectVersion) || Number(q.knowledgeObjectVersion) < 1,
+        (q) =>
+          !Number.isSafeInteger(q.knowledgeObjectVersion) || Number(q.knowledgeObjectVersion) < 1,
       )
     ) {
       return null;

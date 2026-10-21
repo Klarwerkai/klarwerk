@@ -82,7 +82,8 @@ export function gedaechtnisRoutes(deps: GedaechtnisRoutenDeps, guards: Guards): 
   const ausgabe = async (kontoId: string, e: Gedaechtniseintrag) => {
     const s = sicht(e);
     if (e.herkunft.art !== "antwort") return s;
-    if (e.herkunft.antwortId && (await deps.antwortLesbar?.(kontoId, e.herkunft.antwortId))) return s;
+    if (e.herkunft.antwortId && (await deps.antwortLesbar?.(kontoId, e.herkunft.antwortId)))
+      return s;
     // Eigene Frage und Verwaltung bleiben nutzbar; weder Antwortkopie noch Quellkennung öffnen.
     return { ...s, antwort: null, herkunft: { ...s.herkunft, antwortId: null, antwortAm: null } };
   };

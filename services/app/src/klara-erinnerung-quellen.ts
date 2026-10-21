@@ -78,8 +78,10 @@ export class KlaraErinnerungQuellen {
       return true;
     };
     const herkunftGespeichert = e.wissensQuellen !== undefined;
-    if (e.bezug.art === "notiz" && !(await notiz(e.bezug.notizId, herkunftGespeichert))) return null;
-    if (e.bezug.art === "aufgabe" && !(await aufgabe(e.bezug.aufgabeId, herkunftGespeichert))) return null;
+    if (e.bezug.art === "notiz" && !(await notiz(e.bezug.notizId, herkunftGespeichert)))
+      return null;
+    if (e.bezug.art === "aufgabe" && !(await aufgabe(e.bezug.aufgabeId, herkunftGespeichert)))
+      return null;
     // Historische Routinenmeldungen tragen ihre eigene ursprüngliche Ergebnis-/Quellbindung,
     // auch wenn die heutige Routinendefinition inzwischen andere Quellen auswählt.
     if (meldung?.routine) {

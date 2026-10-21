@@ -3310,7 +3310,10 @@ export class KlaraErinnerungDienst {
     if (this.deps.quellschutz) {
       const frei = await this.deps.quellschutz(e, kontoId);
       if (!frei) throw new KlaraErinnerungFehler(404, "quelle_unbekannt", "Quelle nicht gefunden.");
-      if (frei.koIds.length > 0 || (frei.quelleFrei && (bezug.art === "notiz" || bezug.art === "aufgabe"))) {
+      if (
+        frei.koIds.length > 0 ||
+        (frei.quelleFrei && (bezug.art === "notiz" || bezug.art === "aufgabe"))
+      ) {
         e = { ...e, wissensQuellen: frei.koIds };
       }
     }

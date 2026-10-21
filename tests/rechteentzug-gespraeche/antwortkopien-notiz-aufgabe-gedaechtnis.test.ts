@@ -130,8 +130,7 @@ async function bestand() {
   const geheim = kos[0];
   const erlaubt = kos[1];
   if (!geheim || !erlaubt) throw new Error("Beide fiktiven Quellen sind Pflicht");
-  for (const ko of kos)
-    expect((await auf(anna, "GET", `/api/kos/${ko.id}`)).statusCode).toBe(200);
+  for (const ko of kos) expect((await auf(anna, "GET", `/api/kos/${ko.id}`)).statusCode).toBe(200);
   const g = await auf(anna, "POST", GESPRAECHE, { objektbezug: FREI });
   expect(g.statusCode, g.body).toBe(201);
   const gespraechId = g.json<{ gespraech: { id: string } }>().gespraech.id;
@@ -309,7 +308,9 @@ it("RC2-Kopiekette: echte Mischantwort bindet normale Notiz, Aufgabe und beide E
   }
   await takt("2026-10-21T09:00:00Z");
   expect((await auf(anna, "GET", "/api/notifications")).body).toContain(MARKE);
-  expect((await auf(anna, "DELETE", `${NOTIZEN}/${geloescht.notiz.daten.id}`)).statusCode).toBe(200);
+  expect((await auf(anna, "DELETE", `${NOTIZEN}/${geloescht.notiz.daten.id}`)).statusCode).toBe(
+    200,
+  );
   expect(await services.klaraNotizen.hole(anna.id, geloescht.notiz.daten.id)).toBeNull();
   await takt("2026-10-22T09:00:00Z");
   const en = geloescht.notizErinnerung.daten.id;
@@ -322,10 +323,15 @@ it("RC2-Kopiekette: echte Mischantwort bindet normale Notiz, Aufgabe und beide E
   if (fehlend) {
     const alt = await services.klaraErinnerungen.erinnerungen.hole(anna.id, en);
     if (!alt) throw new Error("Gespeicherte Notiz-Erinnerung fehlt");
-    const r = await auf(anna, "POST", `${ERINNERUNGEN}/${en}/laeufe/${fehlend.vorkommenId}/klaeren`, {
-      fassung: alt.erinnerung.fassung,
-      entscheidung: "fortfuehren",
-    });
+    const r = await auf(
+      anna,
+      "POST",
+      `${ERINNERUNGEN}/${en}/laeufe/${fehlend.vorkommenId}/klaeren`,
+      {
+        fassung: alt.erinnerung.fassung,
+        entscheidung: "fortfuehren",
+      },
+    );
     expect([200, 404, 409], r.body).toContain(r.statusCode);
   }
   await b.quellrecht(false);
@@ -404,13 +410,18 @@ it("RC2-Kopiekette: echte Mischantwort bindet normale Notiz, Aufgabe und beide E
   await takt("2026-10-23T09:00:00Z");
   const danach = await services.klaraErinnerungen.meldungen.fuerKonto(anna.id, 100);
   const neu = danach.filter((m) => !vorher.some((v) => v.id === m.id));
-  expect.soft(neu.filter((m) => erinnerungen.some((e) => e.daten.id === m.erinnerungId))).toEqual([]);
+  expect
+    .soft(neu.filter((m) => erinnerungen.some((e) => e.daten.id === m.erinnerungId)))
+    .toEqual([]);
   for (const e of eigen.erinnerungen) {
     expect(neu.some((m) => m.erinnerungId === e.daten.id && m.titel.includes(EIGEN))).toBe(true);
   }
   geschuetzt(await auf(anna, "GET", "/api/notifications"), b);
   await b.quellrecht(true);
-  for (const url of [`${NOTIZEN}/${leben.notiz.daten.id}`, `${AUFGABEN}/${leben.aufgabe.daten.id}`]) {
+  for (const url of [
+    `${NOTIZEN}/${leben.notiz.daten.id}`,
+    `${AUFGABEN}/${leben.aufgabe.daten.id}`,
+  ]) {
     const r = await auf(anna, "GET", url);
     expect(r.statusCode, r.body).toBe(200);
     expect(r.body).toContain(MISCHTEXT);
@@ -422,7 +433,12 @@ it("RC2-Kopiekette: echte Mischantwort bindet normale Notiz, Aufgabe und beide E
 
 it("RC2-Gedächtnis: echte AntwortId schützt GET/POST/PUT-Echos bei Teilentzug und erhält eigene Eingaben und Löschen", async () => {
   const b = await bestand();
-  const eingabe = { art: "frage_antwort", inhalt: FRAGE, antwort: MISCHTEXT, antwortId: b.antwortId };
+  const eingabe = {
+    art: "frage_antwort",
+    inhalt: FRAGE,
+    antwort: MISCHTEXT,
+    antwortId: b.antwortId,
+  };
   const merken = async (payload: Record<string, unknown>) => {
     const r = await auf(anna, "POST", GEDAECHTNIS, payload);
     expect(r.statusCode, r.body).toBe(201);
@@ -475,7 +491,9 @@ it("RC2-Gedächtnis: echte AntwortId schützt GET/POST/PUT-Echos bei Teilentzug 
   await b.quellrecht(true);
   const wieder = await auf(anna, "GET", GEDAECHTNIS);
   expect(wieder.statusCode, wieder.body).toBe(200);
-  const alt = wieder.json<{ eintraege: Merkeintrag[] }>().eintraege.find((e) => e.id === gebunden.id);
+  const alt = wieder
+    .json<{ eintraege: Merkeintrag[] }>()
+    .eintraege.find((e) => e.id === gebunden.id);
   expect(alt).toMatchObject({ antwort: MISCHTEXT, herkunft: gebunden.herkunft });
   if (!alt) throw new Error("Eigener gespeicherter Eintrag fehlt nach Wiedererteilung");
   const echo = await auf(anna, "PUT", `${GEDAECHTNIS}/${alt.id}`, {

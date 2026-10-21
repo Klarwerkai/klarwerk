@@ -182,7 +182,9 @@ export function klaraAufgabeRoutes(
               },
             });
           }
-          reply.code(200).send({ aufgabe: sicht(await dienst.hole(user.id, aufgabe.id)), wiederholt });
+          reply
+            .code(200)
+            .send({ aufgabe: sicht(await dienst.hole(user.id, aufgabe.id)), wiederholt });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
