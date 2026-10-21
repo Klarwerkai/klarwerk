@@ -34,6 +34,9 @@ export function erkenneBeschaffung(s: string): ErkannterAuftrag | null {
     );
   if (!m) return null;
   const rest = m[1] ?? "";
+  // Nur Satzendnegation zählt; zitierte Namen bleiben Daten und verdecken davor stehenden Text.
+  const auftragstext = rest.replace(/[„“"«][^“”"»]*[“”"»]/gu, "[Daten]");
+  if (/(?:^|[\s,;:])nicht(?:\s+mehr)?[\s.!?…]*$/iu.test(auftragstext)) return null;
   const produkt = eindeutigeAngabe(
     rest,
     // Ganze zitierte Namen überspringen; nur ausdrücklich außerhalb genannte Produkte vergleichen.
