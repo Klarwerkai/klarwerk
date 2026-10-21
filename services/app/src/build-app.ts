@@ -309,6 +309,7 @@ import {
 } from "./branding-settings";
 // produkt:20261007:interner-chat — Gespräche und Nachrichten; im Postgres-Betrieb haltbar.
 import { type ChatRepo, InMemoryChatRepo, PgChatRepo } from "./chat";
+import { ChatEntwurfAusgabe } from "./chat-entwurf-ausgabe";
 import { confluenceAnhangsUebernahme } from "./confluence-anhaenge";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
 // Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
@@ -5564,6 +5565,12 @@ export function buildApp(
     captureRoutes(
       {
         ...services,
+        chatEntwurfAusgabe: new ChatEntwurfAusgabe({
+          audit: services.audit,
+          chat: services.chat,
+          ko: services.ko,
+          rechte: fristenQuellen,
+        }),
         notifyAssignment,
         routeNeuesObjekt,
         semanticPrefilter,
