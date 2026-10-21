@@ -224,7 +224,7 @@ describe("W4 · heutige Ports sind erhaltend verbunden", () => {
     if (!modell) throw new Error("Zusammengesetzter lokaler W4-Provider fehlt");
     const text = "Fiktiver unveränderter Assisttext.";
     const guidance = "Behalte alle fiktiven Fachbegriffe bei.";
-    await modell.assist(text, "nl", guidance, true);
+    await modell.assistText(text, "nl", guidance, true);
     const vorher = montage.aufrufe[0];
     if (!vorher) throw new Error("Erster Assistaufruf fehlt");
     const anlage = await schreiben(f, {
@@ -234,7 +234,7 @@ describe("W4 · heutige Ports sind erhaltend verbunden", () => {
       status: "freigegeben",
     });
     expect(anlage.statusCode, anlage.body).toBe(201);
-    await modell.assist(text, "nl", guidance, true);
+    await modell.assistText(text, "nl", guidance, true);
     const nachher = montage.aufrufe[1];
     if (!nachher) throw new Error("Zweiter Assistaufruf fehlt");
     expect(nachher.system.startsWith(`${vorher.system}\n\n`)).toBe(true);
