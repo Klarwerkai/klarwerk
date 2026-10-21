@@ -1795,6 +1795,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           const { expectedUpdatedAt, ...payload } = gestalt.payload as DraftPayload & {
             expectedUpdatedAt?: unknown;
           };
+          // Auch Speichern darf die unverändert aufbewahrte Chatfassung bei Entzug nicht durch
+          // eine alte oder bereits reduzierte Clientdarstellung ersetzen.
+          if (
+            await chatVerarbeitungGesperrt(await capture.getDraft(request.params.id), user, reply, request)
+          )
+            return;
           reply.code(200).send(
             await entwurfAusgabe(
               await capture.continueDraft(
