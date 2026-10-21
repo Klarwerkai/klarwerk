@@ -19,7 +19,9 @@ export class InMemoryModelRunRepo implements ModelRunRepo {
   private readonly items: ModelRunRecord[] = [];
 
   append(record: ModelRunRecord): Promise<void> {
-    this.items.push(record);
+    if (!this.items.some((item) => item.id === record.id)) {
+      this.items.push(record);
+    }
     return Promise.resolve();
   }
 
