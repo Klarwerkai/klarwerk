@@ -411,6 +411,7 @@ async function uebernimmAntwort(
 ): Promise<void> {
   pruefe(gen);
   pruefeFrist();
+  let pruefbeginn = begonnenAm;
   let aktuell = g;
   if (zustand.gespraech && zustand.gespraech.id !== g.id) throw new Veraltet();
   const fehlend = zustand.nachrichten.some(
@@ -419,7 +420,7 @@ async function uebernimmAntwort(
   if (inhalt !== inhaltsGeneration || fehlend) {
     const folge = leseFolge;
     const stand = inhaltsGeneration;
-    begonnenAm = Date.now();
+    pruefbeginn = Date.now();
     const { gespraech } = await klaraGespraechApi.hole(g.id);
     pruefe(gen);
     if (stand !== inhaltsGeneration || folge !== leseFolge) throw new Veraltet();
@@ -431,7 +432,7 @@ async function uebernimmAntwort(
     )
       throw new Veraltet();
   }
-  uebernimmGespraech(aktuell, begonnenAm, lokalId);
+  uebernimmGespraech(aktuell, pruefbeginn, lokalId);
 }
 
 /** Initial einmal je Konto; explizite Wiederprüfung hat denselben heutigen Serverleser. */
