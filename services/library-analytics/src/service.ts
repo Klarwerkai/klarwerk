@@ -3148,6 +3148,17 @@ export class LibraryService {
       // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
       // Nur eine tatsächlich höhere (explizite) Version schreibt monoton fort — kein Downgrade.
       const incoming = item.sourceVersion ?? current;
+      // WA-1 / AW03-K04: dieselbe Versionsnummer beweist keinen identischen Inhalt. Nur die
+      // bereits gespeicherte Revision darf das belegen, VOR jedem folgenden Metadaten-Upgrade.
+      // Fehlt sie am Altbestand, bleibt das eine Lücke; hier wird keine Revision nachgetragen.
+      if (incoming === current) {
+        const vorhanden = await this.externalSources?.findByRevision(
+          importProviderKey(item.provider),
+          externalId,
+          incoming,
+        );
+        this.pruefeRevisionsinhalt(vorhanden, quellinhaltAbdruck(item), externalId, incoming);
+      }
       // R-0169: die neue Quellfassung wird VOR jeder Mutation am Objekt als eigene, unveränderliche
       // Revision festgeschrieben; die vorige Revision bleibt unangetastet (der Repo-Vertrag kennt kein
       // Update). Der Anker der neuen Objektfassung zeigt auf genau diese Revision.
@@ -3906,13 +3917,35 @@ export class LibraryService {
     // Inhalt festschreibt. Bis hierher wurde ihre Kennung ungeprüft übernommen — nach einem
     // gescheiterten ersten Versuch mit Text A verwies ein Objekt mit Text B auf die Revision von A.
     // Jetzt: Konflikt, abgewiesen VOR jeder Objektmutation; die vorhandene Revision bleibt, wie sie ist.
-    if (!vorhanden || vorhanden.contentHash !== record.contentHash) {
+    return this.pruefeRevisionsinhalt(
+      vorhanden,
+      record.contentHash,
+      item.externalId,
+      sourceVersion,
+    ).sourceRecordId;
+  }
+
+  // Derselbe Inhalts-/Konfliktvertrag gilt bei Revisionsanlage und Gleichversions-Reimport.
+  // Der Nachschlag im zweiten Fall ist rein lesend; unbekannte Historie wird nicht erfunden.
+  private pruefeRevisionsinhalt(
+    vorhanden: ExternalSourceRecord | undefined,
+    erwartet: string,
+    externalId: string,
+    sourceVersion: number,
+  ): ExternalSourceRecord {
+    if (!vorhanden) {
       throw new LibraryError(
         "CONFLICT",
-        `Quellfassung ${sourceVersion} von „${item.externalId}" ist bereits mit anderem Inhalt festgeschrieben.`,
+        `Quellfassung ${sourceVersion} von „${externalId}" ist nicht belegt; identischer Inhalt kann nicht bestätigt werden.`,
       );
     }
-    return vorhanden.sourceRecordId;
+    if (vorhanden.contentHash !== erwartet) {
+      throw new LibraryError(
+        "CONFLICT",
+        `Quellfassung ${sourceVersion} von „${externalId}" ist bereits mit anderem Inhalt festgeschrieben.`,
+      );
+    }
+    return vorhanden;
   }
 
   // FR-LIB-01: Suche + Filter.
