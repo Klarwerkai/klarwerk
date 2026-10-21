@@ -35,6 +35,8 @@ const PRAEFIX = "kw.fragen.arbeitsstand.v1:";
 
 /** Die zuletzt angezeigte Antwort — genau das, was die Fläche zum Zeichnen braucht. */
 export interface GespeicherteAntwort {
+  /** Bekannter Rechtewechsel: erst neue Quellenabrufe dürfen diese Antwort wieder freigeben. */
+  rechtepruefungAusstehend?: true;
   /** Die Frage, zu der diese Antwort gehört. */
   frage: string;
   result: AnswerResult;
@@ -277,6 +279,7 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
   const fundstellenAuszuege = aussageTexteAus(roh.fundstellenAuszuege);
   return {
     frage,
+    ...(roh.rechtepruefungAusstehend === true ? { rechtepruefungAusstehend: true } : {}),
     result: result as unknown as AnswerResult,
     receipt,
     verschlossen: verschlossen as VerschlossenHinweis[],
