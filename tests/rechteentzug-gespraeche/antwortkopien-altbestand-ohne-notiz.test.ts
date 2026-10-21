@@ -100,11 +100,17 @@ async function antwortbestand() {
     kos.push(ko);
   }
   const geheim = kos[0];
-  if (!geheim) throw new Error("Fiktive Quelle fehlt");
+  const erlaubt = kos[1];
+  if (!geheim || !erlaubt) throw new Error("Beide fiktiven Quellen fehlen");
   const g = await auf(anna, "POST", G, { objektbezug: FREI });
   expect(g.statusCode, g.body).toBe(201);
   const gid = g.json<{ gespraech: { id: string } }>().gespraech.id;
   expect((await auf(anna, "PUT", `${G}/${gid}/einwilligung`, { erteilt: true })).statusCode).toBe(200);
+  const eigeneNachricht = await auf(anna, "POST", `${G}/${gid}/nachrichten`, {
+    von: "du", modus: "frage", text: EIGEN, objektbezug: FREI,
+  });
+  expect(eigeneNachricht.statusCode, eigeneNachricht.body).toBe(201);
+  const eigeneNachrichtId = eigeneNachricht.json<{ nachricht: { id: string } }>().nachricht.id;
   const antwortId = `rc2-alte-antwort-${gid}`;
   expect(await services.answerSnapshots.createRecord({ answerId: antwortId,
     askExecutionId: `rc2-alte-ausfuehrung-${gid}`, createdAt: new Date().toISOString(), schemaVersion: 1,
@@ -127,8 +133,9 @@ async function antwortbestand() {
   const quellrecht = async (lesbar: boolean) => {
     await services.ko.setQuellrechte(geheim.id, { stufe: "intern", leser: lesbar ? [anna.id] : [] }, admin.id);
     expect((await auf(anna, "GET", `/api/kos/${geheim.id}`)).statusCode).toBe(lesbar ? 200 : 404);
+    expect((await auf(anna, "GET", `/api/kos/${erlaubt.id}`)).statusCode).toBe(200);
   };
-  return { gid, nid, geheim, antwortId, quellrecht };
+  return { gid, nid, eigeneNachrichtId, geheim, antwortId, quellrecht };
 }
 
 // Vollständiger normal möglicher6039-Ausgabestand, nicht aus einem neuen Task mit gelöschtem Flag.
@@ -168,23 +175,30 @@ async function alterStand(gid: string, nid: string) {
   return { notiz, aufgabe, erinnerungen };
 }
 
-async function neueFreieArbeit() {
-  const n = await auf(anna, "POST", N, { vorgang: `rc2-frei-n-${randomUUID()}`, weg: "geschrieben",
-    titel: EIGEN, inhalt: EIGEN, objektbezug: FREI });
-  expect(n.statusCode, n.body).toBe(201);
-  const notiz = n.json<{ notiz: { id: string } }>().notiz;
+async function neueFreieArbeit(gid: string, eigeneNachrichtId: string) {
+  // Auch die freie alte g/n-Notiz hat noch keinen neuen Antwortmarker. Ihre echte eigene
+  // Nachricht ist vorhanden: der heutige normale Kopierweg kann sie positiv als frei prüfen.
+  const am = new Date().toISOString();
+  const notiz: KlaraNotiz = { id: randomUUID(), kontoId: anna.id, vorgang: `rc2-frei-n-${randomUUID()}`,
+    art: "notiz", weg: "gespraech", titel: EIGEN, inhalt: EIGEN, offeneFragen: [], objektbezug: FREI,
+    quelle: { gespraechId: gid, nachrichtId: eigeneNachrichtId }, angelegtAm: am, geaendertAm: am, fassung: 1 };
+  expect(await (services.klaraNotizenRoh ?? services.klaraNotizen).lege(notiz)).toBe(true);
   const a = await auf(anna, "POST", A, { vorgang: `rc2-frei-a-${randomUUID()}`, weg: "notiz", quelle: { notizId: notiz.id } });
   expect(a.statusCode, a.body).toBe(201);
   const aufgabe = a.json<{ aufgabe: { id: string } }>().aufgabe;
   const ids: string[] = [];
+  let aufgabeErinnerungId = "";
   for (const bezug of [{ art: "notiz", notizId: notiz.id }, { art: "aufgabe", aufgabeId: aufgabe.id }]) {
     const r = await auf(anna, "POST", E, { vorgang: `rc2-frei-e-${randomUUID()}`, bezug,
       zeitzone: "Europe/Berlin", zeitplan: { art: "serie", datum: "2026-10-21", uhrzeit: "11:00",
         wiederholung: { takt: "taeglich", intervall: 1, anzahl: 2 } } });
     expect(r.statusCode, r.body).toBe(201);
-    ids.push(r.json<{ erinnerung: { id: string } }>().erinnerung.id);
+    const id = r.json<{ erinnerung: { id: string } }>().erinnerung.id;
+    ids.push(id);
+    if (bezug.art === "aufgabe") aufgabeErinnerungId = id;
   }
-  return { notiz, aufgabe, ids };
+  if (!aufgabeErinnerungId) throw new Error("Eigene Aufgaben-Erinnerung fehlt");
+  return { notiz, aufgabe, ids, aufgabeErinnerungId };
 }
 
 async function takt(am: string) {
@@ -204,7 +218,7 @@ it("RC2-Altklasse6039: fehlende Note und fehlende alte Marker sind keine Freigab
   const b = await antwortbestand();
   const alt = await alterStand(b.gid, b.nid);
   const bekannt = await alterStand(b.gid, b.nid);
-  const frei = await neueFreieArbeit();
+  const frei = await neueFreieArbeit(b.gid, b.eigeneNachrichtId);
   const record = await services.answerSnapshots.findRecord(b.antwortId);
   const snapshots = await services.answerSnapshots.listSnapshots(b.antwortId);
   for (const k of [alt, bekannt]) {
@@ -253,12 +267,12 @@ it("RC2-Altklasse6039: fehlende Note und fehlende alte Marker sind keine Freigab
   expect((await services.klaraAufgaben.hole(anna.id, alt.aufgabe.id))?.inhalt).toBe(MISCHTEXT);
 
   const eigeneAufgabe = await auf(anna, "GET", `${A}/${frei.aufgabe.id}`);
-  expect(eigeneAufgabe.statusCode, eigeneAufgabe.body).toBe(200);
-  expect(eigeneAufgabe.body).toContain(EIGEN);
+  expect.soft(eigeneAufgabe.statusCode, eigeneAufgabe.body).toBe(200);
+  expect.soft(eigeneAufgabe.body).toContain(EIGEN);
   for (const id of frei.ids) {
     const r = await auf(anna, "GET", `${E}/${id}`);
-    expect(r.statusCode, r.body).toBe(200);
-    expect(r.body).toContain(EIGEN);
+    expect.soft(r.statusCode, r.body).toBe(200);
+    expect.soft(r.body).toContain(EIGEN);
   }
   const vorher = await services.klaraErinnerungen.meldungen.fuerKonto(anna.id, 100);
   await takt("2026-10-22T09:00:00Z");
@@ -266,7 +280,9 @@ it("RC2-Altklasse6039: fehlende Note und fehlende alte Marker sind keine Freigab
     .filter((m) => !vorher.some((v) => v.id === m.id));
   expect.soft(neu.some((m) => [...alt.erinnerungen, ...bekannt.erinnerungen]
     .some((e) => e.id === m.erinnerungId))).toBe(false);
-  for (const id of frei.ids) expect(neu.some((m) => m.erinnerungId === id && m.titel === EIGEN)).toBe(true);
+  // Der direkte Bezug zur gelöschten Notiz behält seinen normalen Klärungsweg.
+  // Die vorhandene freie Aufgabe besteht und ihre eigene Erinnerung bleibt ausführbar.
+  expect.soft(neu.some((m) => m.erinnerungId === frei.aufgabeErinnerungId && m.titel === EIGEN)).toBe(true);
   await b.quellrecht(true);
   expect((await auf(anna, "GET", `${A}/${bekannt.aufgabe.id}`)).body).toContain(MISCHTEXT);
   const nochUnklar = await auf(anna, "GET", `${A}/${alt.aufgabe.id}`);

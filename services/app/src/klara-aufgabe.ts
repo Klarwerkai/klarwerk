@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { KlaraGespraechRepo, KlaraObjektbezug } from "./klara-gespraech";
+import type { KlaraGespraechAusgabe } from "./klara-gespraech-ausgabe";
 import {
+  type KlaraNotiz,
   type KlaraNotizRepo,
   type NotizSchreibbedingung,
   notizIstQuellengebunden,
@@ -70,7 +72,10 @@ export type KlaraAufgabeBezug =
     };
 
 export interface KlaraAufgabe {
-  readonly privatNotizGebunden?: true;
+  /** Serverseitig geprüft: false = eigene freie Notiz; fehlend = alter ungeklärter Stand. */
+  readonly privatNotizGebunden?: boolean;
+  /** Nur tatsächlich neu geschriebene eigene Textfelder einer ungeklärten Altaufgabe. */
+  readonly eigeneFelder?: readonly ("titel" | "inhalt")[];
   readonly id: string;
   /** Eigentümer UND zuständige Person — eine persönliche Aufgabe hat keine zweite. */
   readonly kontoId: string;
@@ -352,6 +357,7 @@ export interface KlaraAufgabeDienstDeps {
   /** Die eigenen Notizen — für Aufgaben aus einer Notiz. */
   readonly notizen?: Pick<KlaraNotizRepo, "hole">;
   readonly notizenRoh?: Pick<KlaraNotizRepo, "hole">;
+  readonly antwortAusgabe?: Pick<KlaraGespraechAusgabe, "notizQuellen">;
   /** Die eigenen Gespräche — für Aufgaben aus einem Klara-Auftrag. */
   readonly gespraeche?: Pick<KlaraGespraechRepo, "hole">;
   readonly jetzt?: () => number;
@@ -432,10 +438,13 @@ export interface KlaraAufgabeSchreibfreigabe {
   pruefe(eingabe: KlaraAufgabeEingabe): Promise<void>;
 }
 
+type AufgabenHerkunft = "frei" | "gebunden" | "ungeklaert" | "gesperrt";
+
 export class KlaraAufgabeDienst {
   private readonly repo: KlaraAufgabeRepo;
   private readonly notizen: KlaraAufgabeDienstDeps["notizen"];
   private readonly notizenRoh: KlaraAufgabeDienstDeps["notizenRoh"];
+  private readonly antwortAusgabe: KlaraAufgabeDienstDeps["antwortAusgabe"];
   private readonly gespraeche: KlaraAufgabeDienstDeps["gespraeche"];
   private readonly jetzt: () => number;
   private readonly neueId: () => string;
@@ -444,6 +453,7 @@ export class KlaraAufgabeDienst {
     this.repo = deps.repo;
     this.notizen = deps.notizen;
     this.notizenRoh = deps.notizenRoh;
+    this.antwortAusgabe = deps.antwortAusgabe;
     this.gespraeche = deps.gespraeche;
     this.jetzt = deps.jetzt ?? Date.now;
     this.neueId = deps.neueId ?? randomUUID;
@@ -453,27 +463,63 @@ export class KlaraAufgabeDienst {
     return new Date(this.jetzt()).toISOString();
   }
 
-  private async lesbar(a: KlaraAufgabe): Promise<boolean> {
-    if (a.bezug.art !== "notiz") return true;
-    const roh = await this.notizenRoh?.hole(a.kontoId, a.bezug.notizId);
-    const gebunden = a.privatNotizGebunden || (!!roh && notizIstQuellengebunden(roh));
-    return !gebunden || !!(await this.notizen?.hole(a.kontoId, a.bezug.notizId));
+  private async notizbindung(n: KlaraNotiz): Promise<boolean | null> {
+    if (n.wissensHerkunft) return true;
+    if (n.quelle || (n.antwortId !== undefined && n.antwortId !== null)) {
+      if (this.antwortAusgabe && this.gespraeche) {
+        const quellen = await this.antwortAusgabe.notizQuellen(n, this.gespraeche);
+        return quellen === null ? null : quellen.length > 0;
+      }
+      if (n.quelle && n.antwortId === undefined) return null;
+    }
+    return notizIstQuellengebunden(n);
   }
 
-  async hole(kontoId: string, id: string): Promise<KlaraAufgabe> {
+  private async herkunft(a: KlaraAufgabe): Promise<AufgabenHerkunft> {
+    if (a.bezug.art !== "notiz") return "frei";
+    const roh = await (this.notizenRoh ?? this.notizen)?.hole(a.kontoId, a.bezug.notizId);
+    const bindung = roh ? await this.notizbindung(roh) : null;
+    if (a.privatNotizGebunden === true || bindung === true) {
+      return (await this.notizen?.hole(a.kontoId, a.bezug.notizId)) ? "gebunden" : "gesperrt";
+    }
+    if (bindung === false || a.privatNotizGebunden === false) return "frei";
+    return "ungeklaert";
+  }
+
+  private ausgabe(a: KlaraAufgabe, herkunft: AufgabenHerkunft): KlaraAufgabe {
+    if (herkunft === "frei" || herkunft === "gebunden") return a;
+    return {
+      ...a,
+      titel: a.eigeneFelder?.includes("titel") ? a.titel : "Quelle nicht verfügbar",
+      inhalt: a.eigeneFelder?.includes("inhalt") ? a.inhalt : "",
+      bezug: a.bezug.art === "notiz" ? { ...a.bezug, notizTitel: "Quelle nicht verfügbar" } : a.bezug,
+      objektbezug: { pfad: "/fragen", seitenName: "Fragen", objekt: "Eigene Aufgabe" },
+    };
+  }
+
+  private async lese(kontoId: string, id: string) {
     const a = await this.repo.hole(kontoId, id);
-    if (!a || !(await this.lesbar(a))) {
+    const herkunft: AufgabenHerkunft = a ? await this.herkunft(a) : "gesperrt";
+    if (!a || herkunft === "gesperrt") {
       // Fremd und unbekannt antworten gleich — die Kennung verrät nichts über fremde Aufgaben.
       throw new KlaraAufgabeFehler(404, "unbekannt", "Aufgabe nicht gefunden.");
     }
-    return a;
+    return { a, herkunft };
+  }
+
+  async hole(kontoId: string, id: string): Promise<KlaraAufgabe> {
+    const { a, herkunft } = await this.lese(kontoId, id);
+    return this.ausgabe(a, herkunft);
   }
 
   async liste(kontoId: string, status: unknown): Promise<KlaraAufgabe[]> {
     const s = wahl(status === "" ? undefined : status, KLARA_AUFGABE_STATUS, "status");
     const roh = await this.repo.liste(kontoId, s, KLARA_AUFGABE_LISTE_MAX);
-    const erlaubt = await Promise.all(roh.map((a) => this.lesbar(a)));
-    return roh.filter((_, i) => erlaubt[i]).sort(aufgabenOrdnung);
+    const herkunft = await Promise.all(roh.map((a) => this.herkunft(a)));
+    return roh
+      .flatMap((a, i) => herkunft[i] === "gesperrt"
+        ? [] : [this.ausgabe(a, herkunft[i] ?? "ungeklaert")])
+      .sort(aufgabenOrdnung);
   }
 
   /**
@@ -536,7 +582,11 @@ export class KlaraAufgabeDienst {
           "Teiltranskript vor der Aufgabenübernahme vollständig verarbeiten.",
         );
       }
-      quellengebunden ||= notizIstQuellengebunden(notiz);
+      const bindung = await this.notizbindung(notiz);
+      if (bindung === null) {
+        throw new KlaraAufgabeFehler(404, "quelle_unbekannt", "Notiz nicht gefunden.");
+      }
+      quellengebunden ||= bindung;
       titel =
         eingabe.titel === undefined ? kurz(notiz.titel || notiz.inhalt) : titelAus(eingabe.titel);
       if (titel.length === 0) {
@@ -597,7 +647,7 @@ export class KlaraAufgabeDienst {
       geaendertAm: jetzt,
       erledigtAm: null,
       fassung: 1,
-      ...(quellengebunden ? { privatNotizGebunden: true as const } : {}),
+      ...(bezug.art === "notiz" ? { privatNotizGebunden: quellengebunden } : {}),
     };
     if (freigabe) await freigabe.pruefe(eingabe);
     if (await this.repo.lege(aufgabe, freigabe?.bedingung)) {
@@ -654,10 +704,16 @@ export class KlaraAufgabeDienst {
     if (typeof fassung !== "number" || !Number.isSafeInteger(fassung) || fassung < 1) {
       throw eingabeFehler("fassung ist Pflicht (die zuletzt gesehene Fassung).");
     }
-    const alt = await this.hole(kontoId, id);
+    const { a: alt, herkunft } = await this.lese(kontoId, id);
+    const angezeigt = this.ausgabe(alt, herkunft);
     const gewollt: Felder = {
-      titel: eingabe.titel === undefined ? alt.titel : titelAus(eingabe.titel),
-      inhalt: eingabe.inhalt === undefined ? alt.inhalt : inhaltAus(eingabe.inhalt),
+      // Neutrale UI-Felder beim Rundlauf bewahren den gespeicherten Text, statt ihn zu ersetzen.
+      titel:
+        eingabe.titel === undefined || (herkunft === "ungeklaert" && eingabe.titel === angezeigt.titel)
+          ? alt.titel : titelAus(eingabe.titel),
+      inhalt:
+        eingabe.inhalt === undefined || (herkunft === "ungeklaert" && eingabe.inhalt === angezeigt.inhalt)
+          ? alt.inhalt : inhaltAus(eingabe.inhalt),
       prioritaet:
         wahl(eingabe.prioritaet, KLARA_AUFGABE_PRIORITAETEN, "prioritaet") ?? alt.prioritaet,
       status: wahl(eingabe.status, KLARA_AUFGABE_STATUS, "status") ?? alt.status,
@@ -671,27 +727,35 @@ export class KlaraAufgabeDienst {
     if (alt.fassung !== fassung) {
       // Dieselbe Änderung kam schon an (die Antwort ging verloren): keine zweite Fassung.
       if (alt.fassung === fassung + 1 && gleicherInhalt(alt, gewollt)) {
-        return { aufgabe: alt, wiederholt: true };
+        return { aufgabe: angezeigt, wiederholt: true };
       }
       throw konflikt();
     }
     if (gleicherInhalt(alt, gewollt)) {
-      return { aufgabe: alt, wiederholt: true };
+      return { aufgabe: angezeigt, wiederholt: true };
     }
     const jetzt = this.jetztIso();
     const erledigtAm =
       gewollt.status === "erledigt" ? (alt.status === "erledigt" ? alt.erledigtAm : jetzt) : null;
+    const eigeneFelder = new Set(alt.eigeneFelder ?? []);
+    if (herkunft === "ungeklaert") {
+      if (gewollt.titel !== alt.titel) eigeneFelder.add("titel");
+      if (gewollt.inhalt !== alt.inhalt) eigeneFelder.add("inhalt");
+    }
     const neu: KlaraAufgabe = {
       ...alt,
       ...gewollt,
       erledigtAm,
       geaendertAm: jetzt,
       fassung: alt.fassung + 1,
+      ...(alt.bezug.art === "notiz" && herkunft !== "ungeklaert"
+        ? { privatNotizGebunden: herkunft === "gebunden" } : {}),
+      ...(eigeneFelder.size > 0 ? { eigeneFelder: [...eigeneFelder] } : {}),
     };
     if (!(await this.repo.ersetze(neu))) {
       throw konflikt();
     }
-    return { aufgabe: neu, wiederholt: false };
+    return { aufgabe: this.ausgabe(neu, herkunft), wiederholt: false };
   }
 
   loesche(kontoId: string, id: string): Promise<boolean> {

@@ -8,6 +8,8 @@ import type { KlaraNotizRepo, NotizSchreibbedingung } from "./klara-notiz";
 /** Heutige vorhandene Quellrechte, niemals eine gespeicherte Freigabe. */
 export interface ErinnerungQuellfreigabe extends NotizSchreibbedingung {
   readonly koIds: readonly string[];
+  /** Positiv geprüfte freie Herkunft, nicht bloß eine leere Liste bekannter KO-IDs. */
+  readonly quelleFrei?: true;
   readonly nochAktuell: () => Promise<boolean>;
 }
 
@@ -45,11 +47,11 @@ export class KlaraErinnerungQuellen {
     let gebunden = false;
     const gelesen: GeleseneFristenQuelle[] = [];
 
-    const notiz = async (id: string): Promise<boolean> => {
+    const notiz = async (id: string, herkunftGespeichert = false): Promise<boolean> => {
       const roh = await this.d.notizenRoh.hole(e.kontoId, id);
-      // Eine tatsächlich gelöschte gewöhnliche eigene Quelle behält ihren bisherigen
-      // Klärungsweg. Bereits serverseitig gebundene Wissensquellen bleiben trotzdem in ids.
-      if (!roh) return true;
+      // Nur gespeicherte echte Source-IDs oder ein explizit geprüfter leerer Stand tragen
+      // die gelöschte Quelle weiter. Fehlende Altmetadaten sind keine freie Herkunft.
+      if (!roh) return herkunftGespeichert;
       gebunden ||= !!roh.wissensHerkunft;
       notizen.add(id);
       for (const q of roh.wissensHerkunft?.aussagen.flatMap((a) => a.quellen) ?? []) ids.add(q.id);
@@ -62,19 +64,22 @@ export class KlaraErinnerungQuellen {
       }
       return true;
     };
-    const aufgabe = async (id: string): Promise<boolean> => {
+    const aufgabe = async (id: string, herkunftGespeichert = false): Promise<boolean> => {
       const a = await this.d.aufgaben.hole(e.kontoId, id);
-      if (!a) return true;
+      if (!a) return herkunftGespeichert;
       if (a.objektbezug?.koId) ids.add(a.objektbezug.koId);
       if (a.bezug.art === "notiz") {
-        if (a.privatNotizGebunden && !(await this.d.notizenRoh.hole(e.kontoId, a.bezug.notizId)))
-          return false;
+        if (!(await this.d.notizenRoh.hole(e.kontoId, a.bezug.notizId))) {
+          if (a.privatNotizGebunden === true) return false;
+          return a.privatNotizGebunden === false || herkunftGespeichert;
+        }
         if (!(await notiz(a.bezug.notizId))) return false;
       }
       return true;
     };
-    if (e.bezug.art === "notiz" && !(await notiz(e.bezug.notizId))) return null;
-    if (e.bezug.art === "aufgabe" && !(await aufgabe(e.bezug.aufgabeId))) return null;
+    const herkunftGespeichert = e.wissensQuellen !== undefined;
+    if (e.bezug.art === "notiz" && !(await notiz(e.bezug.notizId, herkunftGespeichert))) return null;
+    if (e.bezug.art === "aufgabe" && !(await aufgabe(e.bezug.aufgabeId, herkunftGespeichert))) return null;
     // Historische Routinenmeldungen tragen ihre eigene ursprüngliche Ergebnis-/Quellbindung,
     // auch wenn die heutige Routinendefinition inzwischen andere Quellen auswählt.
     if (meldung?.routine) {
@@ -88,7 +93,12 @@ export class KlaraErinnerungQuellen {
     // Gewöhnliche eigene Texte und bewusst übergebene freie Erinnerungen behalten den
     // bestehenden Weg; eine Übergabe ist keine Berechtigung zu gebundenem Quellwissen.
     if (!gebunden && ids.size === 0)
-      return { koIds: [], nochAktuell: async () => true, sql: () => ({ und: [], params: [] }) };
+      return {
+        koIds: [],
+        ...(e.bezug.art !== "gespraech" ? { quelleFrei: true as const } : {}),
+        nochAktuell: async () => true,
+        sql: () => ({ und: [], params: [] }),
+      };
     const eigentuemer = await this.rechte.nutzer(e.kontoId);
     const betrachter =
       betrachterId === e.kontoId ? eigentuemer : await this.rechte.nutzer(betrachterId);

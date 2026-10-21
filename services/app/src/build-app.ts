@@ -6311,6 +6311,7 @@ export function buildApp(
     repo: services.klaraAufgaben,
     notizen: services.klaraNotizen,
     notizenRoh: services.klaraNotizenRoh ?? services.klaraNotizen,
+    antwortAusgabe: gespraechAusgabe,
     gespraeche: services.klaraGespraeche,
   });
   app.register(

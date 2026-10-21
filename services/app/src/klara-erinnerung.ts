@@ -209,7 +209,7 @@ export interface KlaraErinnerung {
   readonly notiz: string;
   readonly bezug: KlaraErinnerungBezug;
   readonly objektbezug: KlaraObjektbezug | null;
-  /** Serverseitige Herkunftskennungen; keine gespeicherten Rollen oder Freigaben. */
+  /** Bei Quellenbezug: [] = geprüft frei, fehlend = ungeprüfter Altstand; keine Rollenfreigabe. */
   readonly wissensQuellen?: readonly string[];
   readonly zeitzone: string;
   readonly zeitplan: Zeitplan;
@@ -3310,7 +3310,9 @@ export class KlaraErinnerungDienst {
     if (this.deps.quellschutz) {
       const frei = await this.deps.quellschutz(e, kontoId);
       if (!frei) throw new KlaraErinnerungFehler(404, "quelle_unbekannt", "Quelle nicht gefunden.");
-      if (frei.koIds.length > 0) e = { ...e, wissensQuellen: frei.koIds };
+      if (frei.koIds.length > 0 || (frei.quelleFrei && (bezug.art === "notiz" || bezug.art === "aufgabe"))) {
+        e = { ...e, wissensQuellen: frei.koIds };
+      }
     }
     this.pruefeZukunft(e, jetzt);
     const steuer = steuerNach(e, jetzt);
