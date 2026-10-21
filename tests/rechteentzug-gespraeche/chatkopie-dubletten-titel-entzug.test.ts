@@ -198,7 +198,8 @@ it("RC1-Dubletten: aktueller Quellentzug schützt gespeicherte Titel im regulär
   // muss weiter funktionieren. Die Fixture erfindet weder eine Trefferzahl noch einen HTTP-Zwang.
   expect([200, 404, 409], nachher.body).toContain(nachher.statusCode);
   if (nachher.statusCode === 404) expect(nachher.json<{ error: string }>().error).toBe("NOT_FOUND");
-  if (nachher.statusCode === 409) expect(nachher.json<{ error: string }>().error).toBe("SOURCE_NOT_AVAILABLE");
+  if (nachher.statusCode === 409)
+    expect(nachher.json<{ error: string }>().error).toBe("SOURCE_NOT_AVAILABLE");
   // Erster neuer semantischer Gegenpunkt: dieser andere reguläre Leseweg darf den gespeicherten
   // Quelltitel nicht umgehen. Eine erlaubte neutrale Ausgabe legt keine neue Trefferzahl fest.
   expect(nachher.body).not.toContain(QUELLTITEL);
@@ -220,4 +221,3 @@ it("RC1-Dubletten: aktueller Quellentzug schützt gespeicherte Titel im regulär
   expect(apiAufrufe.filter((url) => url === "/api/ask")).toHaveLength(0);
   expect(netz).not.toHaveBeenCalled();
 });
-
