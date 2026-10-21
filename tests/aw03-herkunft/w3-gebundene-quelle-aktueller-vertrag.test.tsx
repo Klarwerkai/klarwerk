@@ -238,29 +238,29 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
     await bis(() => expect(marke(container, "-fehler")).not.toBeNull());
     expect(container.textContent).not.toContain("W3 Quelltext 7");
     for (const auth of [f.admin, f.viewer]) {
-      expect(
-        (await revision(f.app, auth, f.id, f.anker.sourceRecordId ?? "")).statusCode,
-      ).toBe(404);
+      expect((await revision(f.app, auth, f.id, f.anker.sourceRecordId ?? "")).statusCode).toBe(
+        404,
+      );
     }
     const route = `/api/kos/${f.id}/versions`;
-    expect(
-      (await f.app.inject({ method: "GET", url: route, headers: f.viewer })).statusCode,
-    ).toBe(404);
+    expect((await f.app.inject({ method: "GET", url: route, headers: f.viewer })).statusCode).toBe(
+      404,
+    );
     await f.services.ko.setQuellrechte(f.id, { stufe: "intern", version: 8 }, "w3-autor");
     await f.services.ko.setConfidentiality(f.id, "vertraulich", "w3-autor");
-    expect(
-      (await revision(f.app, f.viewer, f.id, f.anker.sourceRecordId ?? "")).statusCode,
-    ).toBe(404);
-    expect(
-      (await revision(f.app, f.admin, f.id, f.anker.sourceRecordId ?? "")).statusCode,
-    ).toBe(200);
+    expect((await revision(f.app, f.viewer, f.id, f.anker.sourceRecordId ?? "")).statusCode).toBe(
+      404,
+    );
+    expect((await revision(f.app, f.admin, f.id, f.anker.sourceRecordId ?? "")).statusCode).toBe(
+      200,
+    );
     await f.services.ko.setLeadingSpace(f.id, "w3-nicht-lesbarer-space", "w3-autor", null);
-    expect(
-      (await revision(f.app, f.admin, f.id, f.anker.sourceRecordId ?? "")).statusCode,
-    ).toBe(404);
-    expect(
-      (await f.app.inject({ method: "GET", url: route, headers: f.admin })).statusCode,
-    ).toBe(404);
+    expect((await revision(f.app, f.admin, f.id, f.anker.sourceRecordId ?? "")).statusCode).toBe(
+      404,
+    );
+    expect((await f.app.inject({ method: "GET", url: route, headers: f.admin })).statusCode).toBe(
+      404,
+    );
     // Auch die Absatzprojektion muss den aktuellen Space an dieselbe Sichtbarkeitsregel tragen.
     const danach = await f.dienst.lesen(f.anweisung.id, OFFEN);
     expect(danach.bausteine).toHaveLength(0);
