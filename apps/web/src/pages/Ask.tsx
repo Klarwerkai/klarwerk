@@ -604,6 +604,14 @@ interface NichtHilfreichErledigt {
   entwurfId: string | null;
 }
 
+function ausstehendeAntwortpruefung() {
+  return {
+    epoche: anfrageEpoche(),
+    begonnen: new Map<string, object>(),
+    belegt: new Set<string>(),
+  };
+}
+
 export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
@@ -743,7 +751,20 @@ export function Ask(): JSX.Element {
   const [loesungsweg, setLoesungsweg] = useState(false);
   const loesungswegGriffRef = useRef<HTMLButtonElement | null>(null);
   const [beispiele, setBeispiele] = useState(false);
-  const [result, setResult] = useState<AnswerResult | null>(anfang?.antwort?.result ?? null);
+  const [stehendesResult, setResult] = useState<AnswerResult | null>(
+    anfang?.antwort?.result ?? null,
+  );
+  const [antwortRechtePruefen, setAntwortRechtePruefen] = useState(
+    anfang?.antwort?.rechtepruefungAusstehend === true,
+  );
+  const rechtePruefung = useRef(antwortRechtePruefen ? ausstehendeAntwortpruefung() : null);
+  // Eine gemeinsame Inhaltsfreigabe: auch Quellen, Auszüge, Nebenblätter und Exporte lesen
+  // ausschließlich `result`. Der alte Stand bleibt nur zur erneuten Quellenprüfung erhalten.
+  const result = antwortRechtePruefen ? null : stehendesResult;
+  const antwortJetzt = useRef({ stehendesResult, quellenStand, beobachtet, antwortAm });
+  antwortJetzt.current = { stehendesResult, quellenStand, beobachtet, antwortAm };
+  const arbeitskontoJetzt = useRef({ konto, standFuer });
+  arbeitskontoJetzt.current = { konto, standFuer };
   // Eine neue (oder keine) Antwort: was gerade vorgelesen wird, gilt nicht mehr.
   const vorlesenStoppen = vorlesen.stoppen;
   // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — genau beim Antwortwechsel stoppen.
@@ -999,14 +1020,90 @@ export function Ask(): JSX.Element {
     return () => clearInterval(timer);
   }, [warteBeginn]);
   useEffect(() => {
-    const abmelden = aufRechtekontextwechsel(() => askLauf.current?.steuerung.abort());
+    const abmelden = aufRechtekontextwechsel(() => {
+      askLauf.current?.steuerung.abort();
+      rechtePruefung.current = ausstehendeAntwortpruefung();
+      setAntwortRechtePruefen(true);
+      vorlesenStoppen();
+      setMehr(false);
+      setLoesungsweg(false);
+      // Synchron auch den bestehenden Arbeitsstand entwerten: Unmount vor dem nächsten
+      // React-Effekt darf ihn nicht wieder nutzbar machen. Eigenen Entwurf und Faden behalten.
+      const jetzt = arbeitskontoJetzt.current;
+      if (jetzt.konto !== null && jetzt.konto === jetzt.standFuer) {
+        const stand = arbeitsstandLesen(fragenSpeicher(), jetzt.konto);
+        if (stand?.antwort) {
+          arbeitsstandSchreiben(fragenSpeicher(), jetzt.konto, {
+            ...stand,
+            antwort: { ...stand.antwort, rechtepruefungAusstehend: true },
+          });
+        }
+      }
+    });
+    const abfrageAbmelden = qc.getQueryCache().subscribe((ereignis) => {
+      const pruefung = rechtePruefung.current;
+      if (!pruefung || pruefung.epoche !== anfrageEpoche() || ereignis.type !== "updated") return;
+      const { query, action } = ereignis;
+      const key = query.queryKey;
+      const art =
+        key[0] === "kos" && key.length === 2 && key[1] === undefined
+          ? "kos"
+          : key[0] === "conflicts" && key.length === 1
+            ? "conflicts"
+            : null;
+      if (art === null) return;
+      if (action.type === "fetch") {
+        pruefung.begonnen.set(art, query);
+        pruefung.belegt.delete(art);
+      } else if (action.type === "error") {
+        pruefung.begonnen.delete(art);
+        pruefung.belegt.delete(art);
+      } else if (
+        action.type === "success" &&
+        !action.manual &&
+        pruefung.begonnen.get(art) === query
+      ) {
+        pruefung.belegt.add(art);
+        if (!pruefung.belegt.has("kos") || !pruefung.belegt.has("conflicts")) return;
+        const bestand = qc.getQueryData<ReturnType<typeof useKos>["data"]>(["kos", undefined]);
+        const jetzt = antwortJetzt.current;
+        const antwort = jetzt.stehendesResult;
+        if (
+          bestand &&
+          (!antwort ||
+            (antwort.sources.every((id) => bestand.some((ko) => ko.id === id)) &&
+              antwortFrische(
+                {
+                  quellen: antwort.sources,
+                  stand: jetzt.quellenStand,
+                  beobachtet: jetzt.beobachtet,
+                  am: jetzt.antwortAm,
+                },
+                bestand,
+                qc.getQueryState(["kos", undefined])?.dataUpdatedAt ?? 0,
+              ) !== "ueberholt"))
+        ) {
+          rechtePruefung.current = null;
+          setAntwortRechtePruefen(false);
+        }
+      }
+    });
     return () => {
       abmelden();
+      abfrageAbmelden();
       const lauf = askLauf.current;
       askLauf.current = null;
       lauf?.steuerung.abort();
     };
-  }, []);
+  }, [qc, vorlesenStoppen]);
+  // Ein als gesperrt gespeicherter Stand erbt keine erfolgreichen Cachewerte. Nach der
+  // Anmeldung des Hörers müssen beide normalen Abfragen tatsächlich neu beginnen und ankommen.
+  useEffect(() => {
+    if (konto !== null && konto === standFuer && rechtePruefung.current) {
+      void qc.resetQueries({ queryKey: ["kos", undefined], exact: true });
+      void qc.resetQueries({ queryKey: ["conflicts"], exact: true });
+    }
+  }, [qc, konto, standFuer]);
   const ask = useMutation({
     mutationFn: (anfrage: AskAnfrage) => {
       const { lauf } = anfrage;
@@ -1106,6 +1203,8 @@ export function Ask(): JSX.Element {
       // R-0310: `selectAnswer` lässt nur die belegten Absätze stehen (Marke je Absatz; ohne belegten
       // Absatz die Lücke). Anzeige, Export, Kopieren, Druck und Vorlesen lesen alle diesen Stand.
       const angekommen = leereAntwortAlsLuecke(selectAnswer(r));
+      rechtePruefung.current = null;
+      setAntwortRechtePruefen(false);
       setResult(angekommen);
       // R-0338 (Ben, Nacharbeit 3): die Fassung ihrer Quellen, wie der SERVER sie zu dieser Antwort
       // gelesen hat — und daneben, getrennt, was diese Fläche gerade von ihnen kennt (nur Untergrenze
@@ -1277,10 +1376,13 @@ export function Ask(): JSX.Element {
     arbeitsstandSchreiben(fragenSpeicher(), konto, {
       entwurf: q,
       antwort:
-        result && frage
+        stehendesResult && frage
           ? {
               frage,
-              result,
+              result: stehendesResult,
+              ...(antwortRechtePruefen || rechtePruefung.current
+                ? { rechtepruefungAusstehend: true }
+                : {}),
               receipt,
               verschlossen,
               gapId,
@@ -1314,7 +1416,8 @@ export function Ask(): JSX.Element {
     konto,
     standFuer,
     q,
-    result,
+    stehendesResult,
+    antwortRechtePruefen,
     receipt,
     answerId,
     verschlossen,
@@ -1396,6 +1499,9 @@ export function Ask(): JSX.Element {
       setSzenario(gelesen?.szenario ?? LEERES_SZENARIO);
     }
     if (antwortNehmen) {
+      const pruefen = antwort?.rechtepruefungAusstehend === true;
+      rechtePruefung.current = pruefen ? ausstehendeAntwortpruefung() : null;
+      setAntwortRechtePruefen(pruefen);
       antwortFrage.current = antwort?.frage ?? "";
       aufgenommeneAntwort.current = antwort?.result ?? null;
       setResult(antwort?.result ?? null);
@@ -1839,7 +1945,7 @@ export function Ask(): JSX.Element {
   // R-1643 (Entscheidungs-Protokoll): dieselbe Eingabe liest auch der Druck — Kopieren, Markdown,
   // Dateien und Druck tragen damit dasselbe Protokoll (Zeitpunkt, Nutzer-ID, Argumentationskette).
   const exportEingabe = (): AnswerExportInput | null => {
-    if (!result?.answered || !effective) {
+    if (rechtePruefung.current || !karteSichtbar || !result?.answered || !effective) {
       return null;
     }
     const generatedAt = new Date().toISOString();
@@ -1987,6 +2093,7 @@ export function Ask(): JSX.Element {
   // es wieder; auf dem Bildschirm ändert sich nichts.
   const printAnswer = (): void => {
     const protokoll = exportEingabe();
+    if (!protokoll) return;
     flushSync(() => setDruckProtokoll(protokoll));
     document.body.classList.add("printing-extract");
     window.addEventListener(
@@ -2583,6 +2690,23 @@ export function Ask(): JSX.Element {
               </p>
             ) : null}
           </div>
+        ) : null}
+        {antwortRechtePruefen && stehendesResult ? (
+          <output
+            data-testid="ask-antwort-rechtepruefung"
+            className="mt-5 block text-[13px] text-muted"
+          >
+            <span>{t("fragenseite.rechtepruefung")}</span>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                void conflicts.refetch();
+                void kos.refetch();
+              }}
+            >
+              {t("ask.error.retry")}
+            </Button>
+          </output>
         ) : null}
         {/* R-0330 (Ben R1, F5): die Störung sieht nie wie Leere aus — und nie wie eine Antwort. */}
         {pruefungGestoert ? (

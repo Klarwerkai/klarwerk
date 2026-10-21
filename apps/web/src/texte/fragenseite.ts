@@ -21,6 +21,8 @@ export default {
   praefix: "fragenseite.",
   legacySchluessel: [],
   de: {
+    "fragenseite.rechtepruefung":
+      "Deine Zugriffsrechte haben sich geändert. Die bisherige Antwort bleibt verborgen, bis ihre Quellen erneut bestätigt sind.",
     "fragenseite.wiederaufnahmeBeides":
       "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld, darunter deine zuletzt angezeigte Antwort vom {{zeit}}. Sie wurde nicht neu erzeugt.",
     "fragenseite.fadenTitel":
@@ -31,6 +33,8 @@ export default {
     "fragenseite.neuFragen": "Neu fragen",
   },
   en: {
+    "fragenseite.rechtepruefung":
+      "Your access rights have changed. The previous answer stays hidden until its sources are confirmed again.",
     "fragenseite.wiederaufnahmeBeides":
       "Pick up where you left off: your unsent draft is back in the question field, with the answer you last saw, from {{zeit}}, below it. It was not generated again.",
     "fragenseite.fadenTitel":
@@ -41,6 +45,8 @@ export default {
     "fragenseite.neuFragen": "Ask again",
   },
   nl: {
+    "fragenseite.rechtepruefung":
+      "Je toegangsrechten zijn gewijzigd. Het vorige antwoord blijft verborgen totdat de bronnen opnieuw zijn bevestigd.",
     "fragenseite.wiederaufnahmeBeides":
       "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld, daaronder het antwoord dat je het laatst zag, van {{zeit}}. Het is niet opnieuw gegenereerd.",
     "fragenseite.fadenTitel":
