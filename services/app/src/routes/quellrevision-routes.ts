@@ -76,12 +76,12 @@ export function quellrevisionRoutes(deps: QuellrevisionRoutesDeps): FastifyPlugi
           const abgleich: QuellinhaltAbgleich = !revision
             ? "revision_unbekannt"
             : quellinhaltAbdruck({
-                title: inhalt.title,
-                statement: inhalt.statement,
-                ...(inhalt.bodyHtml === null ? {} : { bodyHtml: inhalt.bodyHtml }),
-                type: uebernahme.snapshot.type,
-                category: uebernahme.snapshot.category,
-              }) === revision.contentHash
+                  title: inhalt.title,
+                  statement: inhalt.statement,
+                  ...(inhalt.bodyHtml === null ? {} : { bodyHtml: inhalt.bodyHtml }),
+                  type: uebernahme.snapshot.type,
+                  category: uebernahme.snapshot.category,
+                }) === revision.contentHash
               ? "bestaetigt"
               : "abweichend";
           reply.code(200).send({
