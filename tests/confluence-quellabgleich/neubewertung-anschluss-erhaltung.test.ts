@@ -132,8 +132,8 @@ describe("Quellenneubewertung · neue Erhaltungsfälle am 510574-Anschluss", () 
     const adapter = adapterFromConfig({
       baseUrl: "https://fixture.atlassian.net/wiki", email: "fixture@example.invalid",
       apiToken: "fixture", spaceKey: "K",
-      fetchFn: (async () => ({ ok: true, status: 200, json: async () => ({ results: [] }) }) as Response)
-        as typeof fetch,
+      fetchFn: (async () =>
+        ({ ok: true, status: 200, json: async () => ({ results: [] }) }) as Response) as typeof fetch,
     });
     // Nur der neue Fehlerkanal des Marker-CAS, kein Ersatz für die alte echte Konfliktkomposition.
     const nachQuellwegfall = vi.fn(async () => {});
