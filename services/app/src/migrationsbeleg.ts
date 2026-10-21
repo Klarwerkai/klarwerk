@@ -285,6 +285,8 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "EIGENER_KALENDER_SCHEMA", risiko: "ADDITIV" },
+  // R-0468: eine CREATE TABLE IF NOT EXISTS mit PK, ohne Seed/Extension/Fremdschlüssel.
+  { stufe: "VERHALTENSARTEFAKTE_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

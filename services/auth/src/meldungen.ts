@@ -182,6 +182,11 @@ export const MELDUNGEN = {
     en: "Draft not found.",
     nl: "Concept niet gevonden.",
   },
+  DRAFT_SOURCE_NOT_AVAILABLE: {
+    de: "Die Quelle ist derzeit nicht verfügbar. Dein Entwurf bleibt erhalten.",
+    en: "The source is currently unavailable. Your draft is preserved.",
+    nl: "De bron is momenteel niet beschikbaar. Je concept blijft bewaard.",
+  },
   // JOB 4249 · DER DRITTE SATZ DER ENTWURFSROUTEN, und er gehört zum ANLEGEN, nicht zum Lesen.
   // `POST /api/drafts` nimmt seit JOB 4249 die Voraussetzung `expectedOwner` entgegen — das Konto,
   // für das der Absender seine Nutzlast zusammengestellt hat (dieselbe Bauform wie

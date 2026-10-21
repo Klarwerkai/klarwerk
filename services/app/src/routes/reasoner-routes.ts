@@ -41,6 +41,9 @@ import {
   type ReasonerReferenzWahl,
   type ReasonerSchutzstufe,
   type ReferenzOptionLage,
+  type VerhaltensDienst,
+  VerhaltensFehler,
+  type VerhaltensartefaktEingabe,
   imBindungsrahmen,
   imSchutzstufenRahmen,
   setzeSchutzstufe,
@@ -90,6 +93,39 @@ function normalizeLocale(value: unknown): ReasonerLocale {
 export type StoredLookup = { found: boolean; level?: Confidentiality | null };
 
 const CLIENT_TEXT_SOURCES = new Set(["draft", "transient-document"]);
+
+// R-0468: Netzwerktypen prüfen, bevor der erhaltene Dienst trim/Enum-/Längenregeln anwendet.
+function verhaltensEingabe(raw: unknown): VerhaltensartefaktEingabe | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const body = raw as Record<string, unknown>;
+  const eingabe: VerhaltensartefaktEingabe = {};
+  for (const feld of ["schluessel", "aufgabe", "art", "inhalt", "status"] as const) {
+    const wert = body[feld];
+    if (wert === undefined) {
+      continue;
+    }
+    if (typeof wert !== "string") {
+      return null;
+    }
+    eingabe[feld] = wert;
+  }
+  const herkunft = body.herkunftsfall;
+  if (herkunft !== undefined) {
+    if (herkunft !== null && typeof herkunft !== "string") {
+      return null;
+    }
+    eingabe.herkunftsfall = herkunft;
+  }
+  return eingabe;
+}
+
+const VERHALTEN_FEHLERANTWORT: Record<VerhaltensFehler["grund"], readonly [number, string]> = {
+  eingabe: [400, "BAD_REQUEST"],
+  unbekannt: [404, "NOT_FOUND"],
+  voll: [409, "VERHALTEN_VOLL"],
+};
 
 // N11b: „ohne Einstufung" heißt fehlende/ungültige Stufe ODER das gewaschene „vertraulich" mit dem
 // booleschen Marker. Ausdrückliches vertraulich/streng_vertraulich ohne Marker fällt nie darunter.
@@ -157,6 +193,8 @@ export interface ReasonerRoutesDeps {
   // NICHT optional in der Wirkung: fehlt er, wird eine ERWEITERUNG der Freigabe abgelehnt (503),
   // statt still zu gelten. Eine Freigabe, die niemand belegen kann, ist keine.
   audit?: AuditService | undefined;
+  /** R-0468: optionaler vorhandener Dienst; ohne ihn keine zusätzlichen Admin-Wege. */
+  verhalten?: VerhaltensDienst | undefined;
   // REF-03: Preisgrundlage und Kosten eines Funktionschecks — dieselbe Preisliste wie im
   // KI-Laufprotokoll. Optional: ohne sie stehen Kosten als „nicht berechenbar" da.
   modelRuns?: Pick<ModelRunService, "kostenEinesAufrufs" | "preisgrundlage"> | undefined;
@@ -557,6 +595,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     externalSearch,
     modelRuns,
     referenz,
+    verhalten,
   } = deps;
 
   // REF-03: ein Funktionscheck zur Zeit — keine parallele Steuerung, kein Stapel.
@@ -1774,6 +1813,49 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         }
       },
     );
+
+    // R-0468: Admin-Regeln sind Daten; ihre Freigabe erteilt kein Ausleitungsrecht.
+    if (verhalten) {
+      app.get("/api/reasoner/verhaltensartefakte", async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        reply.code(200).send({
+          geltend: await verhalten.geltende(),
+          verlauf: await verhalten.verlauf(),
+        });
+      });
+      app.post<{ Body: unknown }>("/api/reasoner/verhaltensartefakte", async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const eingabe = verhaltensEingabe(request.body);
+        if (!eingabe) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "Ungültige Verhaltensangaben." });
+          return;
+        }
+        try {
+          reply.code(201).send(await verhalten.fuehreFort(eingabe, user.id));
+        } catch (error) {
+          if (error instanceof VerhaltensFehler) {
+            const [code, kennung] = VERHALTEN_FEHLERANTWORT[error.grund];
+            reply.code(code).send({ error: kennung, message: error.message });
+            return;
+          }
+          // Die bestehende PG-Primärschlüsselregel wird nicht zum stillen Überschreiben.
+          if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+            reply.code(409).send({
+              error: "VERHALTEN_KONFLIKT",
+              message: "Die Fassung wurde zwischenzeitlich geändert. Bitte den Verlauf neu lesen.",
+            });
+            return;
+          }
+          throw error;
+        }
+      });
+    }
 
     // Key-Test (Pedi 02.07.): echter Mini-Aufruf gegen das konfigurierte Modell — beweist,
     // ob der hinterlegte Schlüssel WIRKLICH funktioniert (401 wird ehrlich benannt).

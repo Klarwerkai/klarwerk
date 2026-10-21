@@ -39,6 +39,7 @@ import {
 import { kernaussageAusHtml, kernaussageAusKlartext, sanitizeHtml } from "../../../structure";
 import type { ValidationService } from "../../../validation";
 import type { AiCheckWorker } from "../ai-check-worker";
+import type { ChatEntwurfAusgabe } from "../chat-entwurf-ausgabe";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 // JOB 3400: die serverseitige Bildableitung des Add-in-Imports (sharp). Sie liegt in `services/app`
@@ -942,6 +943,7 @@ function draftBodyTooLargeErrorHandler(
 export interface CaptureRoutesDeps {
   capture: CaptureService;
   ko: KoService;
+  chatEntwurfAusgabe?: ChatEntwurfAusgabe;
   // SCRUM-395: Prüfer-Vorschlag beim Promote (Zuweisung + Benachrichtigung wie im Board).
   validation: ValidationService;
   notifyAssignment?: AssignmentNotifier;
@@ -1087,6 +1089,28 @@ function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean
 }
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
+  const entwuerfeAusgabe = async <T extends Draft>(drafts: T[], user: SessionUser): Promise<T[]> =>
+    deps.chatEntwurfAusgabe ? deps.chatEntwurfAusgabe.sicht(drafts, user) : drafts;
+  const entwurfAusgabe = async <T extends Draft>(draft: T, user: SessionUser): Promise<T> =>
+    (await entwuerfeAusgabe([draft], user))[0] ?? draft;
+  const chatVerarbeitungGesperrt = async (
+    draft: Draft | undefined,
+    user: SessionUser,
+    reply: FastifyReply,
+    request: FastifyRequest,
+  ): Promise<boolean> => {
+    if (
+      !draft ||
+      !deps.chatEntwurfAusgabe ||
+      (await deps.chatEntwurfAusgabe.verarbeitungErlaubt(draft, user))
+    )
+      return false;
+    reply.code(409).send({
+      error: "SOURCE_NOT_AVAILABLE",
+      message: meldung("DRAFT_SOURCE_NOT_AVAILABLE", sprache(request)),
+    });
+    return true;
+  };
   const {
     capture,
     ko,
@@ -1214,13 +1238,16 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         { mitPool: true },
       );
       reply.code(200).send(
-        visibleDraftsFor(
+        await entwuerfeAusgabe(
+          visibleDraftsFor(
+            user,
+            geprueft.map((eintrag) => eintrag.draft),
+          ).map((draft) => {
+            const fehlend = geprueft.find((e) => e.draft.id === draft.id)?.anchorsMissing ?? [];
+            return fehlend.length > 0 ? { ...draft, anchorsMissing: fehlend } : draft;
+          }),
           user,
-          geprueft.map((eintrag) => eintrag.draft),
-        ).map((draft) => {
-          const fehlend = geprueft.find((e) => e.draft.id === draft.id)?.anchorsMissing ?? [];
-          return fehlend.length > 0 ? { ...draft, anchorsMissing: fehlend } : draft;
-        }),
+        ),
       );
     });
 
@@ -1662,12 +1689,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           .send({ error: "NOT_FOUND", message: meldung("DRAFT_NOT_FOUND", sprache(request)) });
         return;
       }
+      const sichtbar = await entwurfAusgabe(fortsetzung.draft, user);
       reply
         .code(200)
         .send(
           fortsetzung.anchorsMissing.length > 0
-            ? { ...fortsetzung.draft, anchorsMissing: fortsetzung.anchorsMissing }
-            : fortsetzung.draft,
+            ? { ...sichtbar, anchorsMissing: fortsetzung.anchorsMissing }
+            : sichtbar,
         );
     });
 
@@ -1726,8 +1754,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
           return;
         }
-        const antwort = await capture.entwuerfeMitGleichemInhalt(request.params.id, (draft) =>
-          canSeeDraft(user, draft),
+        const antwort = await capture.entwuerfeMitGleichemInhalt(
+          request.params.id,
+          (draft) => canSeeDraft(user, draft),
+          (drafts) => entwuerfeAusgabe(drafts, user),
         );
         reply.code(200).send(antwort);
       },
@@ -1769,16 +1799,30 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           const { expectedUpdatedAt, ...payload } = gestalt.payload as DraftPayload & {
             expectedUpdatedAt?: unknown;
           };
+          // Auch Speichern darf die unverändert aufbewahrte Chatfassung bei Entzug nicht durch
+          // eine alte oder bereits reduzierte Clientdarstellung ersetzen.
+          if (
+            await chatVerarbeitungGesperrt(
+              await capture.getDraft(request.params.id),
+              user,
+              reply,
+              request,
+            )
+          )
+            return;
           reply.code(200).send(
-            await capture.continueDraft(
-              request.params.id,
-              // JOB 2703 D2: auch beim Speichern — sonst holte der Speicherweg die ungekuerzte
-              // Rohaussage des Clients an der Anlage vorbei in die Ablage.
-              mitKanonischerAussage(payload as DraftPayload),
-              user.id,
-              {
-                expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),
-              },
+            await entwurfAusgabe(
+              await capture.continueDraft(
+                request.params.id,
+                // JOB 2703 D2: auch beim Speichern — sonst holte der Speicherweg die ungekuerzte
+                // Rohaussage des Clients an der Anlage vorbei in die Ablage.
+                mitKanonischerAussage(payload as DraftPayload),
+                user.id,
+                {
+                  expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),
+                },
+              ),
+              user,
             ),
           );
         } catch (error) {
@@ -1846,7 +1890,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               : draft,
           );
         }
-        reply.code(200).send(antwort);
+        reply.code(200).send(await entwuerfeAusgabe(antwort, user));
       } catch (error) {
         sendError(reply, error);
       }
@@ -1876,7 +1920,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           sendeQuellsperre(reply);
           return;
         }
-        reply.code(200).send(await capture.restoreDraft(request.params.id));
+        reply
+          .code(200)
+          .send(await entwurfAusgabe(await capture.restoreDraft(request.params.id), user));
       } catch (error) {
         sendError(reply, error);
       }
@@ -1940,7 +1986,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           ) {
             return;
           }
-          reply.code(200).send(await capture.entwurfInPool(request.params.id, imPool));
+          reply
+            .code(200)
+            .send(
+              await entwurfAusgabe(await capture.entwurfInPool(request.params.id, imPool), user),
+            );
         } catch (error) {
           sendError(reply, error);
         }
@@ -2215,6 +2265,18 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           ) {
             return;
           }
+          // RC1: vor jedem Clientmerge entscheiden. Ein alter Tab darf den entzogenen Wortlaut
+          // weder zurückschreiben noch in ein neues Wissensobjekt übertragen; der eigene Entwurf
+          // bleibt einschließlich belegter Eigenarbeit und voller gespeicherter Fassung erhalten.
+          if (
+            await chatVerarbeitungGesperrt(
+              await capture.getDraft(request.params.id),
+              user,
+              reply,
+              request,
+            )
+          )
+            return;
           // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
           // Vorgang, hinter dem Nachschlag. Damit braucht die Oberfläche kein vorgeschaltetes
           // `PUT /api/drafts/:id` mehr, das nach einem gelungenen ersten Lauf mit 404 abfinge.
@@ -2247,6 +2309,15 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             sendeQuellsperre(reply);
             return;
           }
+          if (
+            await chatVerarbeitungGesperrt(
+              await capture.getDraft(request.params.id),
+              user,
+              reply,
+              request,
+            )
+          )
+            return;
           const input = await capture.toKoInput(request.params.id);
           // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,
           // gegen den GESPEICHERTEN Vorlagenbezug (der mitgeschickte Stand ist oben schon gemischt).
