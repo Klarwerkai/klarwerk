@@ -55,9 +55,14 @@ async function routen() {
   };
   const app = buildApp(services);
   apps.push(app);
-  const identity = { name: "Prüfperson", email: "quelle@fixture.example", password: "fixture-pass-123" };
-  expect((await app.inject({ method: "POST", url: "/api/auth/register", payload: identity })).statusCode)
-    .toBe(201);
+  const identity = {
+    name: "Prüfperson",
+    email: "quelle@fixture.example",
+    password: "fixture-pass-123",
+  };
+  expect(
+    (await app.inject({ method: "POST", url: "/api/auth/register", payload: identity })).statusCode,
+  ).toBe(201);
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: identity });
   expect(login.statusCode).toBe(200);
   const headers = { authorization: `Bearer ${login.json().token}` };
@@ -66,7 +71,13 @@ async function routen() {
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { title, statement: title, type: "best_practice", category: "Anlage", confidentiality: "intern" },
+      payload: {
+        title,
+        statement: title,
+        type: "best_practice",
+        category: "Anlage",
+        confidentiality: "intern",
+      },
     });
     expect(response.statusCode, response.body).toBe(201);
     return response.json().id as string;
@@ -77,13 +88,21 @@ async function routen() {
     { koA, koB, type: "context", description: "Die Anwendungsbedingungen sind zu klären." },
     "pruefperson",
   );
-  await services.conflicts.resolve(conflict.id, "pruefperson", "Die frühere Regel gilt im benannten Fall.");
-  const nachholen = (id: string, sourceIds: string[]) => app.inject({
-    method: "PUT",
-    url: `/api/kos/${id}`,
-    headers,
-    payload: { action: "konflikt-neubewertung", neubewertung: { art: "quelle_entfernt", sourceIds } },
-  });
+  await services.conflicts.resolve(
+    conflict.id,
+    "pruefperson",
+    "Die frühere Regel gilt im benannten Fall.",
+  );
+  const nachholen = (id: string, sourceIds: string[]) =>
+    app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers,
+      payload: {
+        action: "konflikt-neubewertung",
+        neubewertung: { art: "quelle_entfernt", sourceIds },
+      },
+    });
   return { app, repos, services, headers, koB, conflict, nachholen };
 }
 
@@ -101,13 +120,15 @@ describe("Quellenneubewertung · neue Erhaltungsfälle am 510574-Anschluss", () 
       }
       await update(next, tx);
     });
-    await expect(w.ko.markSourceRemoved(
-      w.item.id,
-      { provider: "Confluence", externalId: "P-CAS" },
-      "2026-10-21T01:00:00.000Z",
-      "pruefperson",
-      true,
-    )).rejects.toMatchObject({ code: "STALE_WRITE" });
+    await expect(
+      w.ko.markSourceRemoved(
+        w.item.id,
+        { provider: "Confluence", externalId: "P-CAS" },
+        "2026-10-21T01:00:00.000Z",
+        "pruefperson",
+        true,
+      ),
+    ).rejects.toMatchObject({ code: "STALE_WRITE" });
     const fresh = await w.repo.findById(w.item.id);
     expect(fresh).toMatchObject({ title: "Fremde Änderung", confidentiality: "vertraulich" });
     expect(fresh?.sources[0]).not.toHaveProperty("sourceRemovedAt");
@@ -116,8 +137,13 @@ describe("Quellenneubewertung · neue Erhaltungsfälle am 510574-Anschluss", () 
 
   it("C2 · CAS-Ausfall beim Entfernen des Merkers bleibt im Importbericht ausstehend", async () => {
     const w = await quellAnker();
-    await w.ko.markSourceRemoved(w.item.id, { provider: "Confluence", externalId: "P-CAS" },
-      "2026-10-21T01:00:00.000Z", "pruefperson", true);
+    await w.ko.markSourceRemoved(
+      w.item.id,
+      { provider: "Confluence", externalId: "P-CAS" },
+      "2026-10-21T01:00:00.000Z",
+      "pruefperson",
+      true,
+    );
     const update = w.repo.update.bind(w.repo);
     let eingeschoben = false;
     vi.spyOn(w.repo, "update").mockImplementation(async (next, tx) => {
@@ -130,22 +156,33 @@ describe("Quellenneubewertung · neue Erhaltungsfälle am 510574-Anschluss", () 
       await update(next, tx);
     });
     const adapter = adapterFromConfig({
-      baseUrl: "https://fixture.atlassian.net/wiki", email: "fixture@example.invalid",
-      apiToken: "fixture", spaceKey: "K",
+      baseUrl: "https://fixture.atlassian.net/wiki",
+      email: "fixture@example.invalid",
+      apiToken: "fixture",
+      spaceKey: "K",
       fetchFn: (async () =>
-        ({ ok: true, status: 200, json: async () => ({ results: [] }) }) as Response) as typeof fetch,
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({ results: [] }),
+        }) as Response) as typeof fetch,
     });
     // Nur der neue Fehlerkanal des Marker-CAS, kein Ersatz für die alte echte Konfliktkomposition.
     const nachQuellwegfall = vi.fn(async () => {});
     const result = await runConfluenceImport({
-      adapter, koService: w.ko, library: new LibraryService({ koService: w.ko, externalUpsert: true }),
-      actor: "pruefperson", dryRun: false, nachQuellwegfall,
+      adapter,
+      koService: w.ko,
+      library: new LibraryService({ koService: w.ko, externalUpsert: true }),
+      actor: "pruefperson",
+      dryRun: false,
+      nachQuellwegfall,
     });
     expect(nachQuellwegfall).toHaveBeenCalledOnce();
     expect(result.sourceSync?.neubewertungOffen).toEqual(["P-CAS"]);
     expect(result.sourceSync?.removed).toEqual([]);
     expect((await w.repo.findById(w.item.id))?.sources[0]).toMatchObject({
-      sourceRemovedAt: "2026-10-21T01:00:00.000Z", neubewertungOffen: true,
+      sourceRemovedAt: "2026-10-21T01:00:00.000Z",
+      neubewertungOffen: true,
     });
     expect((await w.repo.findById(w.item.id))?.title).toBe("Zwischenzeitlich geändert");
   });
@@ -158,23 +195,30 @@ describe("Quellenneubewertung · neue Erhaltungsfälle am 510574-Anschluss", () 
     const sourceId = sourced.sources.at(-1)?.id;
     if (!sourceId) throw new Error("Quellenfixture fehlt");
     const before = await w.services.ko.get(w.koB);
-    vi.spyOn(w.services.conflicts, "vermerkeNeupruefung")
-      .mockRejectedValueOnce(new Error("Konfliktablage ausgefallen"));
-    const removed = await w.app.inject({ method: "PUT", url: `/api/kos/${w.koB}`, headers: w.headers,
-      payload: { action: "remove-source", sourceId } });
+    vi.spyOn(w.services.conflicts, "vermerkeNeupruefung").mockRejectedValueOnce(
+      new Error("Konfliktablage ausgefallen"),
+    );
+    const removed = await w.app.inject({
+      method: "PUT",
+      url: `/api/kos/${w.koB}`,
+      headers: w.headers,
+      payload: { action: "remove-source", sourceId },
+    });
     expect(removed.statusCode, removed.body).toBe(200);
     expect(removed.json().followUpsFailed).toEqual(["konfliktentscheidung"]);
     expect((await w.services.ko.get(w.koB))?.sources.some((s) => s.id === sourceId)).toBe(false);
     expect((await w.nachholen(w.koB, [sourceId])).statusCode).toBe(200);
-    expect((await w.services.conflicts.get(w.conflict.id))).toMatchObject({
-      status: "geloest", decision: "Die frühere Regel gilt im benannten Fall.",
+    expect(await w.services.conflicts.get(w.conflict.id)).toMatchObject({
+      status: "geloest",
+      decision: "Die frühere Regel gilt im benannten Fall.",
       neupruefung: [expect.objectContaining({ koId: w.koB, sourceIds: [sourceId] })],
     });
     const after = await w.services.ko.get(w.koB);
     expect(after?.version).toBe(before?.version);
     expect(after?.trust).toBe(before?.trust);
-    expect((await w.services.lifecycle.offeneFaelle([w.koB]))[0]?.anlaesse)
-      .toEqual([expect.objectContaining({ grund: "konflikt" })]);
+    expect((await w.services.lifecycle.offeneFaelle([w.koB]))[0]?.anlaesse).toEqual([
+      expect.objectContaining({ grund: "konflikt" }),
+    ]);
   });
 
   it("R1 · heutiger Rechteentzug sperrt Nachholen vor der Konfliktauflösung ohne Existenzsignal", async () => {
@@ -192,11 +236,15 @@ describe("Quellenneubewertung · neue Erhaltungsfälle am 510574-Anschluss", () 
   });
 
   it("R2 · Feldredaktion erhält den Anlass und entfernt Quellenkennungen der ausgeblendeten Seite", () => {
-    const base = { koA: "a", koB: "b", description: "Vertrauliche Gegenüberstellung",
+    const base = {
+      koA: "a",
+      koB: "b",
+      description: "Vertrauliche Gegenüberstellung",
       neupruefung: [
         { seite: "a" as const, sourceIds: ["sichtbar"], art: "quelle_entfernt" },
         { seite: "b" as const, sourceIds: ["verborgen"], art: "quelle_entfernt" },
-      ] };
+      ],
+    };
     const redacted = redigiereKonflikt(base, { a: true, b: false });
     expect(redacted.description).toBe("");
     expect(redacted.neupruefung.map((n) => n.sourceIds)).toEqual([["sichtbar"], []]);

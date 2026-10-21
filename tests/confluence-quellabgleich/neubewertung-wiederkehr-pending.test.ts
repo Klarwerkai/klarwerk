@@ -57,26 +57,35 @@ it("W1 · wiedergekehrte Quelle behält den historischen Pending-Nachlauf bis zu
     }) as typeof fetch,
   });
   const guards = makeGuards(services.auth);
-  app.register(confluenceImportRoutes({
-    library: services.library,
-    koService: services.ko,
-    guards,
-    makeAdapter: () => adapter,
-    importRuns: services.importRuns,
-    quellabgleich: services.quellabgleich,
-    nachQuellwegfall: async (koId, sourceIds, actor) => {
-      await quellenNeubewertung(services, koId, actor, "quelle_entfernt", sourceIds);
-    },
-  }));
-  app.register(importRunRoutes({
-    importRuns: services.importRuns,
-    externalSources: services.externalSources,
-    quellabgleich: services.quellabgleich,
-    guards,
-  }));
-  const identity = { name: "Prüfperson", email: "wiederkehr@fixture.example", password: "fixture-pass-123" };
-  expect((await app.inject({ method: "POST", url: "/api/auth/register", payload: identity })).statusCode)
-    .toBe(201);
+  app.register(
+    confluenceImportRoutes({
+      library: services.library,
+      koService: services.ko,
+      guards,
+      makeAdapter: () => adapter,
+      importRuns: services.importRuns,
+      quellabgleich: services.quellabgleich,
+      nachQuellwegfall: async (koId, sourceIds, actor) => {
+        await quellenNeubewertung(services, koId, actor, "quelle_entfernt", sourceIds);
+      },
+    }),
+  );
+  app.register(
+    importRunRoutes({
+      importRuns: services.importRuns,
+      externalSources: services.externalSources,
+      quellabgleich: services.quellabgleich,
+      guards,
+    }),
+  );
+  const identity = {
+    name: "Prüfperson",
+    email: "wiederkehr@fixture.example",
+    password: "fixture-pass-123",
+  };
+  expect(
+    (await app.inject({ method: "POST", url: "/api/auth/register", payload: identity })).statusCode,
+  ).toBe(201);
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: identity });
   expect(login.statusCode).toBe(200);
   const headers = { authorization: `Bearer ${login.json().token}` };
@@ -84,48 +93,95 @@ it("W1 · wiedergekehrte Quelle behält den historischen Pending-Nachlauf bis zu
   // Herkunftsanker der kontrollierten Fixture; der historische Lösch-/Pending-Zustand wird
   // anschließend über den echten CAS-Dienst geschrieben, nicht rückwirkend erfunden.
   const item = await services.ko.create({
-    title: "Gebundene Regel", statement: "Die alte Entscheidung bleibt nachvollziehbar.",
-    type: "best_practice", category: "Anlage", author: "fixture",
-    sources: [{
-      id: "anker-return", label: "Quellseite", url: null, excerpt: null,
-      kind: "external", peerValidated: false, author: "fixture",
-      at: "2026-10-21T00:00:00.000Z", provider: "Confluence",
-      externalId: "P-RETURN", spaceKey: "K", sourceVersion: 1,
-    }],
+    title: "Gebundene Regel",
+    statement: "Die alte Entscheidung bleibt nachvollziehbar.",
+    type: "best_practice",
+    category: "Anlage",
+    author: "fixture",
+    sources: [
+      {
+        id: "anker-return",
+        label: "Quellseite",
+        url: null,
+        excerpt: null,
+        kind: "external",
+        peerValidated: false,
+        author: "fixture",
+        at: "2026-10-21T00:00:00.000Z",
+        provider: "Confluence",
+        externalId: "P-RETURN",
+        spaceKey: "K",
+        sourceVersion: 1,
+      },
+    ],
   });
   const other = await services.ko.create({
-    title: "Gegenstelle", statement: "Andere Anwendungsbedingung.",
-    type: "best_practice", category: "Anlage", author: "fixture",
+    title: "Gegenstelle",
+    statement: "Andere Anwendungsbedingung.",
+    type: "best_practice",
+    category: "Anlage",
+    author: "fixture",
   });
-  const conflict = await services.conflicts.create({
-    koA: item.id, koB: other.id, type: "context", description: "Geltungsbedingungen klären.",
-  }, "fixture");
-  await services.conflicts.resolve(conflict.id, "fixture", "Die dokumentierte Entscheidung gilt für die damalige Grundlage.");
+  const conflict = await services.conflicts.create(
+    {
+      koA: item.id,
+      koB: other.id,
+      type: "context",
+      description: "Geltungsbedingungen klären.",
+    },
+    "fixture",
+  );
+  await services.conflicts.resolve(
+    conflict.id,
+    "fixture",
+    "Die dokumentierte Entscheidung gilt für die damalige Grundlage.",
+  );
   const removedAt = "2026-10-21T01:00:00.000Z";
-  await services.ko.markSourceRemoved(item.id,
-    { provider: "Confluence", externalId: "P-RETURN" }, removedAt, "fixture", true);
+  await services.ko.markSourceRemoved(
+    item.id,
+    { provider: "Confluence", externalId: "P-RETURN" },
+    removedAt,
+    "fixture",
+    true,
+  );
   const run = async () => {
     if (!app) throw new Error("App-Fixture fehlt");
-    const start = await app.inject({ method: "POST", url: "/api/admin/import/confluence", headers, payload: {} });
+    const start = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence",
+      headers,
+      payload: {},
+    });
     expect(start.statusCode, start.body).toBe(202);
     const importId = start.json().importId as string;
     await warteAufOffeneImportLaeufe(services.importRuns);
-    const result = await app.inject({ method: "GET", url: `/api/admin/import/runs/${importId}`, headers });
+    const result = await app.inject({
+      method: "GET",
+      url: `/api/admin/import/runs/${importId}`,
+      headers,
+    });
     expect(result.statusCode, result.body).toBe(200);
     return result.json();
   };
 
-  const review = vi.spyOn(services.conflicts, "vermerkeNeupruefung")
+  const review = vi
+    .spyOn(services.conflicts, "vermerkeNeupruefung")
     .mockRejectedValueOnce(new Error("Nachlauf während der Wiederkehr ausgefallen"));
   const partial = await run();
   expect(partial.status).toBe("PARTIAL");
   expect(partial.failureCode).toBe("SOURCE_SYNC_INCOMPLETE");
   expect(partial.sourceSync).toMatchObject({
-    removed: [], restored: ["P-RETURN"], neubewertungOffen: ["P-RETURN"], neubewertungOffenAnzahl: 1,
+    removed: [],
+    restored: ["P-RETURN"],
+    neubewertungOffen: ["P-RETURN"],
+    neubewertungOffenAnzahl: 1,
   });
   const returned = (await services.ko.get(item.id))?.sources.find((s) => s.id === "anker-return");
   expect(returned).not.toHaveProperty("sourceRemovedAt");
-  expect(returned).toMatchObject({ neubewertungOffen: true, neubewertungQuellwegfallAm: removedAt });
+  expect(returned).toMatchObject({
+    neubewertungOffen: true,
+    neubewertungQuellwegfallAm: removedAt,
+  });
   expect((await services.conflicts.get(conflict.id))?.neupruefung).toBeUndefined();
 
   // Zweiter Abruf desselben einen Gegenfalls: die Seite ist bereits zurück, ihr früherer
@@ -140,8 +196,9 @@ it("W1 · wiedergekehrte Quelle behält den historischen Pending-Nachlauf bis zu
   expect(caughtUp).not.toHaveProperty("sourceRemovedAt");
   expect(caughtUp).not.toHaveProperty("neubewertungOffen");
   expect(caughtUp).not.toHaveProperty("neubewertungQuellwegfallAm");
-  expect((await services.conflicts.get(conflict.id))).toMatchObject({
-    status: "geloest", decision: "Die dokumentierte Entscheidung gilt für die damalige Grundlage.",
+  expect(await services.conflicts.get(conflict.id)).toMatchObject({
+    status: "geloest",
+    decision: "Die dokumentierte Entscheidung gilt für die damalige Grundlage.",
     neupruefung: [expect.objectContaining({ art: "quelle_entfernt", sourceIds: ["anker-return"] })],
   });
 });
