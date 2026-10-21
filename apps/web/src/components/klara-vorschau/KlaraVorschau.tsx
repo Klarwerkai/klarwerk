@@ -176,6 +176,7 @@ import {
   leseEcht,
   objektbezugAus,
   pruefeEcht,
+  starteQuellpruefung,
   useEchtGespraech,
 } from "./echt";
 import {
@@ -491,8 +492,12 @@ export function KlaraVorschau({
     if (istEcht) {
       void pruefeEcht(kontoId, t);
     }
-    // Vorhandener Sessiontakt/Fokus prüft auch bei gleichem Rechteheader erneut. Kein zweiter Timer.
+    // Erfolgreiche Sessionprüfung ist auch bei gleichem Rechteheader ein zusätzlicher Anlass.
   }, [kontoId, istEcht, t, rechteEpoche, sitzung.sitzungGeprueftAm]);
+  useEffect(() => {
+    if (kontoId && istEcht) return starteQuellpruefung(kontoId, t);
+    return undefined;
+  }, [kontoId, istEcht, t]);
   // „Anfrage läuft seit … s“ — einmal je Sekunde neu gezeichnet, nur solange eine läuft.
   const [, setTakt] = useState(0);
   useEffect(() => {

@@ -103,7 +103,7 @@ function Gate(): JSX.Element {
   const anwendung = (
     <>
       <GeteilterStandNachlader />
-      <RechtekontextWache />
+      <RechtekontextWache kontoId={s.user?.id ?? null} />
       <AppShell>
         <AppRoutes />
       </AppShell>

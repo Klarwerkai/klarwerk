@@ -526,6 +526,16 @@ export function arbeitsstandLesen(
   }
 }
 
+/** Nur der tatsächlich erkannte Wechsel markiert den vorhandenen eigenen Antwortstand. */
+export function merkeAntwortRechtewechsel(storage: StorageLike | undefined, konto: string | null): void {
+  const stand = arbeitsstandLesen(storage, konto);
+  if (!stand?.antwort || stand.antwort.rechtepruefungAusstehend) return;
+  arbeitsstandSchreiben(storage, konto, {
+    ...stand,
+    antwort: { ...stand.antwort, rechtepruefungAusstehend: true },
+  });
+}
+
 /**
  * Den Arbeitsstand EINES Kontos schreiben. Ein leerer Stand (kein Entwurf, keine Antwort, keine
  * verbrauchte Startadresse) löscht den Eintrag — es bleibt nichts liegen, was niemand mehr braucht.
