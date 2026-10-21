@@ -214,6 +214,7 @@ import {
   // Reasoner-Persistenz (Cross-Modul-Import nur über die öffentliche index.ts).
   InMemoryKlaraSessionRepo,
   InMemoryReasonerPolicyRepo,
+  InMemoryVerhaltensartefaktRepo,
   KlaraAusweichwegGesperrtFehler,
   type KlaraSessionRepo,
   ModelCapacityError,
@@ -221,8 +222,11 @@ import {
   PgAssistPresetRepo,
   PgKlaraSessionRepo,
   PgReasonerPolicyRepo,
+  PgVerhaltensartefaktRepo,
   Reasoner,
   type ReasonerPolicyRepo,
+  VerhaltensDienst,
+  type VerhaltensartefaktRepo,
   anbieterZugelassen,
   ausgangspruefungAusEnv,
   bindeAnbieter,
@@ -918,6 +922,8 @@ export interface AppServices {
    * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
    */
   gedaechtnis: GedaechtnisRepo;
+  /** R-0468: dieselbe Verhaltensquelle für jeden Modell-Provider und die Admin-Wege. */
+  verhalten: VerhaltensDienst;
   /**
    * R-1656: der Co-Reading-Zähler (`wissensempfehlung.ts`) — je Paar nur eine Zahl, ohne
    * Kontokennung. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb
@@ -1590,6 +1596,8 @@ export function assembleServices(
     uebersetzungen?: UebersetzungRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    /** R-0468: im PG-Betrieb haltbar, sonst nur Test-/Dev-Speicher. */
+    verhaltensartefakte?: VerhaltensartefaktRepo;
     // R-1656: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
@@ -1720,6 +1728,10 @@ export function assembleServices(
   // schreibt je Lauf die strukturierte Logzeile `ki_lauf` (verbunden in `buildApp`).
   const preislisteLesung = lesePreisliste(process.env.KLARWERK_KI_PREISLISTE);
   const modelRunProtokoll = new ProtokollModelRunRepo(repos.modelRuns, preislisteLesung.preisliste);
+  // R-0468: der Client wechselt, die freigegebene Verhaltensquelle bleibt dieselbe.
+  const verhalten = new VerhaltensDienst({
+    repo: opts.verhaltensartefakte ?? new InMemoryVerhaltensartefaktRepo(),
+  });
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
     // JOB 3134: kein `primary` mehr — die externen Anbieter kommen benannt über `cloud` (unten).
@@ -1729,15 +1741,17 @@ export function assembleServices(
     // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
     repos.assistPresets,
     // SCRUM-424: zweites Backend (lokaler LLM) als optionaler Provider.
-    cappedLocal ? new ModelProvider(cappedLocal) : undefined,
+    cappedLocal ? new ModelProvider(cappedLocal, verhalten) : undefined,
     // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) über das Repo — die Admin-Entscheidung
     // überlebt Neustart/Deploy (kein stiller Auto-Fallback). Geladen wird sie beim Serverstart.
     repos.reasonerPolicy,
     // JOB 3134: beide externen Anbieter unter ihrem Namen, plus der Grund je nicht eingerichtetem.
     {
       anbieter: {
-        ...(cappedCloud.openai ? { openai: new ModelProvider(cappedCloud.openai) } : {}),
-        ...(cappedCloud.anthropic ? { anthropic: new ModelProvider(cappedCloud.anthropic) } : {}),
+        ...(cappedCloud.openai ? { openai: new ModelProvider(cappedCloud.openai, verhalten) } : {}),
+        ...(cappedCloud.anthropic
+          ? { anthropic: new ModelProvider(cappedCloud.anthropic, verhalten) }
+          : {}),
       },
       gruende: cappedCloud.gruende,
     },
@@ -2077,6 +2091,7 @@ export function assembleServices(
     uebersetzungen: opts.uebersetzungen ?? new InMemoryUebersetzungRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    verhalten,
     // R-1656: der Co-Reading-Zähler — Postgres, wenn injiziert, sonst im Speicher.
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
@@ -2664,6 +2679,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
           ? new GedaechtnisLoeschjournal(process.env.KLARWERK_GEDAECHTNIS_LOESCHJOURNAL)
           : undefined,
       ),
+      // R-0468: dieselbe Datenbank, unveränderliche Fassungen der Instanzregeln.
+      verhaltensartefakte: new PgVerhaltensartefaktRepo(pool),
       // R-1656: die Paarzahlen überleben Neustart und Deploy (`MITGELESEN_SCHEMA`).
       mitgelesen: new PgMitgelesenRepo(pool),
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,

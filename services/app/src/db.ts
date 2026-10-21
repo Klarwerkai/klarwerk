@@ -44,6 +44,7 @@ import {
   KLARA_CONSENT_SCHEMA,
   KLARA_SESSION_SCHEMA,
   REASONER_POLICY_SCHEMA,
+  VERHALTENSARTEFAKTE_SCHEMA,
 } from "../../reasoner";
 import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation";
 // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (eine Zeile je Konto).
@@ -435,6 +436,8 @@ export const schemas = [
   // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   EIGENER_KALENDER_SCHEMA,
   KLARA_FRISTEN_SCHEMA,
+  // R-0468: append-only Verhaltensfassungen, additiv ohne Seed/Extension/Fremdschlüssel.
+  VERHALTENSARTEFAKTE_SCHEMA,
 ];
 
 // ================================================================================================
