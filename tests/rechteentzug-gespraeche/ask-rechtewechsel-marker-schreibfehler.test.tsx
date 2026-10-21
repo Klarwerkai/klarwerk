@@ -15,7 +15,7 @@ import { RechtekontextWache } from "../../apps/web/src/app/RechtekontextWache";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { arbeitsstandLesen, arbeitsstandSchreiben } from "../../apps/web/src/lib/fragenArbeitsstand";
-import { anfrageEpoche, rechtekontextZuruecksetzen } from "../../apps/web/src/lib/rechtekontext";
+import { rechtekontextZuruecksetzen } from "../../apps/web/src/lib/rechtekontext";
 import { Ask } from "../../apps/web/src/pages/Ask";
 
 const KONTO = "rc3-p2s-eigenes-konto";
