@@ -363,6 +363,8 @@ export interface ChatRepo {
     gespraechIds: readonly string[],
   ): Promise<Map<string, { letzte: ChatNachricht; anzahl: number }>>;
   nachricht(id: string): Promise<ChatNachricht | undefined>;
+  /** Autoritative Übernahmevermerke für diese Entwürfe, unabhängig von Tags und Auditverweisen. */
+  uebernommeneNachrichten(entwurfIds: readonly string[]): Promise<ChatNachricht[]>;
   /** Die genannten Nachrichten dieses Gesprächs, aufsteigend nach Zeit; fremde Kennungen fehlen. */
   nachrichtenMitKennungen(gespraechId: string, ids: readonly string[]): Promise<ChatNachricht[]>;
   /**
@@ -443,6 +445,15 @@ export class InMemoryChatRepo implements ChatRepo {
   nachricht(id: string): Promise<ChatNachricht | undefined> {
     const n = this.zeilen.get(id);
     return Promise.resolve(n ? structuredClone(n) : undefined);
+  }
+
+  uebernommeneNachrichten(entwurfIds: readonly string[]): Promise<ChatNachricht[]> {
+    const ids = new Set(entwurfIds);
+    const result = [...this.zeilen.values()]
+      .filter((n) => n.uebernahmen.some((u) => ids.has(u.entwurfId)))
+      .map((n) => structuredClone(n));
+    result.sort(nachZeit);
+    return Promise.resolve(result);
   }
 
   nachrichtenMitKennungen(gespraechId: string, ids: readonly string[]): Promise<ChatNachricht[]> {
@@ -623,6 +634,20 @@ export class PgChatRepo implements ChatRepo {
       [id],
     );
     return res.rows[0]?.data;
+  }
+
+  async uebernommeneNachrichten(entwurfIds: readonly string[]): Promise<ChatNachricht[]> {
+    if (entwurfIds.length === 0) return [];
+    const res = await this.pool.query<DataZeile<ChatNachricht>>(
+      `SELECT n.data FROM chat_nachrichten n
+        WHERE EXISTS (
+          SELECT 1 FROM jsonb_array_elements(COALESCE(n.data->'uebernahmen', '[]'::jsonb)) AS u(eintrag)
+          WHERE u.eintrag->>'entwurfId' = ANY($1::text[])
+        )
+        ORDER BY n.am ASC, n.id ASC`,
+      [[...new Set(entwurfIds)]],
+    );
+    return res.rows.map((z) => z.data);
   }
 
   async nachrichtenMitKennungen(

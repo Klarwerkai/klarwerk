@@ -8,7 +8,7 @@ import type { KlaraFristenQuellen } from "./klara-fristen-quellen";
 
 interface AusgabeDeps {
   audit: Pick<AuditService, "list">;
-  chat: Pick<ChatRepo, "nachricht">;
+  chat: Pick<ChatRepo, "nachricht" | "uebernommeneNachrichten">;
   ko: Pick<KoService, "get" | "versionsOf">;
   rechte: Pick<KlaraFristenQuellen, "nutzer" | "lies">;
 }
@@ -23,32 +23,34 @@ export class ChatEntwurfAusgabe {
   constructor(private readonly d: AusgabeDeps) {}
 
   private async herkunft(drafts: readonly Draft[]): Promise<Map<string, Herkunft>> {
-    // Ein Lesen je Liste, keine Berechtigungs- oder Herkunftszusage über Anfragen hinweg.
-    const audit = await this.d.audit.list({ action: "chat.wissen_uebernommen" });
+    // Beide bestehenden autoritativen Belegwege lesen; Tags und Nutztext belegen keine Übernahme.
+    // Keine Berechtigungs- oder Herkunftszusage über Anfragen hinweg.
+    const [audit, nachrichten] = await Promise.all([
+      this.d.audit.list({ action: "chat.wissen_uebernommen" }),
+      this.d.chat.uebernommeneNachrichten(drafts.map((d) => d.id)),
+    ]);
     const result = new Map<string, Herkunft>();
     for (const draft of drafts) {
       const belege = audit.filter((e) => e.payload.entwurf === draft.id);
-      const ziele = new Set(belege.map((e) => e.target));
+      const uebernahmen = nachrichten.filter((n) =>
+        n.uebernahmen.some((u) => u.entwurfId === draft.id),
+      );
+      const ziele = new Set([...belege.map((e) => e.target), ...uebernahmen.map((n) => n.id)]);
       if (ziele.size === 0) {
-        result.set(draft.id, {
-          art:
-            draft.payload.tags?.includes("chat") ||
-            draft.payload.bodyHtml?.includes("Aus dem internen Chat übernommen:")
-              ? "unbekannt"
-              : "keine",
-        });
+        result.set(draft.id, { art: "keine" });
         continue;
       }
-      const beleg = belege[0];
-      const n = ziele.size === 1 && beleg ? await this.d.chat.nachricht(beleg.target) : undefined;
+      const ziel = ziele.values().next().value;
+      const n =
+        ziele.size === 1 && ziel
+          ? (uebernahmen.find((n) => n.id === ziel) ?? (await this.d.chat.nachricht(ziel)))
+          : undefined;
       result.set(
         draft.id,
         n &&
-          belege.every(
-            (e) =>
-              e.payload.gespraech === n.gespraechId &&
-              n.uebernahmen.some((u) => u.entwurfId === draft.id && u.von === e.actor),
-          )
+          n.id === ziel &&
+          belege.every((e) => e.payload.gespraech === n.gespraechId) &&
+          (belege.length > 0 || n.uebernahmen.some((u) => u.entwurfId === draft.id))
           ? { art: "nachricht", n }
           : { art: "unbekannt" },
       );
