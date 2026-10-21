@@ -82,6 +82,12 @@ function rumpf<T>(body: unknown): T {
 
 export function klaraNotizRoutes(deps: KlaraNotizRoutenDeps, guards: Guards): FastifyPluginAsync {
   const { dienst, audit } = deps;
+  const ausgabe = async (user: SessionUser, n: KlaraNotiz) => {
+    if (deps.lesbar && !(await deps.lesbar(user, n))) {
+      throw new KlaraNotizFehler(404, "unbekannt", "Notiz nicht gefunden.");
+    }
+    return sicht(n);
+  };
 
   return async (app) => {
     app.get<{ Querystring: { q?: unknown; art?: unknown } }>(
@@ -120,7 +126,7 @@ export function klaraNotizRoutes(deps: KlaraNotizRoutenDeps, guards: Guards): Fa
           });
         }
         // Eine Wiederholung desselben Vorgangs legt nichts an: 200 mit der gespeicherten Notiz.
-        reply.code(wiederholt ? 200 : 201).send({ notiz: sicht(notiz), wiederholt });
+        reply.code(wiederholt ? 200 : 201).send({ notiz: await ausgabe(user, notiz), wiederholt });
       } catch (fehler) {
         antworteMitFehler(reply, fehler);
       }
@@ -133,11 +139,7 @@ export function klaraNotizRoutes(deps: KlaraNotizRoutenDeps, guards: Guards): Fa
       }
       try {
         const notiz = await dienst.hole(user.id, request.params.id);
-        if (deps.lesbar && !(await deps.lesbar(user, notiz))) {
-          reply.code(404).send({ error: "NOT_FOUND", message: "Notiz nicht gefunden." });
-          return;
-        }
-        reply.code(200).send({ notiz: sicht(notiz) });
+        reply.code(200).send({ notiz: await ausgabe(user, notiz) });
       } catch (fehler) {
         antworteMitFehler(reply, fehler);
       }
@@ -164,7 +166,7 @@ export function klaraNotizRoutes(deps: KlaraNotizRoutenDeps, guards: Guards): Fa
               payload: { fassung: notiz.fassung, art: notiz.art },
             });
           }
-          reply.code(200).send({ notiz: sicht(notiz), wiederholt });
+          reply.code(200).send({ notiz: await ausgabe(user, notiz), wiederholt });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }

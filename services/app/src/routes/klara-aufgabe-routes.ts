@@ -135,7 +135,10 @@ export function klaraAufgabeRoutes(
           });
         }
         // Eine Wiederholung desselben Vorgangs legt nichts an: 200 mit der gespeicherten Aufgabe.
-        reply.code(wiederholt ? 200 : 201).send({ aufgabe: sicht(aufgabe), wiederholt });
+        reply.code(wiederholt ? 200 : 201).send({
+          aufgabe: sicht(await dienst.hole(user.id, aufgabe.id)),
+          wiederholt,
+        });
       } catch (fehler) {
         antworteMitFehler(reply, fehler);
       }
@@ -179,7 +182,9 @@ export function klaraAufgabeRoutes(
               },
             });
           }
-          reply.code(200).send({ aufgabe: sicht(aufgabe), wiederholt });
+          reply
+            .code(200)
+            .send({ aufgabe: sicht(await dienst.hole(user.id, aufgabe.id)), wiederholt });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }

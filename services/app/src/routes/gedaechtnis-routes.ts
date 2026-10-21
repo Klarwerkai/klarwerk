@@ -36,6 +36,7 @@ export const GEDAECHTNIS_ALLES_VERGESSEN = "gedaechtnis.alles-vergessen";
 export interface GedaechtnisRoutenDeps {
   dienst: GedaechtnisDienst;
   audit: AuditService;
+  antwortLesbar?: (kontoId: string, antwortId: string) => Promise<boolean>;
 }
 
 const FEHLERCODE: Record<GedaechtnisFehler["status"], string> = {
@@ -78,6 +79,14 @@ function sicht(e: Gedaechtniseintrag) {
 
 export function gedaechtnisRoutes(deps: GedaechtnisRoutenDeps, guards: Guards): FastifyPluginAsync {
   const { dienst, audit } = deps;
+  const ausgabe = async (kontoId: string, e: Gedaechtniseintrag) => {
+    const s = sicht(e);
+    if (e.herkunft.art !== "antwort") return s;
+    if (e.herkunft.antwortId && (await deps.antwortLesbar?.(kontoId, e.herkunft.antwortId)))
+      return s;
+    // Eigene Frage und Verwaltung bleiben nutzbar; weder Antwortkopie noch Quellkennung öffnen.
+    return { ...s, antwort: null, herkunft: { ...s.herkunft, antwortId: null, antwortAm: null } };
+  };
 
   return async (app) => {
     app.get("/api/me/gedaechtnis", async (request, reply) => {
@@ -88,7 +97,7 @@ export function gedaechtnisRoutes(deps: GedaechtnisRoutenDeps, guards: Guards): 
       try {
         const eintraege = await dienst.eigene(user.id);
         reply.code(200).send({
-          eintraege: eintraege.map(sicht),
+          eintraege: await Promise.all(eintraege.map((e) => ausgabe(user.id, e))),
           fristenTage: GEDAECHTNIS_FRISTEN_TAGE,
           standardFristTage: GEDAECHTNIS_STANDARD_FRIST_TAGE,
           standardVertraulichkeit: GEDAECHTNIS_STANDARD_VERTRAULICHKEIT,
@@ -122,7 +131,7 @@ export function gedaechtnisRoutes(deps: GedaechtnisRoutenDeps, guards: Guards): 
             verfallAm: eintrag.verfallAm,
           },
         });
-        reply.code(201).send({ eintrag: sicht(eintrag) });
+        reply.code(201).send({ eintrag: await ausgabe(user.id, eintrag) });
       } catch (fehler) {
         antworteMitFehler(reply, fehler);
       }
@@ -145,7 +154,7 @@ export function gedaechtnisRoutes(deps: GedaechtnisRoutenDeps, guards: Guards): 
               ausnahmeBis: eintrag.aufbewahrungAusnahme?.bis ?? null,
             },
           });
-          reply.code(200).send({ eintrag: sicht(eintrag) });
+          reply.code(200).send({ eintrag: await ausgabe(user.id, eintrag) });
         } catch (e) {
           antworteMitFehler(reply, e);
         }
