@@ -111,12 +111,50 @@ interface Lauf {
 
 /** Ein echter Vitest-Lauf über den Prüfstand. `KLARWERK_TESTGRUPPE` wird entfernt (s. tor-inventar). */
 function lauf(dateien: readonly string[], zusatz: readonly string[] = []): Lauf {
-  const umgebung: NodeJS.ProcessEnv = { ...process.env, KLARWERK_SKIP_KEYCHAIN: "1" };
+  const namen = [
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TERM",
+    // Der kontrollierte Pflicht-Gegenfall bleibt durch den vorhandenen Schalter erreichbar.
+    "KLARWERK_PG_PFLICHT",
+  ];
+  const umgebung: NodeJS.ProcessEnv = {
+    ...Object.fromEntries(
+      namen.filter((n) => process.env[n] !== undefined).map((n) => [n, process.env[n]]),
+    ),
+    KLARWERK_SKIP_KEYCHAIN: "1",
+    EXTERNAL_SEARCH: "off",
+    NODE_ENV: "test",
+    KLARWERK_DEV_PERSIST: "0",
+  };
   delete umgebung.KLARWERK_TESTGRUPPE;
+  // Der äußere Testdriver wartet; nur ein innerer Worker führt jeweils eine Probe aus.
+  // Kein weiterer Deckel: die äußere Pflichtstufe hält bereits den normalen globalen Deckel.
   const ergebnis = spawnSync(
     "npx",
-    ["vitest", "run", "--config", PROBE_KONFIG, ...zusatz, ...dateien],
-    { cwd: WURZEL, env: umgebung, encoding: "utf8" },
+    [
+      "vitest",
+      "run",
+      "--config",
+      PROBE_KONFIG,
+      ...zusatz,
+      "--pool=forks",
+      "--poolOptions.forks.minForks=1",
+      "--poolOptions.forks.maxForks=1",
+      "--minWorkers=1",
+      "--maxWorkers=1",
+      "--no-file-parallelism",
+      "--testTimeout=60000",
+      ...dateien,
+    ],
+    { cwd: WURZEL, env: umgebung, encoding: "utf8", timeout: 240000 },
   );
   return { code: ergebnis.status, ausgabe: `${ergebnis.stdout ?? ""}\n${ergebnis.stderr ?? ""}` };
 }
