@@ -20,21 +20,25 @@ export class InMemoryModelRunRepo implements ModelRunRepo {
 
   append(record: ModelRunRecord): Promise<void> {
     if (!this.items.some((item) => item.id === record.id)) {
-      this.items.push(record);
+      this.items.push(structuredClone(record));
     }
     return Promise.resolve();
   }
 
   recent(limit = 100): Promise<ModelRunRecord[]> {
     const sorted = [...this.items].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-    return Promise.resolve(sorted.slice(0, Math.max(0, limit)));
+    return Promise.resolve(
+      sorted.slice(0, Math.max(0, limit)).map((record) => structuredClone(record)),
+    );
   }
 
   zwischen(von: string, bis: string, limit: number): Promise<ModelRunRecord[]> {
     const treffer = this.items
       .filter((r) => r.startedAt >= von && r.startedAt < bis)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-    return Promise.resolve(treffer.slice(0, Math.max(0, limit)));
+    return Promise.resolve(
+      treffer.slice(0, Math.max(0, limit)).map((record) => structuredClone(record)),
+    );
   }
 
   vonAkteur(actor: string): Promise<ModelRunRecord[]> {
@@ -44,7 +48,8 @@ export class InMemoryModelRunRepo implements ModelRunRepo {
     return Promise.resolve(
       this.items
         .filter((r) => r.actor === actor)
-        .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+        .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+        .map((record) => structuredClone(record)),
     );
   }
 }
