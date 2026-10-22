@@ -6276,6 +6276,8 @@ export function buildApp(
     vorlagen: vorlagenPort,
     referenz: antwortDeps.referenz,
     audit: services.audit,
+    // KVS-1: Gesprächsnotizen prüfen ihre Antwortquellen wie Import-Notizen.
+    antwortQuellen: (n) => gespraechAusgabe.notizQuellen(n, services.klaraGespraeche),
   });
   app.register(klaraWissenRoutes(klaraWissen, services.spaces, guards));
   const klaraBesprechung = new KlaraBesprechungsDienst(

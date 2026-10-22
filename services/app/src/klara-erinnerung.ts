@@ -3312,7 +3312,8 @@ export class KlaraErinnerungDienst {
       if (!frei) throw new KlaraErinnerungFehler(404, "quelle_unbekannt", "Quelle nicht gefunden.");
       if (
         frei.koIds.length > 0 ||
-        (frei.quelleFrei && (bezug.art === "notiz" || bezug.art === "aufgabe"))
+        (frei.quelleFrei &&
+          (bezug.art === "notiz" || bezug.art === "aufgabe" || bezug.art === "gespraech"))
       ) {
         e = { ...e, wissensQuellen: frei.koIds };
       }

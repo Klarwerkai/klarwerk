@@ -22,7 +22,7 @@ export type ErinnerungQuellschutz = (
 interface QuellenDeps extends FristenQuellenDeps {
   readonly notizenRoh: Pick<KlaraNotizRepo, "hole">;
   readonly aufgaben: Pick<KlaraAufgabeRepo, "hole">;
-  readonly antwortAusgabe?: Pick<KlaraGespraechAusgabe, "notizQuellen">;
+  readonly antwortAusgabe?: Pick<KlaraGespraechAusgabe, "notizQuellen" | "nachrichtQuellen">;
 }
 
 /**
@@ -45,6 +45,7 @@ export class KlaraErinnerungQuellen {
     if (e.objektbezug?.koId) ids.add(e.objektbezug.koId);
     const notizen = new Set<string>();
     let gebunden = false;
+    let gespraechGeprueft = false;
     const gelesen: GeleseneFristenQuelle[] = [];
 
     const notiz = async (id: string, herkunftGespeichert = false): Promise<boolean> => {
@@ -77,7 +78,25 @@ export class KlaraErinnerungQuellen {
       }
       return true;
     };
+    // KVS-2: Bezug „Gespräch“ — Titel und Auszug stammen aus der Nachricht. Ihre Herkunft gilt wie
+    // bei Notizen über denselben Antwortbeleg wie im Gespräch, nicht nur über `objektbezug.koId`.
+    const gespraech = async (
+      b: { gespraechId: string; nachrichtId: string },
+      herkunftGespeichert: boolean,
+    ): Promise<boolean> => {
+      const g = await this.d.gespraeche.hole(e.kontoId, b.gespraechId);
+      const m = g?.nachrichten.find((x) => x.id === b.nachrichtId);
+      if (!m) return herkunftGespeichert;
+      const quellen = await this.d.antwortAusgabe?.nachrichtQuellen(e.kontoId, m);
+      if (!quellen) return false;
+      gebunden ||= quellen.length > 0;
+      for (const q of quellen) ids.add(q.id);
+      gespraechGeprueft = true;
+      return true;
+    };
     const herkunftGespeichert = e.wissensQuellen !== undefined;
+    if (e.bezug.art === "gespraech" && !(await gespraech(e.bezug, herkunftGespeichert)))
+      return null;
     if (e.bezug.art === "notiz" && !(await notiz(e.bezug.notizId, herkunftGespeichert)))
       return null;
     if (e.bezug.art === "aufgabe" && !(await aufgabe(e.bezug.aufgabeId, herkunftGespeichert)))
@@ -97,7 +116,7 @@ export class KlaraErinnerungQuellen {
     if (!gebunden && ids.size === 0)
       return {
         koIds: [],
-        ...(e.bezug.art !== "gespraech" ? { quelleFrei: true as const } : {}),
+        ...(e.bezug.art !== "gespraech" || gespraechGeprueft ? { quelleFrei: true as const } : {}),
         nochAktuell: async () => true,
         sql: () => ({ und: [], params: [] }),
       };
