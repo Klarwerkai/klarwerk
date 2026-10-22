@@ -71,6 +71,11 @@ export const SAML_ANFRAGE_FRIST_MS = 10 * 60 * 1000;
 export const SAML_UHR_TOLERANZ_MS = 2 * 60 * 1000;
 const SAML_ANTWORT_MAX_ZEICHEN = 512 * 1024;
 const OFFENE_ANFRAGEN_MAX = 10_000;
+// Deckel des XML-Lesers (SML-3/SML-4): eine echte SAML-Antwort liegt weit darunter; eine
+// anonyme Anfrage darf weder Speicher noch Rechenzeit des ganzen Prozesses binden.
+export const XML_ELEMENTE_MAX = 10_000;
+export const XML_ATTRIBUTE_MAX = 50_000;
+export const XML_NAMENSRAEUME_MAX = 64;
 
 /** Ein Ablehnungsgrund. Der Text geht NUR ins Protokoll; der Mensch liest den Katalogsatz. */
 export class SamlFehler extends Error {
@@ -180,6 +185,8 @@ export function leseXml(eingabe: string): XmlElement {
   }
   let wurzel: XmlElement | null = null;
   const stapel: XmlElement[] = [];
+  let elemente = 0;
+  let attributeGesamt = 0;
 
   const fuegeText = (inhalt: string): void => {
     const oben = stapel.at(-1);
@@ -298,8 +305,26 @@ export function leseXml(eingabe: string): XmlElement {
       pos = ende + 1;
     }
 
+    elemente += 1;
+    attributeGesamt += roheAttribute.length;
+    if (elemente > XML_ELEMENTE_MAX) {
+      throw new SamlFehler("XML: zu viele Elemente");
+    }
+    if (attributeGesamt > XML_ATTRIBUTE_MAX) {
+      throw new SamlFehler("XML: zu viele Attribute");
+    }
     const eltern = stapel.at(-1) ?? null;
-    const imBereich = new Map<string, string>(eltern ? eltern.imBereich : [["xml", XML_NS]]);
+    // Die Karte wird nur kopiert, wo ein Element selbst deklariert; sonst teilt es die des Elters
+    // (sie ändert sich nach dem Anlegen nie). Eine Kopie je Element liess Deklarationen × Elemente
+    // im Speicher wachsen (SML-3).
+    const deklariert = roheAttribute.some(
+      ([name]) => name === "xmlns" || name.startsWith("xmlns:"),
+    );
+    const imBereich = !eltern
+      ? new Map<string, string>([["xml", XML_NS]])
+      : deklariert
+        ? new Map<string, string>(eltern.imBereich)
+        : eltern.imBereich;
     const gesehen = new Set<string>();
     for (const [name, wert] of roheAttribute) {
       if (gesehen.has(name)) {
@@ -315,12 +340,18 @@ export function leseXml(eingabe: string): XmlElement {
         imBereich.set(name.slice(6), wert);
       }
     }
+    if (imBereich.size > XML_NAMENSRAEUME_MAX) {
+      throw new SamlFehler("XML: zu viele Namensräume");
+    }
     const [prefix, local] = teile(qname);
     const ns = prefix ? imBereich.get(prefix) : (imBereich.get("") ?? "");
     if (ns === undefined) {
       throw new SamlFehler("XML: unbekanntes Präfix");
     }
     const attribute: XmlAttribut[] = [];
+    // (Namensraum, lokaler Name) einmalig — über eine Menge statt paarweise (SML-4). Der lokale
+    // Name enthält kein NUL, der Schlüssel ist also eindeutig.
+    const expandiert = new Set<string>();
     for (const [name, wert] of roheAttribute) {
       if (name === "xmlns" || name.startsWith("xmlns:")) {
         continue;
@@ -330,9 +361,11 @@ export function leseXml(eingabe: string): XmlElement {
       if (aNs === undefined) {
         throw new SamlFehler("XML: unbekanntes Attributpräfix");
       }
-      if (attribute.some((a) => a.ns === aNs && a.local === aLocal)) {
+      const schluessel = `${aLocal}\u0000${aNs}`;
+      if (expandiert.has(schluessel)) {
         throw new SamlFehler("XML: doppeltes Attribut");
       }
+      expandiert.add(schluessel);
       attribute.push({ qname: name, prefix: aPrefix, local: aLocal, ns: aNs, wert });
     }
     const element: XmlElement = {
@@ -440,14 +473,17 @@ export function kanonisiere(
   opts: { ohne?: XmlElement; inklusiv?: readonly string[] } = {},
 ): string {
   const ausgabe: string[] = [];
-  schreibe(el, new Map([["", ""]]), opts, ausgabe);
+  // Die PrefixList einmal als Menge: je Element wird dann nur über die (gedeckelten) Namensräume
+  // im Bereich gelaufen, nicht über die ganze Liste (SML-4).
+  const inklusiv = new Set((opts.inklusiv ?? []).map((p) => (p === "#default" ? "" : p)));
+  schreibe(el, new Map([["", ""]]), { ohne: opts.ohne, inklusiv }, ausgabe);
   return ausgabe.join("");
 }
 
 function schreibe(
   el: XmlElement,
   gerendert: ReadonlyMap<string, string>,
-  opts: { ohne?: XmlElement; inklusiv?: readonly string[] },
+  opts: { ohne?: XmlElement | undefined; inklusiv: ReadonlySet<string> },
   ausgabe: string[],
 ): void {
   if (el === opts.ohne) {
@@ -459,10 +495,11 @@ function schreibe(
       genutzt.add(a.prefix);
     }
   }
-  for (const p of opts.inklusiv ?? []) {
-    const schluessel = p === "#default" ? "" : p;
-    if (el.imBereich.has(schluessel)) {
-      genutzt.add(schluessel);
+  if (opts.inklusiv.size > 0) {
+    for (const schluessel of el.imBereich.keys()) {
+      if (opts.inklusiv.has(schluessel)) {
+        genutzt.add(schluessel);
+      }
     }
   }
   const weiter = new Map(gerendert);
