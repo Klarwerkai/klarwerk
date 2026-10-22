@@ -107,7 +107,14 @@ export interface WissensDienste {
   vorlagen: VorlagenEinreichungPort;
   referenz: ReferenzPruefdienst;
   audit: AuditService;
+  /**
+   * KVS-1: Herkunft einer Notiz aus einer Klara-Antwort — derselbe Antwortbeleg wie im Gespräch
+   * (`KlaraGespraechAusgabe.notizQuellen`). `null`: kein positiver Herkunftsnachweis.
+   */
+  antwortQuellen: (n: KlaraNotiz) => Promise<readonly { id: string; fassung?: number }[] | null>;
 }
+/** `antwort`: Quelle aus dem Antwortbeleg einer Gesprächsnotiz (KVS-1). */
+type NotizQuelle = { id: string; fassung: number; antwort?: true };
 /** Kein neuer Bestand: private Originale in KlaraNotizRepo, Beiträge in KoService. */
 export class KlaraWissensDienst {
   constructor(private readonly d: WissensDienste) {}
@@ -177,17 +184,30 @@ export class KlaraWissensDienst {
   async original(user: SessionUser, id: string): Promise<KlaraNotiz> {
     const n = await this.d.notizen.hole(user.id, id);
     if (!n) throw new WissensFehler(404, "Notiz nicht gefunden.");
-    for (const q of this.quellen(n)) {
+    for (const q of await this.quellen(n)) {
       const ko = await this.d.ko.get(q.id);
       if (!ko || !darfSehen(user, ko)) throw new WissensFehler(404, "Notizquelle nicht verfügbar.");
     }
     return n;
   }
-  private quellen(n: KlaraNotiz) {
-    const qs = n.wissensHerkunft?.aussagen.flatMap((a) => a.quellen) ?? [];
-    return n.objektbezug.koId
+  private async quellen(n: KlaraNotiz): Promise<NotizQuelle[]> {
+    const qs: NotizQuelle[] = n.wissensHerkunft?.aussagen.flatMap((a) => a.quellen) ?? [];
+    const eigen = n.objektbezug.koId
       ? [...qs, { id: n.objektbezug.koId, fassung: n.objektbezug.fassung ?? 0 }]
       : qs;
+    // KVS-1: Eine Notiz aus einer Klara-Antwort trägt ihre Quellen über `quelle`/`antwortId`.
+    // Dieselben Antwortquellen wie in Gespräch und Notizausgabe; ohne Beleg keine Herkunft.
+    if (!n.quelle && (n.antwortId === undefined || n.antwortId === null)) return eigen;
+    const antwort = await this.d.antwortQuellen(n);
+    if (!antwort) throw new WissensFehler(404, "Notizquelle nicht verfügbar.");
+    const alle = [...eigen];
+    const bekannt = new Set(eigen.map((q) => q.id));
+    for (const q of antwort) {
+      if (bekannt.has(q.id)) continue;
+      bekannt.add(q.id);
+      alle.push({ id: q.id, fassung: q.fassung ?? 0, antwort: true });
+    }
+    return alle;
   }
   async pruefe(user: SessionUser, id: string) {
     const n = await this.original(user, id);
@@ -198,7 +218,7 @@ export class KlaraWissensDienst {
         "Teiltranskript vor gemeinsamer Übernahme vollständig verarbeiten.",
       );
     const quellen = new Map();
-    for (const q of this.quellen(n)) {
+    for (const q of await this.quellen(n)) {
       const ko = await this.d.ko.get(q.id);
       // Neue Passage erbt keine alte Bestätigung. Nicht gebundene/ersetzte Fassung bleibt offen.
       if (ko && ko.version === q.fassung) quellen.set(ko.id, bindungsQuelleAus(ko, undefined));
@@ -268,10 +288,13 @@ export class KlaraWissensDienst {
       throw new WissensFehler(404, "Ziel nicht gefunden.");
     if (space && !darfInSpaceSchreiben(space, user))
       throw new WissensFehler(403, "Kein Schreibrecht im Ziel.");
-    for (const q of this.quellen(n)) {
+    const notizQuellen = await this.quellen(n);
+    for (const q of notizQuellen) {
       const ko = await this.d.ko.get(q.id);
       if (!ko || !darfSehen(user, ko)) throw new WissensFehler(404, "Quelle nicht verfügbar.");
-      if (ko.version !== q.fassung)
+      // Antwortquellen tragen die Fassung ihres Antwortbelegs: eine neuere Fassung sperrt die
+      // Übernahme nicht (wie bisher), die Schutzprüfung unten gilt für sie unverändert.
+      if (!q.antwort && ko.version !== q.fassung)
         throw new WissensFehler(409, "Quellfassung geändert; Herkunft zuerst klären.");
       // Kein Auszug deklassifiziert eine geschützte Quelle. Deren bewusste Fachfreigabe ist ein eigener Weg.
       if (
@@ -296,7 +319,7 @@ export class KlaraWissensDienst {
           )
           .join("")}`
       : "";
-    const quellenLinks = this.quellen(n)
+    const quellenLinks = notizQuellen
       .map(
         (q) =>
           `<p><a href="/wissen/${encodeURIComponent(q.id)}?fassung=${q.fassung}">Quellfassung ${q.fassung}</a></p>`,

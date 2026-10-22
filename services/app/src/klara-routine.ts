@@ -20,7 +20,7 @@
 // montags“, „nimm die erledigten Aufgaben dazu“, „pausieren“, „beenden“) und das Zusammensetzen des
 // Berichtstexts aus tatsächlich gelesenen Quellen.
 import type { Wochentag } from "./klara-erinnerung-zeit";
-import type { KlaraNotiz } from "./klara-notiz";
+import { type KlaraNotiz, notizIstQuellengebunden } from "./klara-notiz";
 import { type PflegeAuftrag, type PflegeErgebnis, pflegeAus } from "./klara-wissenspflege";
 
 export const ROUTINE_ABSCHNITTE = [
@@ -370,8 +370,27 @@ export function berichtText(kopf: {
   return zeilen.join("\n");
 }
 
+/**
+ * FNR-2: Statt Titel und erster Zeile einer quellengebundenen Notiz (z. B. aus einer geschützten
+ * Klara-Antwort) steht im Bericht nur dieser Verweis mit Kennung und Fassung. Der Bericht selbst
+ * hat keine Quellenbindung; eine Kopie bliebe nach dem Rechteentzug lesbar und ginge über die
+ * Wissensübernahme weiter. Die Ursprungsnotiz behält ihren eigenen Quellschutz bei jedem Abruf.
+ */
+const QUELLENGEBUNDENE_NOTIZ_TITEL = "Notiz mit Quellenbindung";
+const QUELLENGEBUNDENE_NOTIZ_ZUSATZ = "Inhalt nur in der Notiz selbst";
+
 /** Eine eigene Notiz als Berichtseintrag: Titel, Anfang der ersten Zeile, Kennung und Fassung. */
 export function notizEintrag(n: KlaraNotiz): BerichtQuelle {
+  // Dieselbe Abgrenzung wie der Quellschutz der Notizablage (`QuellgeschuetzteKlaraNotizen`).
+  if (n.quelle || notizIstQuellengebunden(n)) {
+    return {
+      art: "notiz",
+      id: n.id,
+      fassung: n.fassung,
+      titel: QUELLENGEBUNDENE_NOTIZ_TITEL,
+      zusatz: QUELLENGEBUNDENE_NOTIZ_ZUSATZ,
+    };
+  }
   const erste = n.inhalt.trim().split("\n")[0]?.trim() ?? "";
   const zusatz = [...erste].length > 80 ? `${[...erste].slice(0, 79).join("")}…` : erste;
   return {
