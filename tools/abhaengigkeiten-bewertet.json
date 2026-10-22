@@ -317,5 +317,16 @@
     "begruendung": "Open Redirect bis XSS (betroffen >=6.30.2 <=6.30.5); Bedingung wie GHSA-wrjc-x8rr-h8h6: ein fremdgesteuertes Navigationsziel, das mit // oder /\\ beginnt. Die vollstaendige Erhebung der 155 Navigationsstellen (siehe GHSA-wrjc) findet keines mehr: Code-Ziele haben einen festen Anfang, die beiden location.pathname-Ziele laufen durch internerPfad(). Kompatible Behebung: ob ein 6.30.x-Stand ueber 6.30.5 existiert, war in diesem Arbeitsweg ohne Registry nicht pruefbar und ist in keiner Lockdatei des Repositorys. Die Pruefung gibt seit diesem Stand npms eigene Auskunft (fixAvailable) je Meldung aus; der naechste echte Auditlauf belegt sie. Bei fehlender Exposition verlangt der Auftrag keine Hebung.",
     "beleg": "Waechter exposition-20261008.test.ts, R2-R4",
     "bewertet_am": "2026-10-08"
+  },
+  {
+    "bestand": "wurzel",
+    "kennung": "GHSA-39m8-27wv-hr27",
+    "paket": "nodemailer",
+    "ort": "node_modules/nodemailer",
+    "version": "6.10.1",
+    "urteil": "nicht exponiert",
+    "begruendung": "Nur DKIM: Die Meldung setzt DKIM-Signierung am Transport oder an der Nachricht voraus. smtpMailer in services/notifications/src/smtp.ts erzeugt genau einen Transport mit host, port, secure, auth und sendMail erhaelt ausschliesslich from, to, subject, text, html; keine dkim-Option, keine Transportdefaults und kein Plugin werden gesetzt. Die installierte oeffentliche nodemailer-6.10.1-Quelle lib/mailer/index.js setzt this.dkim ohne options.dkim auf false und erreicht dkim.sign nur unter mail.data.dkim || this.dkim. Beide Voraussetzungen fehlen im gebundenen Produktpfad. Diese Bewertung gilt ausschliesslich fuer GHSA-39m8-27wv-hr27; die vorhandenen exponierten Adressparsermeldungen und deren offene Upgradeentscheidung bleiben unveraendert.",
+    "beleg": "Primaerquelle https://github.com/advisories/GHSA-39m8-27wv-hr27 (DKIM-Voraussetzung); services/notifications/src/smtp.ts#smtpMailer; installierte oeffentliche Quelle nodemailer/lib/mailer/index.js, Konstruktor und DKIM-Zweig; bestehende Guards tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts N1/N2/N3.",
+    "bewertet_am": "2026-10-23"
   }
 ]
