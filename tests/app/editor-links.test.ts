@@ -25,6 +25,26 @@ describe("SCRUM-322: editor links", () => {
     expect(editorLinkHtml({ url: "javascript:alert(1)", label: "x" })).toBeNull();
   });
 
+  it("BIB-6/H8: verdeckte Fremdlinks sind kein interner Pfad", () => {
+    // Der Link-Dialog liess alles durch, was mit `/` beginnt — der Browser deutet `//` und `/\`
+    // aber als Fremdhost (Beleg belege/pruefer2/BIB/lauf7-bibG.txt).
+    expect(normalizeEditorLinkUrl("//fremd.example/login")).toBeNull();
+    expect(normalizeEditorLinkUrl("/\\fremd.example")).toBeNull();
+    expect(normalizeEditorLinkUrl("\\\\fremd.example")).toBeNull();
+    expect(editorLinkHtml({ url: "//fremd.example/login", label: "x" })).toBeNull();
+    // Echte interne Pfade bleiben.
+    expect(normalizeEditorLinkUrl("/wissen/ko-1?fassung=2")).toBe("/wissen/ko-1?fassung=2");
+  });
+
+  it("H8: was der Link-Dialog erzeugt, laesst der Sanitizer unveraendert stehen", () => {
+    // Dieselbe Positivliste auf beiden Seiten: ein Link, den der Dialog baut, verliert sein href nicht.
+    for (const url of ["https://example.test/a", "mailto:a@example.test", "/wissen/ko-1", "#q"]) {
+      const href = normalizeEditorLinkUrl(url);
+      expect(href).toBe(url);
+      expect(sanitizeHtml(editorLinkHtml({ url }) ?? "")).toContain(`href="${url}"`);
+    }
+  });
+
   it("escapes label and remains compatible with the sanitizer", () => {
     const html = editorLinkHtml({ url: "https://example.test", label: "<b>Quelle</b>" });
     expect(html).toBe('<a href="https://example.test">&lt;b&gt;Quelle&lt;/b&gt;</a>');

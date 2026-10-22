@@ -1,6 +1,8 @@
 // SCRUM-322: DOM-freie Link-Helfer für den Beta-RichTextEditor.
 // Der Sanitizer bleibt autoritativ; dieser Helper erzeugt nur bewusst sichere Link-HTML-Snippets.
 
+import { istErlaubtesLinkziel } from "./richText";
+
 export interface EditorLinkInput {
   url: string;
   label?: string;
@@ -14,18 +16,22 @@ function escapeAttr(value: string): string {
   return escapeHtml(value).replace(/"/g, "&quot;");
 }
 
+// BIB-6 / H8: dieselbe Positivliste wie der Sanitizer (istErlaubtesLinkziel). Vorher galt alles, was
+// mit `/` beginnt, als interner Pfad — auch `//fremd.example` und `/\fremd.example`, die der Browser
+// als Fremdhost deutet. Was mit `/`, `\` oder `#` beginnt oder ein Schema traegt, wird so geprueft,
+// wie es eingegeben wurde; nur eine nackte Domain bekommt `https://` vorangestellt.
 export function normalizeEditorLinkUrl(input: string): string | null {
   const raw = input.trim();
   if (!raw || /\s/.test(raw)) {
     return null;
   }
-  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
-    return /^(https?:|mailto:)/i.test(raw) ? raw : null;
-  }
-  if (raw.startsWith("/") || raw.startsWith("#")) {
-    return raw;
-  }
-  return `https://${raw}`;
+  const istZiel =
+    /^[a-z][a-z0-9+.-]*:/i.test(raw) ||
+    raw.startsWith("/") ||
+    raw.startsWith("\\") ||
+    raw.startsWith("#");
+  const ziel = istZiel ? raw : `https://${raw}`;
+  return istErlaubtesLinkziel(ziel) ? ziel : null;
 }
 
 export function editorLinkHtml(input: EditorLinkInput): string | null {

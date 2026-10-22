@@ -96,12 +96,67 @@ export function normalizeImageScale(value: string | null | undefined): ImageScal
   return IMAGE_SCALE_VALUES.includes(scale as ImageScaleValue) ? (scale as ImageScaleValue) : null;
 }
 
-function isSafeHref(value: string): boolean {
-  const v = value.trim();
-  if (/^(https?:|mailto:|#|\/)/i.test(v)) {
+// H8 / WEBA-4 / WEBB-2 / BIB-6 — LINKZIEL NACH POSITIVLISTE, GEPRUEFT AN DEM, WAS DER BROWSER LIEST.
+// Die alte Pruefung sah den ROHEN Attributwert per Regex an. Der Browser dekodiert aber zuerst die
+// Entities (`&#106;avascript:`, `javascript&colon;`), streicht Tab/Zeilenumbruch (`java&Tab;script:`)
+// und fuehrende Steuerzeichen (`\x01javascript:`) und deutet `//`, `/\`, `\\` als fremden Host.
+// Deshalb: dekodieren, Steuerzeichen (C0, inkl. Tab/LF/CR) entfernen, trimmen, dann mit dem
+// WHATWG-URL-Parser auswerten. Erlaubt sind nur http:/https:/mailto:, reine Anker `#…` und Pfade mit
+// genau EINEM fuehrenden `/`, die beim eigenen Ursprung bleiben. Alles andere: href entfaellt.
+// AUSGEGEBEN wird der gepruefte (dekodierte) Wert, vollstaendig escaped — ein Entity, das unser
+// Decoder nicht kennt (`&sol;`, `&NewLine;`), darf den Browser nicht als Entity erreichen, sonst
+// wird aus dem geprueften `/&sol;evil` dort ein `//evil`. Wortgleich in services/structure/src/sanitize.ts.
+const LINK_BASIS = "https://klarwerk.invalid/";
+const LINK_BASIS_URSPRUNG = new URL(LINK_BASIS).origin;
+const LINK_SCHEMATA: ReadonlySet<string> = new Set(["http:", "https:", "mailto:"]);
+
+function ohneSteuerzeichen(text: string): string {
+  let out = "";
+  for (const zeichen of text) {
+    if (zeichen.charCodeAt(0) > 0x1f) {
+      out += zeichen;
+    }
+  }
+  return out;
+}
+
+// Prueft ein bereits dekodiertes, bereinigtes Linkziel gegen die Positivliste. Exportiert, weil der
+// Link-Dialog (editorLinks.ts) dieselbe Positivliste anlegt (BIB-6) — keine Zweitkopie.
+export function istErlaubtesLinkziel(ziel: string): boolean {
+  if (ziel.startsWith("#")) {
     return true;
   }
-  return !/^[a-z][a-z0-9+.-]*:/i.test(v);
+  let url: URL;
+  try {
+    url = new URL(ziel, LINK_BASIS);
+  } catch {
+    return false;
+  }
+  if (ziel.startsWith("/")) {
+    return !/^\/[/\\]/.test(ziel) && url.origin === LINK_BASIS_URSPRUNG;
+  }
+  const schema = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(ziel);
+  return (
+    schema !== null &&
+    `${(schema[1] ?? "").toLowerCase()}:` === url.protocol &&
+    LINK_SCHEMATA.has(url.protocol)
+  );
+}
+
+// Attributwert → gepruefter Linkziel-Wert, oder null (href entfaellt).
+function sicheresLinkziel(wert: string): string | null {
+  const ziel = ohneSteuerzeichen(decodeHtmlEntities(wert)).trim();
+  return istErlaubtesLinkziel(ziel) ? ziel : null;
+}
+
+// Vollstaendiges Escaping fuer das Linkziel: JEDES `&` wird `&amp;` (escapeAttr liesse `&sol;` stehen).
+function escapeLinkziel(ziel: string): string {
+  return ziel
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 // img src: Object-Store-raw oder data:image für SICHERE Rastertypen (kein SVG → XSS).
@@ -200,7 +255,11 @@ function renderAttrs(tag: string, raw: string): string {
     if (name.startsWith("on") || !allowed.has(name)) {
       continue;
     }
-    if (tag === "a" && name === "href" && !isSafeHref(value)) {
+    if (tag === "a" && name === "href") {
+      const ziel = sicheresLinkziel(value);
+      if (ziel !== null) {
+        out.push(`href="${escapeLinkziel(ziel)}"`);
+      }
       continue;
     }
     if (tag === "img" && name === "src" && !isSafeImgSrc(value)) {
