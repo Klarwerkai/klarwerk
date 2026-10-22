@@ -111,7 +111,7 @@ describe("Welle1: Pflichtmodus ist unabhängig vom gewählten Reporter", () => {
     ]) {
       writeFileSync(
         join(work, file as string),
-        `export default {test:{include:[${JSON.stringify(selected)}],forbidOnly:true}};`,
+        `export default {test:{include:[${JSON.stringify(selected)}],allowOnly:false}};`,
       );
     }
     writeFileSync(join(work, "r.test.ts"), "import {it} from 'vitest';it('synthetisch',()=>{});");

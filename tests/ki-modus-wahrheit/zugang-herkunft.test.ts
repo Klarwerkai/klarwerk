@@ -42,7 +42,7 @@ function reasonerWieImProdukt(env: Record<string, string | undefined>): Reasoner
 }
 
 const SCHLUESSEL_OPENAI = "sk-test-zugang-herkunft-nur-hier-0001";
-const SCHLUESSEL_ANTHROPIC = "sk-ant-test-zugang-herkunft-nur-hier-0002";
+const SCHLUESSEL_ANTHROPIC = "sk-ant-test-zugang-herkunft-nur-hier-0002"; // geheimnis-scan: erlaubt — synthetische Herkunfts-Testattrappe, kein echtes Zugangsdatum.
 
 describe("R-0702 · die Herkunft je Zugang kommt aus der zentralen Zugangsverwaltung des Servers", () => {
   it("H1 · jeder Zugang trägt eine Herkunft mit Nachweisstufe — auch ohne eingerichtetes Modell", () => {

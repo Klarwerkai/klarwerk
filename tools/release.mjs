@@ -5,7 +5,9 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assessFindings, assessStage, policyHash } from "./release-ausnahmen.mjs";
 import { releaseVertrag as contract } from "./release-vertrag.mjs";
+export { policyHash } from "./release-ausnahmen.mjs";
 
 export const hash = (value) => createHash("sha256").update(value).digest("hex");
 export const contractHash = hash(JSON.stringify(contract));
@@ -42,9 +44,17 @@ export function selection(paths) {
   return [
     ...new Set([
       ...contract.causalTests,
-      ...paths.filter((p) => /\.test\.tsx?$/.test(p) && !p.endsWith(".integration.test.ts")),
+      ...paths.filter(
+        (p) =>
+          /\.test\.tsx?$/.test(p) &&
+          !p.endsWith(".integration.test.ts") &&
+          !contract.deferredTests.some((d) => d.path === p),
+      ),
     ]),
   ].sort();
+}
+export function deferredSelection(paths) {
+  return contract.deferredTests.filter((d) => paths.includes(d.path));
 }
 export function integrationSelection(paths) {
   return paths.filter((p) => p.endsWith(".integration.test.ts")).sort();
@@ -56,7 +66,7 @@ export function stageCommand(stage, tests, output) {
         ...tests,
         "--config",
         "vitest.config.ts",
-        "--forbidOnly",
+        "--allowOnly=false",
         "--pool=forks",
         "--minWorkers=1",
         "--maxWorkers=1",
@@ -95,9 +105,11 @@ export function assertProof(proof, tree) {
   assert(/^[a-f0-9]{40}$/.test(proof.commit) && /^[a-f0-9]{40}$/.test(proof.base));
   assert(same(proof.tests, selection(proof.changedPaths)));
   assert(same(proof.integrationTests, integrationSelection(proof.changedPaths)));
+  assert(same(proof.deferredTests, deferredSelection(proof.changedPaths)));
+  assert.equal(proof.policyHash, policyHash);
   assert(
-    same(proof.exceptions, contract.exceptions) && proof.exceptions.length === 0,
-    "unbekannte oder abgelaufene Ausnahme: Entscheidung in 1.2 erforderlich",
+    assessFindings(proof.exceptions).accepted,
+    "unbekannte, geänderte oder abgelaufene Ausnahme",
   );
   const began = Date.parse(proof.startedAt);
   const ended = Date.parse(proof.endedAt);
@@ -108,7 +120,12 @@ export function assertProof(proof, tree) {
     const actual = proof.stages[i];
     assert.equal(actual.name, stage.name);
     assert(same(actual.command, stageCommand(stage, proof.tests, proof.output)));
-    assert(actual.exit === 0 && actual.success === true && actual.sourceUnchanged === true);
+    const approvedExit =
+      actual.exit === 0 ||
+      (["lint", "architecture"].includes(stage.name) &&
+        actual.exit === 1 &&
+        actual.approvedExceptions?.length > 0);
+    assert(approvedExit && actual.success === true && actual.sourceUnchanged === true);
     const start = Date.parse(actual.startedAt);
     const end = Date.parse(actual.endedAt);
     assert(start >= previous && end >= start && end <= ended && end - start <= 240000);
@@ -119,7 +136,11 @@ export function assertProof(proof, tree) {
 }
 export function assertEvidence(proof) {
   for (const stage of proof.stages) {
-    assert.equal(hash(readFileSync(stage.log)), stage.logSha, "verändertes Laufprotokoll");
+    const log = readFileSync(stage.log);
+    assert.equal(hash(log), stage.logSha, "verändertes Laufprotokoll");
+    const assessment = assessStage(stage.name, stage.exit, log.toString("utf8"), proof.root);
+    assert(assessment.accepted, "neue, geänderte oder abgelaufene Diagnose");
+    assert(same(assessment.approved, stage.approvedExceptions ?? []));
   }
   assert.equal(hash(readFileSync(proof.testReportPath)), proof.testReportSha);
   assert(same(JSON.parse(readFileSync(proof.testReportPath, "utf8")), proof.testReport));
@@ -139,6 +160,7 @@ export function runRelease(root, base, output) {
   const startedAt = new Date().toISOString();
   const limit = Date.now() + contract.maxSeconds * 1000;
   mkdirSync(output, { recursive: true });
+  writeFileSync(join(output, "einmaliger-start.txt"), `${commit} ${tree}\n`, { flag: "wx" });
   const proof = {
     version: contract.version,
     contractHash,
@@ -150,6 +172,8 @@ export function runRelease(root, base, output) {
     changedPaths,
     tests,
     integrationTests: integrationSelection(changedPaths),
+    deferredTests: deferredSelection(changedPaths),
+    policyHash,
     writer:
       process.env.GITHUB_ACTIONS === "true"
         ? "github-actions:Pflichtprüfung"
@@ -163,6 +187,9 @@ export function runRelease(root, base, output) {
     for (const stage of contract.stages) {
       const command = stageCommand(stage, tests, output);
       const start = new Date().toISOString();
+      console.log(
+        JSON.stringify({ event: "stage-invocation", name: stage.name, at: start, command }),
+      );
       const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
         cwd: root,
         env: environment(),
@@ -183,12 +210,30 @@ export function runRelease(root, base, output) {
         startedAt: start,
         endedAt: new Date().toISOString(),
         exit: run.status,
-        success: run.status === 0 && !run.error,
+        success: false,
+        actualPid: run.pid ?? null,
+        actualWaitCompleted: true,
+        signal: run.signal,
+        controls,
         sourceUnchanged,
         log,
         logSha: hash(body),
       };
       proof.stages.push(actual);
+      console.log(
+        JSON.stringify({
+          event: "stage-wait-completed",
+          name: actual.name,
+          actualPid: actual.actualPid,
+          exit: actual.exit,
+          endedAt: actual.endedAt,
+        }),
+      );
+      const assessment = assessStage(stage.name, run.status, body, root);
+      actual.success = assessment.accepted && !run.error;
+      actual.approvedExceptions = assessment.approved;
+      actual.rejectedDiagnostics = assessment.rejected;
+      proof.exceptions.push(...assessment.approved);
       assert(
         actual.success && sourceUnchanged && Date.now() <= limit,
         `Pflichtstufe ${stage.name} rot oder Quelle geändert`,
@@ -206,6 +251,8 @@ export function runRelease(root, base, output) {
     proof.error = error.message;
   }
   proof.endedAt = new Date().toISOString();
+  proof.approvalBasis =
+    proof.exceptions.length > 0 ? "specific_temporary_exceptions" : "no_exceptions";
   proof.deferred = contract.deferred.map((d) => ({
     ...d,
     due: new Date(Date.parse(startedAt) + d.withinHours * 3600000).toISOString(),

@@ -9,6 +9,8 @@ import json
 from pathlib import Path
 import sys
 
+sys.dont_write_bytecode = True
+
 
 def step(module, mode, repo, intent_path):
     if mode not in ('publish', 'status'):

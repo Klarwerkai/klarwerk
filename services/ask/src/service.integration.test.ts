@@ -1,7 +1,13 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { AUDIT_EVENT_ID_SCHEMA, AUDIT_SCHEMA, AuditService, PgAuditRepo } from "../../audit";
+import {
+  AUDIT_EVENT_ID_SCHEMA,
+  AUDIT_HASH_VERSION_SCHEMA,
+  AUDIT_SCHEMA,
+  AuditService,
+  PgAuditRepo,
+} from "../../audit";
 import { guardedLocalPgTestUrl, withPgTx } from "../../db-tx";
 import { KO_SCHEMA, KoService, PgKoRepo } from "../../knowledge-object";
 import { Reasoner } from "../../reasoner";
@@ -85,6 +91,7 @@ describe("FUNKE-FIX2 P0 (bens ROT-1): Danke atomar gegen echtes Postgres (Audit 
     await pool.query("DROP TABLE IF EXISTS kos CASCADE");
     await pool.query(AUDIT_SCHEMA);
     await pool.query(AUDIT_EVENT_ID_SCHEMA);
+    await pool.query(AUDIT_HASH_VERSION_SCHEMA);
     await pool.query(KO_SCHEMA);
     const audit = new AuditService({ repo: new PgAuditRepo(pool), now: () => NOW });
     const koService = new KoService({ repo: new PgKoRepo(pool), now: () => NOW });

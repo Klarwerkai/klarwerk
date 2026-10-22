@@ -45,7 +45,7 @@ print('GET-only; saved intent; exactly one POST')
 `;
   const result = spawnSync(
     "python3",
-    ["-c", program, join(root, "tools/publish-transport.py"), work],
+    ["-B", "-c", program, join(root, "tools/publish-transport.py"), work],
     {
       cwd: root,
       env: {

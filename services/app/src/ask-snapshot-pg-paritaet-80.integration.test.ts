@@ -168,7 +168,7 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     const data = zeile.rows[0]?.data;
     expect(data).toBeDefined();
     expect(data?.validationDecisionRef).toBeNull();
-    expect(data?.validationDecisionRefReason).toBe("w3c_no_decision_carrier");
+    expect(data?.validationDecisionRefReason).toBe("w3_23_ref_liegt_je_evidence");
     // Der seit Freeze 67 erledigte Grund darf in KEINEM neuen Snapshot stehen.
     expect(data?.validationDecisionRefReason).not.toBe("w3b_findbyseq_missing");
     expect(data?.resolutionId).toBeNull();

@@ -89,6 +89,7 @@
 //     als ein Literal oder das eine bekannte Feld. Diese Grenzen sind in (f) als Fälle festgehalten
 //     statt hier behauptet: wer die Erkennung weitet, sieht dort rot und zieht diesen Kopf mit nach.
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { koHistoryNote } from "../../apps/web/src/lib/koHistoryNote";
@@ -134,88 +135,86 @@ const uebersetzer = (lng: string): ((key: string) => string) => i18n.getFixedT(l
  * Fall „en ≠ nl" wird dann für diesen Eintrag begründet ausgenommen, nicht stillschweigend
  * weggelassen.
  */
+// Ausführbare Schreibwege statt veraltender Zeilenzahlen. Kommentare und Text zählen nicht.
 const DIENST_VERMERKE = [
   {
     wort: "erstellt",
     schluessel: "ko.historyNote.created",
     en: "created",
     nl: "aangemaakt",
-    // JOB 4146: um 37 Zeilen verschoben — der Diskussionsfaden hat `fadenWurzel` und den erweiterten
-    // `addComment` in den Dienst gebracht. JOB 4146 R5: um weitere 28 Zeilen, weil `gleicheAbsendung`
-    // vor `fadenWurzel` dazugekommen ist. Die Wortlaute sind UNVERÄNDERT; es sind weiterhin
-    // dieselben fünf Vermerke. Gemessen mit `grep -n '"erstellt"' …`, nicht fortgeschrieben.
-    // JOB 4213: UNVERÄNDERT. Die Fassungsübernahme fügt in `service.ts` ausschliesslich UNTERHALB
-    // von `:3715` ein (Begründung dort bei `pruefeHerkunft`), deshalb bleiben die drei „erstellt"-
-    // Fundstellen und ihre Nachbarn stehen, wo sie standen. Gemessen mit
-    // `grep -n '"erstellt"' services/knowledge-object/src/service.ts`, nicht fortgeschrieben.
-    // AUFNAHME 20260922 · gesamt-auditprotokoll (Lauf 3): NEU GEMESSEN (`grep -n`) — Erstanlage in
-    // `schreibeErstanlage`, Belegklammern an den Schreibwegen. Wortlaute und Zahl unverändert.
-    // Zusammenführung mit dem Dubletten-Rückzug: am zusammengeführten Dienst NEU GEMESSEN
-    // (`grep -n`), für alle Einträge dieser Tabelle. Wortlaute und Zahl unverändert.
-    // Erneute Integration des Hauptstands (Kandidat 170a42a0): wieder NEU GEMESSEN, alle Einträge.
-    fundstellen: [2272, 2468],
+    fundstellen: ["buildCreatedKo:note", "finishCreated:snapshot"],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2702],
+    fundstellen: ["createWithDocumentsLocked:snapshot"],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [3119],
+    fundstellen: ["ensureCreatedSideEffects:note"],
   },
   {
     wort: "überarbeitet",
     schluessel: "ko.historyNote.revised",
     en: "revised",
     nl: "herzien",
-    // JOB 3667 RUNDE 7 · VIER Fundstellen statt zwei, und das ist die ganze Spur dieses Auftrags in
-    // dieser Tabelle: der Rückweg aus Word hat zwei weitere Schreibwege eröffnet, die eine neue
-    // INHALTSFASSUNG erzeugen — „überarbeiten und gleich freigeben" (:3839) und „einen gebundenen
-    // Änderungsvorschlag übernehmen" (:4028). Beide schreiben DENSELBEN Vermerk wie jede andere
-    // Überarbeitung. Dass dabei zugleich freigegeben wurde, steht nicht im Vermerk, sondern im
-    // Datensatz (`status`, `ownership.validators`) und in zwei Audit-Belegen; die Begründung dafür
-    // steht bei `naechsteFassung` im Dienst.
-    // JOB 4146: um 149 Zeilen verschoben (`addComment` samt Begründung und `setCommentResolution`
-    // stehen davor). JOB 4146 R5: um weitere 34 Zeilen (28 für `gleicheAbsendung` vor der Klasse,
-    // 6 für die Inhaltsbindung IN `addComment`). Weiterhin dieselben VIER Schreibwege, derselbe
-    // Vermerk.
-    // JOB 4213 · NEU GEMESSEN, und es sind weiterhin dieselben VIER Schreibwege mit demselben
-    // Wortlaut: die Fassungsübernahme fügt in `service.ts` UNTERHALB von `:3715` ein (`pruefeHerkunft`,
-    // `ReviseMitHerkunft`) und verschiebt diese vier Fundstellen um 70 bis 110 Zeilen nach unten.
-    //
-    // SIE FÜHRT AUSDRÜCKLICH KEINEN SECHSTEN VERMERK EIN: eine Fassung, die einen früheren Stand
-    // zurückholt, trägt „überarbeitet" wie jede andere Revision. Was sie unterscheidet, steht als
-    // ZAHL im Eintrag (`restoredFrom`) und auf der Fläche als eigener, übersetzter Satz
-    // (`ko.snapshotRestoredFrom`). Ein sechster Vermerk hätte einen Eintrag in `koHistoryNote.ts`
-    // gebraucht — nicht Zielpfad dieses Auftrags —, und ohne ihn stünde das deutsche Wort im
-    // englischen Text. Dieselbe Entscheidung wie in JOB 3667 R7, aus demselben Grund.
-    // AUFNAHME 20260922 · Prüfbasis-Aktualität: NEU GEMESSEN (`grep -n`), alle Fundstellen dieser
-    // Tabelle um 23 bis 120 Zeilen verschoben — Importe der Basisbindung am Kopf, die Lesefassung der
-    // Mutationspfade, Bestandsstempel/Lesefassung vor `get`, die gebundene Basis in
-    // `recordAiCheckOutcome`/`markAiCheckPending`/`resolveAiCheck` und die Lesefassung der Suchwege.
-    // Wortlaute und Zahl der Vermerke UNVERÄNDERT.
-    // D5 (KI aus, Lauf 3): NEU GEMESSEN, alle Fundstellen um 29 Zeilen verschoben — die Sperre des
-    // Fragewegs in Bestandsstempel/Lesefassung/`get`, `aktuelleFassungVon` und `findCandidates`.
-    // Dubletten-Rückzug (BEN-R5-5): NEU GEMESSEN (`grep -n`), alle Fundstellen um 8 Zeilen (vor
-    // `restore`) bzw. 17 Zeilen (danach) verschoben — die Rücknahme-Klammer in Deps/Feld/Konstruktor
-    // und der gemeinsame Weg in `restore`. Wortlaute und Zahl der Vermerke UNVERÄNDERT.
-    // Zusammenführung mit gesamt-auditprotokoll (Belegklammern, Erstanlage): NEU GEMESSEN (`grep -n`).
-    fundstellen: [4920, 5049, 5145, 5337],
+    fundstellen: [
+      "uebernimmOfficeFassung:note",
+      "revise:note",
+      "naechsteFassung:note",
+      "reviseUndFreigeben:note",
+      "decideProposal:note",
+    ],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [5568, 5582],
+    fundstellen: ["appendDocumentExtract:note", "appendDocumentExtract:snapshot"],
   },
 ] as const;
+
+function vermerkRouten(text: string): { route: string; wort: string }[] {
+  const source = ts.createSourceFile("service.ts", text, ts.ScriptTarget.Latest, true);
+  const service = source.statements.find(
+    (n): n is ts.ClassDeclaration => ts.isClassDeclaration(n) && n.name?.text === "KoService",
+  );
+  if (!service) throw new Error("KoService-Schreibwege fehlen");
+  const result: { route: string; wort: string }[] = [];
+  for (const method of service.members) {
+    if (!ts.isMethodDeclaration(method) || !ts.isIdentifier(method.name) || !method.body) continue;
+    const name = method.name.text;
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isPropertyAssignment(node) &&
+        ts.isIdentifier(node.name) &&
+        node.name.text === "note" &&
+        ts.isStringLiteralLike(node.initializer)
+      ) {
+        result.push({ route: `${name}:note`, wort: node.initializer.text });
+      }
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        node.expression.name.text === "snapshot"
+      ) {
+        const note = node.arguments[2];
+        if (note && ts.isStringLiteralLike(note))
+          result.push({ route: `${name}:snapshot`, wort: note.text });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(method.body);
+  }
+  return result;
+}
 
 /** Der Solltext eines Eintrags in einer der beiden Fremdsprachen — eine Quelle, kein zweiter Zweig. */
 const soll = (v: (typeof DIENST_VERMERKE)[number], lng: "de" | "en" | "nl"): string =>
@@ -462,14 +461,23 @@ describe("JOB 3627 · die Liste der festen Dienst-Vermerke ist gemessen, nicht b
     expect(gefunden(quelle)).toEqual([...DIENST_VERMERKE.map((v) => v.wort)].sort());
   });
 
-  it("jede genannte Fundstelle trägt ihren Wortlaut wirklich", () => {
-    const zeilen = quelle.split("\n");
-    const daneben = DIENST_VERMERKE.flatMap((v) =>
-      v.fundstellen
-        .filter((nr) => !(zeilen[nr - 1] ?? "").includes(`"${v.wort}"`))
-        .map((nr) => `service.ts:${nr} trägt nicht „${v.wort}“, sondern: ${zeilen[nr - 1] ?? "—"}`),
-    );
-    expect(daneben, "Fundstellen, die nicht mehr stimmen").toEqual([]);
+  it("jede benannte AST-Fundstelle trägt den Wortlaut am ausführbaren Schreibweg", () => {
+    const routes = vermerkRouten(quelle);
+    for (const entry of DIENST_VERMERKE) {
+      expect(
+        routes
+          .filter((r) => r.wort === entry.wort)
+          .map((r) => r.route)
+          .sort(),
+      ).toEqual([...entry.fundstellen].sort());
+    }
+    expect(vermerkRouten(`\n\n${quelle}`)).toEqual(routes);
+    expect(
+      vermerkRouten("class KoService { fake() { const text = 'note: \"erstellt\"'; } }"),
+    ).toEqual([]);
+    expect(() =>
+      vermerkRouten(quelle.replace("class KoService", "class FalscherDienst")),
+    ).toThrow();
   });
 
   it("KEIN Schreibweg reicht heute einen MENSCHLICH eingegebenen Vermerk durch", () => {
@@ -501,18 +509,11 @@ describe("JOB 3627 · die Liste der festen Dienst-Vermerke ist gemessen, nicht b
     const erzeuger = [...quelle.matchAll(/snapshot: \{[^}]*note: ([^,}]+)/g)].map((m) =>
       (m[1] as string).trim(),
     );
-    // JOB 3667 RUNDE 7 · DREI ERZEUGER STATT EINEM — die Zusage dieses Falls ist unverändert und
-    // wird hier NICHT gelockert: jeder Erzeuger muss ein LITERAL sein, und die Liste steht weiterhin
-    // wörtlich da. Dass sie gewachsen ist, ist die Nachführpflicht dieses Auftrags: `revise`
-    // (service.ts:3807), `reviseUndFreigeben` (:3970) und `decideProposal` (:4090) schreiben je eine
-    // neue Inhaltsfassung und damit je einen Schnappschuss. Alle drei tragen DASSELBE Literal — käme
-    // hier je ein Wert von aussen an, wäre die offene Grenze in `koHistoryNote.ts` erreichbar, und
-    // genau das meldete dieser Fall dann.
-    // JOB 4213 · UNVERÄNDERT DREI, und das ist der Beleg dafür, dass die Fassungsübernahme hier
-    // nichts aufgeweicht hat: sie schreibt ihren Schnappschuss über denselben `revise`-Weg mit
-    // demselben Literal. Ein vierter Erzeuger oder ein `note: vermerk` wäre der Augenblick, in dem
-    // die offene Grenze in `koHistoryNote.ts` erreichbar würde — und genau das meldete dieser Fall.
+    // Die vier tatsächlichen Snapshot-Erzeuger liegen in uebernimmOfficeFassung, revise,
+    // reviseUndFreigeben und decideProposal. Jeder schreibt dasselbe Literal; naechsteFassung
+    // schreibt es in die Historie. Die benannten AST-Routen oben binden alle fünf Schreibwege.
     expect(erzeuger, "die Erzeuger des mutateKoTx-Vermerks — jeder muss ein Literal sein").toEqual([
+      '"überarbeitet"',
       '"überarbeitet"',
       '"überarbeitet"',
       '"überarbeitet"',

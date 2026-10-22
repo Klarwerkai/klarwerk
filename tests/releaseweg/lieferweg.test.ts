@@ -16,7 +16,7 @@ const m = await import(process.argv[1]);
 const {releaseVertrag:c} = await import(new URL('./release-vertrag.mjs', process.argv[1]));
 const tests=m.selection(['tests/releaseweg/lieferweg.test.ts']);
 const report={success:true,numTotalTests:tests.length,numPassedTests:tests.length,numFailedTests:0,numPendingTests:0,numTodoTests:0,testResults:tests.map(name=>({name:'/synthetic/'+name,status:'passed',assertionResults:[{status:'passed',failureMessages:[]}]}))};
-const proof={version:1,contractHash:m.contractHash,commit:'a'.repeat(40),base:'b'.repeat(40),tree:'c'.repeat(40),root:'/synthetic',output:'/synthetic/out',changedPaths:['tests/releaseweg/lieferweg.test.ts'],tests,integrationTests:[],exceptions:[],sourceUnchanged:true,success:true,startedAt:new Date(0).toISOString(),endedAt:new Date(6000).toISOString(),testReport:report,stages:c.stages.map((s,i)=>({name:s.name,command:m.stageCommand(s,tests,'/synthetic/out'),startedAt:new Date(i*1000).toISOString(),endedAt:new Date(i*1000+100).toISOString(),exit:0,success:true,sourceUnchanged:true,logSha:'d'.repeat(64)}))};
+const proof={version:c.version,contractHash:m.contractHash,commit:'a'.repeat(40),base:'b'.repeat(40),tree:'c'.repeat(40),root:'/synthetic',output:'/synthetic/out',changedPaths:['tests/releaseweg/lieferweg.test.ts'],tests,integrationTests:[],deferredTests:[],policyHash:m.policyHash,exceptions:[],sourceUnchanged:true,success:true,startedAt:new Date(0).toISOString(),endedAt:new Date(6000).toISOString(),testReport:report,stages:c.stages.map((s,i)=>({name:s.name,command:m.stageCommand(s,tests,'/synthetic/out'),startedAt:new Date(i*1000).toISOString(),endedAt:new Date(i*1000+100).toISOString(),exit:0,success:true,sourceUnchanged:true,logSha:'d'.repeat(64)}))};
 `;
 function node(code: string, url = moduleUrl, args: string[] = []) {
   return spawnSync(process.execPath, ["--input-type=module", "-e", code, url, ...args], {
@@ -61,6 +61,25 @@ describe("Welle1: Pflichtausführung und Erfolg unterscheiden", () => {
 const paths=['services/ask/src/service.integration.test.ts','tests/unit.test.ts'];
 assert(!m.selection(paths).some(p=>p.endsWith('.integration.test.ts')));
 assert.deepEqual(m.integrationSelection(paths),['services/ask/src/service.integration.test.ts']);
+`);
+    expect(run.status, run.stderr).toBe(0);
+  });
+  it("nur die ausdrücklich benannte lange Diagnose wird zugeordnet; unbekannte Tests bleiben Pflicht", () => {
+    const run = node(`${prelude}
+const mixed='tests/tor-inventar/lastgrenze-wrapper.test.ts';
+assert(!m.selection([mixed]).includes(mixed));
+const deferred=m.deferredSelection([mixed]);
+assert.equal(deferred.length,1);assert.equal(deferred[0].owner,'Root');assert.equal(deferred[0].due,'2026-10-23T18:00:00Z');
+assert(m.selection(['tests/unbekannt.test.ts']).includes('tests/unbekannt.test.ts'));
+`);
+    expect(run.status, run.stderr).toBe(0);
+  });
+  it("gezielte PG-Auswahl bleibt dem CI-Weg zugeordnet und startet durch Import nichts", () => {
+    const run = node(`
+import assert from 'node:assert/strict';
+const m=await import(new URL('./pg-auswahl.mjs',process.argv[1]));
+assert.deepEqual(m.pgSelection(['services/a.integration.test.ts','tests/unit.test.ts']),['services/a.integration.test.ts']);
+assert.deepEqual(m.pgSelection(['tests/unit.test.ts']),[]);
 `);
     expect(run.status, run.stderr).toBe(0);
   });
@@ -140,6 +159,35 @@ for(const patch of [{allowAttestationChild:false},{completed:false},{exit:1},{de
 `,
       publishUrl,
       [evidence],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+  it("nur ein legitimer baumgleicher Child mit echten Git-Trailern gilt", () => {
+    const run = node(
+      `
+import assert from 'node:assert/strict';
+const m=await import(process.argv[1]);
+const expected={commit:'a'.repeat(40),tree:'b'.repeat(40),writer:'Codex <codex@openai.com>',proofSha:'c'.repeat(64),reviewSha:'d'.repeat(64)};
+const trailers='Tor-Ergebnis: '+expected.proofSha+'\\nTor-Baum: '+expected.tree+'\\nReview-Ergebnis: '+expected.reviewSha;
+const actual={parents:[expected.commit],tree:expected.tree,author:expected.writer,committer:expected.writer,message:'ship: geprüft\\n\\n'+trailers+'\\n'};
+m.assertAttestation(actual,expected);
+assert.throws(()=>m.assertAttestation({...actual,parents:[expected.commit,'e'.repeat(40)]},expected));
+const body='ship: geprüft\\n\\nBodytext enthält '+trailers.replaceAll('\\n',' in prose ')+' als Zitat, keine Trailer.\\n';
+assert(body.includes('Tor-Ergebnis: '+expected.proofSha));
+assert.throws(()=>m.assertAttestation({...actual,message:body},expected));
+assert.throws(()=>m.assertAttestation({...actual,message:actual.message+'Tor-Ergebnis: '+expected.proofSha+'\\n'},expected));
+`,
+      publishUrl,
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+  it("lange rote Integration macht exaktes Pflichtgrün nicht falschrot", () => {
+    const run = node(
+      `
+const m=await import(process.argv[1]);
+m.assertCi({check_runs:[{id:1,name:'pflicht',head_sha:'a',app:{slug:'github-actions'},status:'completed',conclusion:'success'},{id:2,name:'integration',head_sha:'a',app:{slug:'github-actions'},status:'completed',conclusion:'failure'}]},'a');
+`,
+      publishUrl,
     );
     expect(run.status, run.stderr).toBe(0);
   });

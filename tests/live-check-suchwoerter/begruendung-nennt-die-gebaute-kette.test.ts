@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { ankerBereich } from "../support/quellenAnker";
 
 // ================================================================================================
 // JOB 3881 · DIE BEGRÜNDUNG DER SUCHWORTREGEL WIRD AN DIE GEBAUTE AUFRUFKETTE GEBUNDEN.
@@ -540,8 +541,9 @@ function genannteFunktionen(block: string): string[] {
 // (keine Kommentarzeile). Zusätzlich darf im Block KEIN weiterer `<datei>.ts:<zahl>` stehen — jeder
 // Verweis geht durch diese Liste, sonst gäbe es eine zweite, ungeprüfte Wahrheit.
 
-const FUNDSTELLE = /^·\s+(AUFRUF|RUMPF)\s+([A-Za-z_$][\w$]*)\s+—\s+(\S+\.ts):(\d+)(?:-(\d+))?$/;
-const VERWEIS_IRGENDWO = /\S+\.ts:\d+/g;
+const FUNDSTELLE =
+  /^·\s+(AUFRUF|RUMPF)\s+([A-Za-z_$][\w$]*)\s+—\s+(\S+\.ts)(?::(\d+)(?:-(\d+))?|#([A-Za-z_$][\w.$]*(?:>[A-Za-z_$][\w$]*)?))$/;
+const VERWEIS_IRGENDWO = /\S+\.ts(?::\d+|#[\w.$>]+)/g;
 
 interface Verweis {
   art: "AUFRUF" | "RUMPF";
@@ -552,7 +554,7 @@ interface Verweis {
   zeile: string;
 }
 
-function fundstellen(block: string): Verweis[] {
+function fundstellen(block: string, kcText: string = kc): Verweis[] {
   const raus: Verweis[] = [];
   for (const roh of block.split("\n")) {
     const zeile = roh.trim();
@@ -560,13 +562,17 @@ function fundstellen(block: string): Verweis[] {
     if (!t) {
       continue;
     }
-    const von = Number(t[4]);
+    const named = t[6];
+    const path = t[3] ?? "";
+    const [von, bis]: [number, number] = named
+      ? ankerBereich(fassung(path, kcText), path, named)
+      : [Number(t[4]), t[5] === undefined ? Number(t[4]) : Number(t[5])];
     raus.push({
       art: t[1] as "AUFRUF" | "RUMPF",
       name: t[2] ?? "",
       pfad: t[3] ?? "",
       von,
-      bis: t[5] === undefined ? von : Number(t[5]),
+      bis,
       zeile,
     });
   }
@@ -739,7 +745,7 @@ function pruefeFundstellen(kcText: string): void {
   const kette = ketteZu(kcText);
   const block = begruendung(kcText);
   const eigene = eigeneNamen(kcText);
-  const verweise = fundstellen(block);
+  const verweise = fundstellen(block, kcText);
   const aufKette = genannteFunktionen(block).filter((n) => !eigene.has(n) && kette.namen.has(n));
   const ohneVerweis = aufKette.filter((n) => !verweise.some((v) => v.name === n));
   expect(
@@ -829,7 +835,12 @@ H2c — findSearchHits(entwurf): Innenzeile eines Blockkommentars ohne führende
 const SCHEIN_BLOCKKOMMENTAR = "H2c";
 
 /** Die Fundstellenzeile, die H2, H3 und H4 durch ihren eigenen Verweis ERSETZEN. */
-const LISTENANKER = "//   · AUFRUF findCandidates — services/app/src/knowledge-check.ts:389";
+const LISTENANKER = `//   ${
+  genauEins(
+    fundstellen(begruendung(kc)).filter((v) => v.art === "AUFRUF" && v.name === "findCandidates"),
+    "genau ein benannter Listenanker erforderlich",
+  ).zeile
+}`;
 
 /**
  * Setzt `zeile` an die Stelle der Ankerzeile der Fundstellenliste.
@@ -1029,6 +1040,11 @@ describe("JOB 3881: die Begründung der Suchwortregel nennt die gebaute Kette", 
 
   it("B2 · jede im Begründungsblock genannte Funktion liegt auf der gebauten Kette", () => {
     pruefeKettentreue(kc);
+  });
+
+  it("benannte Anker bleiben bei eingeschobenen Leerzeilen richtig", () => {
+    pruefeFundstellen(`\n\n${kc}`);
+    expect(() => ankerBereich(lesen(SVC), SVC, "KoService.nichtVorhanden")).toThrow();
   });
 
   it("B3 · jeder Verweis des Begründungsblocks trifft die genannte Stelle", () => {

@@ -58,6 +58,11 @@
   ],
   "ausserhalb": [
     {
+      "weg": "CI-Job pflicht",
+      "befehl": "node tools/release.mjs check \"$RELEASE_BASE\" .local/run/ci-pflicht",
+      "grund": "Gemeinsamer schneller Release-Pflichtvertrag; das breite tools/check bleibt separate Diagnose."
+    },
+    {
       "weg": "CI-Job integration",
       "befehl": "npm run test:integration",
       "grund": "braucht PostgreSQL über Testcontainers (Docker); das hermetische Tor hat keine Datenbank"
@@ -65,7 +70,7 @@
     {
       "weg": "CI-Job abbild",
       "befehl": "node scripts/deploy/abbild-bauen.mjs --ziel dist/abbild",
-      "grund": "baut das Containerabbild nach grünem check-Job; kein Prüfschritt"
+      "grund": "baut das Containerabbild nach grünem schnellen pflicht-Job; kein Prüfschritt"
     },
     {
       "weg": "CI-Workflow smoke-drei",

@@ -285,8 +285,9 @@ export interface KoRepo {
   // die Projektion der AKTIVEN KO-Version. Was hier steht, ist ein Test-/Bibliotheksweg.
   //
   // WER AN DER KANDIDATENWAHL ETWAS ÄNDERN WILL, ÄNDERT ES DORT — und muss nicht suchen:
-  // `services/knowledge-object/src/service.ts:4232-4262` ist der Rumpf, `service.ts:4243` der
-  // Aufruf von `findSearchHits`. Das ist der EINE Wegweiser mit Datei und Zeile; die Marken in
+  // `services/knowledge-object/src/service.ts#KoService.findCandidates` ist der Rumpf,
+  // `services/knowledge-object/src/service.ts#KoService.findCandidates>findSearchHits` der
+  // Aufruf von `findSearchHits`. Das ist der EINE Wegweiser mit Datei und ausführbarem Namensanker; die Marken in
   // `repo-pg.ts` verweisen hierher, statt eine zweite Wahrheit zu führen.
   //
   // Gehalten wird beides von `tests/live-check-postgres-prefilter/toter-kandidatenweg.test.ts`:

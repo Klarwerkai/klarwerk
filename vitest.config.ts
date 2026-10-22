@@ -38,7 +38,7 @@ export const AUSSCHLUSS = [...configDefaults.exclude, "**/*.integration.test.ts"
  * Cache landet wieder in `node_modules/.vite`, also im SYMLINK — der EPERM aus JOB 2622 D1.
  */
 export const GEMEINSAM = {
-  forbidOnly: true,
+  allowOnly: false,
   setupFiles: ["tests/setup-env.ts"],
   exclude: AUSSCHLUSS,
   testTimeout: 60_000,

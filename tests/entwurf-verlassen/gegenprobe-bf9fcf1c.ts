@@ -9,7 +9,7 @@
 // dort stehen spätere Änderungen anderer Aufträge in Capture.tsx, service.ts und capture-routes.ts.
 // Verlangt ist der tatsächliche Produktstand. Deshalb jetzt:
 //
-// DAS QUELLARCHIV. `gegenprobe-bf9fcf1c-quellen.patch` enthält den VOLLSTÄNDIGEN Inhalt von
+// DAS QUELLARCHIV. `fixtures/entwurf-verlassen/gegenprobe-bf9fcf1c-quellen.patch.gz` enthält verlustfrei komprimiert den VOLLSTÄNDIGEN Inhalt von
 // `apps/web` und `services` aus bf9fcf1c, erzeugt aus dem leeren Baum:
 //     git diff --binary --full-index 4b825dc642cb6eb9a060e54bf8d69288fbee4904 bf9fcf1c \
 //       -- apps/web services
@@ -44,9 +44,23 @@ import {
   symlinkSync,
 } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 export const WURZEL = join(__dirname, "..", "..");
-const QUELLEN = join(__dirname, "gegenprobe-bf9fcf1c-quellen.patch");
+const QUELLEN = join(
+  __dirname,
+  "../../fixtures/entwurf-verlassen/gegenprobe-bf9fcf1c-quellen.patch.gz",
+);
+export function gegenprobeQuellbytes(): Buffer {
+  const bytes = gunzipSync(readFileSync(QUELLEN));
+  if (
+    createHash("sha256").update(bytes).digest("hex") !==
+    "059bbdd194248f460124d887a0057c19f881dbfe390bc50c7fac6874d25853c5"
+  ) {
+    throw new Error("Gegenprobe-Quellarchiv ist nicht bytegleich mit dem erhaltenen Original");
+  }
+  return bytes;
+}
 
 /** Der Vergleichscommit, voll ausgeschrieben. */
 export const VERGLEICHSCOMMIT = "bf9fcf1c9556b583efe6c606da822c1e94117b25";
@@ -182,9 +196,10 @@ export function bereiteAltenStand(ziel: string): AlterStand {
   for (const ordner of Object.keys(BF9FCF1C_BAEUME)) {
     wache(!existsSync(join(ziel, ordner)), `${ordner} kam vom Kandidaten in den Prüfbaum.`);
   }
-  execFileSync("git", ["apply", "--whitespace=nowarn", QUELLEN], {
+  execFileSync("git", ["apply", "--whitespace=nowarn", "-"], {
+    input: gegenprobeQuellbytes(),
     cwd: ziel,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
   // ERST prüfen, DANN verlinken: so kann keine Verlinkung den Baumvergleich berühren.
   const baeume: Record<string, string> = {};

@@ -99,6 +99,11 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
     befehl: "npx playwright install --with-deps chromium",
     lage: "AUSSERHALB",
   },
+  {
+    job: "integration",
+    befehl: 'node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt',
+    lage: "AUSSERHALB",
+  },
   { job: "integration", befehl: "npm run test:integration", lage: "AUSSERHALB" },
   // R-1487 (aufnahme:20260922:gesamt-kundenbetrieb): der Abbildbau läuft NACH dem Tor (`needs:
   // check`) in einem eigenen Job; `./tools/check` fährt ihn nicht mit.

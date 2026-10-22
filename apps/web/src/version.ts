@@ -3,8 +3,8 @@
 // Livegang kann die Anzeige entfernt werden — die Konstante bleibt für Diagnose/Support.
 //
 // Format: 1.0.0-beta.<Freeze>.<Push-Zähler>. Die LETZTE Zahl ist ein interner, laufender
-// Push-Zähler (Pedi 06.07.2026): klarwerk-ship.command erhöht sie bei JEDEM echten Push
-// automatisch um 1. So sieht man auf einen Blick, ob App (live) und lokale Instanz auf
+// Push-Zähler (Pedi 06.07.2026): der beauftragte Versionsschritt entsteht vor dem
+// abschließenden Quellenfreeze und der Prüfung. So sieht man auf einen Blick, ob App (live) und lokale Instanz auf
 // demselben Stand sind. Basis .1.0 = noch nicht ausgeliefert; der nächste Ship-Lauf → .1.1.
 //
 // JOB 1113 (JOB-947-B3) — ZWEITE STELLE, GLEICHE ZAHL, ERZWUNGEN.
@@ -13,11 +13,11 @@
 // Produktionsimage existiert: `Dockerfile:37-38` kopiert nur `services` und `apps/web/dist` —
 // `apps/web/src` und damit DIESE Datei liegen dort nicht.
 //
-// WER HIER HOCHZÄHLT, ZÄHLT DORT MIT. `scripts/deploy/klarwerk-ship.command` hebt beide Dateien im
-// selben Schritt an und bricht ab, wenn `package.json` nicht die bisherige Nummer trägt; läuft sie
+// WER HIER HOCHZÄHLT, ZÄHLT DORT MIT. Version, package.json und die Root-Metadaten des
+// Lockfiles gehören zum selben geprüften Baum; läuft diese Konstante
 // gegen `package.json` auseinander, meldet /health einen Stand, den die Oberfläche nicht zeigt.
 // Der Wächter `tests/app/health-version-commit.test.ts` macht genau das rot.
 //
 // R-1028: Auch das Word-Panel zeigt DIESE Konstante — der Build stempelt sie in „Klara <Stand>"
 // (`apps/web/vite.config.ts`, Plugin `klara-stand`, Text aus `src/lib/klaraStand.ts`).
-export const APP_VERSION = "1.0.0-beta.1.1031";
+export const APP_VERSION = "1.0.0-beta.1.1032";

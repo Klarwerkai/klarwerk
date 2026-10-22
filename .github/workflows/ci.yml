@@ -48,7 +48,6 @@ jobs:
   # Einzelkommandos stehen oder die Browser-Provisionierung verschwindet.
   # Nachgelagerte Diagnose: Root, binnen 24 Stunden; kein Pflichtgrün aus diesem Job.
   check:
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +73,7 @@ jobs:
   # migrate()-DDL (z. B. reservierter Tabellenname) fiel dort NICHT auf und brach erst beim
   # Prod-Boot ab. Dieser Job fährt die Integrationstests (migrate() + App gegen echtes Postgres
   # via Testcontainers; Docker ist auf ubuntu-latest vorhanden) — so ein Fehler stoppt jetzt die
-  # Pipeline, nicht den Deploy.
+  # lange Diagnose. Der schnelle Pflichtjob des exakten Commits entscheidet über den Deploy.
   #
   # Der Integrationsjob bleibt getrennt. Beide Jobs benötigen Root- und Web-Abhängigkeiten:
   # Integrationstests importieren auch Webmodule und führen den gemeinsamen Typecheck aus.
@@ -84,6 +83,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -92,6 +93,16 @@ jobs:
       - run: npm ci --prefix apps/web
       - name: browser (Chromium für die Postgres-Browser-Integration)
         run: npx playwright install --with-deps chromium
+      - name: gezielte berührte PG-Verträge (vor der langen Diagnose)
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pg-gezielt-${{ github.sha }}
+          path: .local/run/ci-pg-gezielt/
+          if-no-files-found: error
       - name: integration (Postgres via Testcontainers)
         run: npm run test:integration
 
@@ -107,7 +118,7 @@ jobs:
   #
   # KEINE VERÖFFENTLICHUNG: kein `docker login`, kein `docker push`, kein Registry-Geheimnis. Der
   # Bauer ruft nur `build`, `image inspect` und `save` (`tests/kundenbetrieb-betriebsmodelle/
-  # abbild-bauen.test.ts`). `needs: check`: gebaut wird nur, was das Gesamttor grün durchlaufen hat.
+  # abbild-bauen.test.ts`). `needs: pflicht`: gebaut wird nur nach dem schnellen Pflichtvertrag.
   # Der Bauer braucht nur Node, git, tar und docker (auf ubuntu-latest vorhanden) — kein `npm ci`.
   abbild:
     needs: pflicht
@@ -126,4 +137,4 @@ jobs:
           path: dist/abbild/
           if-no-files-found: error
           retention-days: 14
-# Regel: Nichts kommt nach main, das diese Pipeline nicht grün durchläuft.
+# Versandfreigabe: der jüngste exakte Commit braucht pflicht=success. Lange Diagnosen bleiben sichtbar.

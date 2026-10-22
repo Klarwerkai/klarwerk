@@ -120,6 +120,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { ankerBereich } from "../support/quellenAnker";
 import {
   GRENZE_MODUL,
   type Quelle,
@@ -987,33 +988,20 @@ function ordnerdateien(verzeichnis: string = ORDNER): string[] {
  * Wegweiser, der ins Leere zeigt, ist genau der Fehler, gegen den dieser Auftrag steht.
  */
 function pruefeWegweiser(repoText: string, repoPgText: string, serviceText: string): string[] {
-  const beanstandungen: string[] = [];
-  const bereich = /services\/knowledge-object\/src\/service\.ts:(\d+)-(\d+)/g;
-  const alle = [...repoText.matchAll(bereich), ...repoPgText.matchAll(bereich)];
-  if (alle.length !== 1) {
-    return [`Der Wegweiser auf ${SERVICE} steht ${alle.length}×, erwartet genau 1×`];
+  const refs = [
+    ...`${repoText}\n${repoPgText}`.matchAll(
+      /services\/knowledge-object\/src\/service\.ts#([\w.>]+)/g,
+    ),
+  ].map((m) => m[1]);
+  const expected = ["KoService.findCandidates", "KoService.findCandidates>findSearchHits"];
+  if (JSON.stringify(refs) !== JSON.stringify(expected))
+    return ["Wegweiser nennt nicht genau die beiden ausführbaren Namensanker"];
+  try {
+    for (const ref of expected) ankerBereich(serviceText, SERVICE, ref);
+    return [];
+  } catch (error) {
+    return [String(error)];
   }
-  const zeilen = serviceText.split("\n");
-  const von = Number(alle[0]?.[1]);
-  const bis = Number(alle[0]?.[2]);
-  const rumpf = zeilen.slice(von - 1, bis).join("\n");
-  if (!rumpf.includes("async findCandidates(query: KoCandidateQuery)")) {
-    beanstandungen.push(
-      `${SERVICE}:${von}-${bis} — dort steht KoService.findCandidates nicht (mehr)`,
-    );
-  }
-  const einzeln = [...repoText.matchAll(/service\.ts:(\d+)(?!\d)(?!-)/g)];
-  if (einzeln.length !== 1) {
-    beanstandungen.push(
-      `Die Einzelzeile des Wegweisers steht ${einzeln.length}× in ${REPO}, erwartet genau 1×`,
-    );
-    return beanstandungen;
-  }
-  const nr = Number(einzeln[0]?.[1]);
-  if (!(zeilen[nr - 1] ?? "").includes("findSearchHits")) {
-    beanstandungen.push(`${SERVICE}:${nr} — dort steht der Aufruf von findSearchHits nicht (mehr)`);
-  }
-  return beanstandungen;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1678,10 +1666,17 @@ describe("JOB 3607 · Kalibrierung (b): was die Marke NICHT befriedigen darf", (
     const repo = lies(REPO);
     const service = lies(SERVICE);
     expect(pruefeWegweiser(repo, lies(REPO_PG), service)).toEqual([]);
-    // Zwei Zeilen mehr am Anfang: der Rumpf liegt nicht mehr, wo der Wegweiser sagt.
-    expect(pruefeWegweiser(repo, lies(REPO_PG), `\n\n${service}`)).not.toEqual([]);
+    // Leerzeilen verschieben die Kette, nicht ihre ausführbaren Namen.
+    expect(pruefeWegweiser(repo, lies(REPO_PG), `\n\n${service}`)).toEqual([]);
+    expect(
+      pruefeWegweiser(
+        repo,
+        lies(REPO_PG),
+        service.replace("async findCandidates(", "async andererWeg("),
+      ),
+    ).not.toEqual([]);
     // Ein zweiter Wegweiser ist eine zweite Wahrheit.
-    const zweiter = `${repo}\n// services/knowledge-object/src/service.ts:1-2\n`;
+    const zweiter = `${repo}\n// services/knowledge-object/src/service.ts#KoService.findCandidates\n`;
     expect(pruefeWegweiser(zweiter, lies(REPO_PG), service)).not.toEqual([]);
   });
 });

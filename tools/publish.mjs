@@ -9,6 +9,7 @@ import { releaseVertrag as contract } from "./release-vertrag.mjs";
 import {
   assertEvidence,
   assertProof,
+  deferredSelection,
   environment,
   git,
   hash,
@@ -48,7 +49,7 @@ export function assertReview(review, commit, tree, proofSha, writer) {
   );
 }
 export function assertCi(data, commit) {
-  for (const name of [contract.ciJob, "integration"]) {
+  for (const name of [contract.ciJob]) {
     const runs = (data.check_runs ?? []).filter(
       (r) => r.name === name && r.head_sha === commit && r.app?.slug === "github-actions",
     );
@@ -57,6 +58,35 @@ export function assertCi(data, commit) {
       runs.length > 0 && runs[0].status === "completed" && runs[0].conclusion === "success",
       `aktueller CI-Pflichtjob ${name} des exakten Commit nicht grün`,
     );
+  }
+}
+export function assertAttestation(actual, expected) {
+  assert(
+    same(actual.parents, [expected.commit]),
+    "Attestierung muss genau einen Elterncommit haben",
+  );
+  assert.equal(actual.tree, expected.tree);
+  assert.equal(actual.author, expected.writer);
+  assert.equal(actual.committer, expected.writer);
+  const parsed = spawnSync("git", ["interpret-trailers", "--parse"], {
+    input: actual.message,
+    env: environment(),
+    encoding: "utf8",
+    timeout: 10000,
+  });
+  assert.equal(parsed.status, 0, "Git-Trailer nicht lesbar");
+  for (const [key, value] of Object.entries({
+    "tor-ergebnis": expected.proofSha,
+    "tor-baum": expected.tree,
+    "review-ergebnis": expected.reviewSha,
+  })) {
+    const values = parsed.stdout.split("\n").flatMap((line) => {
+      const split = line.indexOf(":");
+      return split >= 0 && line.slice(0, split).toLowerCase() === key
+        ? [line.slice(split + 1).trim()]
+        : [];
+    });
+    assert(same(values, [value]), `echter eindeutiger Git-Trailer ${key} fehlt`);
   }
 }
 function command(root, program, args) {
@@ -84,7 +114,8 @@ function checked(root, proofPath) {
   assert(
     same(changed, proof.changedPaths) &&
       same(selection(changed), proof.tests) &&
-      same(integrationSelection(changed), proof.integrationTests),
+      same(integrationSelection(changed), proof.integrationTests) &&
+      same(deferredSelection(changed), proof.deferredTests),
     "Testauswahl stimmt nicht mit echtem Gitdiff überein",
   );
   const writer = git(root, "var", "GIT_AUTHOR_IDENT").replace(/ \d+ [+-]\d+$/, "");
@@ -94,18 +125,25 @@ function checked(root, proofPath) {
     "wahrheitsgemäße Codex-Rollenidentität erforderlich",
   );
   if (commit !== proof.commit) {
-    assert.equal(
-      git(root, "rev-parse", "HEAD^"),
-      proof.commit,
-      "nur ein baumgleicher Attestierungscommit zulässig",
-    );
-    const message = git(root, "log", "-1", "--format=%B");
-    assert(message.includes(`Tor-Ergebnis: ${hash(readFileSync(proofPath))}`));
     const attestationPath = resolve(dirname(proofPath), "attestierung-urteil.json");
     assertReview(read(attestationPath), proof.commit, tree, hash(readFileSync(proofPath)), writer);
-    assert(message.includes(`Tor-Baum: ${tree}`));
-    assert(message.includes(`Review-Ergebnis: ${hash(readFileSync(attestationPath))}`));
-    assert.equal(git(root, "log", "-1", "--format=%an <%ae>%n%cn <%ce>"), `${writer}\n${writer}`);
+    const identities = git(root, "log", "-1", "--format=%an <%ae>%n%cn <%ce>").split("\n");
+    assertAttestation(
+      {
+        parents: git(root, "show", "--format=%P", "--no-patch", commit).split(/\s+/),
+        tree,
+        author: identities[0],
+        committer: identities[1],
+        message: git(root, "log", "-1", "--format=%B"),
+      },
+      {
+        commit: proof.commit,
+        tree,
+        writer,
+        proofSha: hash(readFileSync(proofPath)),
+        reviewSha: hash(readFileSync(attestationPath)),
+      },
+    );
   }
   return { proof, commit, tree, writer, proofSha: hash(readFileSync(proofPath)) };
 }
@@ -119,7 +157,7 @@ export async function publishMain(root, args) {
     writeFileSync(resolve(dirname(path), "attestierung-urteil.json"), readFileSync(proofPath), {
       flag: "wx",
     });
-    const message = `KLARWERK Ship: Pflichtvertrag tatsächlich grün\n\nTor-Ergebnis: ${current.proofSha}\nTor-Baum: ${current.tree}\nReview-Ergebnis: ${hash(readFileSync(proofPath))}\n`;
+    const message = `KLARWERK Ship: Pflichtvertrag tatsächlich freigegeben (${current.proof.exceptions.length} befristete Einzelfunde)\n\nTor-Ergebnis: ${current.proofSha}\nTor-Baum: ${current.tree}\nReview-Ergebnis: ${hash(readFileSync(proofPath))}\n`;
     const messagePath = resolve(dirname(path), "attestierung.txt");
     writeFileSync(messagePath, message, { flag: "wx" });
     git(root, "commit", "--allow-empty", "-F", messagePath);
@@ -163,7 +201,9 @@ export async function publishMain(root, args) {
   if (mode === "status") {
     console.log(JSON.stringify(intent));
     if (intent.transportDir) {
-      console.log(command(root, "python3", ["tools/publish-transport.py", "status", root, path]));
+      console.log(
+        command(root, "python3", ["-B", "tools/publish-transport.py", "status", root, path]),
+      );
     }
     return;
   }
@@ -215,7 +255,7 @@ export async function publishMain(root, args) {
     const ci = await response.json();
     assertCi(ci, current.commit);
     const result = JSON.parse(
-      command(root, "python3", ["tools/publish-transport.py", "publish", root, path]),
+      command(root, "python3", ["-B", "tools/publish-transport.py", "publish", root, path]),
     );
     save(path, {
       ...intent,

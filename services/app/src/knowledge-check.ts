@@ -285,15 +285,15 @@ const CANDIDATE_LIMIT = 40;
 //
 // FUNDSTELLEN — der Wächter schlägt jede dieser Zeilen nach; ausserhalb dieser Liste steht in
 // diesem Block bewusst KEIN Datei-Zeilen-Verweis, damit keine zweite, ungeprüfte Wahrheit entsteht:
-//   · AUFRUF findCandidates — services/app/src/knowledge-check.ts:389
-//   · RUMPF findCandidates — services/knowledge-object/src/service.ts:4232-4262
-//   · AUFRUF findSearchHits — services/knowledge-object/src/service.ts:4243
-//   · RUMPF findSearchHits — services/knowledge-object/src/service.ts:1995-1997
-//   · RUMPF findActive — services/knowledge-object/src/search-projection-repo.ts:726-837
-//   · RUMPF normalizeSearchTerms — services/knowledge-object/src/search-projection.ts:973-985
-//   · RUMPF expandSearchTerms — services/knowledge-object/src/search-projection.ts:1148-1168
-//   · RUMPF matchEffectiveSearchDocument — services/knowledge-object/src/effective-search-document.ts:116-148
-//   · RUMPF koCandidateScore — services/knowledge-object/src/repo.ts:293-302
+//   · AUFRUF findCandidates — services/app/src/knowledge-check.ts#checkKnowledge>findCandidates
+//   · RUMPF findCandidates — services/knowledge-object/src/service.ts#KoService.findCandidates
+//   · AUFRUF findSearchHits — services/knowledge-object/src/service.ts#KoService.findCandidates>findSearchHits
+//   · RUMPF findSearchHits — services/knowledge-object/src/service.ts#KoService.findSearchHits
+//   · RUMPF findActive — services/knowledge-object/src/search-projection-repo.ts#InMemoryKoSearchProjectionRepo.findActive
+//   · RUMPF normalizeSearchTerms — services/knowledge-object/src/search-projection.ts#normalizeSearchTerms
+//   · RUMPF expandSearchTerms — services/knowledge-object/src/search-projection.ts#expandSearchTerms
+//   · RUMPF matchEffectiveSearchDocument — services/knowledge-object/src/effective-search-document.ts#matchEffectiveSearchDocument
+//   · RUMPF koCandidateScore — services/knowledge-object/src/repo.ts#koCandidateScore
 //
 // WARUM DIE LÄNGE UND NICHT DIE STELLE — AN DIESER KETTE GEMESSEN (Fall S1 im Messstand-Test).
 // `findActive` bereinigt die Wortliste (`normalizeSearchTerms`), ergänzt sie um deklarierte
