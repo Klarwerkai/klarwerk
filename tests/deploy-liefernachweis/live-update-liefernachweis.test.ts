@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -52,7 +52,7 @@ function stub(name: string, inhalt: string): void {
 function lauf(args: string[], env: Record<string, string>): { code: number | null; aus: string } {
   const r = spawnSync("bash", [LIVE_UPDATE, ...args], {
     encoding: "utf8",
-    env: { PATH: `${stubs}:${process.env.PATH}`, TMPDIR: stubs, ...env },
+    env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`, TMPDIR: stubs, ...env },
   });
   return { code: r.status, aus: `${r.stdout}${r.stderr}` };
 }
@@ -280,139 +280,19 @@ describe("klarwerk-live-update.command — Liefermeldung an den erwarteten Commi
   });
 });
 
-// B7 (Ben Runde 3): das Ship-Skript läuft WIRKLICH — gegen ein Wegwerf-Repo unter einem eigenen
-// HOME. `git` ist ein Platzhalter, der jeden Aufruf protokolliert; Runner, Live-Update und lokaler
-// Start sind Platzhalter im Wegwerf-Repo. Kein Push, kein Deploy, kein echtes Git.
-describe("klarwerk-ship.command — Versionskopplung und Liefernachweis (ausgeführt)", () => {
-  const VERSION_TS = (v: string) =>
-    `// eigene Arbeitsänderung, die erhalten bleiben muss\nexport const APP_VERSION = "${v}";\n`;
-  const PACKAGE = (v: string) =>
-    `{\n  "name": "klarwerk",\n  "version": "${v}",\n  "private": true,\n  "zusatz": "bleibt"\n}\n`;
-
-  let home: string;
-  let repo: string;
-
-  function ship(opts: {
-    version: string;
-    pkg: string;
-    liveUpdateExit?: number;
-    antwort?: string;
-    auditExit?: number;
-  }) {
-    home = mkdtempSync(join(tmpdir(), "ship-"));
-    repo = join(home, "Documents", "dev_Klarwerk");
-    for (const d of [
-      "apps/web/src",
-      "docs/team2-austausch",
-      "scripts/deploy",
-      "scripts/local",
-      "tools",
-      ".git",
-    ]) {
-      mkdirSync(join(repo, d), { recursive: true });
-    }
-    writeFileSync(join(repo, "apps/web/src/version.ts"), VERSION_TS(opts.version));
-    writeFileSync(join(repo, "package.json"), PACKAGE(opts.pkg));
-    // R-1398: die Abhängigkeitsprüfung ist ein Platzhalter — kein npm, keine Registry.
-    writeFileSync(
-      join(repo, "tools/abhaengigkeiten-audit.sh"),
-      `echo "audit-platzhalter"\nexit ${opts.auditExit ?? 0}\n`,
-    );
-    writeFileSync(
-      join(repo, "docs/team2-austausch/paul-runner.sh"),
-      'echo "runner-gelaufen"\necho "ALLE GATES GRÜN"\n',
-    );
-    writeFileSync(
-      join(repo, "scripts/deploy/klarwerk-live-update.command"),
-      `echo "live-update $1"\nexit ${opts.liveUpdateExit ?? 0}\n`,
-    );
-    writeFileSync(join(repo, "scripts/local/klarwerk-lokal-starten.command"), "exit 0\n");
-    stub(
-      "git",
-      `#!/bin/bash\necho "$*" >> "${join(home, "git.log")}"\n[ "$1" = "rev-parse" ] && echo ${NEU}\nexit 0\n`,
-    );
-    const r = spawnSync("bash", [SHIP, "Test-Ship"], {
+// Der neue Ship-Einstieg delegiert an den versionierten Pflicht-/Urteilsweg.
+// Die alten automatischen Versions-/add-A-Erwartungen gehören nicht mehr zum Liefervertrag.
+describe("klarwerk-ship.command — versionierter Einstieg", () => {
+  it("reicht status unverändert weiter und ändert keine Versionsdatei", () => {
+    const before = readFileSync(join(REPO, "package.json"), "utf8");
+    stub("node", '#!/bin/bash\nprintf "ARG %s\\n" "$@"\nexit 0\n');
+    const r = spawnSync("bash", [SHIP, "status", "synthetic-intent.json"], {
       encoding: "utf8",
-      input: `${opts.antwort ?? "j"}\n`,
-      env: {
-        PATH: `${stubs}:${process.env.PATH}`,
-        HOME: home,
-        KLARWERK_SHIP_SMOKE_API_KEY: "platzhalter",
-      },
+      env: { ...process.env, PATH: `${stubs}:${process.env.PATH}` },
     });
-    const gitLog = (() => {
-      try {
-        return readFileSync(join(home, "git.log"), "utf8");
-      } catch {
-        return "";
-      }
-    })();
-    return { code: r.status, aus: `${r.stdout}${r.stderr}`, gitLog };
-  }
-
-  const datei = (rel: string) => readFileSync(join(repo, rel), "utf8");
-
-  afterEach(() => {
-    if (home) rmSync(home, { recursive: true, force: true });
-  });
-
-  it("Versionsabweichung: Abbruch VOR jedem Schreiben, Arbeitsänderungen bleiben, kein git", () => {
-    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1.0.0-beta.1.600" });
-    expect(r.code).toBe(1);
-    expect(r.aus).toContain("nichts geschrieben");
-    expect(datei("apps/web/src/version.ts")).toBe(VERSION_TS("1.0.0-beta.1.628"));
-    expect(datei("package.json")).toBe(PACKAGE("1.0.0-beta.1.600"));
-    expect(r.gitLog).toBe("");
-  });
-
-  it("Punkte der Nummer zählen wörtlich: 1x0 statt 1.0 gilt als Abweichung", () => {
-    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1x0.0-beta.1.628" });
-    expect(r.code).toBe(1);
-    expect(datei("package.json")).toBe(PACKAGE("1x0.0-beta.1.628"));
-  });
-
-  it("gleiche Version: beide Dateien auf die nächste Nummer, sonst nichts verändert", () => {
-    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1.0.0-beta.1.628" });
-    expect(r.code).toBe(0);
-    expect(datei("apps/web/src/version.ts")).toBe(VERSION_TS("1.0.0-beta.1.629"));
-    expect(datei("package.json")).toBe(PACKAGE("1.0.0-beta.1.629"));
-    expect(r.aus).toContain(`live-update ${NEU}`);
-    expect(r.aus).toContain("LIVE fertig");
-    expect(r.gitLog).not.toContain("checkout");
-  });
-
-  it("Live-Update nicht geliefert (Exit 2) → Ship endet mit Exit 2 ohne „LIVE fertig“", () => {
-    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1.0.0-beta.1.628", liveUpdateExit: 2 });
-    expect(r.code).toBe(2);
-    expect(r.aus).toContain("NICHT als geliefert bestätigt");
-    expect(r.aus).not.toContain("LIVE fertig");
-  });
-
-  // Exit 1 = unbewertete oder veraltete Meldung, Exit 2 = nicht geprüft. Beide sperren.
-  it.each([1, 2])("R-1398: Abhängigkeitsprüfung Exit %i → Abbruch vor Runner und git", (exit) => {
-    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1.0.0-beta.1.628", auditExit: exit });
-    expect(r.code).toBe(1);
-    expect(r.aus).toContain("audit-platzhalter");
-    expect(r.aus).toContain(`Abhaengigkeitspruefung nicht gruen (Exit ${exit})`);
-    expect(r.aus).not.toContain("runner-gelaufen");
-    expect(datei("apps/web/src/version.ts")).toBe(VERSION_TS("1.0.0-beta.1.628"));
-    expect(datei("package.json")).toBe(PACKAGE("1.0.0-beta.1.628"));
-    expect(r.gitLog).toBe("");
-    expect(r.aus).not.toContain("live-update");
-  });
-
-  it("R-1398: grüne Abhängigkeitsprüfung läuft VOR dem Runner", () => {
-    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1.0.0-beta.1.628" });
-    expect(r.code).toBe(0);
-    const audit = r.aus.indexOf("audit-platzhalter");
-    expect(audit).toBeGreaterThan(-1);
-    expect(audit).toBeLessThan(r.aus.indexOf("runner-gelaufen"));
-  });
-
-  it("Nachfrage verneint → nichts geschrieben, kein git", () => {
-    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1.0.0-beta.1.628", antwort: "n" });
-    expect(r.code).toBe(0);
-    expect(datei("apps/web/src/version.ts")).toBe(VERSION_TS("1.0.0-beta.1.628"));
-    expect(r.gitLog).toBe("");
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("ARG tools/publish.mjs");
+    expect(r.stdout).toContain("ARG status");
+    expect(readFileSync(join(REPO, "package.json"), "utf8")).toBe(before);
   });
 });

@@ -193,7 +193,7 @@ describe("R-1487 · Containerbau mit Quellfassung und Prüfsumme, ohne Veröffen
     const rest = zeilen.slice(kopf + 1);
     const ende = rest.findIndex((z) => /^ {2}\S/.test(z) || /^\S/.test(z));
     const block = (ende === -1 ? rest : rest.slice(0, ende)).join("\n");
-    expect(block).toMatch(/^ {4}needs: check$/m);
+    expect(block).toMatch(/^ {4}needs: pflicht$/m);
     expect(block).toMatch(
       /^ {8}run: node scripts\/deploy\/abbild-bauen\.mjs --ziel dist\/abbild$/m,
     );

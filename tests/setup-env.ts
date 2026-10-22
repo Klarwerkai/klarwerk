@@ -1,3 +1,5 @@
+process.env.KLARWERK_SKIP_KEYCHAIN = "1";
+
 // WP-VIP2-GATE (bens P1): die öffentliche Selbstregistrierung ist in Produktion FAIL-CLOSED
 // hinter KLARWERK_SELF_REGISTRATION (Default AUS). Die Test-Suite ist ein Dev-Setup und schaltet
 // den Schalter hier EXPLIZIT frei — hunderte Bestandstests legen ihre Nutzer über

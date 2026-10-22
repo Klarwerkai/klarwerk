@@ -77,6 +77,13 @@ function jobNamen(): string[] {
 type Lage = "VOR" | "IST_DAS_TOR" | "NACH" | "AUSSERHALB";
 
 const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
+  { job: "pflicht", befehl: "npm ci", lage: "AUSSERHALB" },
+  { job: "pflicht", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  {
+    job: "pflicht",
+    befehl: 'node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht',
+    lage: "AUSSERHALB",
+  },
   { job: "check", befehl: "npm ci", lage: "VOR" },
   { job: "check", befehl: "npm ci --prefix apps/web", lage: "VOR" },
   {
@@ -104,8 +111,13 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
 
 describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeordnet", () => {
   it("kennt genau die Jobs, die eingeordnet sind — ein neuer Job macht diesen Test rot", () => {
-    expect(jobNamen()).toEqual(["check", "integration", "abbild"]);
-    expect([...new Set(EINORDNUNG.map((e) => e.job))]).toEqual(["check", "integration", "abbild"]);
+    expect(jobNamen()).toEqual(["pflicht", "check", "integration", "abbild"]);
+    expect([...new Set(EINORDNUNG.map((e) => e.job))]).toEqual([
+      "pflicht",
+      "check",
+      "integration",
+      "abbild",
+    ]);
   });
 
   it("ordnet JEDEN ausführbaren Schritt JEDES Jobs zu — lückenlos und in der Laufreihenfolge", () => {

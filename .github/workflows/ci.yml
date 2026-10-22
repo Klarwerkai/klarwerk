@@ -4,6 +4,29 @@ on:
   pull_request: {}
 
 jobs:
+  pflicht:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npm ci --prefix apps/web
+      - name: gemeinsamer schneller Pflichtvertrag (maximal 600 Sekunden)
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pflicht-${{ github.sha }}
+          path: .local/run/ci-pflicht/
+          if-no-files-found: error
   # I51 (OFFEN.md): DIESER JOB PRÜFTE ZWEI WOCHEN LANG EINE ANDERE PIPELINE ALS DAS SHIP-TOR.
   #
   # Hier standen `npm run build`, `lint`, `arch` und `test` als Viererliste. `./tools/check` ruft
@@ -23,7 +46,9 @@ jobs:
   #
   # Der Vertrag dazu ist `tests/app/ci-check-contract.test.ts`: er wird rot, sobald hier wieder
   # Einzelkommandos stehen oder die Browser-Provisionierung verschwindet.
+  # Nachgelagerte Diagnose: Root, binnen 24 Stunden; kein Pflichtgrün aus diesem Job.
   check:
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +79,8 @@ jobs:
   # Der Integrationsjob bleibt getrennt. Beide Jobs benötigen Root- und Web-Abhängigkeiten:
   # Integrationstests importieren auch Webmodule und führen den gemeinsamen Typecheck aus.
   integration:
+    env:
+      KLARWERK_PG_PFLICHT: "1"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,7 +110,7 @@ jobs:
   # abbild-bauen.test.ts`). `needs: check`: gebaut wird nur, was das Gesamttor grün durchlaufen hat.
   # Der Bauer braucht nur Node, git, tar und docker (auf ubuntu-latest vorhanden) — kein `npm ci`.
   abbild:
-    needs: check
+    needs: pflicht
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -21,7 +21,7 @@
 // ob `VitestTestRunner` sie selbst trägt, ist von außen nicht zugesichert, und eine vorhandene
 // Fassung muss weiterlaufen.
 import { VitestTestRunner } from "vitest/runners";
-import { type Aufgabe, dateiMeldung, laufbild } from "./melder";
+import { type Aufgabe, dateiMeldung, laufbild, pflichtVerletzt } from "./melder";
 
 type Dateihaken = (dateien: readonly Aufgabe[]) => unknown;
 
@@ -31,9 +31,13 @@ interface Haken {
 }
 
 function melde(datei: Aufgabe): void {
-  const meldung = dateiMeldung(laufbild([datei]));
+  const bild = laufbild([datei]);
+  const meldung = dateiMeldung(bild);
   if (meldung !== undefined) {
     process.stderr.write(meldung);
+  }
+  if (pflichtVerletzt(bild)) {
+    throw new Error("PG-Pflicht verletzt: übersprungene, fehlgeschlagene oder keine Fälle");
   }
 }
 

@@ -213,7 +213,12 @@ function zusammengesetzt(e, datei, quelle, je) {
   for (const s of stufen) {
     const st = bericht?.get(s);
     if (st) {
-      je.get(s)?.push({ erreicht: st.erreicht, text: `${st.text} — ${quelle}` });
+      je.get(s)?.push({
+        erfolgreich:
+          st.erreicht === true && !/ROT|nicht gemessen|Messstatus .*nicht erhoben/.test(st.text),
+        erreicht: st.erreicht,
+        text: `${st.text} — ${quelle}`,
+      });
     } else {
       je.get(s)?.push({ erreicht: null, text: `Ausführung unbekannt (${fehlt}) — ${quelle}` });
     }
@@ -338,7 +343,11 @@ function engineStufen(e, datei, regel, zerlegt, umfang, quelle, je) {
     const bestanden = gelaufen.filter((f) => f.ergebnisse.at(-1) === "passed").length;
     const namen = [...new Set(gelaufen.map((f) => f.projekt))].join("/");
     const text = `${umfang}, ${namen}: ${gelaufen.length} gelaufen, ${bestanden} bestanden — ${quelle}`;
-    je.get(s)?.push({ erreicht: true, text });
+    je.get(s)?.push({
+      erfolgreich: e.exit === 0 && bestanden === gelaufen.length,
+      erreicht: true,
+      text,
+    });
   }
 }
 
@@ -351,7 +360,27 @@ function umfangText(regel, z) {
   return auszug ? `nur Auswahl (${anzahl}: ${auszug})` : `nur Auswahl (${anzahl})`;
 }
 
-function einbau(datei) {
+async function einbau(datei) {
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(datei, "utf8"));
+  } catch (error) {
+    abbruch(`Prüfliste nicht lesbar: ${datei} (${String(error)})`);
+  }
+  if (!Array.isArray(raw) && raw.contractHash) {
+    try {
+      const { assertEvidence, assertProof, git } = await import("./release.mjs");
+      assertProof(raw, git(raw.root, "rev-parse", "HEAD^{tree}"));
+      if (git(raw.root, "status", "--porcelain=v1", "--untracked-files=all"))
+        throw new Error("Quelle geändert");
+      assertEvidence(raw);
+      console.log(`Pflichtvertrag grün: ${raw.commit} / ${raw.tree}; kein Volltorgrün.`);
+    } catch (error) {
+      console.error(`Pflichtvertrag ROT: ${error.message}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
   const je = new Map(stufen.map((s) => [s, []]));
   const ausserhalb = [];
   const unzuordenbar = [];
@@ -379,7 +408,7 @@ function einbau(datei) {
     }
     for (const s of regel.stufen) {
       const erreicht = e.exit === undefined ? null : true;
-      je.get(s)?.push({ erreicht, text: `${umfang} — ${quelle}` });
+      je.get(s)?.push({ erfolgreich: e.exit === 0, erreicht, text: `${umfang} — ${quelle}` });
     }
   }
   console.log("── Einbau-/Auslieferungsweg gegen tools/pruefvertrag.json ──");
@@ -411,6 +440,15 @@ function einbau(datei) {
   if (vertrag.einbau?.abweichung) {
     console.log(`  Begründete Abweichung: ${vertrag.einbau.abweichung}`);
   }
+  const pflicht = ["build", "lint", "architecture", "geheimnis-scan", "test"];
+  const rot = pflicht.filter((s) => !(je.get(s) ?? []).some((l) => l.erfolgreich === true));
+  const fehlgeschlagen = pflicht
+    .flatMap((s) => je.get(s) ?? [])
+    .some((l) => l.erfolgreich === false);
+  if (rot.length > 0 || fehlgeschlagen) {
+    console.error(`✖ Pflichtstufen nicht bestanden: ${rot.join(", ") || "roter Lauf"}`);
+    process.exitCode = 1;
+  }
   if (unzuordenbar.length > 0) {
     console.log("  ✖ nicht im Vertrag beschrieben (eigene Pipeline ohne Regel):");
     for (const u of unzuordenbar) {
@@ -428,7 +466,7 @@ if (modus === "--stufen") {
   if (!datei) {
     abbruch("--einbau braucht die Prüfliste des Einbauwegs");
   }
-  einbau(datei);
+  await einbau(datei);
 } else if (modus === "--ausserhalb") {
   console.log("  ⓘ NICHT von diesem Tor gefahren (tools/pruefvertrag.json):");
   for (const weg of vertrag.ausserhalb ?? []) {

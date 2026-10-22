@@ -478,7 +478,7 @@ describe("Prüfvertrag · Einbau-/Auslieferungsweg (tools/tor-bericht.mjs --einb
         exit: 0,
       },
     ]);
-    expect(code, aus).toBe(0);
+    expect(code, aus).toBe(1);
     expect(aus).toMatch(/▶ build\s+voll — Prüfung „build“, Exit 0/);
     expect(aus).toMatch(/▶ lint\s+nur Auswahl \(2 Ziele: package\.json, tools\/tor-bericht\.mjs\)/);
     expect(aus).toContain(
@@ -496,7 +496,7 @@ describe("Prüfvertrag · Einbau-/Auslieferungsweg (tools/tor-bericht.mjs --einb
   // tools/check-Eintrag. Plan ist kein Lauf — der Umfang ist unbekannt.
   it("E2 · ein nur geplanter Vollcheck ist kein Laufnachweis: jede Stufe unbekannt", () => {
     const { code, aus } = einbau({ checks: [["gesamttor", ["bash", "tools/check"]]] });
-    expect(code, aus).toBe(0);
+    expect(code, aus).toBe(1);
     expect(aus).toContain(
       `0 von ${N} Vertragsstufen nachweislich gefahren, 0 nicht, ${N} unbekannt`,
     );
@@ -510,7 +510,7 @@ describe("Prüfvertrag · Einbau-/Auslieferungsweg (tools/tor-bericht.mjs --einb
     const { code, aus } = einbau([
       { name: "npm-check", command: ["npm", "run", "check"], exit: 0 },
     ]);
-    expect(code, aus).toBe(0);
+    expect(code, aus).toBe(1);
     expect(aus).toContain(
       `0 von ${N} Vertragsstufen nachweislich gefahren, 0 nicht, ${N} unbekannt`,
     );
@@ -538,7 +538,7 @@ describe("Prüfvertrag · Einbau-/Auslieferungsweg (tools/tor-bericht.mjs --einb
     const { code, aus } = einbau([
       { name: "gesamttor", command: ["bash", "tools/check"], exit: 1 },
     ]);
-    expect(code, aus).toBe(0);
+    expect(code, aus).toBe(1);
     expect(aus).toMatch(
       /▶ build\s+gelaufen, Messstatus in diesem Bericht nicht erhoben — Prüfung „gesamttor“, Exit 1/,
     );
@@ -634,7 +634,7 @@ describe("Prüfvertrag · Einbau-/Auslieferungsweg (tools/tor-bericht.mjs --einb
         exit: 0,
       },
     ]);
-    expect(code, aus).toBe(0);
+    expect(code, aus).toBe(1);
     expect(aus).toContain(
       "ausserhalb des Tors: CI-Job integration: nur Auswahl (1 Ziel: tests/a.integration.test.ts)",
     );
@@ -688,7 +688,7 @@ describe("Prüfvertrag · Einbauweg: Engines aus Projektauswahl und Laufbericht"
       dreiSmoke(["--project=chromium-zustand"]),
       { name: "format", command: ["node_modules/.bin/biome", "check", "package.json"], exit: 0 },
     ]);
-    expect(code, aus).toBe(0);
+    expect(code, aus).toBe(1);
     expect(aus).toMatch(
       /▶ ui-smoke-chromium\s+nur Auswahl .*chromium-zustand: 1 gelaufen, 1 bestanden/,
     );
@@ -724,7 +724,7 @@ describe("Prüfvertrag · Einbauweg: Engines aus Projektauswahl und Laufbericht"
       // Der Namensstandard widerspricht absichtlich: maßgeblich ist der angegebene Laufbericht.
       laufbericht("smoke", [{ projekt: "chromium", status: "passed" }]);
       const { code, aus } = einbau([{ ...dreiSmoke([]), bericht }]);
-      expect(code, aus).toBe(0);
+      expect(code, aus).toBe(1);
       expect(aus).toMatch(/▶ ui-smoke-firefox\s+.*firefox: 1 gelaufen, 1 bestanden/);
       expect(aus).toMatch(/✗ ui-smoke-chromium\s+.*kein gelaufener Fall/);
     },

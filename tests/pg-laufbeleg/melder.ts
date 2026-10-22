@@ -17,10 +17,8 @@
 //     Laufs. Läuft kein einziger Fall, sagt sie ausdrücklich, dass dieser Lauf keinen echten
 //     Datenbankbetrieb belegt (R-2211).
 //
-// BEWUSST NICHT GEBAUT: ein Überspringen färbt den Lauf weiterhin NICHT rot. Dieselbe Entscheidung
-// wie in A-1303 — auf einer Maschine ohne Docker geriete sonst jeder Lauf ins Rot. Ob ein Lauf
-// ohne Datenbank scheitern MUSS, bleibt eine Betriebsentscheidung. Verlangt ist hier nur, dass der
-// Lauf sagt, was er geprüft hat und was nicht.
+// Im CI-Pflichtmodus ist Überspringen/Leere ein Fehler. Lokal ohne Pflicht bleibt die Diagnose.
+// Der Runner erzwingt dieselbe Wirkung auch mit einem eigenen Reporter.
 //
 // ZÄHLWEISE. Übersprungen ist jeder Fall, der nicht ausgeführt wurde: `ctx.skip()` zur Laufzeit,
 // `it.skip`/`describe.skipIf`, `todo` — und auch ein von `-t` ausgefilterter Fall. Letzteres ist
@@ -128,6 +126,16 @@ export function gesamtMeldung(bild: Laufbild): string {
  */
 export class PgLaufMelder {
   onFinished(dateien: readonly Aufgabe[] = []): void {
-    process.stderr.write(gesamtMeldung(laufbild(dateien)));
+    const bild = laufbild(dateien);
+    process.stderr.write(gesamtMeldung(bild));
+    if (pflichtVerletzt(bild)) process.exitCode = 1;
   }
+}
+
+/** Der Pflichtmodus darf keinen nicht ausgeführten Datenbankfall als Erfolg ausgeben. */
+export function pflichtVerletzt(bild: Laufbild): boolean {
+  return (
+    process.env.KLARWERK_PG_PFLICHT === "1" &&
+    (bild.gelaufen === 0 || bild.fehlgeschlagen > 0 || bild.uebersprungen.length > 0)
+  );
 }

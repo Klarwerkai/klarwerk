@@ -80,6 +80,7 @@ afterAll(() => {
 const WERK = join(werkbank, "werk");
 mkdirSync(join(WERK, "tools"), { recursive: true });
 copyFileSync(join(WURZEL, "tools", "test"), join(WERK, "tools", "test"));
+copyFileSync(join(WURZEL, "tools/test-zahl.mjs"), join(WERK, "tools/test-zahl.mjs"));
 chmodSync(join(WERK, "tools", "test"), 0o755);
 copyFileSync(join(WURZEL, "tools/browserdeckel.sh"), join(WERK, "tools/browserdeckel.sh"));
 
@@ -96,6 +97,7 @@ writeFileSync(
     '  echo "AUFRUF ${KLARWERK_TESTGRUPPE:-ohne}"',
     '  for a in "$@"; do echo "ARG $a"; done',
     '} >> "$KLARWERK_ARGV_PROTOKOLL"',
+    'echo \'{"count":1}\' > "$KLARWERK_TEST_ZAHL_DATEI"',
     "exit 0",
     "",
   ].join("\n"),

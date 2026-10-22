@@ -81,7 +81,7 @@
   "nicht_im_tor": "tests/smoke/tor-ausnahmen.json",
   "einbau": {
     "_zweck": "Der heutige Einbau-/Auslieferungsweg fährt je Auftrag eine Prüfauswahl statt des Gesamttors. `node tools/tor-bericht.mjs --einbau <checks.json|PLAN.json>` ordnet jeden tatsächlich gefahrenen Befehl über diese Regeln einer Vertragsstufe oder einem Weg ausserhalb zu und weist jede nicht ausgeführte Stufe aus. Nur ein Eintrag mit Exitcode ist ein Laufnachweis; ein bloss geplanter Eintrag und ein zusammengesetzter Weg (tools/check) ohne Stufenbericht im Protokoll `<name>.log` gelten als unbekannt, und tools/check deckt nur die Stufen, die sein Stufenbericht als erreicht ausweist. Ein Befehl ohne Regel ist ein Befund (Code 1), keine stille dritte Pipeline.",
-    "abweichung": "Der Einbauweg prüft je Auftrag gezielt (Prüfauswahl des Auftrags) statt des Gesamttors; eine Stufe ohne Lauf ist nicht ausgeführt und damit nicht bestanden. Das volle Gesamttor fährt der CI-Job check bei jedem Push und Pull Request.",
+    "abweichung": "Der Einbauweg prüft je Auftrag gezielt (Prüfauswahl des Auftrags) statt des Gesamttors; eine Stufe ohne Lauf ist nicht ausgeführt und damit nicht bestanden. Der schnelle Pflichtvertrag in tools/release-vertrag.mjs gilt lokal und im CI-Job pflicht. Das volle Gesamttor bleibt nachgelagerte Diagnose im CI-Job check, mit Besitzer und Frist im Pflichtbericht.",
     "regeln": [
       {
         "befehl": "tools/check",
