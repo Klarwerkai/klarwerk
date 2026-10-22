@@ -1243,11 +1243,14 @@ export function authRoutes(
     // Herkunftsprüfung der App lässt ihn deshalb durch, und es gibt keine Sitzung, in deren Namen
     // geschrieben würde. Hier entsteht auch KEINE Sitzung: die geprüfte Antwort wartet unter einem
     // Abschlusscode auf den Browser, der die Anfrage gestellt hat (`/api/auth/saml/abschluss`).
+    // Rumpfdeckel (SML-3): eine echte SAML-Antwort liegt weit darunter; die Route setzt ihn auch,
+    // falls ein übergeordneter Formularparser schon registriert ist (Routenwert gilt vor Parserwert).
+    const SAML_ACS_RUMPF_MAX = 256 * 1024;
     app.register(async (app) => {
       if (!app.hasContentTypeParser("application/x-www-form-urlencoded")) {
         app.addContentTypeParser(
           "application/x-www-form-urlencoded",
-          { parseAs: "string", bodyLimit: 1024 * 1024 },
+          { parseAs: "string", bodyLimit: SAML_ACS_RUMPF_MAX },
           (_request, rumpf, fertig) => {
             fertig(null, Object.fromEntries(new URLSearchParams(String(rumpf))));
           },
@@ -1255,6 +1258,7 @@ export function authRoutes(
       }
       app.post<{ Body: { SAMLResponse?: unknown; RelayState?: unknown } | null }>(
         "/api/auth/saml/acs",
+        { bodyLimit: SAML_ACS_RUMPF_MAX },
         async (request, reply) => {
           const saml = options.saml;
           if (!saml) {

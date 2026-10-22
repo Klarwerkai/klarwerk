@@ -41,8 +41,9 @@ import type { Role } from "./types";
 //     Dokument wird nie benutzt).
 //   · Gegen Signatur-Umhüllung (XSW): genau EINE Assertion im ganzen Dokument, direktes Kind der
 //     Antwort; alle Werte werden aus GENAU dem Knoten gelesen, dessen Signatur geprüft wurde.
-//   · Aussteller, Status, Destination, Audience, Recipient, InResponseTo (einmalig), Zeitfenster
-//     mit zwei Minuten Uhrtoleranz, Wiederholung derselben Assertion.
+//   · Aussteller, Status, Destination, Audience, Recipient, InResponseTo (einmalig; Pflicht auch
+//     in der Bearer-Bestätigung der signierten Assertion), Zeitfenster mit zwei Minuten
+//     Uhrtoleranz, Wiederholung derselben Assertion (gesperrt bis Frist plus Toleranz).
 
 export const SAML_NS = {
   protocol: "urn:oasis:names:tc:SAML:2.0:protocol",
@@ -70,6 +71,11 @@ export const SAML_ANFRAGE_FRIST_MS = 10 * 60 * 1000;
 export const SAML_UHR_TOLERANZ_MS = 2 * 60 * 1000;
 const SAML_ANTWORT_MAX_ZEICHEN = 512 * 1024;
 const OFFENE_ANFRAGEN_MAX = 10_000;
+// Deckel des XML-Lesers (SML-3/SML-4): eine echte SAML-Antwort liegt weit darunter; eine
+// anonyme Anfrage darf weder Speicher noch Rechenzeit des ganzen Prozesses binden.
+export const XML_ELEMENTE_MAX = 10_000;
+export const XML_ATTRIBUTE_MAX = 50_000;
+export const XML_NAMENSRAEUME_MAX = 64;
 
 /** Ein Ablehnungsgrund. Der Text geht NUR ins Protokoll; der Mensch liest den Katalogsatz. */
 export class SamlFehler extends Error {
@@ -179,6 +185,8 @@ export function leseXml(eingabe: string): XmlElement {
   }
   let wurzel: XmlElement | null = null;
   const stapel: XmlElement[] = [];
+  let elemente = 0;
+  let attributeGesamt = 0;
 
   const fuegeText = (inhalt: string): void => {
     const oben = stapel.at(-1);
@@ -297,8 +305,26 @@ export function leseXml(eingabe: string): XmlElement {
       pos = ende + 1;
     }
 
+    elemente += 1;
+    attributeGesamt += roheAttribute.length;
+    if (elemente > XML_ELEMENTE_MAX) {
+      throw new SamlFehler("XML: zu viele Elemente");
+    }
+    if (attributeGesamt > XML_ATTRIBUTE_MAX) {
+      throw new SamlFehler("XML: zu viele Attribute");
+    }
     const eltern = stapel.at(-1) ?? null;
-    const imBereich = new Map<string, string>(eltern ? eltern.imBereich : [["xml", XML_NS]]);
+    // Die Karte wird nur kopiert, wo ein Element selbst deklariert; sonst teilt es die des Elters
+    // (sie ändert sich nach dem Anlegen nie). Eine Kopie je Element liess Deklarationen × Elemente
+    // im Speicher wachsen (SML-3).
+    const deklariert = roheAttribute.some(
+      ([name]) => name === "xmlns" || name.startsWith("xmlns:"),
+    );
+    const imBereich = !eltern
+      ? new Map<string, string>([["xml", XML_NS]])
+      : deklariert
+        ? new Map<string, string>(eltern.imBereich)
+        : eltern.imBereich;
     const gesehen = new Set<string>();
     for (const [name, wert] of roheAttribute) {
       if (gesehen.has(name)) {
@@ -314,12 +340,18 @@ export function leseXml(eingabe: string): XmlElement {
         imBereich.set(name.slice(6), wert);
       }
     }
+    if (imBereich.size > XML_NAMENSRAEUME_MAX) {
+      throw new SamlFehler("XML: zu viele Namensräume");
+    }
     const [prefix, local] = teile(qname);
     const ns = prefix ? imBereich.get(prefix) : (imBereich.get("") ?? "");
     if (ns === undefined) {
       throw new SamlFehler("XML: unbekanntes Präfix");
     }
     const attribute: XmlAttribut[] = [];
+    // (Namensraum, lokaler Name) einmalig — über eine Menge statt paarweise (SML-4). Der lokale
+    // Name enthält kein NUL, der Schlüssel ist also eindeutig.
+    const expandiert = new Set<string>();
     for (const [name, wert] of roheAttribute) {
       if (name === "xmlns" || name.startsWith("xmlns:")) {
         continue;
@@ -329,9 +361,11 @@ export function leseXml(eingabe: string): XmlElement {
       if (aNs === undefined) {
         throw new SamlFehler("XML: unbekanntes Attributpräfix");
       }
-      if (attribute.some((a) => a.ns === aNs && a.local === aLocal)) {
+      const schluessel = `${aLocal}\u0000${aNs}`;
+      if (expandiert.has(schluessel)) {
         throw new SamlFehler("XML: doppeltes Attribut");
       }
+      expandiert.add(schluessel);
       attribute.push({ qname: name, prefix: aPrefix, local: aLocal, ns: aNs, wert });
     }
     const element: XmlElement = {
@@ -439,14 +473,17 @@ export function kanonisiere(
   opts: { ohne?: XmlElement; inklusiv?: readonly string[] } = {},
 ): string {
   const ausgabe: string[] = [];
-  schreibe(el, new Map([["", ""]]), opts, ausgabe);
+  // Die PrefixList einmal als Menge: je Element wird dann nur über die (gedeckelten) Namensräume
+  // im Bereich gelaufen, nicht über die ganze Liste (SML-4).
+  const inklusiv = new Set((opts.inklusiv ?? []).map((p) => (p === "#default" ? "" : p)));
+  schreibe(el, new Map([["", ""]]), { ohne: opts.ohne, inklusiv }, ausgabe);
   return ausgabe.join("");
 }
 
 function schreibe(
   el: XmlElement,
   gerendert: ReadonlyMap<string, string>,
-  opts: { ohne?: XmlElement; inklusiv?: readonly string[] },
+  opts: { ohne?: XmlElement | undefined; inklusiv: ReadonlySet<string> },
   ausgabe: string[],
 ): void {
   if (el === opts.ohne) {
@@ -458,10 +495,11 @@ function schreibe(
       genutzt.add(a.prefix);
     }
   }
-  for (const p of opts.inklusiv ?? []) {
-    const schluessel = p === "#default" ? "" : p;
-    if (el.imBereich.has(schluessel)) {
-      genutzt.add(schluessel);
+  if (opts.inklusiv.size > 0) {
+    for (const schluessel of el.imBereich.keys()) {
+      if (opts.inklusiv.has(schluessel)) {
+        genutzt.add(schluessel);
+      }
     }
   }
   const weiter = new Map(gerendert);
@@ -781,26 +819,43 @@ export function createSamlProvider(
       if (!nameId) {
         throw new SamlFehler("NameID leer");
       }
-      const bestaetigt = kinderVon(subject, SAML_NS.assertion, "SubjectConfirmation").some((sc) => {
+      // Die Bestätigung bindet die SIGNIERTE Assertion an die eigene Anfrage: `InResponseTo` ist
+      // Pflicht. Ohne es bliebe nur das `InResponseTo` der unsignierten Antwort-Hülle — eine
+      // abgegriffene fremde Assertion liesse sich in die eigene Anfrage umhüllen (SML-1).
+      // `spaetesteFrist`: bis wann irgendeine Bestätigung dieser Assertion noch tragen könnte —
+      // auch eine, deren InResponseTo zu einer ANDEREN Anfrage passt; so lange gilt der Verbrauch.
+      let bestaetigt = false;
+      let ohneAnfragebindung = false;
+      let spaetesteFrist: number | undefined;
+      for (const sc of kinderVon(subject, SAML_NS.assertion, "SubjectConfirmation")) {
         if (attributVon(sc, "Method") !== BESTAETIGUNG_BEARER) {
-          return false;
+          continue;
         }
         const daten = kinderVon(sc, SAML_NS.assertion, "SubjectConfirmationData")[0];
         if (!daten || attributVon(daten, "Recipient") !== config.acsUrl) {
-          return false;
+          continue;
         }
         if (attributVon(daten, "NotBefore") !== undefined) {
-          return false;
+          continue;
         }
-        const bis = zeitpunkt(attributVon(daten, "NotOnOrAfter"));
-        if (bis === undefined || bis <= nun - SAML_UHR_TOLERANZ_MS) {
-          return false;
+        const frist = zeitpunkt(attributVon(daten, "NotOnOrAfter"));
+        if (frist === undefined || frist <= nun - SAML_UHR_TOLERANZ_MS) {
+          continue;
         }
+        spaetesteFrist = Math.max(spaetesteFrist ?? frist, frist);
         const antwortAuf = attributVon(daten, "InResponseTo");
-        return antwortAuf === undefined || antwortAuf === inResponseTo;
-      });
+        if (antwortAuf === undefined) {
+          ohneAnfragebindung = true;
+        } else if (antwortAuf === inResponseTo) {
+          bestaetigt = true;
+        }
+      }
       if (!bestaetigt) {
-        throw new SamlFehler("keine gültige Bearer-Bestätigung");
+        throw new SamlFehler(
+          ohneAnfragebindung
+            ? "keine gültige Bearer-Bestätigung: InResponseTo fehlt in SubjectConfirmationData"
+            : "keine gültige Bearer-Bestätigung",
+        );
       }
       const bedingungen = einKind(assertion, SAML_NS.assertion, "Conditions");
       const ab = zeitpunkt(attributVon(bedingungen, "NotBefore"));
@@ -822,11 +877,21 @@ export function createSamlProvider(
       ) {
         throw new SamlFehler("Audience passt nicht");
       }
+      // Einmal-Verbrauch: die Kennung bleibt gesperrt, solange die Assertion nach den Prüfungen oben
+      // überhaupt annehmbar wäre — bis zur späteren der beiden Fristen plus Uhrtoleranz (SML-2).
+      // Eine Assertion ohne jede Frist hätte keinen Verbrauchsschluss und wird abgelehnt.
+      const verbrauchtBis = Math.max(
+        bis ?? Number.NEGATIVE_INFINITY,
+        spaetesteFrist ?? Number.NEGATIVE_INFINITY,
+      );
+      if (!Number.isFinite(verbrauchtBis)) {
+        throw new SamlFehler("Assertion ohne Gültigkeitsfrist");
+      }
       const assertionId = attributVon(assertion, "ID") ?? "";
       if (verbrauchteAssertions.has(assertionId)) {
         throw new SamlFehler("Assertion bereits verwendet");
       }
-      verbrauchteAssertions.set(assertionId, bis ?? nun + SAML_ANFRAGE_FRIST_MS);
+      verbrauchteAssertions.set(assertionId, verbrauchtBis + SAML_UHR_TOLERANZ_MS);
 
       const werte = new Map<string, string[]>();
       for (const aussage of kinderVon(assertion, SAML_NS.assertion, "AttributeStatement")) {
