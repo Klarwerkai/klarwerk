@@ -1,8 +1,26 @@
 import {
+  KoError,
   type ProjectionControlState,
   type SearchProjectionReadiness,
   integritaetsMarkerGueltig,
 } from "../../knowledge-object";
+
+/**
+ * DAT-1 (Review 21.10.2026) — DIE STARTFRIST, AUSDRÜCKLICH UND GROSSZÜGIG: 30 Minuten.
+ *
+ * `stelleSuchprojektionBereit` läuft im `onReady`-Haken der App, und Fastify misst diesen Haken an
+ * `pluginTimeout` (Vorgabe 10 s). Der vollständige Neuaufbau aus `FAILED`, `UNINITIALIZED`,
+ * `V2_BUILDING` oder einem beschädigten `V2_ACTIVE` riss diese Frist lokal ab rund 2.300 Objekten
+ * (4.001 Objekte: drei Starts, jeder nach 10,1 s `FST_ERR_HOOK_TIMEOUT`) — die Instanz kam nie hoch.
+ * 30 Minuten tragen den Neuaufbau auch eines großen Bestands; zusammen mit dem je Generation
+ * fortsetzbaren Neuaufbau (`rebuildSearchProjections`) kommt ein trotzdem abgebrochener Start beim
+ * nächsten Mal weiter statt von vorn.
+ *
+ * NACHFOLGE, hier bewusst NICHT gebaut: der Neuaufbau als Hintergrundlauf — App startet sofort,
+ * die Suche bleibt fail-closed, bis die Generation freigegeben ist. Das ist ein Architekturschritt
+ * (Readiness-Vertrag 06 §3) und gehört in eine eigene Entscheidung.
+ */
+export const SUCHPROJEKTION_STARTFRIST_MS = 30 * 60 * 1000;
 
 // ================================================================================================
 // G27 R2 — DER EINE KANONISCHE STARTUPVERTRAG DER SUCHPROJEKTION
@@ -85,8 +103,26 @@ export async function starteSuchprojektion(
       break;
     // Gebaut und geprüft, aber nicht mehr freigegeben: das Gate läuft unter der Sperre erneut und
     // schaltet atomar um. Kein Rebuild — der Bestand dieser Generation ist fertig.
+    //
+    // K2 (Review 21.10.2026): LEHNT DAS GATE DIE FREIGABE AB, führt der Start über denselben Weg
+    // wie der `V2_ACTIVE`-Zweig bei verletzter Integrität — `V2_READY → FAILED → vollständiger
+    // Neuaufbau → V2_ACTIVE` (`recoverSearchProjectionV2`). Bis hierher blieb der Zustand stehen, und
+    // jeder Start warf dieselbe Ablehnung (server.ts beendet dann den Prozess): ein Dauerausfall bis
+    // zum Eingriff per SQL. Nur die fachliche Ablehnung (`SEARCH_PROJECTION_NOT_READY`) bei
+    // weiterhin `V2_READY` löst das aus; jeder andere Fehler (etwa die Datenbank) bleibt ein
+    // Startfehler wie bisher.
     case "V2_READY":
-      await ko.releaseSearchProjectionVersion(control.buildGeneration);
+      try {
+        await ko.releaseSearchProjectionVersion(control.buildGeneration);
+      } catch (fehler) {
+        if (!(fehler instanceof KoError && fehler.code === "SEARCH_PROJECTION_NOT_READY")) {
+          throw fehler;
+        }
+        if ((await ko.searchProjectionControl()).projectionState !== "V2_READY") {
+          throw fehler;
+        }
+        await ko.recoverSearchProjectionV2(`Freigabe beim Start abgelehnt: ${fehler.message}`);
+      }
       break;
     // ============================================================================================
     // `V2_ACTIVE` — GENERATION, MARKER **UND INTEGRITÄT** (Entscheidung 15 §A, 09 §3)

@@ -317,6 +317,22 @@ export function schreibStempel(
 }
 
 /**
+ * Review 21.10.2026 (K1) — DIE GENERATION, DIE EINE ZEILE DER GELTENDEN FASSUNG JETZT TRAGEN MUSS.
+ *
+ * Es ist genau die Generation, mit der ein Schreibvorgang sie JETZT stempeln würde
+ * (`schreibStempel`): im Bau die Bau-Generation, freigegeben die aktive. `null` heisst: es gibt
+ * keinen generationierten Bestand (nichts im Bau, nichts freigegeben) und damit keine Bedingung.
+ *
+ * Von BEIDEN Adaptern (`missingActive`) und vom Dienst (Nachzug, Neuaufbau, Wiederherstellen)
+ * benutzt — dieselbe Funktion, damit „fehlt" und „wird beim Schreiben gestempelt" nie
+ * auseinanderlaufen. Ohne sie blieb eine Zeile mit fremder Generation für die Suche unsichtbar,
+ * und der Nachzug sah sie nie (K1: Papierkorb → Neuaufbau → Wiederherstellen).
+ */
+export function sollGeneration(control: ProjectionControlState): number | null {
+  return schreibStempel(control, SEARCH_PROJECTION_VERSION).generation;
+}
+
+/**
  * Die Entsprechung für das ENTFERNEN einer Zeile (09 §5, „Nachträgliche Entfernung").
  *
  * Invalidiert wird NUR, wenn eine BEDIENENDE Zeile verschwindet: Zielfassung, aktive Generation,
@@ -388,8 +404,13 @@ export interface KoSearchProjectionRepo {
    * Transaktion; die Steuerzeilensperre (09 §2) hält er trotzdem. InMemory ignoriert ihn.
    */
   insert(projection: KoSearchProjection, tx?: TxContext): Promise<boolean>;
-  /** Ausschliesslich fuer Rebuild und Fassungsnachfuehrung (ueberschreibt bewusst). */
-  replace(projection: KoSearchProjection): Promise<void>;
+  /**
+   * Ausschliesslich fuer Rebuild, Fassungsnachfuehrung und das Neustempeln einer Zeile fremder
+   * Generation (ueberschreibt bewusst). Review 21.10.2026 (K1): optionaler TxContext wie bei
+   * `insert` — das Wiederherstellen aus dem Papierkorb stempelt die Zeile in DERSELBEN Transaktion,
+   * in der das Objekt zurueckkehrt. InMemory ignoriert ihn.
+   */
+  replace(projection: KoSearchProjection, tx?: TxContext): Promise<void>;
   find(koId: string, koVersion: number): Promise<KoSearchProjection | undefined>;
   listByKo(koId: string): Promise<KoSearchProjection[]>;
   /**
@@ -463,11 +484,15 @@ export interface KoSearchProjectionRepo {
   activeRowsInGeneration(generation: number): Promise<boolean>;
   /**
    * Die Arbeitsliste des Nachzugs: KO-Ids, deren SUCHDOKUMENT fuer die aktive Version noch nicht
-   * vollstaendig auf dem geltenden Stand ist. Drei Faelle, EINE Liste (sonst gaebe es drei Laeufe,
-   * die dasselbe Objekt dreimal vollladen):
+   * vollstaendig auf dem geltenden Stand ist. Vier Faelle, EINE Liste (sonst gaebe es vier Laeufe,
+   * die dasselbe Objekt viermal vollladen):
    *   1 keine Content Projection fuer die aktive Version,
    *   2 eine Content Projection in einer aelteren Projektionsfassung (V1/V2-Mischbestand),
-   *   3 keine Mutable Metadata Projection.
+   *   3 keine Mutable Metadata Projection,
+   *   4 (Review 21.10.2026, K1) eine Content Projection, die nicht die Generation traegt, die sie
+   *     jetzt tragen muss (`sollGeneration`) — etwa ein Objekt, das waehrend eines Neuaufbaus im
+   *     Papierkorb lag und danach zurueckkam. Ohne diesen Fall war es fuer Suche und Gate
+   *     verloren, fuer den Nachzug aber „vollstaendig".
    */
   missingActive(limit: number): Promise<string[]>;
   /**
@@ -841,13 +866,16 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     const metadaten = new Set(
       (await this.metadata.findMany(kos.map((ko) => ko.id))).map((m) => m.koId),
     );
+    const soll = sollGeneration(this.speicher.control);
     const out: string[] = [];
     for (const ko of kos) {
-      const projection = this.items.get(schluessel(ko.id, ko.version));
+      const key = schluessel(ko.id, ko.version);
+      const projection = this.items.get(key);
       const offen =
         !projection ||
         projection.projectionVersion !== SEARCH_PROJECTION_VERSION ||
-        !metadaten.has(ko.id);
+        !metadaten.has(ko.id) ||
+        (soll !== null && (this.generationen.get(key) ?? null) !== soll);
       if (offen) {
         out.push(ko.id);
         if (out.length >= cap) {

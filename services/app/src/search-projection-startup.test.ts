@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  KoError,
   type ProjectionControlState,
   UNINITIALIZED_CONTROL_STATE,
   integritaetsMarkerFuer,
@@ -129,6 +130,46 @@ describe("G27 R2 · der Startupvertrag deckt alle sechs Zustände (15 §A)", () 
       control({ projectionState: "V2_READY", targetProjectionVersion: 2, buildGeneration: 9 }),
     );
     await starteSuchprojektion(api);
+    expect(gerufen).toEqual(["release:9"]);
+  });
+
+  it("V2_READY mit ABGELEHNTER Freigabe → FAILED und Neuaufbau, kein dauerhafter Startabbruch (K2)", async () => {
+    // Review 21.10.2026, K2: lehnte das Gate die Freigabe ab, blieb der Zustand `V2_READY`, und
+    // JEDER Start warf erneut — server.ts beendete den Prozess bei jedem Start. Jetzt führt die
+    // Ablehnung über denselben Weg wie der `V2_ACTIVE`-Zweig bei verletzter Integrität.
+    const { api, gerufen } = dienst(
+      control({ projectionState: "V2_READY", targetProjectionVersion: 2, buildGeneration: 9 }),
+      bereit(10),
+    );
+    api.releaseSearchProjectionVersion = (generation) => {
+      gerufen.push(`release:${generation}`);
+      return Promise.reject(
+        new KoError(
+          "SEARCH_PROJECTION_NOT_READY",
+          "Freigabe abgelehnt: aktive Zeilen nicht durchgängig in Generation 9",
+        ),
+      );
+    };
+    const nachher = await stelleSuchprojektionBereit(api);
+    expect(nachher.projectionState).toBe("V2_ACTIVE");
+    expect(nachher.activeGeneration).toBe(10);
+    expect(gerufen[0]).toBe("release:9");
+    expect(gerufen[1]).toMatch(/^recover:Freigabe beim Start abgelehnt: /);
+    expect(gerufen[1]).toContain("nicht durchgängig in Generation 9");
+    expect(gerufen).toHaveLength(2);
+  });
+
+  it("V2_READY: ein anderer Fehler der Freigabe löst KEINEN Neuaufbau aus", async () => {
+    // Nur die fachliche Ablehnung des Gates führt nach FAILED — ein Datenbankfehler nicht; er
+    // bleibt ein Startfehler wie bisher.
+    const { api, gerufen } = dienst(
+      control({ projectionState: "V2_READY", targetProjectionVersion: 2, buildGeneration: 9 }),
+    );
+    api.releaseSearchProjectionVersion = (generation) => {
+      gerufen.push(`release:${generation}`);
+      return Promise.reject(new Error("Verbindung verloren"));
+    };
+    await expect(starteSuchprojektion(api)).rejects.toThrow(/Verbindung verloren/);
     expect(gerufen).toEqual(["release:9"]);
   });
 

@@ -50,7 +50,10 @@ function fakePool(
   const calls: { sql: string; params: unknown[] }[] = [];
   const query = async (sql: string, params: unknown[] = []) => {
     calls.push({ sql, params });
-    if (sql.includes("ko_projection_control")) {
+    // Anweisungen AN der Steuerzeile: lesen (`FROM`) und bedingt wechseln (`UPDATE`). Eine
+    // Bestandsabfrage, die die Steuerzeile nur hinzuJOINt (`missingActive`, Review 21.10.2026 K1),
+    // liefert ihre eigenen Zeilen.
+    if (/\b(FROM|UPDATE)\s+ko_projection_control\b/.test(sql)) {
       if (/^\s*UPDATE/i.test(sql)) {
         return { rows: [], rowCount: casGreift ? 1 : 0 };
       }
@@ -342,6 +345,23 @@ describe("G27: PgKoSearchProjectionRepo — die Standardsuche", () => {
     expect(sql).toContain("md.ko_id IS NULL");
     expect(sql).toContain("NOT (k.data ? 'deletedAt')");
     expect(params).toEqual([20, SEARCH_PROJECTION_VERSION]);
+  });
+
+  it("missingActive meldet auch die Zeile FREMDER Generation — Soll aus der Steuerzeile (Review K1)", async () => {
+    // Review 21.10.2026, K1: ein Objekt, das während eines Neuaufbaus im Papierkorb lag, behielt
+    // die alte Generation und war für den Nachzug „vollständig". Die Bedingung liest die
+    // Soll-Generation im SELBEN Statement aus der Steuerzeile — dieselbe Regel wie `sollGeneration`.
+    const { pool, calls } = fakePool([{ id: "a" }]);
+    const repo = new PgKoSearchProjectionRepo(pool);
+    expect(await repo.missingActive(5)).toEqual(["a"]);
+    const { sql } = calls[0] as { sql: string };
+    expect(sql).toContain("LEFT JOIN ko_projection_control c ON c.key = 'singleton'");
+    expect(sql).toContain(
+      "WHEN c.projection_state IN ('V2_BUILDING', 'V2_READY') THEN c.build_generation",
+    );
+    expect(sql).toContain("WHEN c.projection_state = 'V2_ACTIVE' THEN c.active_generation");
+    expect(sql).toContain("p.generation IS DISTINCT FROM");
+    expect(calls).toHaveLength(1);
   });
 });
 

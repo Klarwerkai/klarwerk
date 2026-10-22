@@ -682,7 +682,10 @@ import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
 import { wissenskennzahlenRoutes } from "./routes/wissenskennzahlen-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
-import { stelleSuchprojektionBereit } from "./search-projection-startup";
+import {
+  SUCHPROJEKTION_STARTFRIST_MS,
+  stelleSuchprojektionBereit,
+} from "./search-projection-startup";
 import { AnswerExplanationService } from "./services/answer-explanation";
 // W1 S4 (KW-S4-04 §59-100): Klara-Sitzung und Zustimmung. NUR Verdrahtung — die
 // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
@@ -3832,6 +3835,10 @@ export function buildApp(
   const app = Fastify({
     trustProxy: resolveTrustProxy(),
     logger: baueLoggerOptionen(opts.log),
+    // DAT-1 (Review 21.10.2026): der `onReady`-Haken unten wartet den Neuaufbau der Suchprojektion
+    // ab; Fastifys Vorgabe von 10 s riss ihn ab rund 2.300 Objekten bei jedem Start. Begründung und
+    // Nachfolge (Hintergrundlauf) an der Konstante.
+    pluginTimeout: SUCHPROJEKTION_STARTFRIST_MS,
     ...(opts.tls ? { serverFactory: tlsServerFabrik(opts.tls) } : {}),
   });
   // GHSA-3m5p-2c4r-xxw2: eine Hop-Anzahl wird verworfen (resolveTrustProxy). Ohne diese Zeile sähe ein
