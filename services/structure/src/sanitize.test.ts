@@ -647,3 +647,52 @@ describe("JOB 2675 D1 · R2-15: einfach gequotete Attribute erzeugen kein zweite
     }
   });
 });
+
+describe("H8 / WEBA-4 / WEBB-2: href wird dekodiert und nach Positivliste geprueft", () => {
+  // Der Review-Beleg (belege/pruefer/sept/h8-sanitizer.mts), woertlich. Der Browser dekodiert
+  // Entities, streicht Tab/Zeilenumbruch und deutet `//` als Fremdhost — die alte Regex-Pruefung am
+  // ROHEN Wert sah davon nichts. Der volle Katalog (Server UND Client) steht in
+  // tests/security/sanitizer-paritaet.test.ts.
+  const OHNE_HREF = '<a rel="noopener noreferrer nofollow" target="_blank">x</a>';
+  const ANGRIFFE = [
+    '<a href="&#106;avascript:alert(1)">x</a>',
+    '<a href="&#x6A;avascript:alert(1)">x</a>',
+    '<a href="javascript&colon;alert(1)">x</a>',
+    '<a href="javascript&#58;alert(1)">x</a>',
+    '<a href="java&Tab;script:alert(1)">x</a>',
+    '<a href="java\tscript:alert(1)">x</a>',
+    '<a href="java\nscript:alert(1)">x</a>',
+    '<a href="\u0001javascript:alert(1)">x</a>',
+    '<a href="&#100;ata:text/html;base64,PHNjcmlwdD4=">x</a>',
+    '<a href="//evil.example/login">x</a>',
+    '<a href="/\\evil.example/login">x</a>',
+    '<a href="\\\\evil.example/login">x</a>',
+    '<a href="/&#47;evil.example/login">x</a>',
+  ];
+
+  it("jede Umgehung verliert ihr href", () => {
+    for (const html of ANGRIFFE) {
+      expect(sanitizeHtml(html), html).toBe(OHNE_HREF);
+    }
+  });
+
+  it("ein Entity, das der Decoder nicht kennt, erreicht den Browser nicht als Entity", () => {
+    // `&sol;` ist fuer den Browser `/`. Geprueft wird der dekodierte Wert — ausgegeben werden muss
+    // DERSELBE Wert, sonst entsteht aus `/&sol;evil` im Browser `//evil`.
+    const aus = sanitizeHtml('<a href="/&sol;evil.example/login">x</a>');
+    expect(aus).not.toContain('href="/&sol;');
+  });
+
+  it("https, mailto, Anker und Pfade mit genau einem Slash bleiben", () => {
+    expect(sanitizeHtml('<a href="https://ok.example">x</a>')).toContain(
+      'href="https://ok.example"',
+    );
+    expect(sanitizeHtml('<a href="mailto:a@example.test">x</a>')).toContain(
+      'href="mailto:a@example.test"',
+    );
+    expect(sanitizeHtml('<a href="#quelle">x</a>')).toContain('href="#quelle"');
+    expect(sanitizeHtml('<a href="/wissen/ko-1?fassung=2&amp;x=1">x</a>')).toContain(
+      'href="/wissen/ko-1?fassung=2&amp;x=1"',
+    );
+  });
+});
