@@ -120,7 +120,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { ankerBereich } from "../support/quellenAnker";
 import {
   GRENZE_MODUL,
   type Quelle,
@@ -130,6 +129,7 @@ import {
   quelldateien,
   quelleAus,
 } from "../../tools/modalgrenze";
+import { ankerBereich } from "../support/quellenAnker";
 import {
   FLAECHEN_ZUSATZ,
   type Typumgebung,
