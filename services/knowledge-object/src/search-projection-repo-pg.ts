@@ -205,6 +205,16 @@ INSERT INTO ko_projection_control(key, projection_state)
 // Der eine Schlüssel der einen autoritativen Zeile.
 const CONTROL_KEY = "singleton";
 
+// Review 21.10.2026 (K1) — `sollGeneration` (search-projection-repo.ts) als SQL-Ausdruck über der
+// Steuerzeile `c`: im Bau (`V2_BUILDING`, `V2_READY`) die Bau-Generation, freigegeben die aktive,
+// sonst NULL (keine Bedingung). Genau die Generation, mit der `schreibStempel` eine Zeile der
+// geltenden Fassung jetzt stempeln würde. Die Zustandsnamen stehen in der Spalte wörtlich
+// (`ausControlZeile` liest sie unverändert).
+const SQL_SOLL_GENERATION = `(CASE
+    WHEN c.projection_state IN ('V2_BUILDING', 'V2_READY') THEN c.build_generation
+    WHEN c.projection_state = 'V2_ACTIVE' THEN c.active_generation
+  END)`;
+
 const CONTROL_SPALTEN =
   "active_projection_version,target_projection_version,projection_state,last_successful_rebuild,last_reconcile,last_failure,build_started_at,build_finished_at,build_generation,active_generation,integrity_marker,activated_at";
 
@@ -518,7 +528,12 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
   // NUR der ausdrückliche Rebuild bzw. die Nachführung auf Projektionsfassung 2. `created_at` der
   // bestehenden Zeile bleibt erhalten — die Zeile wurde nicht neu geboren, sondern neu abgeleitet;
   // nur `updated_at` klettert.
-  async replace(projection: KoSearchProjection): Promise<void> {
+  //
+  // Review 21.10.2026 (K1): mit `tx` läuft das Ersetzen auf dem Client des Aufrufers — genau wie
+  // `insert` (JOB 2704 D1). Das Wiederherstellen aus dem Papierkorb stempelt die Zeile so in
+  // DERSELBEN Transaktion, in der `kos` zurückkehrt: Steuerzeile FOR SHARE, Stempel aus dem dann
+  // gültigen Zustand, Commit oder Rollback zusammen mit dem Objekt.
+  async replace(projection: KoSearchProjection, tx?: TxContext): Promise<void> {
     await this.mutiere(async (client, control) => {
       const stempel = schreibStempel(control, projection.projectionVersion);
       const spalten = werte(projection, stempel.generation);
@@ -545,7 +560,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
       if (stempel.invalidieren) {
         await this.faelleMarker(client);
       }
-    });
+    }, tx);
   }
 
   async generationOf(koId: string, koVersion: number): Promise<number | null | undefined> {
@@ -846,6 +861,13 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
   // Die EINE Arbeitsliste des Nachzugs (s. Interface): fehlende Inhaltszeile, veraltete
   // Projektionsfassung ODER fehlende Metadatenzeile. Zwei LEFT JOINs + IS NULL/Vergleich —
   // indexgestützt über die beiden Primärschlüssel, kein Scan der Projektionstabellen.
+  //
+  // Review 21.10.2026 (K1): dazu die Zeile mit FREMDER Generation. Die Soll-Generation ist
+  // `SQL_SOLL_GENERATION` — dieselbe Regel wie `sollGeneration` im In-Memory-Adapter, hier aus der
+  // Steuerzeile im SELBEN Statement gelesen (ein Schnappschuss, keine zweite Rundreise). `NULL`
+  // heisst „kein generationierter Bestand" (auch: Steuerzeile fehlt) und schaltet die Bedingung
+  // ab. `IS DISTINCT FROM` fasst auch die ungenerationierte Altzeile (`generation IS NULL`), genau
+  // wie `activeRowsInGeneration` es für das Gate tut.
   async missingActive(limit: number): Promise<string[]> {
     const cap = Math.max(0, Math.floor(limit));
     if (cap === 0) {
@@ -856,8 +878,11 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
          LEFT JOIN ko_search_projections p
            ON p.ko_id = k.id AND p.ko_version = COALESCE((k.data->>'version')::int, 1)
          LEFT JOIN ko_metadata_projections md ON md.ko_id = k.id
+         LEFT JOIN ko_projection_control c ON c.key = '${CONTROL_KEY}'
         WHERE ${K_LEBT}
-          AND (p.ko_id IS NULL OR p.projection_version <> $2 OR md.ko_id IS NULL)
+          AND (p.ko_id IS NULL OR p.projection_version <> $2 OR md.ko_id IS NULL
+               OR (${SQL_SOLL_GENERATION} IS NOT NULL
+                   AND p.generation IS DISTINCT FROM ${SQL_SOLL_GENERATION}))
         LIMIT $1`,
       [cap, SEARCH_PROJECTION_VERSION],
     );

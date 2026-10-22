@@ -128,6 +128,7 @@ import {
   UNINITIALIZED_CONTROL_STATE,
   controlStateLifecycleGueltig,
   integritaetsMarkerFuer,
+  sollGeneration,
 } from "./search-projection-repo";
 // JOB 4077: „hängt dieser Anker an DIESEM Objekt?" — dieselbe Antwort, die die Stufenentscheidung
 // als Tatsache beschafft (`ko-routes.ts`); hier entscheidet sie, ob der Anker gespeichert wird.
@@ -1647,6 +1648,18 @@ export class KoService {
     let geschrieben = 0;
     let unveraendert = 0;
     let v2Migriert = 0;
+    // DAT-1 (Review 21.10.2026) — DER NEUAUFBAU IST JE GENERATION FORTSETZBAR. Er läuft beim Start
+    // im `onReady`-Haken; bricht der Prozess mitten darin ab (Frist, Absturz, Deploy), setzt der
+    // nächste Start dieselbe Bau-Generation fort (`continueSearchProjectionBuild`). Bis hierher
+    // schrieb er dann wieder JEDE Zeile — ein Bestand, der einmal nicht in die Frist passte, passte
+    // nie hinein. Jetzt überspringt er im Bau die Zeilen, die DIESE Generation schon trägt und deren
+    // Inhalt unverändert ist (gleicher Hash): sie sind in diesem Bau bereits neu abgeleitet worden.
+    // Ausserhalb von `V2_BUILDING` gibt es keine Bau-Generation — dann bleibt alles wie bisher.
+    // Die Metadatenhälfte läuft auch für übersprungene Zeilen (idempotent, klettert nur bei echter
+    // Änderung), damit ein Abbruch zwischen beiden Hälften keine veraltete Metadatenzeile hinterlässt.
+    const control = await this.searchProjections.controlState();
+    const bauGeneration =
+      control.projectionState === "V2_BUILDING" ? control.buildGeneration : null;
     for (const ko of await this.repo.list({})) {
       if (ko.deletedAt) {
         continue;
@@ -1661,6 +1674,14 @@ export class KoService {
       });
       if (alt?.contentHash === frisch.contentHash) {
         unveraendert += 1;
+        if (
+          bauGeneration !== null &&
+          alt.projectionVersion === SEARCH_PROJECTION_VERSION &&
+          (await this.searchProjections.generationOf(ko.id, ko.version)) === bauGeneration
+        ) {
+          await this.projectMetadata(ko, at);
+          continue;
+        }
       }
       // `createdAt` der bestehenden Zeile bleibt erhalten — sie wurde neu abgeleitet, nicht neu
       // geboren; nur `updatedAt` klettert.
@@ -4915,6 +4936,16 @@ export class KoService {
         await this.searchProjections.replace({ ...frisch, createdAt: projection.createdAt });
         projection = frisch;
         v2Migriert = true;
+      } else if (await this.traegtFremdeGeneration(ko)) {
+        // Review 21.10.2026 (K1): Fassung stimmt, Generation nicht — die Zeile ist für Suche und
+        // Gate unsichtbar (etwa nach Papierkorb → Neuaufbau → Wiederherstellen). Neu abgeleitet und
+        // ersetzt, damit der Schreibrahmen sie mit der jetzt gültigen Generation stempelt; die
+        // Klassifizierung der bestehenden Zeile bleibt (s. `classificationForRebuild`).
+        const frisch = buildSearchProjection(ko, at, {
+          classification: await this.classificationForRebuild(ko, projection),
+        });
+        await this.searchProjections.replace({ ...frisch, createdAt: projection.createdAt });
+        projection = frisch;
       }
       // 2) Die veränderliche Metadatenprojektion — idempotent, klettert nur bei echter Änderung.
       await this.projectMetadata(ko, at);
@@ -4958,6 +4989,16 @@ export class KoService {
     });
     this.searchBackfillsInFlight.set(id, run);
     return run;
+  }
+
+  // Review 21.10.2026 (K1): trägt die Zeile der aktiven Version NICHT die Generation, mit der sie
+  // jetzt gestempelt würde? Ohne generationierten Bestand (`sollGeneration` = null) nie.
+  private async traegtFremdeGeneration(ko: KnowledgeObject): Promise<boolean> {
+    const soll = sollGeneration(await this.searchProjections.controlState());
+    if (soll === null) {
+      return false;
+    }
+    return (await this.searchProjections.generationOf(ko.id, ko.version)) !== soll;
   }
 
   async ensureCaptionTexts(id: string): Promise<string[]> {
@@ -8226,6 +8267,9 @@ export class KoService {
       await klammer(async (tx) => {
         const zusatz = (await beitrag?.(tx)) ?? {};
         await this.repo.update(neu, tx);
+        if (action === "ko.restored") {
+          await this.stempleWiederhergestellt(neu, tx);
+        }
         await audit.record(beleg(zusatz), tx);
       });
       // R-0483: Papierkorb und Wiederherstellen ändern, ob das Objekt im Index stehen darf.
@@ -8239,13 +8283,49 @@ export class KoService {
     // zurückgenommen; scheitert die Änderung, entsteht kein Beleg.
     const zusatz = (await beitrag?.(undefined)) ?? {};
     await this.schreibeMitBeleg(
-      (tx) => this.repo.update(neu, tx),
+      async (tx) => {
+        await this.repo.update(neu, tx);
+        if (action === "ko.restored") {
+          await this.stempleWiederhergestellt(neu, tx);
+        }
+      },
       async (tx) => {
         await audit?.record(beleg(zusatz), tx);
       },
       () => this.rollbackKo(vorher),
     );
     this.meldeAenderung(neu.id, neu);
+  }
+
+  // ==============================================================================================
+  // Review 21.10.2026 · K1 — DAS WIEDERHERSTELLEN STEMPELT DIE SUCHPROJEKTION NEU.
+  // ==============================================================================================
+  //
+  // Der Neuaufbau (Recover, Start nach Deploy) überspringt Objekte im Papierkorb; ihre Zeile behält
+  // die Generation des Baus, in dem sie zuletzt geschrieben wurde. Kehrt das Objekt danach zurück,
+  // trug seine Zeile eine fremde Generation: die Suche (`generation = active_generation`) fand es
+  // nicht, das Gate meldete „nicht durchgängig in Generation N", und ein Start aus `V2_READY` warf.
+  //
+  // Deshalb wird die Zeile der aktiven Version HIER neu abgeleitet und ersetzt — mit `tx` in
+  // DERSELBEN Transaktion wie die Rückkehr des Objekts (Pg: Steuerzeile FOR SHARE im Schreibrahmen
+  // `mutiere`, der Stempel kommt aus dem dann gültigen Zustand; InMemory: `schreibeUnterSperre`).
+  // Gibt es keinen generationierten Bestand (nichts im Bau, nichts freigegeben), bleibt alles wie
+  // bisher: dann ist der nächste vollständige Bau zuständig. Beide Hälften des Suchdokuments, wie
+  // im Schreibweg (`persistSearchProjection`).
+  private async stempleWiederhergestellt(ko: KnowledgeObject, tx?: TxContext): Promise<void> {
+    if (sollGeneration(await this.searchProjections.controlState()) === null) {
+      return;
+    }
+    const at = new Date(this.now()).toISOString();
+    const alt = await this.searchProjections.find(ko.id, ko.version);
+    const frisch = buildSearchProjection(ko, at, {
+      classification: await this.classificationForRebuild(ko, alt),
+    });
+    await this.searchProjections.replace(
+      alt ? { ...frisch, createdAt: alt.createdAt } : frisch,
+      tx,
+    );
+    await this.projectMetadata(ko, at, tx);
   }
 
   // ==============================================================================================
