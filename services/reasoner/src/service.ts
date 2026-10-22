@@ -3665,6 +3665,7 @@ export class Reasoner {
     prompt: string,
     locale: ReasonerLocale,
     confidential: boolean,
+    context?: ModelRunContext,
   ): Promise<ImportCriteriaResult> {
     if (prompt.trim().length === 0) {
       return { criteria: null, fallbackReason: null }; // nichts gefragt — kein Ausfall
@@ -3686,12 +3687,19 @@ export class Reasoner {
       // JOB 3127: auch der Fall, in dem die KI-Auswahl GAR NICHT STATTFAND, gehört in die Laufkarte.
       // `demo: true` und KEIN `model`-Feld — es hat keines gearbeitet; die Ursache ist dieselbe, die
       // auch die Rückgabe nennt.
-      await this.recordRun("select", locale, startedAt, "error", {
-        fallback: chain.length > 1,
-        demo: true,
-        provider: this.fallback.name,
-        error: fallbackReason,
-      }).catch(() => undefined);
+      await this.recordRun(
+        "select",
+        locale,
+        startedAt,
+        "error",
+        {
+          fallback: chain.length > 1,
+          demo: true,
+          provider: this.fallback.name,
+          error: fallbackReason,
+        },
+        context,
+      ).catch(() => undefined);
       return { criteria: null, fallbackReason };
     }
     // JOB 3036 R2 / JOB 3074: die Spur GENAU DIESES Laufs. Sie entscheidet, ob `model` und
@@ -3743,6 +3751,7 @@ export class Reasoner {
           ),
         ],
       },
+      context,
     ).catch(() => undefined);
     return ergebnis;
   }

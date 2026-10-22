@@ -1214,7 +1214,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           prompt.trim().length > 0
             ? reasoner
               ? await deriveCriteriaFromPrompt(prompt, (p) =>
-                  reasoner.deriveImportCriteria(p, locale, confidential),
+                  reasoner.deriveImportCriteria(p, locale, confidential, { actor: user.id }),
                 )
               : // WP-SAMMEL20-FIX (bens Fix 2): auch „kein Reasoner verdrahtet" ist ein
                 // ehrlicher Ausfall — nie still die ungefilterte Vollmenge.
