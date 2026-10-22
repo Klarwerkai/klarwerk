@@ -772,6 +772,49 @@ function jsxGestalten(umgebung: Typumgebung, datei: string): string[] {
   );
 }
 
+/** Alle echten JSX-Stellen: eindeutiger ausführbarer Besitzer, Tag, Reihenfolge und Typ. */
+function pruefeJsxNamensanker(
+  ast: ts.SourceFile,
+  typVon: (knoten: JsxStelle["knoten"]) => { name: string; flags: ts.TypeFlags },
+): void {
+  const besitzer = new Map<ts.Node, string>();
+  for (const name of ["ModalBoundaryProvider", "ModalRegion", "GrenzDialog"]) {
+    const treffer = ast.statements.filter(
+      (node): node is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(node) && node.name?.text === name && node.body !== undefined,
+    );
+    const funktion = treffer[0];
+    if (treffer.length !== 1 || funktion === undefined) {
+      throw new Error(`${ast.fileName}: Besitzer ${name} fehlt oder ist mehrdeutig`);
+    }
+    besitzer.set(funktion, name);
+  }
+  const zuordnung = new Map<ts.Node, ts.Node | undefined>();
+  const besuche = (node: ts.Node, owner?: ts.Node): void => {
+    const aktuell = ts.isFunctionLike(node) ? node : owner;
+    zuordnung.set(node, aktuell);
+    ts.forEachChild(node, (kind) => besuche(kind, aktuell));
+  };
+  besuche(ast);
+  const formen = jsxStellen(ast).map(({ knoten, etikett }) => {
+    const owner = zuordnung.get(knoten);
+    const name = owner === undefined ? undefined : besitzer.get(owner);
+    if (name === undefined) {
+      throw new Error(`${ast.fileName}: JSX-Tag ${etikett} hat einen fremden Besitzer`);
+    }
+    const typ = typVon(knoten);
+    if ((typ.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) {
+      throw new Error(`${name}>${etikett}: keine Typauskunft (any/unknown/Fehlertyp)`);
+    }
+    return `${name}>${etikett} → ${typ.name}`;
+  });
+  expect(formen).toEqual([
+    "ModalBoundaryProvider>ModalBoundaryCtx.Provider → Element",
+    "ModalRegion>div → Element",
+    "GrenzDialog>dialog → Element",
+  ]);
+}
+
 interface JsxDeckung {
   /** Wie viele der gelesenen Produktdateien auf `.tsx` enden. */
   readonly tsx: number;
@@ -1063,32 +1106,51 @@ describe("JOB 3607 · (a) der Kandidatenweg der Adapter hat im Produkt keinen Au
   // Zusage in `typprogramm.ts` sagt das jetzt genauso; an eine Option gebunden ist allein die
   // Kalibrierung (Fall „die JSX-Zusage trägt auch in der Kalibrierung", R2).
   //
-  // DIE DATEI IST NAMENTLICH GEWÄHLT UND NICHT BELIEBIG: `ModalBoundaryContext.tsx` ist die
-  // Modalgrenze der Shell, die `tools/modalgrenze.ts` als `GRENZE_MODUL` führt — sie verschwindet
-  // nicht nebenbei. Sie trägt genau zwei JSX-Stellen, und zwar die beiden Bauformen, auf die es
-  // ankommt: ein BAUTEIL (`ModalBoundaryCtx.Provider`, dessen Typ aus der Nachbardatei kommt) und
-  // ein eingebautes DOM-Element (`div`).
-  //
-  // JOB 3948 — HIER STAND „(`div`, das ohne die DOM-Bibliothek keinen Typ hätte)", UND DAS IST
-  // WIDERLEGT. Lieferung 5 misst: ohne die DOM-Bibliothek bleibt die JSX-Stelle `Element` — die
-  // JSX-Auskunft hängt an `jsx`, nicht an ihr. Was ohne sie zerfällt, ist ein DOM-Typ NEBEN dem
-  // JSX (`document.createElement("div")` → `any`), nicht der des Elements selbst. BEN hatte denselben
-  // Befund schon an der Produktfläche (R3, Lauf df19a4517685c1ed414c5137: beide Zusätze heraus,
-  // Deckung 177/177 unverändert); der Satz ist ersetzt und nicht danebengelassen.
-  //
-  // ZEILEN UND ETIKETTEN STEHEN MIT IN DER ERWARTUNG, mit Absicht: wird die Datei umgebaut, wird
-  // dieser Fall ROT und jemand liest ihn — statt dass er still zu einer Zusicherung über nichts
-  // wird. Genau das ist die Bauform, gegen die diese Datei überhaupt steht.
+  // Die benannte Modalgrenze trägt drei ausführbare Besitzer: ModalBoundaryProvider,
+  // ModalRegion und GrenzDialog. Alle drei JSX-Stellen bleiben in Dokumentreihenfolge gebunden.
+  // Leerzeilen verändern keinen Besitzer. Ein fehlender, doppelter oder fremder Besitzer,
+  // ein anderer Tag, eine weitere Stelle und eine fehlende Typauskunft bleiben dagegen rot.
   it("JOB 3895 · Gegenbeleg auf der ECHTEN `.tsx`-Fläche: der Prüfer nennt Element, nicht any", () => {
     const umgebung = produktprogramm(produktdateien());
-    // R-0909 (Aufnahme `gesamt-dialog-bedienung`): die Datei wurde umgebaut, und genau deshalb ist
-    // dieser Fall hier nachgeführt statt still geworden — der gemeinsame `GrenzDialog` trägt eine
-    // dritte JSX-Stelle, ein weiteres eingebautes DOM-Element. Die beiden alten stehen unverändert.
-    expect(jsxGestalten(umgebung, GRENZE_MODUL)).toEqual([
-      "ModalBoundaryCtx.Provider:188 → Element",
-      "div:216 → Element",
-      "dialog:319 → Element",
-    ]);
+    // Ausschließlich die TSX-Knoten dieses bestehenden Programms an seinen Typprüfer reichen.
+    pruefeJsxNamensanker(baumImProgramm(umgebung, GRENZE_MODUL), (knoten) => {
+      const typ = umgebung.pruefer.getTypeAtLocation(knoten);
+      return { name: umgebung.pruefer.typeToString(typ), flags: typ.flags };
+    });
+  });
+
+  it("benannte JSX-Anker unterscheiden Verschiebung, falschen Ort, Tag und Typ", () => {
+    // Gestellte Auskünfte kalibrieren nur den Ankervertrag; der Produktfall fragt den echten Typ.
+    const probe = [
+      "function ModalBoundaryProvider() { return <ModalBoundaryCtx.Provider/>; }",
+      "function ModalRegion() { return <div/>; }",
+      "function GrenzDialog() { return <dialog/>; }",
+    ].join("\n");
+    const parse = (text: string) =>
+      ts.createSourceFile("anker.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const element = () => ({ name: "Element", flags: ts.TypeFlags.Object });
+    pruefeJsxNamensanker(parse(probe), element);
+    pruefeJsxNamensanker(parse(`\n\n// <fremderTag/> ist nur Kommentar.\n${probe}`), element);
+    for (const text of [
+      probe.replace("function GrenzDialog() { return <dialog/>; }", ""),
+      probe.replace("GrenzDialog", "FremderDialog"),
+      `${probe}\nfunction GrenzDialog() { return null; }`,
+      probe.replace("<dialog/>", "<section/>"),
+      probe.replace("return <dialog/>", 'return "<dialog/>"'),
+      probe.replace("return <dialog/>", "return (() => <dialog/>)()"),
+      `${probe}\nconst weitererOrt = <div/>;`,
+      probe.split("\n").reverse().join("\n"),
+    ]) {
+      expect(() => pruefeJsxNamensanker(parse(text), element)).toThrow();
+    }
+    for (const typ of [
+      { name: "Element", flags: ts.TypeFlags.Any },
+      { name: "Element", flags: ts.TypeFlags.Unknown },
+      { name: "error", flags: ts.TypeFlags.Any },
+      { name: "string", flags: ts.TypeFlags.String },
+    ]) {
+      expect(() => pruefeJsxNamensanker(parse(probe), () => typ)).toThrow();
+    }
   });
 
   it("JOB 3840 · das Typprogramm löst wirklich auf: der Dienst-Empfänger heisst KoService, nicht any", () => {

@@ -124,9 +124,11 @@ describe("I51 · der Check-Job fährt dasselbe Gesamttor wie die Hand", () => {
       "npm ci",
       "npm ci --prefix apps/web",
       "npx playwright install --with-deps chromium",
+      'node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt',
       "npm run test:integration",
     ]);
     expect(integration).toContain('node-version: "24"');
+    expect(integration).toContain('KLARWERK_PG_PFLICHT: "1"');
     // Er bekommt ausdrücklich KEIN Gesamttor: er ist der zweite, langsamere Nachweis.
     expect(integration).not.toContain("./tools/check");
   });
