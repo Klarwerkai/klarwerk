@@ -41,8 +41,9 @@ import type { Role } from "./types";
 //     Dokument wird nie benutzt).
 //   · Gegen Signatur-Umhüllung (XSW): genau EINE Assertion im ganzen Dokument, direktes Kind der
 //     Antwort; alle Werte werden aus GENAU dem Knoten gelesen, dessen Signatur geprüft wurde.
-//   · Aussteller, Status, Destination, Audience, Recipient, InResponseTo (einmalig), Zeitfenster
-//     mit zwei Minuten Uhrtoleranz, Wiederholung derselben Assertion.
+//   · Aussteller, Status, Destination, Audience, Recipient, InResponseTo (einmalig; Pflicht auch
+//     in der Bearer-Bestätigung der signierten Assertion), Zeitfenster mit zwei Minuten
+//     Uhrtoleranz, Wiederholung derselben Assertion (gesperrt bis Frist plus Toleranz).
 
 export const SAML_NS = {
   protocol: "urn:oasis:names:tc:SAML:2.0:protocol",
@@ -781,26 +782,43 @@ export function createSamlProvider(
       if (!nameId) {
         throw new SamlFehler("NameID leer");
       }
-      const bestaetigt = kinderVon(subject, SAML_NS.assertion, "SubjectConfirmation").some((sc) => {
+      // Die Bestätigung bindet die SIGNIERTE Assertion an die eigene Anfrage: `InResponseTo` ist
+      // Pflicht. Ohne es bliebe nur das `InResponseTo` der unsignierten Antwort-Hülle — eine
+      // abgegriffene fremde Assertion liesse sich in die eigene Anfrage umhüllen (SML-1).
+      // `spaetesteFrist`: bis wann irgendeine Bestätigung dieser Assertion noch tragen könnte —
+      // auch eine, deren InResponseTo zu einer ANDEREN Anfrage passt; so lange gilt der Verbrauch.
+      let bestaetigt = false;
+      let ohneAnfragebindung = false;
+      let spaetesteFrist: number | undefined;
+      for (const sc of kinderVon(subject, SAML_NS.assertion, "SubjectConfirmation")) {
         if (attributVon(sc, "Method") !== BESTAETIGUNG_BEARER) {
-          return false;
+          continue;
         }
         const daten = kinderVon(sc, SAML_NS.assertion, "SubjectConfirmationData")[0];
         if (!daten || attributVon(daten, "Recipient") !== config.acsUrl) {
-          return false;
+          continue;
         }
         if (attributVon(daten, "NotBefore") !== undefined) {
-          return false;
+          continue;
         }
-        const bis = zeitpunkt(attributVon(daten, "NotOnOrAfter"));
-        if (bis === undefined || bis <= nun - SAML_UHR_TOLERANZ_MS) {
-          return false;
+        const frist = zeitpunkt(attributVon(daten, "NotOnOrAfter"));
+        if (frist === undefined || frist <= nun - SAML_UHR_TOLERANZ_MS) {
+          continue;
         }
+        spaetesteFrist = Math.max(spaetesteFrist ?? frist, frist);
         const antwortAuf = attributVon(daten, "InResponseTo");
-        return antwortAuf === undefined || antwortAuf === inResponseTo;
-      });
+        if (antwortAuf === undefined) {
+          ohneAnfragebindung = true;
+        } else if (antwortAuf === inResponseTo) {
+          bestaetigt = true;
+        }
+      }
       if (!bestaetigt) {
-        throw new SamlFehler("keine gültige Bearer-Bestätigung");
+        throw new SamlFehler(
+          ohneAnfragebindung
+            ? "keine gültige Bearer-Bestätigung: InResponseTo fehlt in SubjectConfirmationData"
+            : "keine gültige Bearer-Bestätigung",
+        );
       }
       const bedingungen = einKind(assertion, SAML_NS.assertion, "Conditions");
       const ab = zeitpunkt(attributVon(bedingungen, "NotBefore"));
@@ -822,11 +840,21 @@ export function createSamlProvider(
       ) {
         throw new SamlFehler("Audience passt nicht");
       }
+      // Einmal-Verbrauch: die Kennung bleibt gesperrt, solange die Assertion nach den Prüfungen oben
+      // überhaupt annehmbar wäre — bis zur späteren der beiden Fristen plus Uhrtoleranz (SML-2).
+      // Eine Assertion ohne jede Frist hätte keinen Verbrauchsschluss und wird abgelehnt.
+      const verbrauchtBis = Math.max(
+        bis ?? Number.NEGATIVE_INFINITY,
+        spaetesteFrist ?? Number.NEGATIVE_INFINITY,
+      );
+      if (!Number.isFinite(verbrauchtBis)) {
+        throw new SamlFehler("Assertion ohne Gültigkeitsfrist");
+      }
       const assertionId = attributVon(assertion, "ID") ?? "";
       if (verbrauchteAssertions.has(assertionId)) {
         throw new SamlFehler("Assertion bereits verwendet");
       }
-      verbrauchteAssertions.set(assertionId, bis ?? nun + SAML_ANFRAGE_FRIST_MS);
+      verbrauchteAssertions.set(assertionId, verbrauchtBis + SAML_UHR_TOLERANZ_MS);
 
       const werte = new Map<string, string[]>();
       for (const aussage of kinderVon(assertion, SAML_NS.assertion, "AttributeStatement")) {
