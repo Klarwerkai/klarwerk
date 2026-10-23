@@ -83,6 +83,7 @@ export type {
   User,
   PublicUser,
   Session,
+  SessionUser,
   AuthErrorCode,
   Freigabestufe,
   Weisungsbefugnis,

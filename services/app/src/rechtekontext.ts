@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { SessionUser } from "./http";
+import type { SessionUser } from "../../auth";
 
 // ================================================================================================
 // produkt:20261011:peter-p14 (K6/K7) — DER RECHTEKONTEXT EINER ANTWORT, ALS STEMPEL.

@@ -41,26 +41,6 @@
     },
     {
       "stage": "architecture",
-      "path": "services/app/src/dienst-schluessel.ts",
-      "target": "services/app/src/http.ts",
-      "rule": "no-circular",
-      "fingerprint": "1114c39426fa0d54902e2ca6c692399417f951aab3a501cf096d085b8191d0f2",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/http.ts",
-      "target": "services/app/src/rechtekontext.ts",
-      "rule": "no-circular",
-      "fingerprint": "2d660997078bc18c2f2d492064be6e9ebe8c0323429fddaa37bfe522d5a1e47e",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/klara-aktionsverlauf.ts",
       "target": "services/app/src/klara-auftrag.ts",
       "rule": "no-circular",
