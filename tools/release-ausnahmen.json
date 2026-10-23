@@ -638,26 +638,6 @@
       "owner": "Root",
       "expires": "2026-10-23T18:00:00Z",
       "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/knowledge-object/src/confidentiality.ts",
-      "target": "services/knowledge-object/src/types.ts",
-      "rule": "no-circular",
-      "fingerprint": "5cdc199d5281ab68081bbca6e3ed85c57d09b3e2814cf81cc435b0826d61ea56",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/knowledge-object/src/negativwissen.ts",
-      "target": "services/knowledge-object/src/types.ts",
-      "rule": "no-circular",
-      "fingerprint": "b8e4c181d1d90d84db0b40c52a3b6b8ab1f9c884825693d3e054a8e16c493f1c",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
     }
   ]
 }
