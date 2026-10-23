@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { hashAnswerSnapshot } from "../../ask";
+import { type AnswerEvidenceSnapshot, hashAnswerSnapshot } from "../../ask";
 import { guardedLocalPgTestUrl } from "../../db-tx";
 import { buildPgServices } from "./build-app";
 import { migrate } from "./db";
@@ -32,6 +32,9 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
   let adminPool: Pool | undefined;
   let pool: Pool | undefined;
   let services: ReturnType<typeof buildPgServices> | undefined;
+  let gehaltenesKo: { id: string; version: number } | undefined;
+  let ersteAnswerId: string | undefined;
+  let zweiteAnswerId: string | undefined;
 
   beforeAll(async () => {
     const localUrl = guardedLocalPgTestUrl();
@@ -74,10 +77,10 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     // Menge gelaufen, also immer wahr und immer wertlos. Die Luecke aus BEN 82 Befund 2 haette sich
     // hier nicht einmal ausdruecken lassen.
     //
-    // Deshalb bekommt der Lauf ein Wissensobjekt, das die Frage unten wirklich trifft. Erst damit
-    // entsteht getragene Evidenz, erst damit ist INCOMPLETE der richtige Status, und erst damit
-    // beisst die Gegenmutation M6.
-    await services.ko.create({
+    // Das gehaltene Fixture bindet Identitaet und positive Fassung der getragenen Evidence.
+    // INCOMPLETE bleibt richtig: der tragenden Quelle fehlt die Validierungsentscheidung,
+    // nicht ihre KO-Fassung. Der zweite Lauf fragt bewusst ohne passende Evidence.
+    gehaltenesKo = await services.ko.create({
       title: "Wartungshinweis Portalanlage",
       statement: "Die Verschraubung der Grundplatte wird quartalsweise nachgezogen.",
       type: "best_practice",
@@ -117,6 +120,41 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     return services;
   }
 
+  function fixture(): { id: string; version: number } {
+    if (!gehaltenesKo) {
+      throw new Error("kein gehaltenes KO-Fixture");
+    }
+    return gehaltenesKo;
+  }
+
+  function antwortId(wer: "anna" | "bea"): string {
+    const id = wer === "anna" ? ersteAnswerId : zweiteAnswerId;
+    if (!id) {
+      throw new Error(`keine festgehaltene answerId fuer ${wer}`);
+    }
+    return id;
+  }
+
+  function pruefeAnnaEvidenz(evidenz: AnswerEvidenceSnapshot["evidence"]): void {
+    const ko = fixture();
+    expect(ko.version).toBeGreaterThan(0);
+    expect(evidenz.length, "ohne Evidenz waere die Aussage leer").toBeGreaterThan(0);
+    expect(evidenz.map((e) => e.knowledgeObjectId)).toEqual([ko.id]);
+    for (const e of evidenz) {
+      expect(e.knowledgeObjectVersion, "gebunden ist genau die gehaltene Fixture-Fassung").toBe(
+        ko.version,
+      );
+      expect(e.knowledgeObjectVersion).not.toBeNull();
+      expect(e.knowledgeObjectVersion).not.toBe(0);
+      const hatRef = e.validationDecisionRef !== undefined;
+      const hatGrund = e.validationReferenceAbsenceReason !== undefined;
+      expect(hatRef !== hatGrund).toBe(true);
+      expect(e.evidenceRole).toBe("carrying");
+      expect(e.validationDecisionRef).toBeUndefined();
+      expect(e.validationReferenceAbsenceReason).toBe("NOT_AVAILABLE_AT_EXECUTION");
+    }
+  }
+
   it("die Tabellen des Belegs stehen im eigenen Schema — migrate() hat sie angelegt", async () => {
     const res = await db().query<{ t: string }>(
       `SELECT c.relname AS t FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -132,7 +170,7 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
   });
 
   it("ein Antwortlauf ueber buildPgServices schreibt GENAU einen Record und Revision 1", async () => {
-    // Die Frage trifft den in `beforeAll` angelegten Bestand — nur so traegt der Beleg Evidenz.
+    // Die Frage trifft genau das gehaltene Fixture; die Kennung bleibt fuer alle Folgepruefungen.
     const out = await app().ask.ask(
       "Wie oft wird die Verschraubung der Grundplatte nachgezogen?",
       "anna",
@@ -142,57 +180,60 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     if (!out.answerId) {
       throw new Error("keine answerId");
     }
+    ersteAnswerId = out.answerId;
+    const answerId = antwortId("anna");
 
-    // DIE EIGENTLICHE PARITAETSAUSSAGE: nicht das Repo wird befragt, sondern die DATENBANK.
-    const records = await db().query<{ answer_id: string; im_rumpf: string }>(
-      "SELECT answer_id, data->>'answerId' AS im_rumpf FROM answer_records",
+    // Eindeutige Identitaet in Rueckgabe, SQL-Spalte und JSON-Rumpf; keine zufaellige erste Zeile.
+    const anzahl = await db().query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM answer_records",
     );
-    expect(records.rows.map((r) => r.answer_id)).toEqual([out.answerId]);
-    // BEN 79 §6 verlangt dieselbe Identitaet in Rueckgabe, Record UND Snapshot. Bei
-    // `answer_records` ist `answer_id` eine GEWOEHNLICHE Spalte — sie kann vom JSON-Rumpf
-    // abweichen, ohne dass die Datenbank protestiert. Deshalb wird der Rumpf mitgeprueft.
+    expect(anzahl.rows[0]?.n).toBe("1");
+    const records = await db().query<{ answer_id: string; im_rumpf: string }>(
+      "SELECT answer_id, data->>'answerId' AS im_rumpf FROM answer_records WHERE answer_id = $1",
+      [answerId],
+    );
+    expect(records.rows.map((r) => r.answer_id)).toEqual([answerId]);
     expect(records.rows[0]?.im_rumpf).toBe(out.answerId);
 
+    const anzahlSnapshots = await db().query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM answer_snapshots",
+    );
+    expect(anzahlSnapshots.rows[0]?.n).toBe("1");
     const snaps = await db().query<{ answer_id: string; snapshot_revision_key: string }>(
-      "SELECT answer_id, snapshot_revision_key FROM answer_snapshots ORDER BY snapshot_revision_key",
+      "SELECT answer_id, snapshot_revision_key FROM answer_snapshots WHERE answer_id = $1",
+      [answerId],
     );
     expect(snaps.rows).toHaveLength(1);
     expect(snaps.rows[0]?.answer_id).toBe(out.answerId);
     expect(snaps.rows[0]?.snapshot_revision_key).toBe("1");
   });
 
-  it("der persistierte Beleg traegt null mit dem HEUTE richtigen Grund", async () => {
-    const zeile = await db().query<{ data: Record<string, unknown> }>(
-      "SELECT data FROM answer_snapshots LIMIT 1",
+  it("der persistierte Beleg bindet die Fixture-Fassung und benennt leere Zusatzfelder", async () => {
+    const zeile = await db().query<{ data: AnswerEvidenceSnapshot }>(
+      "SELECT data FROM answer_snapshots WHERE answer_id = $1 AND snapshot_revision_key = $2",
+      [antwortId("anna"), "1"],
     );
+    expect(zeile.rows).toHaveLength(1);
     const data = zeile.rows[0]?.data;
     expect(data).toBeDefined();
-    expect(data?.validationDecisionRef).toBeNull();
-    expect(data?.validationDecisionRefReason).toBe("w3_23_ref_liegt_je_evidence");
-    // Der seit Freeze 67 erledigte Grund darf in KEINEM neuen Snapshot stehen.
-    expect(data?.validationDecisionRefReason).not.toBe("w3b_findbyseq_missing");
-    expect(data?.resolutionId).toBeNull();
-    expect(data?.resolutionIdReason).toBe("w1_not_on_answer_path");
-
-    // ============================================================================================
-    // AUFTRAG 89 (BEN 82, Befund 2) — DIESE DATEI TRUG DIESELBE LUECKE WIE DER 76er VERTRAG.
-    // ============================================================================================
-    //
-    // Hier stand nur `not.toBe("COMPLETE")`. BEN 82 hat den Befund am Freeze-76-Test erhoben und
-    // diese Datei ausdruecklich ausgeklammert, weil sie nicht zu jenem Freeze gehoert. Das war fuer
-    // den Kontrollrahmen richtig — und es hiess nicht, dass die Zusicherung hier besser waere. Sie
-    // war es nicht: eine erfundene KO-Fassung macht die Evidenz primaergebunden, der Status wird
-    // PARTIAL, und PARTIAL ist nicht COMPLETE. Die Probe haette geschwiegen.
-    //
-    // Gepinnt wird jetzt auch hier, was der Dienst WIRKLICH in die Datenbank schreibt.
-    const evidenz = data?.evidence as { knowledgeObjectVersion: number | null }[] | undefined;
-    expect(evidenz?.length, "ohne Evidenz waere die Aussage leer").toBeGreaterThan(0);
-    for (const e of evidenz ?? []) {
-      expect(e.knowledgeObjectVersion, "eine erfundene Fassung waere eine Luege").toBeNull();
+    if (!data) {
+      throw new Error("kein Snapshot der ersten Antwort");
     }
-    expect(data?.status).toBe("INCOMPLETE");
-    // Die alte, schwaechere Zusage bleibt zusaetzlich stehen — sie ist nicht falsch, nur zu wenig.
-    expect(data?.status).not.toBe("COMPLETE");
+    expect(data.answerId).toBe(antwortId("anna"));
+    expect(data.snapshotRevision).toBe(1);
+    expect(data.validationDecisionRef).toBeNull();
+    expect(data.validationDecisionRefReason).toBe("w3_23_ref_liegt_je_evidence");
+    expect(data.validationDecisionRefReason).not.toBe("w3b_findbyseq_missing");
+    expect(data.resolutionId).toBeNull();
+    expect(data.resolutionIdReason).toBe("w1_not_on_answer_path");
+
+    // Heute kommt die positive KO-Fassung aus genau dem Objekt, das der Antwortlauf hielt.
+    // Die noch fehlende Entscheidung an der tragenden Evidence verhindert COMPLETE.
+    pruefeAnnaEvidenz(data.evidence);
+    expect(data.citedSources).toEqual([fixture().id]);
+    expect(data.status).toBe("INCOMPLETE");
+    expect(data.status).not.toBe("COMPLETE");
+    expect(data.integrityHash).toBe(hashAnswerSnapshot(data));
   });
 
   it("ein zweiter Antwortlauf ist eine ANDERE Antwort — auch in der Datenbank", async () => {
@@ -200,20 +241,37 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     if (!zweite.answerId) {
       throw new Error("keine answerId");
     }
+    zweiteAnswerId = zweite.answerId;
+    const anna = antwortId("anna");
+    const bea = antwortId("bea");
+    expect(bea).not.toBe(anna);
 
+    const anzahl = await db().query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM answer_records",
+    );
+    expect(anzahl.rows[0]?.n).toBe("2");
     const records = await db().query<{ answer_id: string }>(
-      "SELECT answer_id FROM answer_records ORDER BY answer_id",
+      "SELECT answer_id FROM answer_records WHERE answer_id = ANY($1::text[]) ORDER BY answer_id",
+      [[anna, bea]],
     );
     expect(records.rows).toHaveLength(2);
     const ids = new Set(records.rows.map((r) => r.answer_id));
     expect(ids.size, "zwei Laeufe, zwei Identitaeten").toBe(2);
+    expect(ids.has(anna)).toBe(true);
     expect(ids.has(zweite.answerId)).toBe(true);
 
-    // Jede Antwort hat GENAU EINE Revision 1 — keine zweite Revision, keine Waise.
+    // Global weiterhin genau zwei Snapshots; beide gehaltenen Antworten haben je Revision 1.
+    const anzahlSnapshots = await db().query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM answer_snapshots",
+    );
+    expect(anzahlSnapshots.rows[0]?.n).toBe("2");
     const je = await db().query<{ answer_id: string; n: string }>(
-      "SELECT answer_id, count(*)::text AS n FROM answer_snapshots GROUP BY answer_id",
+      `SELECT answer_id, count(*)::text AS n FROM answer_snapshots
+        WHERE answer_id = ANY($1::text[]) GROUP BY answer_id ORDER BY answer_id`,
+      [[anna, bea]],
     );
     expect(je.rows).toHaveLength(2);
+    expect(new Set(je.rows.map((r) => r.answer_id))).toEqual(new Set([anna, bea]));
     for (const r of je.rows) {
       expect(r.n).toBe("1");
     }
@@ -221,11 +279,14 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
 
   it("die DB-seitige Revisionsidentitaet greift — ein zweiter Snapshot derselben Revision scheitert", async () => {
     const vorhanden = await db().query<{ answer_id: string }>(
-      "SELECT answer_id FROM answer_snapshots LIMIT 1",
+      "SELECT answer_id FROM answer_snapshots WHERE answer_id = $1 AND snapshot_revision_key = $2",
+      [antwortId("anna"), "1"],
     );
+    expect(vorhanden.rows).toHaveLength(1);
     const answerId = vorhanden.rows[0]?.answer_id;
     expect(answerId).toBeDefined();
-    // GEGENPROBE am rohen SQL, ohne Adapter: der Unique-Index aus Freeze 59/61 muss halten.
+    expect(answerId).toBe(antwortId("anna"));
+    // GEGENPROBE am rohen SQL, ohne Adapter: derselbe Unique-Index muss weiter greifen.
     await expect(
       db().query("INSERT INTO answer_snapshots(snapshot_key,data) VALUES($1,$2::jsonb)", [
         `${answerId}@1-zweit`,
@@ -234,88 +295,94 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     ).rejects.toThrow(/unique|duplicate/i);
   });
 
-  // ==============================================================================================
-  // JOB 541 D3 — DIE PARITAET DER NEUEN FORM (KW-W3-23 und Eigentum).
-  // ==============================================================================================
-  //
-  // Der Auftrag verlangt ausdruecklich mehr als „JSONB-Plausibilitaet": belegt werden muss, dass
-  // der ERWEITERTE Record, die PER-EVIDENCE-Felder und das Lesen samt Rechte-/Integritaetszustand
-  // gegen die REALE Pg-Implementierung tragen. Die Fragen unten gehen deshalb an die Datenbank und
-  // danach durch den Pg-Adapter zurueck — nicht an ein InMemory-Repo.
-
+  // Der reale Pg-Weg bindet jede Eigentums-/Evidence-Aussage an die zugehoerige Antwort.
+  // Anna hat genau das Fixture getragen; Beas zweite Antwort hat bewusst keine Evidence.
   it("JOB 541 D3: der Record traegt sein Eigentum in der DATENBANK — und `system` ist kein Konto", async () => {
-    const zeilen = await db().query<{ kind: string | null; user_id: string | null }>(
-      "SELECT data->'owner'->>'kind' AS kind, data->'owner'->>'userId' AS user_id FROM answer_records",
-    );
-    expect(zeilen.rows.length).toBeGreaterThan(0);
-    for (const r of zeilen.rows) {
-      // Die Antworten oben liefen mit Actor `anna` — also Nutzereigentum mit echter Kennung.
-      expect(r.kind).toBe("user");
-      expect(r.user_id).toBe("anna");
-      // Und ausdruecklich NICHT die Zeichenkette `system` als Kennung.
-      expect(r.user_id).not.toBe("system");
+    for (const wer of ["anna", "bea"] as const) {
+      const answerId = antwortId(wer);
+      const zeilen = await db().query<{
+        answer_id: string;
+        im_rumpf: string;
+        kind: string | null;
+        user_id: string | null;
+      }>(
+        `SELECT answer_id, data->>'answerId' AS im_rumpf,
+                data->'owner'->>'kind' AS kind, data->'owner'->>'userId' AS user_id
+           FROM answer_records WHERE answer_id = $1`,
+        [answerId],
+      );
+      expect(zeilen.rows).toHaveLength(1);
+      for (const r of zeilen.rows) {
+        expect(r.answer_id).toBe(answerId);
+        expect(r.im_rumpf).toBe(answerId);
+        expect(r.kind).toBe("user");
+        expect(r.user_id).toBe(wer);
+        expect(r.user_id).not.toBe("system");
+      }
     }
   });
 
   it("JOB 541 D3: die per-Evidence-Felder stehen in der DATENBANK, das top-level Feld bleibt leer", async () => {
-    const zeilen = await db().query<{
-      oben: string | null;
-      grund: string | null;
-      evidenz: unknown;
-    }>(
-      `SELECT data->>'validationDecisionRef' AS oben,
-              data->>'validationDecisionRefReason' AS grund,
-              data->'evidence' AS evidenz
-         FROM answer_snapshots
-        WHERE data->>'snapshotRevision' = '1'`,
-    );
-    expect(zeilen.rows.length).toBeGreaterThan(0);
-    for (const r of zeilen.rows) {
-      // KW-W3-23 §3: neue Snapshots beschreiben den oberen Ort nicht mehr.
-      expect(r.oben).toBeNull();
-      expect(r.grund).toBe("w3_23_ref_liegt_je_evidence");
-      const evidenz = (r.evidenz ?? []) as {
-        knowledgeObjectVersion: number | null;
-        validationDecisionRef?: unknown;
-        validationReferenceAbsenceReason?: string;
-      }[];
-      expect(evidenz.length).toBeGreaterThan(0);
-      for (const e of evidenz) {
-        // Die Fassung ist gebunden — nicht null, nicht 0.
-        expect(e.knowledgeObjectVersion).not.toBeNull();
-        expect(e.knowledgeObjectVersion).not.toBe(0);
-        // Genau eines von beidem, auch nach dem Weg durch JSONB.
-        const hatRef = e.validationDecisionRef !== undefined;
-        const hatGrund = e.validationReferenceAbsenceReason !== undefined;
-        expect(hatRef !== hatGrund).toBe(true);
+    for (const wer of ["anna", "bea"] as const) {
+      const zeilen = await db().query<{
+        answer_id: string;
+        oben: string | null;
+        grund: string | null;
+        evidenz: AnswerEvidenceSnapshot["evidence"];
+      }>(
+        `SELECT answer_id, data->>'validationDecisionRef' AS oben,
+                data->>'validationDecisionRefReason' AS grund, data->'evidence' AS evidenz
+           FROM answer_snapshots WHERE answer_id = $1 AND snapshot_revision_key = $2`,
+        [antwortId(wer), "1"],
+      );
+      expect(zeilen.rows).toHaveLength(1);
+      for (const r of zeilen.rows) {
+        expect(r.answer_id).toBe(antwortId(wer));
+        expect(r.oben).toBeNull();
+        expect(r.grund).toBe("w3_23_ref_liegt_je_evidence");
+        expect(Array.isArray(r.evidenz)).toBe(true);
+        if (wer === "anna") {
+          pruefeAnnaEvidenz(r.evidenz);
+        } else {
+          expect(r.evidenz).toEqual([]);
+        }
       }
     }
   });
 
   it("JOB 541 D3: der Pg-Adapter LIEST die neue Form unveraendert zurueck", async () => {
-    const zeile = await db().query<{ answer_id: string }>(
-      "SELECT answer_id FROM answer_records LIMIT 1",
-    );
-    const answerId = zeile.rows[0]?.answer_id;
-    expect(answerId).toBeDefined();
-    if (!answerId) {
-      throw new Error("keine answerId in der Datenbank");
-    }
-    // DURCH DEN ADAPTER, nicht am SQL vorbei: hier entscheidet sich, ob die Form den Rueckweg
-    // uebersteht — genau das, was „JSONB ist plausibel" NICHT belegt.
-    const record = await app().answerSnapshots.findRecord(answerId);
-    expect(record?.owner).toEqual({ kind: "user", userId: "anna" });
-    const snapshot = await app().answerSnapshots.latestSnapshot(answerId);
-    expect(snapshot).toBeDefined();
-    expect(snapshot?.validationDecisionRef).toBeNull();
-    for (const e of snapshot?.evidence ?? []) {
-      expect(e.knowledgeObjectVersion).not.toBeNull();
-      const hatRef = e.validationDecisionRef !== undefined;
-      const hatGrund = e.validationReferenceAbsenceReason !== undefined;
-      expect(hatRef !== hatGrund).toBe(true);
-    }
-    // Und der Integritaetshash traegt die neuen Felder mit: nachgerechnet stimmt er.
-    if (snapshot) {
+    for (const wer of ["anna", "bea"] as const) {
+      const answerId = antwortId(wer);
+      const zeile = await db().query<{ answer_id: string; data: AnswerEvidenceSnapshot }>(
+        `SELECT answer_id, data FROM answer_snapshots
+          WHERE answer_id = $1 AND snapshot_revision_key = $2`,
+        [answerId, "1"],
+      );
+      expect(zeile.rows).toHaveLength(1);
+      expect(zeile.rows[0]?.answer_id).toBe(answerId);
+      // Durch den Adapter zurueck und mit genau der SQL-Zeile derselben Antwort vergleichen.
+      const record = await app().answerSnapshots.findRecord(answerId);
+      expect(record?.answerId).toBe(answerId);
+      expect(record?.owner).toEqual({ kind: "user", userId: wer });
+      const snapshot = await app().answerSnapshots.latestSnapshot(answerId);
+      expect(snapshot).toBeDefined();
+      if (!snapshot) {
+        throw new Error(`kein Snapshot fuer ${wer}`);
+      }
+      expect(snapshot).toEqual(zeile.rows[0]?.data);
+      expect(snapshot.answerId).toBe(answerId);
+      expect(snapshot.snapshotRevision).toBe(1);
+      expect(snapshot.validationDecisionRef).toBeNull();
+      expect(snapshot.validationDecisionRefReason).toBe("w3_23_ref_liegt_je_evidence");
+      if (wer === "anna") {
+        pruefeAnnaEvidenz(snapshot.evidence);
+        expect(snapshot.status).toBe("INCOMPLETE");
+      } else {
+        expect(snapshot.evidence).toEqual([]);
+        expect(snapshot.citedSources).toEqual([]);
+        expect(snapshot.status).toBe("PENDING_EVIDENCE");
+      }
+      // Beide echten Antworten tragen einen nachgerechneten Integritaetshash.
       expect(snapshot.integrityHash).toBe(hashAnswerSnapshot(snapshot));
     }
   });
