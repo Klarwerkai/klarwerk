@@ -33,28 +33,6 @@
     },
     {
       "stage": "lint",
-      "path": "apps/web/src/components/klara-vorschau/Normereignisse.tsx",
-      "line": 158,
-      "rule": "lint/a11y/useSemanticElements",
-      "fingerprint": "1c2205fde4d86297f93fbc42ee56ae17cfcc69b4e108dfef00110418cdae1003",
-      "sourceSha256": "1fb9ec8a480850ff8998eac63fbf75bdfebc2ef77aad04528550fadbfc17fc60",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unverändertes Semantik-/Bedienungsdetail in Normereignisse; Root entscheidet mit passender Bedienprobe vor Frist, keine pauschale a11y-Abschaltung."
-    },
-    {
-      "stage": "lint",
-      "path": "apps/web/src/components/klara-vorschau/Normereignisse.tsx",
-      "line": 376,
-      "rule": "lint/a11y/useSemanticElements",
-      "fingerprint": "5ca67673968154874913ce46ae71172fc6852e31bc93812e416b59a62e3a3324",
-      "sourceSha256": "1fb9ec8a480850ff8998eac63fbf75bdfebc2ef77aad04528550fadbfc17fc60",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unverändertes Semantik-/Bedienungsdetail in Normereignisse; Root entscheidet mit passender Bedienprobe vor Frist, keine pauschale a11y-Abschaltung."
-    },
-    {
-      "stage": "lint",
       "path": "services/app/src/klara-besprechung.ts",
       "line": 605,
       "rule": "lint/style/noNonNullAssertion",
