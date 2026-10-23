@@ -373,9 +373,7 @@ function Normkarte({
         </div>
       ))}
       {n.widerspruch ? (
-        <output className="block text-trust-warn-text">
-          {t("normereignisse.widerspruch")}
-        </output>
+        <output className="block text-trust-warn-text">{t("normereignisse.widerspruch")}</output>
       ) : null}
       {(n.klaerungen ?? []).map((k) => (
         <div
