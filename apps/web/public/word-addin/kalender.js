@@ -398,7 +398,12 @@ function kalenderLaden() {
 
 /** Die Einträge der nächsten Tage — mit derselben Sichtwahl wie die Seite in Klarwerk. */
 function kalenderZeilen(ansicht) {
-  var i, e, s, j, x, sx;
+  var i;
+  var e;
+  var s;
+  var j;
+  var x;
+  var sx;
   var zone = kalenderZone();
   var heute = kalenderTagVon(new Date(), zone);
   var bis = kalenderVerschiebe(heute, KALENDER_TAGE - 1);
@@ -509,7 +514,8 @@ function kalenderZeile(z) {
 
 /** Eintrag, Auftrag und Ergebnis — drei getrennt beschriftete Abschnitte wie in Klarwerk. */
 function kalenderDetail(e) {
-  var art, zeile;
+  var art;
+  var zeile;
   var kasten = kalenderKnoten("div", "kalender-detail");
   kasten.setAttribute("data-event-id", e.id);
   kasten.style.margin = "6px 0";
@@ -561,7 +567,9 @@ function kalenderDetail(e) {
 }
 
 function kalenderZeichnen() {
-  var b, k, i;
+  var b;
+  var k;
+  var i;
   var block = document.getElementById("kalender-block");
   var kopf = document.getElementById("kalender-kopf");
   var inhalt = document.getElementById("kalender-inhalt");
@@ -640,7 +648,8 @@ function kalenderZeichnen() {
  * Ohne `Element.closest` — das Fenster läuft auch in älteren Office-Hosts (ES5).
  */
 function kalenderKlick(ereignis) {
-  var bereich, id;
+  var bereich;
+  var id;
   var inhalt = document.getElementById("kalender-inhalt");
   var el = ereignis.target;
   while (el && el !== inhalt && el.nodeType === 1) {
@@ -666,7 +675,8 @@ function kalenderKlick(ereignis) {
 var kalenderWarOffen = false;
 
 function kalenderAnschliessen() {
-  var kalenderBestandZeichnen, kalenderSetLang;
+  var kalenderBestandZeichnen;
+  var kalenderSetLang;
   var block = document.getElementById("kalender-block");
   var inhalt = document.getElementById("kalender-inhalt");
   if (!block || !inhalt) {
