@@ -120,16 +120,6 @@
     },
     {
       "stage": "architecture",
-      "path": "services/app/src/assistenz-eigeninitiative.ts",
-      "target": "services/app/src/assistenz-profil.ts",
-      "rule": "no-circular",
-      "fingerprint": "d61096df9e6abbbd7bdc64ce73010e2034477a1c5043c1531d9400181c7a4328",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/assistenz-faehigkeiten.ts",
       "target": "services/app/src/assistenz-profil.ts",
       "rule": "no-circular",
@@ -144,16 +134,6 @@
       "target": "services/app/src/vormachen.ts",
       "rule": "no-circular",
       "fingerprint": "2620c8589a917cb707964fcf9624a36b204c9d4235271bdc3b49f920adc78112",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/assistenz-profil.ts",
-      "target": "services/app/src/assistenz-tastenkuerzel.ts",
-      "rule": "no-circular",
-      "fingerprint": "7761980f2147907d2a59ee13fc275a05776df02d51c5afdf7f202e87f8e58718",
       "owner": "Root",
       "expires": "2026-10-23T18:00:00Z",
       "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."

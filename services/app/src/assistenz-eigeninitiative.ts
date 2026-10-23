@@ -1,5 +1,3 @@
-import type { AssistenzProfilRepo } from "./assistenz-profil";
-
 // ================================================================================================
 // produkt:20261008:klara-eigeninitiative — WANN SICH DIE ASSISTENZ MELDET, PERSÖNLICH JE KONTO.
 // ================================================================================================
@@ -80,13 +78,22 @@ function wirksam(hinweise: readonly HinweisAblage[], jetzt: number): HinweisAbla
   return hinweise.filter((h) => Date.parse(h.bis) > jetzt);
 }
 
+export interface EigeninitiativeProfilPort {
+  hole(kontoId: string): Promise<{ readonly eigeninitiative?: EigeninitiativeStand } | null>;
+  schreibeEigeninitiative(
+    kontoId: string,
+    alt: EigeninitiativeStand | null,
+    neu: EigeninitiativeStand,
+  ): Promise<boolean>;
+}
+
 export interface EigeninitiativeDienstDeps {
-  readonly repo: AssistenzProfilRepo;
+  readonly repo: EigeninitiativeProfilPort;
   readonly jetzt?: () => number;
 }
 
 export class EigeninitiativeDienst {
-  private readonly repo: AssistenzProfilRepo;
+  private readonly repo: EigeninitiativeProfilPort;
   private readonly jetzt: () => number;
 
   constructor(deps: EigeninitiativeDienstDeps) {

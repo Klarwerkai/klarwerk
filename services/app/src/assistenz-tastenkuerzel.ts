@@ -1,5 +1,3 @@
-import type { AssistenzProfilRepo } from "./assistenz-profil";
-
 // ================================================================================================
 // produkt:20261012:klara-setup-shortcuts-umsetzung (AA-03) — TASTENKÜRZEL FÜR KLARA, JE KONTO.
 // ================================================================================================
@@ -172,13 +170,22 @@ export type TastenkuerzelAenderung =
   | { readonly aktion: unknown; readonly belegung: unknown }
   | { readonly alleZuruecksetzen: true };
 
+export interface TastenkuerzelProfilPort {
+  hole(kontoId: string): Promise<{ readonly tastenkuerzel?: TastenkuerzelStand } | null>;
+  schreibeTastenkuerzel(
+    kontoId: string,
+    alt: TastenkuerzelStand | null,
+    neu: TastenkuerzelStand,
+  ): Promise<boolean>;
+}
+
 export interface TastenkuerzelDienstDeps {
-  readonly repo: AssistenzProfilRepo;
+  readonly repo: TastenkuerzelProfilPort;
   readonly jetzt?: () => number;
 }
 
 export class TastenkuerzelDienst {
-  private readonly repo: AssistenzProfilRepo;
+  private readonly repo: TastenkuerzelProfilPort;
   private readonly jetzt: () => number;
 
   constructor(deps: TastenkuerzelDienstDeps) {
