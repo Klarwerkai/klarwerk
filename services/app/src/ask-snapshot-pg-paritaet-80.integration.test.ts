@@ -184,7 +184,9 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     const answerId = antwortId("anna");
 
     // Eindeutige Identitaet in Rueckgabe, SQL-Spalte und JSON-Rumpf; keine zufaellige erste Zeile.
-    const anzahl = await db().query<{ n: string }>("SELECT count(*)::text AS n FROM answer_records");
+    const anzahl = await db().query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM answer_records",
+    );
     expect(anzahl.rows[0]?.n).toBe("1");
     const records = await db().query<{ answer_id: string; im_rumpf: string }>(
       "SELECT answer_id, data->>'answerId' AS im_rumpf FROM answer_records WHERE answer_id = $1",
@@ -244,7 +246,9 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     const bea = antwortId("bea");
     expect(bea).not.toBe(anna);
 
-    const anzahl = await db().query<{ n: string }>("SELECT count(*)::text AS n FROM answer_records");
+    const anzahl = await db().query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM answer_records",
+    );
     expect(anzahl.rows[0]?.n).toBe("2");
     const records = await db().query<{ answer_id: string }>(
       "SELECT answer_id FROM answer_records WHERE answer_id = ANY($1::text[]) ORDER BY answer_id",
