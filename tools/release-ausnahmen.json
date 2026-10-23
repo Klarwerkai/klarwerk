@@ -11,28 +11,6 @@
   "entries": [
     {
       "stage": "lint",
-      "path": "apps/web/src/components/klara-vorschau/KlaraBesprechung.tsx",
-      "line": 208,
-      "rule": "lint/correctness/useExhaustiveDependencies",
-      "fingerprint": "f318ae274a387514045f1677dcae72d72ac1a5bc2f5e80b536e10577765bbc03",
-      "sourceSha256": "27f900796e7c0e45fefbc6cdde0c4ccc12d0df2a7eaa52e2ca7a606796d25655",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte Effektabhängigkeit in KlaraBesprechung; fachliche React-Wirkung gesondert prüfen, statt den Hook ohne Verhaltensbeleg umzubauen. Root vor Frist."
-    },
-    {
-      "stage": "lint",
-      "path": "apps/web/src/components/klara-vorschau/KlaraBesprechung.tsx",
-      "line": 0,
-      "rule": "organizeImports",
-      "fingerprint": "e16a4be9b6b639d6a16bc912043612f7d4cfc4d1aa03915dafbe54d6abf4dc66",
-      "sourceSha256": "27f900796e7c0e45fefbc6cdde0c4ccc12d0df2a7eaa52e2ca7a606796d25655",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in apps/web/src/components/klara-vorschau/KlaraBesprechung.tsx; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
       "path": "services/app/src/klara-besprechung.ts",
       "line": 605,
       "rule": "lint/style/noNonNullAssertion",
