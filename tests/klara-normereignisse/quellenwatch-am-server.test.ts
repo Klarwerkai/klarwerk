@@ -131,7 +131,7 @@ describe("AW21 · ausdrücklich bestellter Normbeleg-Zusatz am vorhandenen D-Que
   it("nur zusätzliche ausdrückliche Bestellung erfasst Normbelege; gewöhnlicher Quellenwatch bleibt bei seinen vorbereiteten Unterlagen", async () => {
     const q = await wissen();
     await einrichten(q.id, false);
-    await services.ko.revise(q.id, { statement: TEXT + " Aktualisierter Quellstand." }, kontoId);
+    await services.ko.revise(q.id, { statement: `${TEXT} Aktualisierter Quellstand.` }, kontoId);
     faellig();
     await lauf();
     expect((await normen()).normen).toEqual([]);

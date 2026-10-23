@@ -1385,28 +1385,6 @@
       "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in services/app/src/klara-besprechung.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
     },
     {
-      "stage": "lint",
-      "path": "tests/klara-normereignisse/quellenwatch-am-server.test.ts",
-      "line": 134,
-      "rule": "lint/style/useTemplate",
-      "fingerprint": "986fdfcf4ed566ebc4437654ca49ea68fcc3fa8f121beb1f7816e9085765d9aa",
-      "sourceSha256": "b4a11d956f34a7a042b1e23d178f0c9e08ae7a0a9b42f12827d0d50b2eb928c9",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose lint/style/useTemplate in tests/klara-normereignisse/quellenwatch-am-server.test.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "tests/klara-wissenspflege/steuerung.test.ts",
-      "line": 350,
-      "rule": "lint/style/useConst",
-      "fingerprint": "55f412ba0f059e00535c2b1a3fdf135da8a462f309bbf6bedc7cac9981249b5c",
-      "sourceSha256": "43d5e86c7a565db63f3193275ec8871237ff1bd71161e319122b78a3f880f5ce",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose lint/style/useConst in tests/klara-wissenspflege/steuerung.test.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
       "stage": "architecture",
       "path": "apps/web/src/api/types.ts",
       "target": "apps/web/src/app/navigation.ts",
