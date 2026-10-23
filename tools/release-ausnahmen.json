@@ -1386,16 +1386,6 @@
     },
     {
       "stage": "architecture",
-      "path": "apps/web/src/api/types.ts",
-      "target": "apps/web/src/app/navigation.ts",
-      "rule": "no-circular",
-      "fingerprint": "5a4546fb424f6ba5735d3ba24296c44f8b8766d9f393428a1fcdc6efa57815b3",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/addon-principal.ts",
       "target": "services/app/src/dienst-schluessel.ts",
       "rule": "no-circular",

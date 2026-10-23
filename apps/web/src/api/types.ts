@@ -1,4 +1,3 @@
-import type { Role } from "../app/navigation";
 // JOB 3072 (N4): der Wertetyp des Anzeigestatus wird NICHT hier ein zweites Mal aufgezählt. Er
 // steht seit jeher in `components/trust/types.ts` — dieselben sieben Wörter, die `StatusPill`
 // zeichnet. Eine zweite vollständige Client-Aufzählung desselben Enums ist ein roter Befund
@@ -8,7 +7,7 @@ import type { DisplayStatus } from "../components/trust/types";
 // ADMIN-02: die Form eines Verbindungsnachweises steht EINMAL im gemeinsamen Statusmodell.
 import type { Verbindungsnachweis } from "../lib/integrationStatus";
 
-export type { Role };
+export type Role = "viewer" | "experte" | "controller" | "admin";
 
 export type KnowledgeType =
   | "bauchgefuehl"
