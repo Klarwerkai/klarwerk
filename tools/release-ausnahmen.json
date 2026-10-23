@@ -10,61 +10,6 @@
   },
   "entries": [
     {
-      "stage": "lint",
-      "path": "services/app/src/klara-besprechung.ts",
-      "line": 605,
-      "rule": "lint/style/noNonNullAssertion",
-      "fingerprint": "62bb4f556917ff9034d57ee94a01317ab10c1e03b9b82d0e86e483cce56907f9",
-      "sourceSha256": "0a3246480921669b0f5008f8d4399c0799dbac019ed9e82909d4fee65565a3bf",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose lint/style/noNonNullAssertion in services/app/src/klara-besprechung.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "services/app/src/klara-besprechung.ts",
-      "line": 616,
-      "rule": "lint/style/noNonNullAssertion",
-      "fingerprint": "101e46113ac7189fea3d655dd7d06f04be80e073e9c1f8472f7231db09519c97",
-      "sourceSha256": "0a3246480921669b0f5008f8d4399c0799dbac019ed9e82909d4fee65565a3bf",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose lint/style/noNonNullAssertion in services/app/src/klara-besprechung.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "services/app/src/klara-besprechung.ts",
-      "line": 668,
-      "rule": "lint/style/noNonNullAssertion",
-      "fingerprint": "44e21adc04826cc2b643736ad9aad6ed252fe7e03b94a5adafaeaf1888488121",
-      "sourceSha256": "0a3246480921669b0f5008f8d4399c0799dbac019ed9e82909d4fee65565a3bf",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose lint/style/noNonNullAssertion in services/app/src/klara-besprechung.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "services/app/src/klara-besprechung.ts",
-      "line": 640,
-      "rule": "lint/style/useNumberNamespace",
-      "fingerprint": "6852bfefc9d12533894e4f907b49ebae1f28777bfc9ad835bb287cd8dd7856db",
-      "sourceSha256": "0a3246480921669b0f5008f8d4399c0799dbac019ed9e82909d4fee65565a3bf",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose lint/style/useNumberNamespace in services/app/src/klara-besprechung.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "services/app/src/klara-besprechung.ts",
-      "line": 0,
-      "rule": "organizeImports",
-      "fingerprint": "8059e9737850bf0c4b7fb4c883337e14d60a92ce4b0b5564d311352c5a098eb1",
-      "sourceSha256": "0a3246480921669b0f5008f8d4399c0799dbac019ed9e82909d4fee65565a3bf",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in services/app/src/klara-besprechung.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
       "stage": "architecture",
       "path": "services/app/src/addon-principal.ts",
       "target": "services/app/src/dienst-schluessel.ts",

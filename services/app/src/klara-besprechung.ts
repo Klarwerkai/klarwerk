@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type MediaAnalysisService, wavPlan } from "../../media";
-import type { BesprechungsFortschritt } from "./klara-besprechung-fortschritt";
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
 import { KlaraAufgabeDienst, type KlaraAufgabeRepo } from "./klara-aufgabe";
-import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
+import type { BesprechungsFortschritt } from "./klara-besprechung-fortschritt";
 import { istDatum, istUhrzeit } from "./klara-erinnerung-zeit";
+import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
 import { type KlaraWissensHerkunft, WissensFehler } from "./klara-wissensuebernahme";
 import { webvttLesen } from "./meeting-dokumentbezug";
 export interface BesprechungsSegment {
@@ -102,6 +102,19 @@ export function besprechungsErgebnisse(b: PrivateBesprechung) {
       ueberlappend: s.ueberlappend,
     };
   });
+}
+type BesprechungsNotiz = Awaited<ReturnType<KlaraBesprechungsDienst["hole"]>>;
+type FortsetzbareBesprechungsNotiz = BesprechungsNotiz & {
+  wissensHerkunft: {
+    besprechung: {
+      audioId: string;
+      verarbeitung: NonNullable<PrivateBesprechung["verarbeitung"]>;
+    };
+  };
+};
+function hatFortsetzbareAudioquelle(n: BesprechungsNotiz): n is FortsetzbareBesprechungsNotiz {
+  const b = n.wissensHerkunft.besprechung;
+  return !(!b.verarbeitung || !b.audioId || b.quelleNotizId);
 }
 export class KlaraBesprechungsDienst {
   private readonly aktiveTeile = new Map<string, AbortController>();
@@ -577,9 +590,9 @@ export class KlaraBesprechungsDienst {
   }
   private async teilQuelle(kontoId: string, id: string) {
     const n = await this.hole(kontoId, id);
-    const b = n.wissensHerkunft.besprechung;
-    if (!b.verarbeitung || !b.audioId || b.quelleNotizId)
+    if (!hatFortsetzbareAudioquelle(n))
       throw new WissensFehler(409, "Keine fortsetzbare Audioquellfassung.");
+    const b = n.wissensHerkunft.besprechung;
     const quelle = await this.objects.read(b.audioId);
     const bytes = quelle ? decodeDataUrl(quelle.data)?.bytes : null;
     if (
@@ -593,7 +606,7 @@ export class KlaraBesprechungsDienst {
       throw new WissensFehler(409, "Audioquelle geändert; diese Fassung wird nicht fortgesetzt.");
     return n;
   }
-  private async teilSpeichern(n: KlaraNotiz, b: PrivateBesprechung) {
+  private async teilSpeichern(n: BesprechungsNotiz, b: PrivateBesprechung) {
     const inhalt = this.transkriptText(b);
     if (inhalt.length > 20000 || b.segmente.length > 300)
       throw new WissensFehler(409, "Teiltranskript überschreitet die vorhandene Notizgrenze.");
@@ -602,7 +615,7 @@ export class KlaraBesprechungsDienst {
       inhalt,
       fassung: n.fassung + 1,
       geaendertAm: new Date(this.jetzt()).toISOString(),
-      wissensHerkunft: { ...n.wissensHerkunft!, textAbdruck: hash(inhalt), besprechung: b },
+      wissensHerkunft: { ...n.wissensHerkunft, textAbdruck: hash(inhalt), besprechung: b },
     };
     if (!(await this.notizen.ersetze(neu)))
       throw new WissensFehler(409, "Teilstand inzwischen geändert; neu lesen.");
@@ -613,7 +626,7 @@ export class KlaraBesprechungsDienst {
     const x = obj(roh);
     const n = await this.teilQuelle(kontoId, id);
     const b = n.wissensHerkunft.besprechung;
-    const v = b.verarbeitung!;
+    const v = b.verarbeitung;
     if (!["fortsetzen", "pausieren", "abbrechen"].includes(String(x.aktion)))
       throw new WissensFehler(400, "Fortsetzen, pausieren oder abbrechen wählen.");
     if (
@@ -637,7 +650,7 @@ export class KlaraBesprechungsDienst {
       this.aktiveTeile.get(id)?.abort();
       return this.sicht(kontoId, id);
     }
-    if (v.stand === "laeuft" && (v.lauf?.bis ?? Infinity) > this.jetzt())
+    if (v.stand === "laeuft" && (v.lauf?.bis ?? Number.POSITIVE_INFINITY) > this.jetzt())
       throw new WissensFehler(
         409,
         "Dieser Abschnitt läuft noch; Ende oder Ablauf der Laufberechtigung abwarten.",
@@ -665,7 +678,7 @@ export class KlaraBesprechungsDienst {
       if (vor.fassung !== claim.fassung) return this.sicht(kontoId, id);
       if (this.keineKi()) throw new Error("keine_ki");
       const r = await this.media.analyze(
-        b.audioId!,
+        b.audioId,
         "de",
         undefined,
         true,
