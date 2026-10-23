@@ -6,7 +6,7 @@
 // Es wird NIE Prompt-/Antwortinhalt transportiert: nur Klasse, optionaler HTTP-Status, Meldung.
 import type { KiErsatzGrund, ModelFailureClass, ModelFailureInfo } from "./types";
 
-export type { ModelFailureClass, ModelFailureInfo } from "./types";
+export type { ModelFailureClass, ModelFailureInfo };
 
 // Zeitlimit überschritten (AbortController im Client). Meldung bleibt identisch zur bisherigen
 // generischen Error-Meldung — bestehende Aufrufer/Anzeigen (z. B. extract-Fallback-Note) unverändert.
