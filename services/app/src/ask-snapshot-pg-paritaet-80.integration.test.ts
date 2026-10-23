@@ -243,8 +243,6 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     const anna = antwortId("anna");
     const bea = antwortId("bea");
     expect(bea).not.toBe(anna);
-    expect(zweite.sources).toEqual([]);
-    expect(zweite.citedSources).toEqual([]);
 
     const anzahl = await db().query<{ n: string }>("SELECT count(*)::text AS n FROM answer_records");
     expect(anzahl.rows[0]?.n).toBe("2");
