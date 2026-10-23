@@ -1408,26 +1408,6 @@
     },
     {
       "stage": "architecture",
-      "path": "services/app/src/db.migrationssperre.test.ts",
-      "target": "services/audit/src/repo-pg.ts",
-      "rule": "module-boundaries",
-      "fingerprint": "bade010ecc3d6fd9a5e100ba41f50cd4b7af62a259ee3032cce333e017cfbb6b",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener direkter Modulgrenzen-Import in einem Bestandsprüffall; Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/db.migrationssperre.test.ts",
-      "target": "services/db-tx/src/reset-lock.ts",
-      "rule": "module-boundaries",
-      "fingerprint": "7c1baebf2c84dafaf56982c043e0c0892fa4740988d6f1d6848ea89ccde776bd",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener direkter Modulgrenzen-Import in einem Bestandsprüffall; Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "apps/web/src/api/types.ts",
       "target": "apps/web/src/app/navigation.ts",
       "rule": "no-circular",
