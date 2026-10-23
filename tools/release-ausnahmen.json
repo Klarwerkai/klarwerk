@@ -1396,16 +1396,6 @@
     },
     {
       "stage": "architecture",
-      "path": "services/app/src/assistenz-bildkorrekturen.ts",
-      "target": "services/app/src/assistenz-profil.ts",
-      "rule": "no-circular",
-      "fingerprint": "b25f50e6e335d4f7832308127f285522315f5f4d0af16a49bfd2357a88eecd3f",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/assistenz-eigeninitiative.ts",
       "target": "services/app/src/assistenz-profil.ts",
       "rule": "no-circular",
