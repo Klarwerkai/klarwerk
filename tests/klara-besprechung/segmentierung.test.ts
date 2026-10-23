@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import { MediaAnalysisService, cappedTranscriber } from "../../services/media";
 import { liesPcmWav, wavAusschnitt, wavPlan } from "../../services/media/src/wav-abschnitte";
-import { ObjectStore, InMemoryObjectRepo } from "../../services/object-store";
-import { pcmQuelle, markerAntwort } from "./segment-fixture";
+import { InMemoryObjectRepo, ObjectStore } from "../../services/object-store";
+import { markerAntwort, pcmQuelle } from "./segment-fixture";
 
 it("PCM-Plan teilt echte Frames ohne Lücke/Dublette; unbekannte RIFF-Chunks verschieben keine Audiogrenze", () => {
   const bytes = pcmQuelle();

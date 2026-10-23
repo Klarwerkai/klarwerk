@@ -77,9 +77,7 @@ describe("WA-1 · Inhaltsabgleich am bestehenden Gleichversionsanker", () => {
       expect((await importieren(ctx, item)).imported).toBe(1);
       const vorher = await zustand(ctx);
       expect(vorher.revisionen).toHaveLength(1);
-      expect(vorher.kos[0]?.sources[0]?.sourceRecordId).toBe(
-        vorher.revisionen[0]?.sourceRecordId,
-      );
+      expect(vorher.kos[0]?.sources[0]?.sourceRecordId).toBe(vorher.revisionen[0]?.sourceRecordId);
 
       // Der geänderte Inhalt versucht zugleich den Vertraulichkeitsboden anzuheben. Auch diese
       // Mutation darf eine wegen Revisionskonflikts abgelehnte Übernahme nicht hinterlassen.
@@ -99,19 +97,13 @@ describe("WA-1 · Inhaltsabgleich am bestehenden Gleichversionsanker", () => {
     await importieren(ctx, item);
     const [ko] = await ctx.koService.list();
     if (!ko) throw new Error("Erstimport fehlt");
-    await ctx.koService.revise(
-      ko.id,
-      { statement: "Bewusste spätere Fachüberarbeitung." },
-      AKTEUR,
-    );
+    await ctx.koService.revise(ko.id, { statement: "Bewusste spätere Fachüberarbeitung." }, AKTEUR);
     const vorher = await zustand(ctx);
     expect(vorher.kos[0]?.version).toBe(2);
 
     const wieder = await importieren(ctx, item);
     expect(wieder.imported).toBe(0);
-    expect(wieder.uebersprungen).toEqual([
-      { titel: item.title, grund: "identisch", koId: ko.id },
-    ]);
+    expect(wieder.uebersprungen).toEqual([{ titel: item.title, grund: "identisch", koId: ko.id }]);
     expect(await zustand(ctx)).toEqual(vorher);
   });
 

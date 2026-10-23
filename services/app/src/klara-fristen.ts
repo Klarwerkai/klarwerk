@@ -9,9 +9,9 @@ import type {
 } from "./klara-fristen-erkennung";
 import {
   FRIST_ARTEN,
+  fristBelegIdentitaet,
   fristHash,
   fristIdentitaet,
-  fristBelegIdentitaet,
 } from "./klara-fristen-erkennung";
 import type { Normgeschichte } from "./klara-normereignisse";
 

@@ -1386,105 +1386,6 @@
     },
     {
       "stage": "lint",
-      "path": "services/app/src/klara-fristen-quellen.ts",
-      "line": 0,
-      "rule": "organizeImports",
-      "fingerprint": "dfdaab04e6c8b792d0b41c60735bcf70efc299d733de12133de9c5577504c271",
-      "sourceSha256": "b9522b4a879ab1a5457c6d40cf2beee48f2ac099fdb7db137cd205ffdac1a71b",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in services/app/src/klara-fristen-quellen.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "services/app/src/klara-fristen.ts",
-      "line": 0,
-      "rule": "organizeImports",
-      "fingerprint": "4986d7f24f0073d9e5448ba621c01526e12524eab1fc924219be92ff69d871dc",
-      "sourceSha256": "b67f2a66d47784d5ed57b4e2705162c860cc94f25089cba9b5dd6d031637ab2c",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in services/app/src/klara-fristen.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "services/media/src/service.ts",
-      "line": 0,
-      "rule": "organizeImports",
-      "fingerprint": "a4cfa667acdff7dc37b6b75194c5a341b0214e079b133926397eebd9245f2ad0",
-      "sourceSha256": "e7b4ce13ae33193b2317f9bb48836a88554066452b29e6576ee2974465f43f65",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in services/media/src/service.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "services/library-analytics/src/service.ts",
-      "line": 0,
-      "rule": "format",
-      "fingerprint": "c0544558e10b1b2cdf13f6ef5d32a8cac4cc1f575052a5b4c26ceaf24e4bc129",
-      "sourceSha256": "24bbbd0795932b7645733683e59d94cd5ad28972df5672301ed01eb5650143bc",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose format in services/library-analytics/src/service.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "tests/antwort-erklaerung/w2-kopien-aktueller-vertrag.test.ts",
-      "line": 0,
-      "rule": "format",
-      "fingerprint": "0d6b6636dc9d846add38b7078ff3412b6817b7f0f32334c51f61e1b538309509",
-      "sourceSha256": "ef7fbcd6a9fb2281799caa771557c291ef80d1824753f03ec253cca6e1479d6e",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose format in tests/antwort-erklaerung/w2-kopien-aktueller-vertrag.test.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "tests/json-herkunft-rundlauf/gleichversions-abgleich.test.ts",
-      "line": 0,
-      "rule": "format",
-      "fingerprint": "3eca7db588b8833969ce417095d37ae43c45fd04ae6af0df3c0ed76f3dbe90b9",
-      "sourceSha256": "bf8885c43efca251801da5225d297047aa706bba2d9b859d59811ee261132f91",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose format in tests/json-herkunft-rundlauf/gleichversions-abgleich.test.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "tests/klara-besprechung/segment-browser.test.ts",
-      "line": 0,
-      "rule": "organizeImports",
-      "fingerprint": "e86f627160a9b338c9abcf2240bed02f3f940f3da10be5c39e5d5216b96b34c9",
-      "sourceSha256": "e4cbfcb53523d37ee9ba2d1535db95541d8516f6ad4cb32eb7fd7a26a05e2c0b",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in tests/klara-besprechung/segment-browser.test.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "tests/klara-besprechung/segmentierung.test.ts",
-      "line": 0,
-      "rule": "organizeImports",
-      "fingerprint": "bfad7b84bb231cba9736d0a55e96c29afdad4bb9f13f552e40f180837738ea6f",
-      "sourceSha256": "2127a5ccb578f74006dbb3c4e738c8865617ad558fd0cf4a9f61eafaba8e43e6",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in tests/klara-besprechung/segmentierung.test.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "tests/klara-fristen/importidentitaet-am-server.test.ts",
-      "line": 0,
-      "rule": "organizeImports",
-      "fingerprint": "3d510130d2623dbe06fc23c3a86933e51d31ceee6badc5f1fc12cff792c3f8db",
-      "sourceSha256": "b7a6b6dbda7fe113844fbf37929aaf0976098a134abf55805d138f5a7236726e",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose organizeImports in tests/klara-fristen/importidentitaet-am-server.test.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
       "path": "tests/klara-normereignisse/quellenwatch-am-server.test.ts",
       "line": 134,
       "rule": "lint/style/useTemplate",
@@ -1504,17 +1405,6 @@
       "owner": "Root",
       "expires": "2026-10-23T18:00:00Z",
       "reason": "Unveränderte einzelne Bestandsdiagnose lint/style/useConst in tests/klara-wissenspflege/steuerung.test.ts; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
-    },
-    {
-      "stage": "lint",
-      "path": "tests/rechteentzug-gespraeche/ask-rueckmeldung-rechtewechsel.test.tsx",
-      "line": 0,
-      "rule": "format",
-      "fingerprint": "bae1b267096c4216b6308b5f010b9cc02ff0dda05e7187b47f8ed214fbe950ac",
-      "sourceSha256": "2309179d6b7282348706ff36b360c9fbf0a1f3565bf22d7b8e725c3c6e43633a",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderte einzelne Bestandsdiagnose format in tests/rechteentzug-gespraeche/ask-rueckmeldung-rechtewechsel.test.tsx; getrennte Pflege durch Root vor Frist, dieser Lieferweg ändert die Fundstelle nicht."
     },
     {
       "stage": "architecture",

@@ -1,5 +1,5 @@
 import type { AuthService } from "../../auth";
-import { type KoService, type KnowledgeObject, ownershipOf } from "../../knowledge-object";
+import { type KnowledgeObject, type KoService, ownershipOf } from "../../knowledge-object";
 import { importProviderKey } from "../../library-analytics";
 import type { SessionUser } from "./http";
 import type { GeleseneFristenQuelle } from "./klara-fristen-dienst";

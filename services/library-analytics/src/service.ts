@@ -3917,12 +3917,8 @@ export class LibraryService {
     // Inhalt festschreibt. Bis hierher wurde ihre Kennung ungeprüft übernommen — nach einem
     // gescheiterten ersten Versuch mit Text A verwies ein Objekt mit Text B auf die Revision von A.
     // Jetzt: Konflikt, abgewiesen VOR jeder Objektmutation; die vorhandene Revision bleibt, wie sie ist.
-    return this.pruefeRevisionsinhalt(
-      vorhanden,
-      record.contentHash,
-      item.externalId,
-      sourceVersion,
-    ).sourceRecordId;
+    return this.pruefeRevisionsinhalt(vorhanden, record.contentHash, item.externalId, sourceVersion)
+      .sourceRecordId;
   }
 
   // Derselbe Inhalts-/Konfliktvertrag gilt bei Revisionsanlage und Gleichversions-Reimport.

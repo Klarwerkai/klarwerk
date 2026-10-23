@@ -220,10 +220,12 @@ async function rechtewechsel(entzug = true) {
   expect(client.getQueryData(["kos", undefined])).toBeUndefined();
 }
 
-
 async function tippe(feld: HTMLInputElement | HTMLTextAreaElement, text: string) {
   await act(async () => {
-    const proto = feld instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const proto =
+      feld instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
     if (!setter) throw new Error("Nativer Eingabesetzer fehlt");
     setter.call(feld, text);
@@ -232,8 +234,10 @@ async function tippe(feld: HTMLInputElement | HTMLTextAreaElement, text: string)
 }
 
 it("ASK-AW04-2-NH: regulär geöffnete Rückmeldung verbirgt Quelle und sperrt Bestätigung bei Rechtewechsel, behält bearbeiteten eigenen Weg und bestätigt erst nach frischer Wiederfreigabe", async () => {
-  const RUECKMELDUNG = "Das war nicht hilfreich, ich habe es so gemacht: Mein ursprünglicher eigener Weg";
-  const EIGENER_WEG = "Mein bereits bearbeiteter eigener Alternativentwurf mit zusätzlicher Prüfung";
+  const RUECKMELDUNG =
+    "Das war nicht hilfreich, ich habe es so gemacht: Mein ursprünglicher eigener Weg";
+  const EIGENER_WEG =
+    "Mein bereits bearbeiteter eigener Alternativentwurf mit zusätzlicher Prüfung";
   await montiere();
   expect(container.textContent).toContain(MISCHTEXT);
   const fragefeld = container.querySelector<HTMLInputElement>("input[data-tutorial-ziel]");
@@ -241,7 +245,9 @@ it("ASK-AW04-2-NH: regulär geöffnete Rückmeldung verbirgt Quelle und sperrt B
   await tippe(fragefeld, RUECKMELDUNG);
   const formular = fragefeld.closest("form");
   if (!formular) throw new Error("Reguläres Frageformular fehlt");
-  await act(async () => formular.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () =>
+    formular.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
   await bis(() => container.querySelector("[data-testid=ask-nicht-hilfreich]") !== null);
   const karte = container.querySelector("[data-testid=ask-nicht-hilfreich]");
   const weg = container.querySelector<HTMLTextAreaElement>("[data-testid=ask-nicht-hilfreich-weg]");
@@ -262,7 +268,9 @@ it("ASK-AW04-2-NH: regulär geöffnete Rückmeldung verbirgt Quelle und sperrt B
   expect(container.querySelector("[data-testid=ask-nicht-hilfreich-weg]")).toBe(weg);
   expect(weg.value).toBe(EIGENER_WEG);
   expect(arbeitsstandLesen(localStorage, KONTO)?.entwurf).toBe(RUECKMELDUNG);
-  const bestaetigen = container.querySelector<HTMLButtonElement>("[data-testid=ask-nicht-hilfreich-bestaetigen]");
+  const bestaetigen = container.querySelector<HTMLButtonElement>(
+    "[data-testid=ask-nicht-hilfreich-bestaetigen]",
+  );
   if (!bestaetigen) throw new Error("Bestätigungsport der erhaltenen Rückmeldekarte fehlt");
   expect.soft(bestaetigen.disabled).toBe(true);
   await act(async () => bestaetigen.click());
@@ -282,7 +290,9 @@ it("ASK-AW04-2-NH: regulär geöffnete Rückmeldung verbirgt Quelle und sperrt B
   stempel = "ask2-rechte-wieder-freigegeben";
   quelleEntzogen = false;
   halten = true;
-  await act(async () => { await api.get("/auth/me"); });
+  await act(async () => {
+    await api.get("/auth/me");
+  });
   await bis(() => gehalten.length >= 2);
   expect(anfrageEpoche()).toBe(2);
   expect(weg.value).toBe(EIGENER_WEG);
@@ -295,7 +305,9 @@ it("ASK-AW04-2-NH: regulär geöffnete Rückmeldung verbirgt Quelle und sperrt B
   await act(async () => bestaetigen.click());
   await bis(() => rueckmeldungen.length === 1);
   expect(rueckmeldungen[0]).toMatchObject({
-    koId: ids[0], receipt: "ask2-eigener-alter-receipt", alternative: EIGENER_WEG,
+    koId: ids[0],
+    receipt: "ask2-eigener-alter-receipt",
+    alternative: EIGENER_WEG,
   });
   expect(anfragen.filter((r) => r.url === "/api/ask")).toHaveLength(0);
 });
