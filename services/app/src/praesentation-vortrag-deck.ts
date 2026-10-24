@@ -2,15 +2,10 @@
 // Keine Deckablage und kein neuer Folienleser. Daten-/Quellrechte kommen aus dem PP-02/03-Kontext.
 import JSZip from "jszip";
 import type { DeckVertrag } from "./office-datenfolien";
-import type { VortragsKontext } from "./praesentation-vortrag";
+import type { VortragsDeck, VortragsKontext } from "./praesentation-vortrag";
 import { zaehleEchteExpansion } from "./routes/capture-routes";
 
-export interface VortragsDeck {
-  vertrag: DeckVertrag["vertrag"];
-  dateiFassung: string;
-  folien: DeckVertrag["folien"];
-  belegfolien: DeckVertrag["belegfolien"];
-}
+export type { VortragsDeck };
 const normal = (s: string) => s.replace(/\s+/gu, " ").trim();
 const obj = (x: unknown): x is Record<string, unknown> =>
   !!x && typeof x === "object" && !Array.isArray(x);

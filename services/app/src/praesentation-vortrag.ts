@@ -1,6 +1,7 @@
 // PP-08: textbasierte Vorbereitung am bestehenden PP-02/03-Kontext.
 // Keine Ablage, kein Modell, kein Host-/Audiozugriff. Rückgaben referenzieren Datenfassungen;
 // ihre Herkunft und Kontrollen werden bei JEDEM Aufruf vom bestehenden Datenweg neu gelesen.
+import type { DeckVertrag } from "./office-datenfolien";
 import {
   DatenFehler,
   type FolieMitElementen,
@@ -8,9 +9,15 @@ import {
   zahlStehtImText,
 } from "./praesentation-daten";
 import type { KontrollierteSicht } from "./praesentation-pruefung-anschluss";
-import type { VortragsDeck } from "./praesentation-vortrag-deck";
 
 export class VortragsKonflikt extends Error {}
+
+export interface VortragsDeck {
+  vertrag: DeckVertrag["vertrag"];
+  dateiFassung: string;
+  folien: DeckVertrag["folien"];
+  belegfolien: DeckVertrag["belegfolien"];
+}
 
 export interface VortragsKontext {
   koId: string;
