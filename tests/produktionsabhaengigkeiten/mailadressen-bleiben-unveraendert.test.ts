@@ -172,5 +172,4 @@ describe("JOB 4272 · 6d (B) — der gebundene Adressparser, gemessen", () => {
     const { to } = await envelopeVon(`<${ziel}>`);
     expect(to).toEqual([ziel]);
   });
-
 });
