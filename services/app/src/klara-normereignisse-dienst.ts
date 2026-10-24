@@ -38,12 +38,12 @@ import {
   normQuellstand,
   vereinigeNormgeschichten,
 } from "./klara-normereignisse";
-import type { KlaraNotizDienst, NotizSchreibbedingung } from "./klara-notiz";
 import type {
   NormBetroffenheit,
   NormFolgeversuch,
   NormVorbereitung,
 } from "./klara-normvorbereitung-typen";
+import type { KlaraNotizDienst, NotizSchreibbedingung } from "./klara-notiz";
 import type { KlaraWissensHerkunft } from "./klara-wissensuebernahme";
 
 export type { NormBetroffenheit, NormFolgeversuch, NormVorbereitung };
