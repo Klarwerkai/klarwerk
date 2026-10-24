@@ -11,16 +11,6 @@
   "entries": [
     {
       "stage": "architecture",
-      "path": "services/app/src/addon-principal.ts",
-      "target": "services/app/src/dienst-schluessel.ts",
-      "rule": "no-circular",
-      "fingerprint": "25b6e826e5b2c38271dad6013dee487a8a4496135b3e9777bc6fb101e508c674",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/assistenz-faehigkeiten.ts",
       "target": "services/app/src/assistenz-profil.ts",
       "rule": "no-circular",
