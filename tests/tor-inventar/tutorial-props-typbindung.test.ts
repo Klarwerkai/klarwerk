@@ -45,8 +45,7 @@ describe("Tutorial-Demo · ausdrücklicher Propsvertrag im Modalwächter", () =>
 
     // Nur Quellfixture: kein zweiter Produktlauf und kein Ausführen der Demo.
     const ohneTyp = definitionen.replace(
-      "Demo: (props: TutorialDemoProps) =>",
-      "Demo: (props) =>",
+      "Demo: (props: TutorialDemoProps) =>", "Demo: (props) =>",
     );
     expect(ohneTyp).not.toBe(definitionen);
     expect(befund(ohneTyp).rot).toEqual([
@@ -63,7 +62,9 @@ describe("Tutorial-Demo · ausdrücklicher Propsvertrag im Modalwächter", () =>
     const dialog = befund(definitionen, mitRolle);
     expect(dialog.kandidaten).toEqual([{ datei: DATEI, zeile: 31, art: "role-dialog" }]);
     expect(dialog.rot).toEqual([
-      expect.stringContaining(`${DATEI}:31 — role-dialog: mögliche modale Fläche ohne die Modalgrenze`),
+      expect.stringContaining(
+        `${DATEI}:31 — role-dialog: mögliche modale Fläche ohne die Modalgrenze`,
+      ),
     ]);
   });
 });
