@@ -727,9 +727,7 @@ describe("D5 · KI aus — am echten Weg (PostgreSQL · Socket · gebaute Fläch
         `${JOB} H2 NACH FREIGABE: befund="${nachAus.befund}" · sql=${nachAus.sql.length}\n`,
       );
       nullZugriffe("angehaltene Frage nach der Freigabe", nachAus);
-      expect(await textVon(lage.seite, "ask-ki-abgeschaltet")).toBe(
-        `${d5kiaus.de["d5kiaus.titel"]}${d5kiaus.de["d5kiaus.text"]}`,
-      );
+      expect(await textVon(lage.seite, "ask-ki-abgeschaltet")).toBe(d5kiaus.de["d5kiaus.text"]);
 
       // DIE GEGENPROBE: dieselbe Lage, die Sperre der Vorauswahl heraus.
       await kiSchalten(lage, lage.admin, "auto");
