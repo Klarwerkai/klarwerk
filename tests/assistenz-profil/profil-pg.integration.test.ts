@@ -21,6 +21,7 @@ import {
 } from "../../services/app/src/assistenz-profil";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 const ANNA = "u-pg-assistenz-anna";
 const BERT = "u-pg-assistenz-bert";
@@ -28,12 +29,12 @@ const BERT = "u-pg-assistenz-bert";
 describe("Assistenzprofil gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let url = "";
-  const pools: Pool[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
   let uhr = Date.parse("2026-10-10T08:00:00.000Z");
 
   function neuePool(): Pool {
     const pool = createPool(url);
-    pools.push(pool);
+    poolAbschluesse.push(poolAbschluss(pool));
     return pool;
   }
 
@@ -79,19 +80,21 @@ describe("Assistenzprofil gegen echtes PostgreSQL", () => {
       url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     }
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     try {
       // Zweimal: die Stufe ist wiederholbar und lässt den Bestand stehen.
       await migrate(pool);
       await migrate(pool);
       await pool.query("DELETE FROM assistenz_profile WHERE konto_id = ANY($1)", [[ANNA, BERT]]);
     } finally {
-      await pool.end();
+      await schliessen();
     }
   }, 180_000);
 
   afterAll(async () => {
-    for (const pool of pools) {
-      await pool.end();
+    for (const schliessen of poolAbschluesse) {
+      await schliessen();
     }
     await container?.stop();
   });
