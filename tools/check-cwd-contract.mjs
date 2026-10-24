@@ -175,6 +175,14 @@ function wegeSammeln(wurzel) {
   return wege.sort();
 }
 
+/** Nur einzelne Modul-URL-Ausdrücke entfernen; weitere Dateizugriffe bleiben prüfbar. */
+function ohneModulUrls(inhalt) {
+  return inhalt.replace(
+    /\bnew\s+URL\s*\(\s*(["'])(?:\\.|(?!\1)[^\\])*\1\s*,\s*import\.meta\.url\s*\)/g,
+    "null",
+  );
+}
+
 /** Die Einstufung eines einzelnen Weges. Genau ein Urteil je Weg. */
 function einstufen(pfad, roh) {
   const ausnahme = AUSNAHME.exec(roh);
@@ -183,7 +191,7 @@ function einstufen(pfad, roh) {
   }
   const istNode = /\.(?:mjs|js|ts)$/.test(pfad);
   const inhalt = istNode
-    ? ohneModulangaben(ohneKommentare(roh, true))
+    ? ohneModulUrls(ohneModulangaben(ohneKommentare(roh, true)))
     : ohneVerankerteRelativpfade(ohneKommentare(roh, false));
   const relativ = istNode ? NODE_SENKEN.test(inhalt) : SHELL_OPERATION.some((m) => m.test(inhalt));
   if (!relativ) {
