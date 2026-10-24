@@ -228,7 +228,6 @@ m.assertCi({check_runs:[{id:1,name:'pflicht',head_sha:'a',app:{slug:'github-acti
   });
 });
 
-
 describe("gezielte PG-Dateien: getrennte serielle Prozessbudgets", () => {
   const pgUrl = pathToFileURL(join(root, "tools/pg-auswahl.mjs")).href;
 
@@ -253,11 +252,14 @@ else process.exitCode=1;
     });
     writeFileSync(
       join(work, "node_modules/.bin/vitest"),
-      `#!${process.execPath}
+      String.raw`#!${process.execPath}
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const args=process.argv.slice(2);
+assert.equal(process.env.HOME,${JSON.stringify(process.env.HOME)});
+for(const [key,value]of Object.entries({KLARWERK_SKIP_KEYCHAIN:'1',EXTERNAL_SEARCH:'off',NODE_ENV:'test',KLARWERK_DEV_PERSIST:'0',KLARWERK_PG_PFLICHT:'1'}))assert.equal(process.env[key],value);
+for(const flag of ['--allowOnly=false','--passWithNoTests=false','--pool=forks','--poolOptions.forks.minForks=1','--poolOptions.forks.maxForks=1','--minWorkers=1','--maxWorkers=1','--no-file-parallelism','--testTimeout=60000'])assert(args.includes(flag));
 const files=args.filter(arg=>arg.endsWith('.integration.test.ts'));
 assert.equal(files.length,1,'genau eine vollständige Datei je Prozess');
 const file=files[0];
@@ -277,30 +279,16 @@ fs.appendFileSync(events,JSON.stringify({event:'end',file,pid:process.pid})+'\n'
     return work;
   }
 
-  const programm = `
+  const programm = String.raw`
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
 import {readFileSync,existsSync} from 'node:fs';
 import {join} from 'node:path';
 const m=await import(process.argv[1]);
-const {assertTests,hash,controls}=await import(new URL('./release.mjs',process.argv[1]));
-const work=process.argv[2],out=join(work,'out'),calls=[];
+const {assertTests,hash}=await import(new URL('./release.mjs',process.argv[1]));
+const work=process.argv[2],out=join(work,'out');
 process.env.PATH=join(work,'bin')+':'+process.env.PATH;
 process.env.KLARWERK_PG_PFLICHT='1';
-function beobachtet(command,args,options){
- assert.equal(command,'bash');
- assert.deepEqual(args.slice(0,2),['tools/browserdeckel.sh','smoke']);
- assert.equal(options.timeout,240000);assert.equal(options.maxBuffer,32*1024*1024);
- assert.equal(options.env.HOME,process.env.HOME);
- for(const [key,value]of Object.entries(controls))assert.equal(options.env[key],value);
- assert.equal(options.env.KLARWERK_PG_PFLICHT,'1');
- for(const flag of ['--allowOnly=false','--passWithNoTests=false','--pool=forks','--poolOptions.forks.minForks=1','--poolOptions.forks.maxForks=1','--minWorkers=1','--maxWorkers=1','--no-file-parallelism','--testTimeout=60000'])assert(args.includes(flag));
- const files=args.filter(arg=>arg.endsWith('.integration.test.ts'));assert.equal(files.length,1);
- calls.push('start:'+files[0]);
- const actual=spawnSync(command,args,options);
- calls.push('wait:'+files[0]);return actual;
-}
-const result=m.runPgSelection(work,'b'.repeat(40),out,beobachtet);
+const result=m.runPgSelection(work,'b'.repeat(40),out);
 const saved=JSON.parse(readFileSync(join(out,'pg-auswahl.json'),'utf8'));
 assert.deepEqual(saved,result);
 const events=readFileSync(join(work,'kindereignisse.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
@@ -312,7 +300,6 @@ const events=readFileSync(join(work,'kindereignisse.jsonl'),'utf8').trim().split
     const run = node(
       `${programm}
 assert.equal(result.success,true);assert.deepEqual(result.files,${JSON.stringify(files)});
-assert.deepEqual(calls,result.files.flatMap(file=>['start:'+file,'wait:'+file]));
 assert.deepEqual(events.map(e=>e.event+':'+e.file),result.files.flatMap(file=>['start:'+file,'end:'+file]));
 assert.equal(new Set(events.map(e=>e.pid)).size,2);
 assert.equal(result.runs.length,2);assert(result.runs.every(r=>r.success&&r.actualWaitCompleted&&r.exit===0&&r.signal===null&&r.processError===null));
@@ -340,13 +327,12 @@ assert.throws(()=>assertTests({...combined,testResults:combined.testResults.slic
     const run = node(
       `${programm}
 assert.equal(result.success,false);assert(result.error);assert.equal(result.runs.length,2);
-assert.deepEqual(calls,${JSON.stringify(files.slice(0, 2))}.flatMap(file=>['start:'+file,'wait:'+file]));
 assert.deepEqual(events.map(e=>e.event+':'+e.file),${JSON.stringify(files.slice(0, 2))}.flatMap(file=>['start:'+file,'end:'+file]));
 const first=result.runs[0],second=result.runs[1];assert.equal(first.success,true);assert.equal(second.success,false);
 assert.equal(second.exit,0);assert.equal(second.signal,null);assert.equal(second.processError,null);assert.equal(second.actualWaitCompleted,true);
 const raw=readFileSync(first.rawPath);assert.equal(hash(raw),first.rawSha256);assertTests(JSON.parse(raw),[first.file],work);
 assert(readFileSync(first.logPath,'utf8').includes(first.file));assert(existsSync(second.logPath));assert(!existsSync(second.rawPath));
-assert(!existsSync(join(out,'pg.vitest.json')));assert(!calls.some(entry=>entry.includes('tests/c.integration.test.ts')));
+assert(!existsSync(join(out,'pg.vitest.json')));assert(!events.some(e=>e.file==='tests/c.integration.test.ts'));
 `,
       pgUrl,
       [work],

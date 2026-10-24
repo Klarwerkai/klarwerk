@@ -28,8 +28,7 @@ function gesamtbericht(reports) {
   return combined;
 }
 
-// Der optionale Prozessport lässt die Node-Fixture echte Kindaufrufe und unveränderte Caps beobachten.
-export function runPgSelection(root, base, output, start = spawnSync) {
+export function runPgSelection(root, base, output) {
   assert.equal(
     process.env.KLARWERK_PG_PFLICHT,
     "1",
@@ -101,7 +100,7 @@ export function runPgSelection(root, base, output, start = spawnSync) {
         };
         result.runs.push(part);
         try {
-          const run = start("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
+          const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
             cwd: root,
             env: { ...environment(), KLARWERK_PG_PFLICHT: "1" },
             encoding: "utf8",
