@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { NotizSchreibbedingung } from "./klara-notiz";
+import type { NotizSchreibbedingung } from "./klara-notiz-schreibbedingung";
 
 /** Drei fachliche Varianten derselben vorhandenen Routine, keine eigene Zeitsteuerung. */
 export const PFLEGE_VORLAGEN = ["offene_pruefungen", "quellaenderung", "aktualitaet"] as const;
