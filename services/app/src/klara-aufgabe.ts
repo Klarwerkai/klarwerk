@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { KlaraGespraechRepo, KlaraObjektbezug } from "./klara-gespraech";
-import type { KlaraGespraechAusgabe } from "./klara-gespraech-ausgabe";
 import {
   type KlaraNotiz,
   type KlaraNotizRepo,
@@ -352,12 +351,19 @@ export interface KlaraAufgabeAenderung {
   status?: unknown;
 }
 
+interface AufgabenNotizQuellenPort {
+  notizQuellen(
+    n: KlaraNotiz,
+    gespraeche: Pick<KlaraGespraechRepo, "hole">,
+  ): Promise<{ id: string; fassung?: number }[] | null>;
+}
+
 export interface KlaraAufgabeDienstDeps {
   readonly repo: KlaraAufgabeRepo;
   /** Die eigenen Notizen — für Aufgaben aus einer Notiz. */
   readonly notizen?: Pick<KlaraNotizRepo, "hole">;
   readonly notizenRoh?: Pick<KlaraNotizRepo, "hole">;
-  readonly antwortAusgabe?: Pick<KlaraGespraechAusgabe, "notizQuellen">;
+  readonly antwortAusgabe?: AufgabenNotizQuellenPort;
   /** Die eigenen Gespräche — für Aufgaben aus einem Klara-Auftrag. */
   readonly gespraeche?: Pick<KlaraGespraechRepo, "hole">;
   readonly jetzt?: () => number;
