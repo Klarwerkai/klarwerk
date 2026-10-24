@@ -56,6 +56,7 @@ import {
   type Aufbau,
   BELEGSTELLE,
   type Draht,
+  type Konto,
   ORIGINALNAME,
   ORIGINALTEXT,
   QUELLENBEZEICHNUNG,
@@ -90,6 +91,7 @@ let aufraeumPool: Pool | null = null;
  */
 let pool: Pool | null = null;
 let draht: Draht;
+let ersterAdmin: Konto | undefined;
 
 beforeAll(async () => {
   draht = drahtAufbauen();
@@ -122,7 +124,8 @@ async function pgApp(): Promise<Aufbau> {
   if (!p) {
     throw new Error("kein Pool");
   }
-  const a = await appAufbauen(false, () => buildPgServices(p));
+  const a = await appAufbauen(false, () => buildPgServices(p), undefined, ersterAdmin);
+  ersterAdmin ??= a.admin;
   draht.setzeApp(a.app);
   return a;
 }
@@ -225,8 +228,7 @@ describe("JOB 4224 · D5 · PG — dieselbe Kette auf echtem PostgreSQL", () => 
     const leser = await neuesKonto(erste.app, "leser", erste.admin);
     await erste.app.close();
 
-    const zweite = await appAufbauen(false, () => buildPgServices(pool as Pool));
-    draht.setzeApp(zweite.app);
+    const zweite = await pgApp();
     const weg = originalweg(koAus(await kosLesen(zweite.app, leser), eintrag.koId), "de");
     expect(weg.quellen[0]?.datei?.objectId, "der Anker hat den Neustart nicht überlebt").toBe(
       eintrag.objectId,

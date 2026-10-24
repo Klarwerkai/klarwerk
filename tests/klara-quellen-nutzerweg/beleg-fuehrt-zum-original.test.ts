@@ -44,6 +44,7 @@ adapterUmgebungSetzen();
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import { originalweg } from "../../apps/web/src/lib/askCitedSources";
+import { buildServices } from "../../services/app/src/build-app";
 
 let draht: Draht;
 let aufbau: Aufbau | null = null;
@@ -255,5 +256,39 @@ describe("JOB 4224 · D5 · B — von der Antwort bis zum Original", () => {
     expect(weg.erreichbar).toBe(false);
     // Ein Anhang ohne brauchbaren Namen wäre eine Tür ohne Schild — er entsteht gar nicht erst.
     expect(weg.freieDateien).toEqual([]);
+  });
+
+  it("B6 · zweite App an derselben Ablage erhält Admin und Sitzung", async () => {
+    let dienste: ReturnType<typeof buildServices> | undefined;
+    const diensteBauen = () => {
+      dienste ??= buildServices();
+      return dienste;
+    };
+    const erste = await appAufbauen(true, diensteBauen);
+    aufbau = erste;
+    const vorher = await erste.app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      headers: erste.admin.kopf,
+    });
+    expect(vorher.statusCode, vorher.body).toBe(200);
+    expect(vorher.json()).toMatchObject({
+      email: erste.admin.email,
+      role: "admin",
+      approved: true,
+    });
+    await erste.app.close();
+    aufbau = null;
+
+    const zweite = await appAufbauen(true, diensteBauen, undefined, erste.admin);
+    aufbau = zweite;
+    expect(zweite.admin).toBe(erste.admin);
+    const nachher = await zweite.app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      headers: erste.admin.kopf,
+    });
+    expect(nachher.statusCode, nachher.body).toBe(200);
+    expect(nachher.json()).toEqual(vorher.json());
   });
 });
