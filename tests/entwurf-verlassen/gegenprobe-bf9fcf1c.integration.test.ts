@@ -118,10 +118,9 @@ describe("K5 · Gegenprobe gegen bf9fcf1c (Umkehrung dieser Änderung, Commitbin
     }
     for (const g of GRUEN) {
       const f = finde(faelle, g.datei, g.kennung);
-      expect(
-        f.status,
-        `Kalibrierung ${g.kennung}: der Prüfbaum ist kaputt: ${f.meldung}`,
-      ).toBe("passed");
+      expect(f.status, `Kalibrierung ${g.kennung}: der Prüfbaum ist kaputt: ${f.meldung}`).toBe(
+        "passed",
+      );
     }
   }, 1_200_000);
 });
