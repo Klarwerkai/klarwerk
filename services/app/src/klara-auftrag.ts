@@ -7,7 +7,7 @@ import {
   bindeBeschaffungsPlan,
 } from "./klara-beschaffungsziel";
 import { istDatum, istUhrzeit, istZeitzone } from "./klara-erinnerung-zeit";
-import { type WissensZiel, wissensZiel as f08Ziel } from "./klara-wissensuebernahme";
+import { type WissensZiel, wissensZiel as f08Ziel } from "./klara-wissensziel";
 // ================================================================================================
 // produkt:20261008:klara-aktionen (Klara 05, AW-10) — DIE AUFTRAGSGRENZE AUSSERHALB DES SPRACHMODELLS.
 // ================================================================================================
