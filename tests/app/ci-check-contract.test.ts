@@ -120,7 +120,7 @@ describe("I51 · der Check-Job fährt dasselbe Gesamttor wie die Hand", () => {
 
   it("versorgt den getrennten Postgres-Integrationsjob mit denselben Abhängigkeiten", () => {
     const integration = jobBlock("integration");
-    expect(integration).toMatch(/^    runs-on: ubuntu-24\.04$/m);
+    expect(integration).toMatch(/^ {4}runs-on: ubuntu-24\.04$/m);
     expect(runBefehle(integration)).toEqual([
       "npm ci",
       "npm ci --prefix apps/web",
