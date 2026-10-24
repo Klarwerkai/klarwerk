@@ -44,9 +44,7 @@ describe("Tutorial-Demo · ausdrücklicher Propsvertrag im Modalwächter", () =>
     expect(gebunden.kandidaten).toEqual([]);
 
     // Nur Quellfixture: kein zweiter Produktlauf und kein Ausführen der Demo.
-    const ohneTyp = definitionen.replace(
-      "Demo: (props: TutorialDemoProps) =>", "Demo: (props) =>",
-    );
+    const ohneTyp = definitionen.replace("Demo: (props: TutorialDemoProps) =>", "Demo: (props) =>");
     expect(ohneTyp).not.toBe(definitionen);
     expect(befund(ohneTyp).rot).toEqual([
       `${DATEI}:31 — gespreizte Props „{ ...props, seite }“ in eine nicht lesbare Komponente: ihre Rolle kommt aus dem Parameter einer namenlosen Funktion, deren Aufrufer dieser Sammler nicht findet`,
