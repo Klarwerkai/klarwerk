@@ -18,6 +18,7 @@
 //       Zusage, die Klarwerk gibt, und sie gilt unabhängig von jeder Paketversion.
 //   (B) NODEMAILERS PARSER: was macht der gebundene Stand mit geformten Eingaben? Das ist eine
 //       MESSUNG des Fremdverhaltens, kein Qualitätsurteil — s. den Block bei Fall (B).
+import addressparser from "nodemailer/lib/addressparser";
 import { describe, expect, it, vi } from "vitest";
 import { adressBefund } from "./waechter";
 
@@ -169,7 +170,8 @@ describe("JOB 4272 · 6d (B) — der gebundene Adressparser, gemessen", () => {
 
   it("NODEMAILER3 · GHSA-85x2-q946-cp5h · Größerzeichen im local part", async () => {
     const ziel = '"a@angriff.invalid>"@beispiel.invalid';
+    expect(addressparser(`<${ziel}>`).map(({ address }) => address)).toEqual([ziel]);
     const { to } = await envelopeVon(`<${ziel}>`);
-    expect(to).toEqual([ziel]);
+    expect(to).toEqual(['"a@angriff.invalid "@beispiel.invalid']);
   });
 });

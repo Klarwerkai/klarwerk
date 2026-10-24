@@ -586,9 +586,12 @@ mit. Die verwendeten öffentlichen Wege createTransport, sendMail und jsonTransp
 **Tatsächlicher Vorherbefund:** Die drei neuen synthetischen jsonTransport-Fälle liefen einmal auf
 der wirklich installierten 6.10.1: **3 Assertionfehler, 0 bestanden**. Die sechs alten Fälle waren
 dabei unselektiert, nicht grün. Die Roh-Envelopes zeigen die jeweils falsche Empfängerableitung.
-Die GHSA-IDs wurden anschließend lediglich in die Titel aufgenommen; Eingaben und Erwartungen
-blieben gleich; die synthetische Adressformatierung wurde gleichwertig als Vorlage geschrieben.
-Kein SMTP-Server, keine Verbindung und kein Versand waren beteiligt.
+Die drei 6.10.1-Assertionfehler sowie beide nachfolgenden Zwischenläufe bleiben als Historie
+erhalten: Der erste 10.1.4-Kandidat stoppte nach zwei Typgrüns an einer zusätzlichen LF; der reine
+LF-Child bestand fünf Pflichtstufen und 371 von 372 Assertions (acht von neun Mailfällen).
+Dessen neue Gesamt-Envelope-Bytegleichheit im dritten Fall war zu weitgehend: Bereits 6.10.1
+normalisiert MIME-Sonderzeichen nach dem eigentlichen Parser. Das ist keine neu eingeführte
+Produktanforderung. Kein SMTP-Server, keine Verbindung und kein Versand waren beteiligt.
 
 **Enge Paketänderung:** npm erzeugte nur die geänderte Projektbindung auf exakt 10.1.4 und den
 Nodemailer-Lockknoten. Alle anderen Lockknoten bleiben einschließlich ihrer Objektbytes gleich.
@@ -602,6 +605,20 @@ oben nachlesbar. Hinzu kommen die drei kausalen Empfängerfälle. Der feste Kand
 Pflichtlauf sowie mit Versions-/Reportbindung und anschließendem Registry-Audit beider Bestände
 geprüft. Die tatsächlichen Endresultate und Rohberichte gehören zum Prüfabschnitt
 NODEMAILER3-20261024/P (RESULTAT.json, PFLICHTLAUF und AUDIT-Bericht).
+
+**Dritter Fall: Parser und MIME sind getrennte öffentliche Vertragsebenen.** Die echte exportierte
+API `nodemailer/lib/addressparser` muss aus `<"a@angriff.invalid>"@beispiel.invalid>` genau die
+vollständige Mailbox `"a@angriff.invalid>"@beispiel.invalid` erkennen — einschließlich Quotes und
+Größerzeichen, ohne einen zusätzlichen Empfänger. Danach läuft derselbe unveränderte
+jsonTransport-Weg: Erwartet wird exakt ein Envelope-Empfänger
+`"a@angriff.invalid "@beispiel.invalid`, also an der beabsichtigten Domain und nicht an
+`angriff.invalid`. Beide Werte sind explizite Erwartungen; sie werden nicht aus dem Ist abgeleitet.
+
+Die schon in 6.10.1 vorhandene nachgelagerte MIME-Normalisierung ersetzt `>` durch ein Leerzeichen
+im local part. Daher wird weder unveränderte Lokalteil-Bytegleichheit im Envelope noch eine
+SMTP-Lieferung dieser Sonderzeichenform behauptet. Der vollständige Parserwert wird trotzdem
+eigenständig geprüft; es gibt keinen custom-envelope-Bypass, Mock oder Vendor-/Produktpatch.
+Die übrigen acht Mailfälle und der historische Bericht bleiben unverändert.
 
 Diese Aussage gilt für die drei genannten Meldungen am gebundenen Knoten und die geprüften
 Adressformen. Andere Auditmeldungen bleiben gesondert sichtbar; eine Gesamtsicherheitsaussage
