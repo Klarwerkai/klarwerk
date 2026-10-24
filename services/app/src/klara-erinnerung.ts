@@ -3868,8 +3868,12 @@ export class KlaraErinnerungDienst {
     if (!quellschutz) return ms;
     const erlaubt = await Promise.all(
       ms.map(async (m) => {
-        const e = await this.ablage.erinnerungen.holeSystem(m.erinnerungId);
-        return e && (await quellschutz(e.erinnerung, kontoId, m)) !== null;
+        try {
+          const e = await this.ablage.erinnerungen.holeSystem(m.erinnerungId);
+          return e && (await quellschutz(e.erinnerung, kontoId, m)) !== null;
+        } catch {
+          return false;
+        }
       }),
     );
     return ms.filter((_, i) => erlaubt[i]);
