@@ -2,32 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { type MediaAnalysisService, wavPlan } from "../../media";
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
 import { KlaraAufgabeDienst, type KlaraAufgabeRepo } from "./klara-aufgabe";
-import type { BesprechungsFortschritt } from "./klara-besprechung-fortschritt";
+import type { BesprechungsSegment, PrivateBesprechung } from "./klara-besprechung-typen";
 import { istDatum, istUhrzeit } from "./klara-erinnerung-zeit";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
 import { type KlaraWissensHerkunft, WissensFehler } from "./klara-wissensuebernahme";
 import { webvttLesen } from "./meeting-dokumentbezug";
-export interface BesprechungsSegment {
-  id: string;
-  text: string;
-  startMs: number | null;
-  endMs: number | null;
-  sprecher: string | null;
-  unsicher: boolean;
-  ueberlappend: boolean;
-}
-export interface PrivateBesprechung {
-  meetingId: string;
-  transkriptFassung: number;
-  meetingDatum: string | null;
-  zeitzone: string | null;
-  quelleNotizId: string | null;
-  audioId: string | null;
-  weg: "text" | "dateiimport" | "eigene_aufnahme";
-  segmente: BesprechungsSegment[];
-  asrEngine?: string;
-  verarbeitung?: BesprechungsFortschritt;
-}
+export type { BesprechungsSegment, PrivateBesprechung };
 export type ErgebnisArt =
   | "entscheidung"
   | "vorschlag"

@@ -10,7 +10,7 @@ import {
 import { can } from "../../rbac";
 import { kernaussageAusKlartext } from "../../structure";
 import type { SessionUser } from "./http";
-import type { PrivateBesprechung } from "./klara-besprechung";
+import type { PrivateBesprechung } from "./klara-besprechung-typen";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
 import { darfSehen } from "./sichtbarkeit";
 import { type SpacesRepo, darfInSpaceSchreiben, darfSpaceInhalteLesen } from "./spaces";

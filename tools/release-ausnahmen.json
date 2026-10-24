@@ -81,26 +81,6 @@
     },
     {
       "stage": "architecture",
-      "path": "services/app/src/klara-besprechung.ts",
-      "target": "services/app/src/klara-notiz.ts",
-      "rule": "no-circular",
-      "fingerprint": "b8f4bafb035fd08b670afa60d2ca5940090fbc7e9e645e1d2ba9e1bd8cb18a1c",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-besprechung.ts",
-      "target": "services/app/src/klara-wissensuebernahme.ts",
-      "rule": "no-circular",
-      "fingerprint": "281022bd5d21db648cf4724453a703f04292465d2f38ac6c26537d8e7c864f01",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/klara-browser-aktion-dienst.ts",
       "target": "services/app/src/klara-browser-aktion.ts",
       "rule": "no-circular",
