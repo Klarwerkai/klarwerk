@@ -80,7 +80,8 @@ jobs:
   integration:
     env:
       KLARWERK_PG_PFLICHT: "1"
-    runs-on: ubuntu-latest
+    # Dump/Restore brauchen passende PostgreSQL-16-Werkzeuge; Ubuntu 26 bringt PostgreSQL 18.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
