@@ -20,9 +20,7 @@ function assertFehlgeschlageneTests(report, tests, root) {
     tests.map((file) => resolve(root, file)).sort(),
   );
   assert(
-    files.every(
-      (file) => Array.isArray(file.assertionResults) && file.assertionResults.length > 0,
-    ),
+    files.every((file) => Array.isArray(file.assertionResults) && file.assertionResults.length > 0),
   );
   const assertions = files.flatMap((file) => file.assertionResults);
   assert(
@@ -50,9 +48,7 @@ function assertFehlgeschlageneTests(report, tests, root) {
   assert.equal(report.numRuntimeErrorTestSuites ?? 0, 0);
   assert.equal(report.wasInterrupted ?? false, false);
   assert.deepEqual(report.unhandledErrors ?? [], []);
-  assert(
-    files.every((file) => file.testExecError === undefined || file.testExecError === null),
-  );
+  assert(files.every((file) => file.testExecError === undefined || file.testExecError === null));
   const failedFiles = files.filter((file) =>
     file.assertionResults.some((a) => a.status === "failed"),
   ).length;
@@ -65,10 +61,7 @@ function assertFehlgeschlageneTests(report, tests, root) {
   );
   assert(report.numFailedTestSuites >= failedFiles);
   assert(report.numPassedTestSuites >= files.length - failedFiles);
-  assert.equal(
-    report.numTotalTestSuites,
-    report.numPassedTestSuites + report.numFailedTestSuites,
-  );
+  assert.equal(report.numTotalTestSuites, report.numPassedTestSuites + report.numFailedTestSuites);
 }
 
 function gesamtbericht(reports) {
