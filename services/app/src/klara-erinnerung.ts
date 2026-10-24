@@ -23,7 +23,7 @@ import {
   wochentagVon,
 } from "./klara-erinnerung-zeit";
 import type { KlaraGespraechRepo, KlaraObjektbezug } from "./klara-gespraech";
-import type { NormFolgeversuch, NormVorbereitung } from "./klara-normereignisse-dienst";
+import type { NormFolgeversuch, NormVorbereitung } from "./klara-normvorbereitung-typen";
 import {
   type KlaraNotiz,
   type KlaraNotizAenderung,
