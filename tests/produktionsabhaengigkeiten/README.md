@@ -30,7 +30,7 @@ gebundenen** Stand?*
 | `fast-uri` | `node_modules/fast-uri` | 3.1.8 | nicht exponiert |
 | `fastify` | `node_modules/fastify` | 5.12.1 | nicht exponiert |
 | `find-my-way` | `node_modules/find-my-way` | 9.6.0 | nicht exponiert |
-| `nodemailer` | `node_modules/nodemailer` | 6.10.1 | exponiert |
+| `nodemailer` | `node_modules/nodemailer` | 10.1.4 | nicht exponiert |
 | `sharp` | `node_modules/sharp` | 0.35.5 | nicht exponiert |
 
 > **Nachtrag 08.10.2026 (R-1398, GHSA-wq5f-xc86-pv6w):** Die `sharp`-Zeile steht jetzt auf
@@ -210,7 +210,7 @@ weil er die HTTP/2-Bedingung nicht kennt — genau der Unterschied, um den es di
 Hebung wäre also vermutlich kompatibel zu haben; sie wurde hier bewusst **nicht** vorgenommen, weil
 sie ein Nebenbei-Upgrade ohne Exposition wäre (Auftrag §4).
 
-### `nodemailer` — exponiert
+### `nodemailer` — historische Messung vom 17.09.2026 (6.10.1)
 
 **Advisorybedingung.** GHSA-2x7j-588g-ccc2 (high, `<9.1.0`, quadratische Laufzeit im Adressparser)
 und GHSA-cc9r-2j5m-2m83 (moderate, `>=6.9.16 <9.1.0`, Fehlparsen von RFC-5322-Kommentaren bis zur
@@ -568,6 +568,44 @@ wirkungslos, weil `normalizeFragekontext` nur drei Felder übernimmt. Ferner neu
 Laufzeit gemessen: nicht in mammoths Modulgraph), die SSR-Meldung und die beiden
 Open-Redirect-Meldungen von React Router (siehe oben). Die Prüfung gibt seit diesem Stand je Meldung
 npms eigene Auskunft zur Behebbarkeit (`fixAvailable`) aus.
+
+## 7. Nachtrag 24.10.2026 — Nodemailer 10.1.4, eigener begrenzter Prüfteil
+
+Die Tabelle führt jetzt die npm-gebundene Fassung **10.1.4**. Der Nodemailer-Abschnitt und die
+damalige offene Major-Entscheidung zu **6.10.1** bleiben als historische Messung erhalten; sie
+beschreiben keine heute gemessene Inkompatibilität. Der SMTP-Produktpfad bleibt bytegleich.
+
+Anlass sind drei konkrete Adressparsermeldungen, jeweils behoben ab 10.1.4:
+[verschachtelte Kommentare](https://github.com/advisories/GHSA-8c8m-p3m8-cjg8),
+[Semikolon in Gruppenkommentaren](https://github.com/advisories/GHSA-m943-m63m-w62w) und
+[Größerzeichen im quoted local part](https://github.com/advisories/GHSA-85x2-q946-cp5h).
+Der [gebundene Upstreamstand](https://raw.githubusercontent.com/nodemailer/nodemailer/v10.1.4/package.json)
+verlangt Node >=20; das Projekt verlangt bereits >=20.19. Er bringt keine Produktionsabhängigkeit
+mit. Die verwendeten öffentlichen Wege createTransport, sendMail und jsonTransport bestehen weiter.
+
+**Tatsächlicher Vorherbefund:** Die drei neuen synthetischen jsonTransport-Fälle liefen einmal auf
+der wirklich installierten 6.10.1: **3 Assertionfehler, 0 bestanden**. Die sechs alten Fälle waren
+dabei unselektiert, nicht grün. Die Roh-Envelopes zeigen die jeweils falsche Empfängerableitung.
+Die GHSA-IDs wurden anschließend lediglich in die Titel aufgenommen; Eingaben und Erwartungen
+blieben gleich; die synthetische Adressformatierung wurde gleichwertig als Vorlage geschrieben.
+Kein SMTP-Server, keine Verbindung und kein Versand waren beteiligt.
+
+**Enge Paketänderung:** npm erzeugte nur die geänderte Projektbindung auf exakt 10.1.4 und den
+Nodemailer-Lockknoten. Alle anderen Lockknoten bleiben einschließlich ihrer Objektbytes gleich.
+Ein normales npm ci im eigenen Installationsordner ist abgeschlossen; Integrität und installierte
+Fassung sind gebunden. Die ursprünglichen E-Installationen werden nicht beschrieben oder geändert.
+
+**Funktionserhaltung:** Die bisherigen Fälle für unverfälschte Weitergabe, gewöhnliche Empfänger,
+Terminierung und Kommentar-ohne-Empfänger bleiben erhalten. Der historische Komma-Messpunkt ist
+für die beabsichtigte einzelne zitierte Adresse ausgerichtet; die alte 6.10.1-Beobachtung bleibt
+oben nachlesbar. Hinzu kommen die drei kausalen Empfängerfälle. Der feste Kandidat wird im normalen
+Pflichtlauf sowie mit Versions-/Reportbindung und anschließendem Registry-Audit beider Bestände
+geprüft. Die tatsächlichen Endresultate und Rohberichte gehören zum Prüfabschnitt
+NODEMAILER3-20261024/P (RESULTAT.json, PFLICHTLAUF und AUDIT-Bericht).
+
+Diese Aussage gilt für die drei genannten Meldungen am gebundenen Knoten und die geprüften
+Adressformen. Andere Auditmeldungen bleiben gesondert sichtbar; eine Gesamtsicherheitsaussage
+folgt daraus nicht. Echtversand und das Verhalten einer laufenden SMTP-Umgebung sind nicht gemessen.
 
 ## Nicht gemessen
 

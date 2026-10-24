@@ -103,11 +103,9 @@ describe("JOB 4272 · 6d (A) — Klarwerk reicht die Adresse unverändert durch"
 // FALL (B) — WAS DER GEBUNDENE PARSER TUT. EINE MESSUNG, KEINE BILLIGUNG.
 // ================================================================================================
 //
-// Die Zusicherungen hier halten fest, was `nodemailer` 6.10.1 in dieser Runde nachweislich getan
-// hat. Sie sagen NICHT, dass dieses Verhalten richtig ist — bei zwei der Eingaben ist es das
-// erkennbar nicht (s. die Kommentare an den Fällen). Sie sind ein STOLPERDRAHT: wird einer rot, hat
-// sich der Adressparser geändert, und die Einordnung von `nodemailer` gehört neu gemacht.
-// Das ist dann kein Defekt — es ist der Anlass zur Neubewertung.
+// Die ursprünglichen 6.10.1-Messungen bleiben im README ausdrücklich als Historie erhalten.
+// Diese Fälle prüfen jetzt die gebundene 10.1.4: unveränderte Empfänger, Terminierung und
+// Kommentare ohne eigenen Empfänger; die drei neuen Formen sind an ihre GHSA-Meldungen gebunden.
 describe("JOB 4272 · 6d (B) — der gebundene Adressparser, gemessen", () => {
   const transport = echterNodemailer.createTransport({ jsonTransport: true });
 
@@ -127,13 +125,11 @@ describe("JOB 4272 · 6d (B) — der gebundene Adressparser, gemessen", () => {
     expect(to).toEqual([GEWOEHNLICH]);
   });
 
-  it("MESSPUNKT: eine zitierte lokale Teiladresse überlebt NICHT unverändert", async () => {
-    // RFC 5322 erlaubt `"seltsam, name"@…` als EINE Adresse. Der gebundene Parser zerlegt sie am
-    // Komma und liefert `name@beispiel.invalid` — eine ANDERE Adresse als die übergebene.
-    // Klarwerk trifft das heute nicht (die Empfänger sind Kontoadressen aus dem eigenen Bestand),
-    // aber es ist genau die Klasse, die GHSA-cc9r-2j5m-2m83 beschreibt.
+  it("eine zitierte lokale Teiladresse bleibt ein unveränderter Empfänger", async () => {
+    // Historie 6.10.1: Dieselbe Eingabe wurde zu name@beispiel.invalid (README).
+    // Der gebundene Parser muss die zitierte lokale Teiladresse als EINE Adresse erhalten.
     const { to } = await envelopeVon('"seltsam, name"@beispiel.invalid');
-    expect(to).toEqual(["name@beispiel.invalid"]);
+    expect(to).toEqual(['"seltsam, name"@beispiel.invalid']);
   });
 
   it("MESSPUNKT: eine Adresse in RFC-5322-Kommentarklammern verliert ihren Empfänger ganz", async () => {
@@ -157,4 +153,24 @@ describe("JOB 4272 · 6d (B) — der gebundene Adressparser, gemessen", () => {
       expect(ms, `${n} Klammerpaare brauchten ${ms} ms`).toBeLessThan(5_000);
     }
   });
+  it("NODEMAILER3 · GHSA-8c8m-p3m8-cjg8 · verschachtelter Kommentar", async () => {
+    const { to } = await envelopeVon(
+      "Klara (x(y) <falsch@angriff.invalid>) <klara.pruefung@beispiel.invalid>",
+    );
+    expect(to).toEqual([GEWOEHNLICH]);
+  });
+
+  it("NODEMAILER3 · GHSA-m943-m63m-w62w · Semikolon im Gruppenkommentar", async () => {
+    const { to } = await envelopeVon(
+      "G: (a; <falsch@angriff.invalid>) <klara.pruefung@beispiel.invalid>;",
+    );
+    expect(to).toEqual([GEWOEHNLICH]);
+  });
+
+  it("NODEMAILER3 · GHSA-85x2-q946-cp5h · Größerzeichen im local part", async () => {
+    const ziel = '"a@angriff.invalid>"@beispiel.invalid';
+    const { to } = await envelopeVon(`<${ziel}>`);
+    expect(to).toEqual([ziel]);
+  });
+
 });
