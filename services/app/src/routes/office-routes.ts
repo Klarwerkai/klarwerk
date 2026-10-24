@@ -1,13 +1,9 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
-import type { Role } from "../../../auth";
-import type { EvidenceRecord, KnowledgeObject, KoVersionSnapshot } from "../../../knowledge-object";
-import type { ObjectStore } from "../../../object-store";
+import type { KnowledgeObject } from "../../../knowledge-object";
 import { can } from "../../../rbac";
 import type { Guards, SessionUser } from "../http";
-import { type OfficeAblage, SpeicherOfficeAblage } from "../office-ablage";
+import { SpeicherOfficeAblage } from "../office-ablage";
 import {
-  type OfficeEditorEinrichtung,
-  type OfficeKoDienst,
   anhangVerlauf,
   belegstellenZumAnhang,
   editorAktion,
@@ -35,7 +31,6 @@ import {
 } from "../office-wopi";
 import { type WopiSitzungsablage, erstelleWopiHost } from "../office-wopi-host";
 import { DatenFehler, binde } from "../praesentation-daten";
-import type { DatenpunktAblage } from "../praesentation-daten-ablage";
 import { praesentationDatenUmgebung } from "../praesentation-daten-umgebung";
 import {
   ergaenzungsAuftrag,
@@ -44,6 +39,7 @@ import {
 } from "../praesentation-ergaenzung";
 import { ergaenzungsDatenbeleg } from "../praesentation-ergaenzung-snapshot";
 import { darfSehen } from "../sichtbarkeit";
+import type { OfficeKonto, OfficeRoutesDeps } from "./office-routes-typen";
 import { registriereDatenAenderungsRouten } from "./praesentation-aenderungs-routes";
 import { registriereAufbauRouten } from "./praesentation-aufbau-routes";
 
@@ -90,29 +86,7 @@ import { registriereAufbauRouten } from "./praesentation-aufbau-routes";
 /** Höchstgröße eines PutFile-Körpers; die genaue Grenze prüft `entscheidePutFile` (413). */
 const WOPI_KOERPER_GRENZE = 40 * 1024 * 1024;
 
-export interface OfficeKonto {
-  readonly id: string;
-  readonly name: string;
-  readonly role: Role;
-  readonly approved: boolean;
-}
-
-export interface OfficeRoutesDeps {
-  readonly datenpunkte?: DatenpunktAblage;
-  readonly ko: OfficeKoDienst & {
-    versionsOf(id: string): Promise<KoVersionSnapshot[]>;
-    evidenceOf(id: string): Promise<EvidenceRecord[]>;
-  };
-  readonly objekte: ObjectStore;
-  readonly einrichtung: OfficeEditorEinrichtung;
-  readonly konten: () => Promise<readonly OfficeKonto[]>;
-  readonly spaceLesbar: (user: { id: string; role: Role }) => Promise<ReadonlySet<string>>;
-  /** Liest die Discovery; austauschbar für Tests. */
-  readonly holeDiscovery?: (url: string) => Promise<string>;
-  readonly jetzt?: () => number;
-  /** Sitzungen und gesicherte Stände; ohne Angabe die Speicherfassung (ohne Neustartschutz). */
-  readonly ablage?: OfficeAblage;
-}
+export type { OfficeKonto, OfficeRoutesDeps };
 
 async function standardDiscovery(url: string): Promise<string> {
   const antwort = await fetch(url, { signal: AbortSignal.timeout(10_000) });

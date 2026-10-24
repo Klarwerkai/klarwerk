@@ -37,7 +37,7 @@ import {
   quellAbdruck,
   ruecknahmeDatenpunkt,
 } from "../praesentation-uebernahme";
-import type { OfficeRoutesDeps } from "./office-routes";
+import type { OfficeRoutesDeps } from "./office-routes-typen";
 import { datenUmgebung } from "./praesentation-daten-routes";
 
 type Anfrage = FastifyRequest<{ Params: { id: string; anhangId: string } }>;
