@@ -22,6 +22,7 @@ import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { ERFASSUNGSSTAND_VERMERK, belegFassung } from "../../services/app/src/technische-daten";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 import { DATENBLATT, HTML_SEITE, geaendert } from "./fixture";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
@@ -40,17 +41,21 @@ const AUFTRAG = {
 describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
+  let verwaltungSchliessen: () => Promise<void>;
   let datenbank = "";
   let url = "";
-  const offen: { pool: Pool; app: App }[] = [];
+  const offen: { app: App; schliessen: () => Promise<void> }[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
   let entwurfId = "";
   let annaId = "";
 
   async function neu(): Promise<App> {
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     const app = buildApp(buildPgServices(pool));
+    offen.push({ app, schliessen });
     await app.ready();
-    offen.push({ pool, app });
     return app;
   }
 
@@ -60,7 +65,7 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     if (eintrag) {
       offen.splice(i, 1);
       await eintrag.app.close();
-      await eintrag.pool.end();
+      await eintrag.schliessen();
     }
   }
 
@@ -121,17 +126,20 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     }
     datenbank = `klarwerk_techdaten_test_${`${Date.now()}`.slice(-9)}`;
     verwaltung = new Pool({ connectionString: basis });
+    verwaltungSchliessen = poolAbschluss(verwaltung);
     await verwaltung.query(`CREATE DATABASE ${datenbank}`);
     const ziel = new URL(basis);
     ziel.pathname = `/${datenbank}`;
     url = ziel.toString();
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     try {
       await migrate(pool);
       await migrate(pool);
       await buildPgServices(pool).ko.activateSearchProjectionV2();
     } finally {
-      await pool.end();
+      await schliessen();
     }
     const app = await neu();
     const reg = await app.inject({
@@ -147,11 +155,12 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     for (const o of [...offen]) {
       await beenden(o.app);
     }
+    for (const schliessen of poolAbschluesse) await schliessen();
     if (verwaltung) {
       await verwaltung
         .query(`DROP DATABASE IF EXISTS ${datenbank} WITH (FORCE)`)
         .catch(() => undefined);
-      await verwaltung.end();
+      await verwaltungSchliessen();
     }
     await container?.stop();
   }, 120_000);
