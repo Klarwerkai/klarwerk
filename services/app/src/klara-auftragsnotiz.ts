@@ -1,4 +1,4 @@
-import type { KlaraRufe } from "./klara-ausfuehrung";
+import type { KlaraRufe } from "./klara-ausfuehrung-typen";
 import { KlaraGespraechFehler } from "./klara-gespraech";
 
 /** Herkunft des tatsächlich berechtigt gelesenen Originals, kein zweiter Quellenbestand. */

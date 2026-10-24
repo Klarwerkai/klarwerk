@@ -1,5 +1,5 @@
 import { type KlaraWissensAuftragsbindung, wissensZielFuerAuftrag } from "./klara-auftrag";
-import type { KlaraRufe } from "./klara-ausfuehrung";
+import type { KlaraRufe } from "./klara-ausfuehrung-typen";
 import { KlaraGespraechFehler } from "./klara-gespraech";
 
 /** Nur der vorhandene bewusste F08-Port entscheidet über private Quelle und gewähltes Ziel. */

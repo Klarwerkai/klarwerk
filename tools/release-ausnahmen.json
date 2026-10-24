@@ -82,99 +82,9 @@
     {
       "stage": "architecture",
       "path": "services/app/src/klara-auftragsnotiz.ts",
-      "target": "services/app/src/klara-ausfuehrung.ts",
-      "rule": "no-circular",
-      "fingerprint": "a11dc813c5b9a73de452b2e96829b77d480ace64206c854eef21fbada27aa303",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-auftragsnotiz.ts",
       "target": "services/app/src/klara-gespraech.ts",
       "rule": "no-circular",
       "fingerprint": "ff71a0793849ed3478136752f916958e8b0041d8cbea5bb49ebb77741615234b",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-auftragswissen.ts",
-      "target": "services/app/src/klara-auftrag.ts",
-      "rule": "no-circular",
-      "fingerprint": "44e99c3df50be4486959d0479dea1baed9130721707aaa00a1200bdf49910776",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-auftragswissen.ts",
-      "target": "services/app/src/klara-ausfuehrung.ts",
-      "rule": "no-circular",
-      "fingerprint": "8178a3e56069797428de2cc458b1e82d4da81309fdd333e155aecbc45726934c",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-auftragswissen.ts",
-      "target": "services/app/src/klara-gespraech.ts",
-      "rule": "no-circular",
-      "fingerprint": "b918dbbbc7b2dbc121be220c566a8f13f3443b6ff042bdda0b986383a3fe6786",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-ausfuehrung.ts",
-      "target": "services/app/src/klara-beschaffungsquellen.ts",
-      "rule": "no-circular",
-      "fingerprint": "ac21222bf1d05f8fcfeae2fd21375ecdd1b4a16f5cd84273c3eff39d8c5208e3",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-ausfuehrung.ts",
-      "target": "services/app/src/klara-gespraech.ts",
-      "rule": "no-circular",
-      "fingerprint": "92d43855cc430dfe2000c1ef66d6f02e90da0915a49cdf52f9f0ebb65e231f09",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-ausfuehrung.ts",
-      "target": "services/app/src/klara-wissensuebernahme.ts",
-      "rule": "no-circular",
-      "fingerprint": "d2ee602cceffe2106742c83dd5c3721bc5768ea53629625f19f8f193b896dbec",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-beschaffungsquellen.ts",
-      "target": "services/app/src/klara-beschaffungsziel.ts",
-      "rule": "no-circular",
-      "fingerprint": "c96ca3b6fcc162371f82bd12069c8e3626b86e702c5e5c95edfc83cc28be587c",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-beschaffungsquellen.ts",
-      "target": "services/app/src/klara-gespraech.ts",
-      "rule": "no-circular",
-      "fingerprint": "d7465e9e1a89962525c4f1a502fca81f743904dd69ecc564912c454e56f12ebb",
       "owner": "Root",
       "expires": "2026-10-23T18:00:00Z",
       "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
