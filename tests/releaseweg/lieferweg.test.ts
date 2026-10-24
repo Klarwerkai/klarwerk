@@ -236,7 +236,8 @@ describe("gezielte PG-Dateien: getrennte serielle Prozessbudgets", () => {
     for (const path of ["bin", "tools", "tests", "node_modules/.bin"]) {
       mkdirSync(join(work, path), { recursive: true });
     }
-    for (const file of files) writeFileSync(join(work, file), "// synthetische Integrationsdatei\n");
+    for (const file of files)
+      writeFileSync(join(work, file), "// synthetische Integrationsdatei\n");
     writeFileSync(
       join(work, "bin/git"),
       `#!${process.execPath}

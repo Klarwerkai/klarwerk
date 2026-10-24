@@ -20,7 +20,10 @@ function gesamtbericht(reports) {
   );
   for (const key of counters) {
     const values = reports.map((report) => report[key]);
-    assert(values.every((value) => Number.isSafeInteger(value) && value >= 0), key);
+    assert(
+      values.every((value) => Number.isSafeInteger(value) && value >= 0),
+      key,
+    );
     const total = values.reduce((sum, value) => sum + value, 0);
     assert(Number.isSafeInteger(total), key);
     combined[key] = total;
@@ -112,7 +115,12 @@ export function runPgSelection(root, base, output) {
             exit: run.status,
             signal: run.signal,
             processError: run.error
-              ? { ...run.error, name: run.error.name, message: run.error.message, stack: run.error.stack }
+              ? {
+                  ...run.error,
+                  name: run.error.name,
+                  message: run.error.message,
+                  stack: run.error.stack,
+                }
               : null,
             actualWaitCompleted: true,
           });
@@ -141,7 +149,9 @@ export function runPgSelection(root, base, output) {
           throw error;
         } finally {
           part.endedAt = new Date().toISOString();
-          writeFileSync(join(ordner, "run.json"), `${JSON.stringify(part, null, 2)}\n`, { flag: "wx" });
+          writeFileSync(join(ordner, "run.json"), `${JSON.stringify(part, null, 2)}\n`, {
+            flag: "wx",
+          });
         }
       }
       const combined = gesamtbericht(reports);
