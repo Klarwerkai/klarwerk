@@ -451,7 +451,11 @@ describe("JOB 4085 · der Word-Rückweg gegen echtes PostgreSQL", () => {
     }
     const schema = "job4299_q4";
     const eigen = await frischesAppSchema(schema);
-    await new PgKoRepo(eigen).insert(bestandsObjekt(Q4.kennung, BESTAND_RUMPF));
+    // Die Fachproben brauchen einen für den Einreicher sichtbaren internen Bestand.
+    await new PgKoRepo(eigen).insert({
+      ...bestandsObjekt(Q4.kennung, BESTAND_RUMPF),
+      confidentiality: "intern",
+    });
     const app = buildApp(buildPgServices(eigen));
     try {
       await richteKontenEin(app);
@@ -520,7 +524,10 @@ describe("JOB 4085 · der Word-Rückweg gegen echtes PostgreSQL", () => {
     }
     const schema = "job4299_q5";
     const eigen = await frischesAppSchema(schema);
-    await new PgKoRepo(eigen).insert(bestandsObjekt(Q5.kennung, BESTAND_RUMPF));
+    await new PgKoRepo(eigen).insert({
+      ...bestandsObjekt(Q5.kennung, BESTAND_RUMPF),
+      confidentiality: "intern",
+    });
     const app = buildApp(buildPgServices(eigen));
     try {
       await richteKontenEin(app);
@@ -652,7 +659,10 @@ describe("JOB 4085 · der Word-Rückweg gegen echtes PostgreSQL", () => {
     }
     const schema = "job4321_q6";
     const eigen = await frischesAppSchema(schema);
-    await new PgKoRepo(eigen).insert(bestandsObjekt(Q6.kennung, BESTAND_RUMPF));
+    await new PgKoRepo(eigen).insert({
+      ...bestandsObjekt(Q6.kennung, BESTAND_RUMPF),
+      confidentiality: "intern",
+    });
     const app = buildApp(buildPgServices(eigen));
     try {
       await richteKontenEin(app);
