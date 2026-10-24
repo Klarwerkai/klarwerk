@@ -1,5 +1,5 @@
 import { canonicalJson } from "../../audit";
-import type { KlaraAuftragsnotiz } from "./klara-auftragsnotiz";
+import type { KlaraAuftragsnotiz } from "./klara-auftragsnotiz-typen";
 import {
   type KlaraBeschaffungsziel,
   beschaffungsKorrekturErlaubt,
