@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -232,7 +232,7 @@ describe("gezielte PG-Dateien: getrennte serielle Prozessbudgets", () => {
   const pgUrl = pathToFileURL(join(root, "tools/pg-auswahl.mjs")).href;
 
   function vorrichtung(name: string, files: string[], fehlend = "") {
-    const work = join(directory, name);
+    const work = join(realpathSync(directory), name);
     for (const path of ["bin", "tools", "tests", "node_modules/.bin"]) {
       mkdirSync(join(work, path), { recursive: true });
     }
@@ -300,7 +300,7 @@ const events=readFileSync(join(work,'kindereignisse.jsonl'),'utf8').trim().split
     const work = vorrichtung("pg-serie-gruen", files);
     const run = node(
       `${programm}
-assert.equal(result.success,true);assert.deepEqual(result.files,${JSON.stringify(files)});
+assert.equal(result.success,true,JSON.stringify(result));assert.deepEqual(result.files,${JSON.stringify(files)});
 assert.deepEqual(events.map(e=>e.event+':'+e.file),result.files.flatMap(file=>['start:'+file,'end:'+file]));
 assert.equal(new Set(events.map(e=>e.pid)).size,2);
 assert.equal(result.runs.length,2);assert(result.runs.every(r=>r.success&&r.actualWaitCompleted&&r.exit===0&&r.signal===null&&r.processError===null));
