@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { setImmediate } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { poolAbschluss } from "./pool-abschluss";
 
@@ -18,8 +19,11 @@ describe("Poolabschluss wartet auf tatsächliche Clientenden", () => {
     const abschluss = schliessen();
     await poolEnde;
     const offen = Symbol("offen");
+    // Vor der Offenprobe alle bereits möglichen Promise-Fortsetzungen abarbeiten.
+    await setImmediate();
     expect(await Promise.race([abschluss, Promise.resolve(offen)])).toBe(offen);
     eins.emit("end");
+    await setImmediate();
     expect(await Promise.race([abschluss, Promise.resolve(offen)])).toBe(offen);
     zwei.emit("end");
     await expect(abschluss).resolves.toBeUndefined();
