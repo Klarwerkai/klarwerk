@@ -151,16 +151,6 @@
     },
     {
       "stage": "architecture",
-      "path": "services/app/src/loeschmarkierungen.ts",
-      "target": "services/app/src/vormachen.ts",
-      "rule": "no-circular",
-      "fingerprint": "3ac0b7ecfa9a44ec121138e6a928cd16f25d2ce6bce03a84f257234c2e92807c",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/persoenliche-funktionen.ts",
       "target": "services/app/src/klara-gespraech.ts",
       "rule": "no-circular",

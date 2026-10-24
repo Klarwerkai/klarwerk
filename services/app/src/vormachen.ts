@@ -17,7 +17,7 @@ import {
   aendereBestaetigteAbleitung,
   leiteAb,
 } from "./assistenz-lernen-vorfuehrungen";
-import type { LoeschmarkierungsAblage } from "./loeschmarkierungen";
+import type { LoeschmarkierungsAblage } from "./loeschmarkierung-typen";
 import type { PersoenlicheFunktion as BeschaffungsFunktion } from "./persoenliche-funktionen";
 
 // ================================================================================================
