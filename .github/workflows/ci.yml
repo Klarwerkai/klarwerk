@@ -82,6 +82,17 @@ jobs:
       KLARWERK_PG_PFLICHT: "1"
     # Dump/Restore brauchen passende PostgreSQL-16-Werkzeuge; Ubuntu 26 bringt PostgreSQL 18.
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: klarwerk_ci
+          POSTGRES_PASSWORD: fiktiv-ci-postgres
+          POSTGRES_DB: klarwerk_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U klarwerk_ci -d klarwerk_ci_test"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,6 +116,8 @@ jobs:
           path: .local/run/ci-pg-gezielt/
           if-no-files-found: error
       - name: integration (Postgres via Testcontainers)
+        env:
+          KLARWERK_PG_TEST_URL: "postgresql://klarwerk_ci:fiktiv-ci-postgres@localhost:5432/klarwerk_ci_test"
         run: npm run test:integration
 
   # R-1487 (aufnahme:20260922:gesamt-kundenbetrieb): DAS AUSLIEFERUNGSABBILD ENTSTEHT AUTOMATISCH.
