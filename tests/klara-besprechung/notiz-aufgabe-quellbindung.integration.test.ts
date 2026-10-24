@@ -259,7 +259,7 @@ it("gewöhnliche eigene Notizen/Ergebnisse behalten ihren bisherigen unabhängig
   const task = r.json().aufgabe;
   const row = (await i.pool.query("SELECT data FROM klara_aufgaben WHERE id=$1", [task.id])).rows[0]
     .data;
-  expect(row.privatNotizGebunden).toBeUndefined();
+  expect(row.privatNotizGebunden).toBe(false);
   expect((await api("DELETE", `/me/klara/notizen/${n.id}`)).statusCode).toBe(200);
   const sicht = await taskSicht(task.id);
   expect(sicht.einzeln.statusCode, sicht.einzeln.body).toBe(200);
