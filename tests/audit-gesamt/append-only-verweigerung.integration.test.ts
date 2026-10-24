@@ -37,6 +37,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices, createPool, migrate } from "../../services/app";
 import { type AuditEntry, AuditService, PgAuditRepo } from "../../services/audit";
 import { guardedLocalPgTestUrl, withPgTx } from "../../services/db-tx";
+import { poolAbschluss } from "./pool-abschluss";
 
 const PREFIX = "[KLARWERK][gesamt-auditprotokoll L5 append-only]";
 const DB = "klarwerk_test_auditprotokoll_l5_appendonly";
@@ -54,7 +55,9 @@ const METHODEN = ["POST", "PUT", "PATCH", "DELETE"] as const;
 describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
+  let verwaltungSchliessen: (() => Promise<void>) | undefined;
   let pool: Pool | undefined;
+  let poolSchliessen: (() => Promise<void>) | undefined;
   let app: FastifyInstance | undefined;
   let services: ReturnType<typeof buildPgServices> | undefined;
   let headers: Record<string, string> = {};
@@ -82,12 +85,13 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
     }
     if (basisUrl) {
       const kandidat = createPool(basisUrl);
+      verwaltungSchliessen = poolAbschluss(kandidat);
       try {
         await kandidat.query("SELECT 1");
         verwaltung = kandidat;
       } catch (fehler) {
         grund = `Datenbank unter der genannten URL nicht erreichbar: ${String(fehler)}`;
-        await kandidat.end().catch(() => undefined);
+        await verwaltungSchliessen();
       }
     }
     if (!verwaltung) {
@@ -97,6 +101,7 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
     await verwaltung.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
     await verwaltung.query(`CREATE DATABASE ${DB}`);
     pool = new Pool({ connectionString: mitDatenbank(basisUrl, DB), max: 6 });
+    poolSchliessen = poolAbschluss(pool);
     await migrate(pool);
     services = buildPgServices(pool);
     app = buildApp(services);
@@ -141,9 +146,9 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
 
   afterAll(async () => {
     await app?.close().catch(() => undefined);
-    await pool?.end().catch(() => undefined);
+    await poolSchliessen?.();
     await verwaltung?.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`).catch(() => undefined);
-    await verwaltung?.end();
+    await verwaltungSchliessen?.();
     await container?.stop();
   });
 
