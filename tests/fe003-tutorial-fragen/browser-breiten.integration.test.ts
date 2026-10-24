@@ -21,7 +21,8 @@
 //       `inert` und nimmt einen echten Klick an.
 //   E5  Eine vorbefüllte echte Frage bleibt beim Öffnen, Durchlaufen, Schliessen und beim Übergang
 //       „Eigene Frage stellen“ stehen; ab dem Öffnen geht keine verändernde Anfrage hinaus.
-// Dazu einmal: reduzierte Bewegung, eine vorhandene Antwort bleibt stehen, andere Seiten ohne Knopf.
+// Dazu einmal: reduzierte Bewegung, eine vorhandene Antwort bleibt stehen und Seiten ohne
+// Registereintrag tragen keinen Knopf.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, type Page, type Request, chromium } from "playwright";
@@ -628,10 +629,10 @@ describe("FE-003 im echten Chromium — einmalige Fälle", () => {
     }
   });
 
-  it("E7 · andere Seiten tragen kein Tutorial", async () => {
+  it("E7 · Seiten ohne Registereintrag tragen kein Tutorial", async () => {
     const { ktx, page } = await kontext({ width: 1280, height: 800 });
     try {
-      for (const pfad of ["/start", "/bibliothek"]) {
+      for (const pfad of ["/klara-vorschau", "/begleitung/pruefformular"]) {
         await page.goto(url(pfad));
         await page.getByTestId("kopfband").waitFor({ state: "visible" });
         await page.waitForTimeout(300);
