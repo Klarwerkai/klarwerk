@@ -111,26 +111,6 @@
     },
     {
       "stage": "architecture",
-      "path": "services/app/src/klara-fristen-ablage.ts",
-      "target": "services/app/src/klara-notiz.ts",
-      "rule": "no-circular",
-      "fingerprint": "43eda6e9534ca4278b2d5c9c6d4f19e54e2e791845dcb896a6c6a8e68ab1fb2c",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-fristen-dienst.ts",
-      "target": "services/app/src/klara-notiz.ts",
-      "rule": "no-circular",
-      "fingerprint": "f2ceaac998747d46c4999e924dee6549dc29af39efdc12ef719d6ed5f449e8b9",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/klara-fristen-quellen.ts",
       "target": "services/app/src/klara-notiz.ts",
       "rule": "no-circular",

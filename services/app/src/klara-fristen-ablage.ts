@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { FristenStand } from "./klara-fristen";
-import type { NotizSchreibbedingung } from "./klara-notiz";
+import type { NotizSchreibbedingung } from "./klara-notiz-schreibbedingung";
 import { SPACES_SPERRE } from "./spaces";
 
 /** Ein eigener persönlicher Bestand; keine Kopie von Kalenderauftrag, Lauf oder Notiz. */

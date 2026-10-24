@@ -19,7 +19,7 @@ import {
   type FristenQuelle,
   erkenneFristen,
 } from "./klara-fristen-erkennung";
-import type { NotizSchreibbedingung } from "./klara-notiz";
+import type { NotizSchreibbedingung } from "./klara-notiz-schreibbedingung";
 
 export interface GeleseneFristenQuelle {
   quelle: FristenQuelle;
