@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import type { Role, SessionUser } from "../../auth";
-import type {} from "./addon-principal";
 import type { AddonCapability, AddonPrincipal } from "./addon-principal-typen";
 import type { BremsGrenze } from "./anfragebremse";
 

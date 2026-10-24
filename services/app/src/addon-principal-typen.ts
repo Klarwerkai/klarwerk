@@ -1,3 +1,4 @@
+import type {} from "fastify";
 import type { BremsGrenze } from "./anfragebremse";
 
 // Aufnahme gesamt-integrations-api: die drei weiteren Rechte trägt nur ein Dienst-Schlüssel
@@ -19,4 +20,18 @@ export interface AddonPrincipal {
   readonly capabilities: readonly AddonCapability[];
   // Nur bei einem Dienst-Schlüssel: seine Kennung und seine eigene Grenze. Fehlt beim Klara-Schlüssel.
   readonly dienst?: { readonly schluessel: string; readonly grenze: BremsGrenze };
+}
+
+// Request-lokaler Auth-Kontext: EINMAL pro Request bestimmt (onRequest-Hook), danach von
+// Rate-Limiter, allowList und Handler GELESEN — nie neu validiert. Ersetzt die zuvor dreifache
+// Key-Prüfung (keyGenerator/allowList/handler) durch eine einzige Auflösung.
+export type AuthContext =
+  | { readonly authKind: "addon"; readonly principal: AddonPrincipal }
+  | { readonly authKind: "session"; readonly principal: null };
+
+// request.authContext am Fastify-Request tragen (Typaugmentation).
+declare module "fastify" {
+  interface FastifyRequest {
+    authContext?: AuthContext | null;
+  }
 }
