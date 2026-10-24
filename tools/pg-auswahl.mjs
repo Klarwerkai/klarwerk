@@ -10,6 +10,67 @@ import { assertTests, environment, git, hash, integrationSelection } from "./rel
 export function pgSelection(paths) {
   return integrationSelection(paths);
 }
+function assertFehlgeschlageneTests(report, tests, root) {
+  assert(report && typeof report === "object" && report.success === false);
+  const files = report.testResults;
+  assert(Array.isArray(files) && tests.length > 0 && files.length === tests.length);
+  assert(files.every((file) => typeof file.name === "string"));
+  assert.deepEqual(
+    files.map((file) => resolve(file.name)).sort(),
+    tests.map((file) => resolve(root, file)).sort(),
+  );
+  assert(
+    files.every(
+      (file) => Array.isArray(file.assertionResults) && file.assertionResults.length > 0,
+    ),
+  );
+  const assertions = files.flatMap((file) => file.assertionResults);
+  assert(
+    assertions.every(
+      (a) =>
+        ["passed", "failed"].includes(a.status) &&
+        Array.isArray(a.failureMessages) &&
+        (a.status === "passed"
+          ? a.failureMessages.length === 0
+          : a.failureMessages.length > 0 &&
+            a.failureMessages.every((message) => typeof message === "string" && message.trim())),
+    ),
+  );
+  const failed = assertions.filter((a) => a.status === "failed").length;
+  assert(failed > 0, "kein vollständig gemessener fachlicher Rotbefund");
+  for (const key of Object.keys(report).filter((key) => /^num[A-Z]/.test(key))) {
+    assert(Number.isSafeInteger(report[key]) && report[key] >= 0, key);
+  }
+  assert.equal(report.numTotalTests, assertions.length);
+  assert.equal(report.numFailedTests, failed);
+  assert.equal(report.numPassedTests, assertions.length - failed);
+  assert.equal(report.numPendingTests, 0);
+  assert.equal(report.numTodoTests ?? 0, 0);
+  assert.equal(report.numPendingTestSuites, 0);
+  assert.equal(report.numRuntimeErrorTestSuites ?? 0, 0);
+  assert.equal(report.wasInterrupted ?? false, false);
+  assert.deepEqual(report.unhandledErrors ?? [], []);
+  assert(
+    files.every((file) => file.testExecError === undefined || file.testExecError === null),
+  );
+  const failedFiles = files.filter((file) =>
+    file.assertionResults.some((a) => a.status === "failed"),
+  ).length;
+  assert(
+    files.every(
+      (file) =>
+        file.status ===
+        (file.assertionResults.some((a) => a.status === "failed") ? "failed" : "passed"),
+    ),
+  );
+  assert(report.numFailedTestSuites >= failedFiles);
+  assert(report.numPassedTestSuites >= files.length - failedFiles);
+  assert.equal(
+    report.numTotalTestSuites,
+    report.numPassedTestSuites + report.numFailedTestSuites,
+  );
+}
+
 function gesamtbericht(reports) {
   const combined = {
     success: reports.every((report) => report.success === true),
@@ -135,15 +196,21 @@ export function runPgSelection(root, base, output) {
           );
           if (run.error) throw run.error;
           assert.equal(run.signal, null);
-          assert.equal(run.status, 0);
+          assert(run.status === 0 || run.status === 1);
           const raw = readFileSync(einzelRaw);
           part.rawSha256 = hash(raw);
           const report = JSON.parse(raw);
-          assertTests(report, [file], root);
+          if (run.status === 0) assertTests(report, [file], root);
+          else assertFehlgeschlageneTests(report, [file], root);
+          assert(
+            !/Vitest caught \d+ unhandled error/iu.test(log) &&
+              !/⎯+[^\n]*(?:Unhandled Errors|Unhandled Rejection|Uncaught Exception)/iu.test(log),
+            "ungeklärter PG-Laufzeitfehler",
+          );
           assert(report.wasInterrupted !== true, "abgebrochener PG-Rohbericht");
           assert.equal(report.numRuntimeErrorTestSuites ?? 0, 0);
           reports.push(report);
-          part.success = true;
+          part.success = report.success;
         } catch (error) {
           part.error = error.message;
           throw error;
@@ -155,11 +222,19 @@ export function runPgSelection(root, base, output) {
         }
       }
       const combined = gesamtbericht(reports);
-      assertTests(combined, files, root);
+      if (combined.success) assertTests(combined, files, root);
+      else assertFehlgeschlageneTests(combined, files, root);
       const raw = `${JSON.stringify(combined, null, 2)}\n`;
       writeFileSync(rawPath, raw, { flag: "wx" });
       result.rawSha256 = hash(raw);
-      result.success = true;
+      result.success = combined.success;
+      result.exit = combined.success ? 0 : 1;
+      if (!combined.success) {
+        result.error = `Fehlgeschlagene PG-Dateien: ${result.runs
+          .filter((part) => !part.success)
+          .map((part) => part.file)
+          .join(", ")}`;
+      }
     }
   } catch (error) {
     result.error = error.message;
