@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 import { pcmQuelle } from "./segment-fixture";
 let container: StartedTestContainer;
 let url = "";
 let admin = "";
 let token = "";
-const pools: Pool[] = [];
+const poolAbschluesse: (() => Promise<void>)[] = [];
 const apps: ReturnType<typeof buildApp>[] = [];
 function instanz() {
   const pool = createPool(url);
-  pools.push(pool);
+  poolAbschluesse.push(poolAbschluss(pool));
   const services = buildPgServices(pool);
   const app = buildApp(services);
   apps.push(app);
@@ -110,8 +110,10 @@ beforeAll(async () => {
   );
   url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klara_f15_quellbindung`;
   const p = createPool(url);
+  const schliessen = poolAbschluss(p);
+  poolAbschluesse.push(schliessen);
   await migrate(p);
-  await p.end();
+  await schliessen();
   const x = instanz();
   expect(
     (
@@ -158,7 +160,7 @@ beforeEach(async () => {
 });
 afterAll(async () => {
   for (const a of apps) await a.close();
-  for (const p of pools) await p.end();
+  for (const schliessen of poolAbschluesse) await schliessen();
   await container?.stop();
   console.log(
     JSON.stringify({ ressource: "F15-1-PG", ereignis: "beendet", at: new Date().toISOString() }),
