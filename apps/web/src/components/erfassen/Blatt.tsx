@@ -2959,18 +2959,21 @@ export function Blatt({
           {t("erfassen.ki.struktur")}
         </MenueEintrag>
         <MenueTrenner />
-        {ASSIST_ACTIONS.map((action) => (
-          <MenueEintrag
-            key={action}
-            gesperrt={!canAssist}
-            onClick={() => {
-              setOffenesMenue(null);
-              assist.mutate(action);
-            }}
-          >
-            {t(assistActionLabelKey(action))}
-          </MenueEintrag>
-        ))}
+        {/* Drei statt fünf Aktionszeilen sparen am schmalen Gerät die gemessenen 72 px. */}
+        <div className="grid grid-cols-2 sm:block">
+          {ASSIST_ACTIONS.map((action) => (
+            <MenueEintrag
+              key={action}
+              gesperrt={!canAssist}
+              onClick={() => {
+                setOffenesMenue(null);
+                assist.mutate(action);
+              }}
+            >
+              {t(assistActionLabelKey(action))}
+            </MenueEintrag>
+          ))}
+        </div>
         <MenueTrenner />
         <MenueFlaeche>
           <AiAssistInstructions
