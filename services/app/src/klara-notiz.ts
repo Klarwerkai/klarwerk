@@ -7,7 +7,7 @@ import {
   pruefeObjektbezug,
 } from "./klara-gespraech";
 import type { NotizSchreibbedingung } from "./klara-notiz-schreibbedingung";
-import type { KlaraWissensHerkunft } from "./klara-wissensuebernahme";
+import type { KlaraWissensHerkunft } from "./klara-wissensherkunft-typen";
 
 // ================================================================================================
 // produkt:20261007:klara-notizen-aufgaben (Klara 06) — PRIVATE NOTIZEN UNTER DER EIGENEN PERSON.

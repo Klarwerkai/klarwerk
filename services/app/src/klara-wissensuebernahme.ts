@@ -10,28 +10,13 @@ import {
 import { can } from "../../rbac";
 import { kernaussageAusKlartext } from "../../structure";
 import type { SessionUser } from "./http";
-import type { PrivateBesprechung } from "./klara-besprechung-typen";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
+import type { KlaraWissensHerkunft } from "./klara-wissensherkunft-typen";
 import { darfSehen } from "./sichtbarkeit";
 import { type SpacesRepo, darfInSpaceSchreiben, darfSpaceInhalteLesen } from "./spaces";
 import type { VorlagenEinreichungPort } from "./vorlagen";
 
-/** Serverseitige Herkunft am privaten Original. Keine Übernahme eines fremden Chatverlaufs. */
-export interface KlaraWissensHerkunft {
-  besprechung?: PrivateBesprechung;
-  projekt: string;
-  abschnitt: string;
-  antwortFassung: string;
-  anbieter: string | null;
-  modell: string | null;
-  vorherigeNotiz: string | null;
-  textAbdruck: string;
-  aussagen: {
-    text: string;
-    art: "behauptung" | "empfehlung" | "kreativ" | "nutzerentscheidung";
-    quellen: { id: string; fassung: number }[];
-  }[];
-}
+export type { KlaraWissensHerkunft };
 export interface WissensZiel {
   art: "artikel" | "space";
   spaceId?: string;
