@@ -11,16 +11,6 @@
   "entries": [
     {
       "stage": "architecture",
-      "path": "services/app/src/assistenz-faehigkeiten.ts",
-      "target": "services/app/src/assistenz-profil.ts",
-      "rule": "no-circular",
-      "fingerprint": "2467dca620ca2c435251d4abdcc5d3d93b70afd5be8a5d4708bb01e3482841ee",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/assistenz-lernen-vorfuehrungen.ts",
       "target": "services/app/src/vormachen.ts",
       "rule": "no-circular",

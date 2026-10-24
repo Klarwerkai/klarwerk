@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { EigeninitiativeStand } from "./assistenz-eigeninitiative";
-import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten";
+import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten-typen";
 import type { TastenkuerzelStand } from "./assistenz-tastenkuerzel";
 import { type KlaraEinfuehrungStand, pruefeEinfuehrung } from "./klara-einfuehrung";
 
