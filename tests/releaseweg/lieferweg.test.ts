@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -73,6 +73,30 @@ assert.equal(deferred.length,1);assert.equal(deferred[0].owner,'Root');assert.eq
 assert(m.selection(['tests/unbekannt.test.ts']).includes('tests/unbekannt.test.ts'));
 `);
     expect(run.status, run.stderr).toBe(0);
+  });
+  it("ordnet Browser nachgelagert und Nicht-Browsertests der Pflicht zu", () => {
+    const browser = "tests/klara-besprechung/segment-browser.test.ts";
+    const unit = "tests/klara-besprechung/segmentierung.test.ts";
+    const jsdom = "tests/rechteentzug-gespraeche/ask-rueckmeldung-rechtewechsel.test.tsx";
+    const unknown = "tests/unbekannt.test.ts";
+    const run = node(
+      `const m=await import(process.argv[1]);
+const paths=${JSON.stringify([browser, unit, jsdom, unknown])};
+console.log(JSON.stringify({pflicht:m.selection(paths),nachgelagert:m.deferredSelection(paths)}));`,
+    );
+    expect(run.status, run.stderr).toBe(0);
+    const result = JSON.parse(run.stdout);
+    expect(result.pflicht, "Browserdiagnose fälschlich Pflicht").not.toContain(browser);
+    for (const path of [unit, jsdom, unknown]) expect(result.pflicht).toContain(path);
+    expect(result.nachgelagert).toEqual([
+      expect.objectContaining({
+        path: browser,
+        owner: "Root",
+        withinHours: 24,
+        diagnosis: "Volltor und Browserdiagnosen",
+        importChain: [browser],
+      }),
+    ]);
   });
   it("gezielte PG-Auswahl bleibt dem CI-Weg zugeordnet und startet durch Import nichts", () => {
     const run = node(`
@@ -201,5 +225,209 @@ m.assertCi({check_runs:[{id:1,name:'pflicht',head_sha:'a',app:{slug:'github-acti
     );
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout).toContain("send-started");
+  });
+});
+
+describe("gezielte PG-Dateien: getrennte serielle Prozessbudgets", () => {
+  const pgUrl = pathToFileURL(join(root, "tools/pg-auswahl.mjs")).href;
+
+  function vorrichtung(
+    name: string,
+    files: string[],
+    fehlend = "",
+    roteDateien: string[] = [],
+    inkonsistent = "",
+  ) {
+    const work = join(realpathSync(directory), name);
+    for (const path of ["bin", "tools", "tests", "node_modules/.bin"]) {
+      mkdirSync(join(work, path), { recursive: true });
+    }
+    for (const file of files)
+      writeFileSync(join(work, file), "// synthetische Integrationsdatei\n");
+    writeFileSync(
+      join(work, "bin/git"),
+      `#!${process.execPath}
+const args=process.argv.slice(2);
+if(args[0]==='diff')process.stdout.write(${JSON.stringify(files.join("\n"))});
+else if(args[0]==='rev-parse')process.stdout.write((args[1]==='HEAD'?'a':'c').repeat(40));
+else process.exitCode=1;
+`,
+      { mode: 0o755 },
+    );
+    writeFileSync(join(work, "tools/browserdeckel.sh"), '#!/bin/bash\nshift\nexec "$@"\n', {
+      mode: 0o755,
+    });
+    writeFileSync(
+      join(work, "node_modules/.bin/vitest"),
+      String.raw`#!${process.execPath}
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const args=process.argv.slice(2);
+assert.equal(process.env.HOME,${JSON.stringify(process.env.HOME)});
+for(const [key,value]of Object.entries({KLARWERK_SKIP_KEYCHAIN:'1',EXTERNAL_SEARCH:'off',NODE_ENV:'test',KLARWERK_DEV_PERSIST:'0',KLARWERK_PG_PFLICHT:'1'}))assert.equal(process.env[key],value);
+for(const flag of ['--allowOnly=false','--passWithNoTests=false','--pool=forks','--poolOptions.forks.minForks=1','--poolOptions.forks.maxForks=1','--minWorkers=1','--maxWorkers=1','--no-file-parallelism','--testTimeout=60000'])assert(args.includes(flag));
+const files=args.filter(arg=>arg.endsWith('.integration.test.ts'));
+assert.equal(files.length,1,'genau eine vollständige Datei je Prozess');
+const file=files[0];
+const index=${JSON.stringify(files)}.indexOf(file);
+assert(index>=0);
+const events=path.join(process.cwd(),'kindereignisse.jsonl');
+fs.appendFileSync(events,JSON.stringify({event:'start',file,pid:process.pid})+'\n');
+console.log('synthetischer Rohlog '+file);
+const count=index+2;
+const report={success:true,numTotalTestSuites:1,numPassedTestSuites:1,numFailedTestSuites:0,numPendingTestSuites:0,numTotalTests:count,numPassedTests:count,numFailedTests:0,numPendingTests:0,numTodoTests:0,testResults:[{name:path.join(process.cwd(),file),status:'passed',assertionResults:Array.from({length:count},(_,i)=>({title:file+' '+i,status:'passed',failureMessages:[]}))}]};
+if(${JSON.stringify(roteDateien)}.includes(file)){
+  report.success=false;report.numPassedTestSuites=0;report.numFailedTestSuites=1;
+  report.numPassedTests=count-1;report.numFailedTests=1;report.testResults[0].status='failed';
+  Object.assign(report.testResults[0].assertionResults[0],{status:'failed',failureMessages:['synthetischer fachlicher Rotbefund '+file]});
+}
+if(file===${JSON.stringify(inkonsistent)})report.numTotalTests++;
+const raw=args.find(arg=>arg.startsWith('--outputFile=')).slice('--outputFile='.length);
+if(file!==${JSON.stringify(fehlend)})fs.writeFileSync(raw,JSON.stringify(report),{flag:'wx'});
+fs.appendFileSync(events,JSON.stringify({event:'end',file,pid:process.pid})+'\n');
+process.exitCode=report.success?0:1;
+`,
+      { mode: 0o755 },
+    );
+    return work;
+  }
+
+  const programm = String.raw`
+import assert from 'node:assert/strict';
+import {readFileSync,existsSync} from 'node:fs';
+import {join} from 'node:path';
+const m=await import(process.argv[1]);
+const {assertTests,hash}=await import(new URL('./release.mjs',process.argv[1]));
+const work=process.argv[2],out=join(work,'out');
+process.env.PATH=join(work,'bin')+':'+process.env.PATH;
+process.env.KLARWERK_PG_PFLICHT='1';
+const result=m.runPgSelection(work,'b'.repeat(40),out);
+const saved=JSON.parse(readFileSync(join(out,'pg-auswahl.json'),'utf8'));
+assert.deepEqual(saved,result);
+const events=readFileSync(join(work,'kindereignisse.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+`;
+
+  const cliProgramm = String.raw`
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {readFileSync,existsSync,symlinkSync} from 'node:fs';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const {hash}=await import(new URL('./release.mjs',process.argv[1]));
+const work=process.argv[2],out=join(work,'out'),cliPath=join(work,'tools/pg-auswahl.mjs');
+symlinkSync(fileURLToPath(process.argv[1]),cliPath);
+symlinkSync(fileURLToPath(new URL('./release.mjs',process.argv[1])),join(work,'tools/release.mjs'));
+const cli=spawnSync(process.execPath,['--preserve-symlinks-main',cliPath,'b'.repeat(40),out],{
+  cwd:work,env:{...process.env,PATH:join(work,'bin')+':'+process.env.PATH,KLARWERK_PG_PFLICHT:'1'},encoding:'utf8',timeout:20000,
+});
+assert.equal(cli.error,undefined);assert.equal(cli.signal,null);assert.equal(cli.status,1,cli.stderr);
+const result=JSON.parse(cli.stdout),saved=JSON.parse(readFileSync(join(out,'pg-auswahl.json'),'utf8'));
+assert.deepEqual(saved,result);assert.equal(result.success,false);
+const events=readFileSync(join(work,'kindereignisse.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+`;
+
+  it("setzt nach gemessenem Rot seriell fort und hält Gesamtbericht und CLI rot", () => {
+    const files = ["tests/a.integration.test.ts", "tests/b.integration.test.ts"];
+    const work = vorrichtung("pg-serie-fachlich-rot", files, "", files.slice(0, 1));
+    const run = node(
+      `${cliProgramm}
+assert.deepEqual(events.map(e=>e.event+':'+e.file),${JSON.stringify(files)}.flatMap(file=>['start:'+file,'end:'+file]),'zweite unabhängige PG-Datei wurde nicht gestartet');
+assert.equal(result.runs.length,2);assert.equal(new Set(events.map(e=>e.pid)).size,2);
+assert.equal(result.exit,1);assert(result.error.includes(${JSON.stringify(files[0])}));
+assert.deepEqual(result.runs.map(r=>r.exit),[1,0]);assert.deepEqual(result.runs.map(r=>r.success),[false,true]);
+const parts=result.runs.map((r,i)=>{
+  assert(r.actualWaitCompleted&&r.signal===null&&r.processError===null);
+  assert.equal(r.pid,events[2*i].pid);assert.equal(r.pid,events[2*i+1].pid);
+  assert.deepEqual(JSON.parse(readFileSync(join(out,'dateien',String(i+1).padStart(4,'0'),'run.json'))),r);
+  const raw=readFileSync(r.rawPath),log=readFileSync(r.logPath);assert.equal(hash(raw),r.rawSha256);assert.equal(hash(log),r.logSha256);assert(log.toString().includes(r.file));
+  return JSON.parse(raw);
+});
+assert(Date.parse(result.runs[0].endedAt)<=Date.parse(result.runs[1].startedAt));
+const raw=readFileSync(join(out,'pg.vitest.json'));assert.equal(hash(raw),result.rawSha256);const combined=JSON.parse(raw);
+assert.equal(combined.success,false);assert.deepEqual(combined.testResults,parts.flatMap(r=>r.testResults));
+assert.equal(combined.numTotalTests,5);assert.equal(combined.numPassedTests,4);assert.equal(combined.numFailedTests,1);
+assert.equal(combined.numTotalTestSuites,2);assert.equal(combined.numFailedTestSuites,1);assert.equal(combined.numPassedTestSuites,1);
+assert.equal(combined.numPendingTests,0);assert.equal(combined.numTodoTests,0);
+assert.deepEqual(combined.testResults[0].assertionResults[0].failureMessages,['synthetischer fachlicher Rotbefund '+result.files[0]]);
+assert.equal(hash(readFileSync(join(out,'pg.log'))),result.logSha256);
+`,
+      pgUrl,
+      [work],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+
+  it("stoppt nach inkonsistentem roten Rohbericht weiterhin vor der dritten Datei", () => {
+    const files = [
+      "tests/a.integration.test.ts",
+      "tests/b.integration.test.ts",
+      "tests/c.integration.test.ts",
+    ];
+    const work = vorrichtung("pg-serie-rot-inkonsistent", files, "", files.slice(0, 2), files[1]);
+    const run = node(
+      `${cliProgramm}
+assert(result.error);assert.equal(result.runs.length,2);
+assert.deepEqual(events.map(e=>e.event+':'+e.file),${JSON.stringify(files.slice(0, 2))}.flatMap(file=>['start:'+file,'end:'+file]));
+assert(!events.some(e=>e.file===${JSON.stringify(files[2])}));assert(!existsSync(join(out,'pg.vitest.json')));
+for(const [i,r]of result.runs.entries()){
+  assert(r.actualWaitCompleted&&r.exit===1&&r.signal===null&&r.processError===null);assert.equal(r.pid,events[2*i].pid);assert.equal(r.pid,events[2*i+1].pid);
+  assert.equal(hash(readFileSync(r.rawPath)),r.rawSha256);assert.equal(hash(readFileSync(r.logPath)),r.logSha256);
+  assert.deepEqual(JSON.parse(readFileSync(join(out,'dateien',String(i+1).padStart(4,'0'),'run.json'))),r);
+}
+const first=JSON.parse(readFileSync(result.runs[0].rawPath)),second=JSON.parse(readFileSync(result.runs[1].rawPath));
+assert.equal(first.numTotalTests,first.testResults[0].assertionResults.length);
+assert.equal(second.numTotalTests,second.testResults[0].assertionResults.length+1);assert(result.runs[1].error);
+`,
+      pgUrl,
+      [work],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+
+  it("wartet zwei getrennte Dateiprozesse ab und vereinigt ihre vollständigen Rohresultate", () => {
+    const files = ["tests/a.integration.test.ts", "tests/b.integration.test.ts"];
+    const work = vorrichtung("pg-serie-gruen", files);
+    const run = node(
+      `${programm}
+assert.equal(result.success,true,JSON.stringify(result));assert.deepEqual(result.files,${JSON.stringify(files)});
+assert.deepEqual(events.map(e=>e.event+':'+e.file),result.files.flatMap(file=>['start:'+file,'end:'+file]));
+assert.equal(new Set(events.map(e=>e.pid)).size,2);
+assert.equal(result.runs.length,2);assert(result.runs.every(r=>r.success&&r.actualWaitCompleted&&r.exit===0&&r.signal===null&&r.processError===null));
+assert.equal(new Set(result.runs.map(r=>r.rawPath)).size,2);assert.equal(new Set(result.runs.map(r=>r.logPath)).size,2);
+const parts=result.runs.map(r=>{const raw=readFileSync(r.rawPath);assert.equal(hash(raw),r.rawSha256);assert(readFileSync(r.logPath,'utf8').includes(r.file));return JSON.parse(raw);});
+const combinedRaw=readFileSync(join(out,'pg.vitest.json'));assert.equal(hash(combinedRaw),result.rawSha256);
+const combined=JSON.parse(combinedRaw);assertTests(combined,result.files,work);
+assert.deepEqual(combined.testResults,parts.flatMap(r=>r.testResults));
+assert.equal(combined.numTotalTests,5);assert.equal(combined.numPassedTests,5);assert.equal(combined.numTotalTestSuites,2);
+assert.throws(()=>assertTests({...combined,testResults:combined.testResults.slice(0,1)},result.files,work));
+`,
+      pgUrl,
+      [work],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+
+  it("stoppt nach unvollständigem zweiten Teil rot und bewahrt den ersten Rohbeleg", () => {
+    const files = [
+      "tests/a.integration.test.ts",
+      "tests/b.integration.test.ts",
+      "tests/c.integration.test.ts",
+    ];
+    const work = vorrichtung("pg-serie-unvollstaendig", files, files[1]);
+    const run = node(
+      `${programm}
+assert.equal(result.success,false);assert(result.error);assert.equal(result.runs.length,2);
+assert.deepEqual(events.map(e=>e.event+':'+e.file),${JSON.stringify(files.slice(0, 2))}.flatMap(file=>['start:'+file,'end:'+file]));
+const first=result.runs[0],second=result.runs[1];assert.equal(first.success,true);assert.equal(second.success,false);
+assert.equal(second.exit,0);assert.equal(second.signal,null);assert.equal(second.processError,null);assert.equal(second.actualWaitCompleted,true);
+const raw=readFileSync(first.rawPath);assert.equal(hash(raw),first.rawSha256);assertTests(JSON.parse(raw),[first.file],work);
+assert(readFileSync(first.logPath,'utf8').includes(first.file));assert(existsSync(second.logPath));assert(!existsSync(second.rawPath));
+assert(!existsSync(join(out,'pg.vitest.json')));assert(!events.some(e=>e.file==='tests/c.integration.test.ts'));
+`,
+      pgUrl,
+      [work],
+    );
+    expect(run.status, run.stderr).toBe(0);
   });
 });

@@ -1,7 +1,6 @@
 import type { Pool } from "pg";
-import type { BildKorrekturStand } from "./assistenz-bildkorrekturen";
 import type { EigeninitiativeStand } from "./assistenz-eigeninitiative";
-import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten";
+import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten-typen";
 import type { TastenkuerzelStand } from "./assistenz-tastenkuerzel";
 import { type KlaraEinfuehrungStand, pruefeEinfuehrung } from "./klara-einfuehrung";
 
@@ -44,6 +43,22 @@ export type AssistenzAvatar = (typeof ASSISTENZ_AVATARE)[number];
 export type AssistenzBewegung = "standard" | "reduziert";
 
 export const ASSISTENZ_NAME_MAX = 40;
+
+export interface BildKorrekturEintrag {
+  readonly quelle: string;
+  readonly inhaltskennung: string;
+  /** Die Stelle des Bildes in der Quelle (nur zur Anzeige, z. B. `f2-b1`) — keine Bindung. */
+  readonly ort: string | null;
+  /** Der berichtigte Text. */
+  readonly text: string;
+  /** Frühere berichtigte Fassungen, die älteste zuerst — „Rückgängig“ nimmt die letzte. */
+  readonly vorher: readonly string[];
+  readonly geaendertAm: string;
+}
+
+export interface BildKorrekturStand {
+  readonly eintraege: readonly BildKorrekturEintrag[];
+}
 
 export interface AssistenzProfil {
   kontoId: string;

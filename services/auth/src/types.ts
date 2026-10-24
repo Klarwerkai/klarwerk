@@ -8,6 +8,23 @@ export type Role = "viewer" | "experte" | "controller" | "admin";
  */
 export type Freigabestufe = "intern" | "vertraulich" | "streng_vertraulich";
 
+export interface SessionUser {
+  id: string;
+  role: Role;
+  /**
+   * produkt:20261007:spaces — die Spaces, deren Inhalte dieser Mensch lesen darf, EINMAL je Anfrage
+   * erhoben (`makeGuards`, Option `spaceLesbar`). Ausgewertet allein in `sichtbarkeit.ts`. FEHLT das
+   * Feld (ein Aufbau ohne Spaces), ist kein Objekt mit führendem Space sichtbar — fail-closed.
+   */
+  spaceLesbar?: ReadonlySet<string>;
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche
+   * Freigabeniveau aus dem Konto. Ausgewertet allein in `sichtbarkeit.ts` (`freigaberang`); fehlt
+   * es, gilt dort die Übergangsregel.
+   */
+  freigabe?: Freigabestufe;
+}
+
 export function istFreigabestufe(wert: unknown): wert is Freigabestufe {
   return wert === "intern" || wert === "vertraulich" || wert === "streng_vertraulich";
 }

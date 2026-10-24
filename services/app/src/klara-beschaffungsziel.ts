@@ -1,7 +1,11 @@
 import { canonicalJson } from "../../audit";
-import { KlaraAuftragFehler, type KlaraPlanSchritt } from "./klara-auftrag";
+import { KlaraAuftragFehler, type KlaraPlanSchritt } from "./klara-auftragsvertrag";
 import { istDatum } from "./klara-erinnerung-zeit";
-import { AUSSENAKTIONEN, BESCHAFFUNG_PARAMETER, QUELLENREGEL } from "./persoenliche-funktionen";
+import {
+  AUSSENAKTIONEN,
+  BESCHAFFUNG_PARAMETER,
+  QUELLENREGEL,
+} from "./persoenliche-funktionsvertrag";
 
 /** Begrenzter Einzelfall im vorhandenen Auftragsjournal, kein Einkaufsstamm oder eigener Planer. */
 export interface KlaraBeschaffungsziel {

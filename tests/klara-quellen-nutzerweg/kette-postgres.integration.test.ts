@@ -50,12 +50,13 @@
 // Ein stiller Skip saehe aus wie ein bestandener Lauf.
 import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   type Aufbau,
   BELEGSTELLE,
   type Draht,
+  type Konto,
   ORIGINALNAME,
   ORIGINALTEXT,
   QUELLENBEZEICHNUNG,
@@ -81,8 +82,10 @@ import { createPool, migrate } from "../../services/app/src/db";
 const ERFUNDEN = "gibt-es-nicht-4224-pg";
 
 let container: StartedTestContainer | null = null;
-/** Nur für das Abräumen: kann gesetzt sein, während `pool` (der Prüfschalter) null bleibt. */
-let aufraeumPool: Pool | null = null;
+/** Auch ein Fallpool mit gescheiterter Migration wird vor dem Container abgeräumt. */
+const aufraeumPools: Pool[] = [];
+let basisUrl: string | null = null;
+let datenbanklauf = 0;
 /**
  * Der EINE Schalter der Datei: nicht null heißt „Container da UND `migrate` durch". Er wird erst
  * nach der Migration gesetzt, damit ein halber Aufbau (Container steht, Schema fehlt) nicht als
@@ -90,6 +93,7 @@ let aufraeumPool: Pool | null = null;
  */
 let pool: Pool | null = null;
 let draht: Draht;
+let ersterAdmin: Konto | undefined;
 
 beforeAll(async () => {
   draht = drahtAufbauen();
@@ -99,10 +103,7 @@ beforeAll(async () => {
       .withExposedPorts(5432)
       .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
       .start();
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
-    aufraeumPool = createPool(url);
-    await migrate(aufraeumPool);
-    pool = aufraeumPool;
+    basisUrl = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}`;
   } catch (fehler) {
     const grund = fehler instanceof Error ? fehler.message : String(fehler);
     process.stderr.write(
@@ -111,10 +112,34 @@ beforeAll(async () => {
   }
 }, 180_000);
 
+// Jeder Fachfall hat eigenen Bestand; die beiden Apps in PG3 teilen weiterhin dessen Datenbank.
+beforeEach(async () => {
+  pool = null;
+  ersterAdmin = undefined;
+  const c = container;
+  const url = basisUrl;
+  if (!c || !url) {
+    return;
+  }
+  const datenbank = `klarwerk_4224_pg_test_${++datenbanklauf}`;
+  const angelegt = await c.exec(["createdb", "-U", "postgres", datenbank]);
+  expect(angelegt.exitCode, angelegt.output).toBe(0);
+  const p = createPool(`${url}/${datenbank}`);
+  aufraeumPools.push(p);
+  await migrate(p);
+  pool = p;
+});
+
 afterAll(async () => {
   draht?.abbauen();
-  await aufraeumPool?.end();
-  await container?.stop();
+  const poolEnden = await Promise.allSettled(aufraeumPools.map((p) => p.end()));
+  const containerEnde = await Promise.allSettled([container?.stop()]);
+  const fehler = [...poolEnden, ...containerEnde]
+    .filter((e): e is PromiseRejectedResult => e.status === "rejected")
+    .map((e) => e.reason);
+  if (fehler.length > 0) {
+    throw new AggregateError(fehler, "PG-Kette konnte nicht vollständig abgebaut werden");
+  }
 });
 
 async function pgApp(): Promise<Aufbau> {
@@ -122,7 +147,8 @@ async function pgApp(): Promise<Aufbau> {
   if (!p) {
     throw new Error("kein Pool");
   }
-  const a = await appAufbauen(false, () => buildPgServices(p));
+  const a = await appAufbauen(false, () => buildPgServices(p), undefined, ersterAdmin);
+  ersterAdmin ??= a.admin;
   draht.setzeApp(a.app);
   return a;
 }
@@ -225,8 +251,7 @@ describe("JOB 4224 · D5 · PG — dieselbe Kette auf echtem PostgreSQL", () => 
     const leser = await neuesKonto(erste.app, "leser", erste.admin);
     await erste.app.close();
 
-    const zweite = await appAufbauen(false, () => buildPgServices(pool as Pool));
-    draht.setzeApp(zweite.app);
+    const zweite = await pgApp();
     const weg = originalweg(koAus(await kosLesen(zweite.app, leser), eintrag.koId), "de");
     expect(weg.quellen[0]?.datei?.objectId, "der Anker hat den Neustart nicht überlebt").toBe(
       eintrag.objectId,

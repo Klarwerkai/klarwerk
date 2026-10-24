@@ -2,9 +2,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ermittleBrowserbefund } from "../tests/tor-inventar/browser-gruppe.ts";
 import { assessFindings, assessStage, policyHash } from "./release-ausnahmen.mjs";
 import { releaseVertrag as contract } from "./release-vertrag.mjs";
 export { policyHash } from "./release-ausnahmen.mjs";
@@ -40,7 +41,19 @@ export function git(root, ...args) {
   assert.equal(run.status, 0, `git ${args[0]}: ${run.stderr}`);
   return run.stdout.trim();
 }
+function browserSelection(paths) {
+  return ermittleBrowserbefund(
+    paths.filter(
+      (p) =>
+        /\.test\.tsx?$/.test(p) &&
+        !p.endsWith(".integration.test.ts") &&
+        !contract.deferredTests.some((d) => d.path === p) &&
+        existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "..", p)),
+    ),
+  );
+}
 export function selection(paths) {
+  const { browserTests } = browserSelection(paths);
   return [
     ...new Set([
       ...contract.causalTests,
@@ -48,13 +61,26 @@ export function selection(paths) {
         (p) =>
           /\.test\.tsx?$/.test(p) &&
           !p.endsWith(".integration.test.ts") &&
-          !contract.deferredTests.some((d) => d.path === p),
+          !contract.deferredTests.some((d) => d.path === p) &&
+          !browserTests.includes(p),
       ),
     ]),
   ].sort();
 }
 export function deferredSelection(paths) {
-  return contract.deferredTests.filter((d) => paths.includes(d.path));
+  const { browserTests, ketten } = browserSelection(paths);
+  const diagnosis = contract.deferred.find((d) => d.name === "Volltor und Browserdiagnosen");
+  return [
+    ...contract.deferredTests.filter((d) => paths.includes(d.path)),
+    ...browserTests.map((path) => ({
+      path,
+      owner: diagnosis.owner,
+      withinHours: diagnosis.withinHours,
+      diagnosis: diagnosis.name,
+      reason: "AST-Importkette zu Playwright; Browserdiagnose steht noch aus.",
+      importChain: ketten.get(path),
+    })),
+  ];
 }
 export function integrationSelection(paths) {
   return paths.filter((p) => p.endsWith(".integration.test.ts")).sort();

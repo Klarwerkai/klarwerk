@@ -1,6 +1,24 @@
 import type { DokumentHerkunft } from "./dokumentakte";
 import type { KoGeltung } from "./geltung";
-import type { NegativwissenAngaben } from "./negativwissen";
+
+export type NegativwissenBezug = "personen" | "kunden" | "produktion" | "qualitaet";
+
+export interface NegativwissenAngaben {
+  /** Was hat den Fall ausgelöst? */
+  incidentTrigger?: string;
+  /** Welche Annahme war falsch / was wurde vorher gemacht? */
+  mistakePattern?: string;
+  /** Welche Auswirkungen hatte es? */
+  impact?: string;
+  /** Wie wurde es behoben? */
+  recoveryAction?: string;
+  /** Was sollten wir künftig vermeiden? */
+  avoidanceRule?: string;
+  /** Welche Warnsignale gab es? Eines je Eintrag, in Eingabereihenfolge, ohne Doppelte. */
+  earlyWarningSigns: string[];
+  /** Art des Bezugs (nie ein Name). Leer = kein schutzbedürftiger Bezug angegeben. */
+  bezug: NegativwissenBezug[];
+}
 
 // FR-KO-02: fünf Wissensarten (Pflichtenheft §3.5).
 export type KnowledgeType =

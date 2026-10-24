@@ -57,6 +57,35 @@ export default {root:${JSON.stringify(work)},test:{...base.test,include:['probe.
 }
 
 describe("Welle1: Pflichtmodus ist unabhängig vom gewählten Reporter", () => {
+  it("beforeAll-Originalfehler bleibt mit eigenem Reporter ohne zweiten PG-Pflichtfehler rot", () => {
+    const run = fixture(
+      "vitest.integration.config.ts",
+      "import {beforeAll} from 'vitest';beforeAll(()=>{throw new Error('PG-ORIGINAL-BEFOREALL');});it('synthetisch',()=>{});",
+      ["--reporter=dot"],
+    );
+    const ausgabe = `${run.stdout}\n${run.stderr}`;
+    expect(run.error, ausgabe).toBeUndefined();
+    expect(run.signal, ausgabe).toBeNull();
+    expect(run.status, ausgabe).not.toBeNull();
+    expect(run.status, ausgabe).not.toBe(0);
+    expect(ausgabe).toContain("PG-ORIGINAL-BEFOREALL");
+    expect(ausgabe).not.toContain("PG-Pflicht verletzt");
+  });
+  it("Assertion-Originalfehler bleibt mit eigenem Reporter ohne zweiten PG-Pflichtfehler rot", () => {
+    const run = fixture(
+      "vitest.integration.config.ts",
+      "it('synthetisch',()=>expect('PG-ORIGINAL-ASSERTION-IST').toBe('PG-ORIGINAL-ASSERTION-SOLL'));",
+      ["--reporter=dot"],
+    );
+    const ausgabe = `${run.stdout}\n${run.stderr}`;
+    expect(run.error, ausgabe).toBeUndefined();
+    expect(run.signal, ausgabe).toBeNull();
+    expect(run.status, ausgabe).not.toBeNull();
+    expect(run.status, ausgabe).not.toBe(0);
+    expect(ausgabe).toContain("PG-ORIGINAL-ASSERTION-IST");
+    expect(ausgabe).toContain("PG-ORIGINAL-ASSERTION-SOLL");
+    expect(ausgabe).not.toContain("PG-Pflicht verletzt");
+  });
   it.each(["vitest.config.ts", "vitest.browser.config.ts", "vitest.integration.config.ts"])(
     "%s: synthetische Positivprobe bleibt erfolgreich",
     (config) => {

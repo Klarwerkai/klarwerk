@@ -16,8 +16,9 @@ describe("Vorschau-Reichweite · alte Fläche für die Rücknahme", () => {
     bereiteAlteQuelle(ziel);
     const blatt = readFileSync(join(ziel, "apps/web/src/components/erfassen/Blatt.tsx"), "utf8");
     expect(blatt).toContain('"erfassen.live.neu"');
-    expect(blatt).not.toContain("vorschau.");
+    expect(blatt).not.toMatch(/["'`]vorschau\./);
     // Nur diese Änderung ist zurückgenommen: der übrige heutige Stand des Blatts steht noch da.
     expect(blatt).toContain('data-testid="blatt-titel-voll"');
+    expect(blatt).toContain('t("wordvorschau.menu")');
   }, 120_000);
 });

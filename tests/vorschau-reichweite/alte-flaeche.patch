@@ -1,8 +1,8 @@
 diff --git a/apps/web/src/api/types.ts b/apps/web/src/api/types.ts
-index c0182a63..18137416 100644
+index 0ded38a15366eb18ee16ecd5a49f6da9b31cef80..7f99c32d6f9db690953ef7243df87ad6199ab2f6 100644
 --- a/apps/web/src/api/types.ts
 +++ b/apps/web/src/api/types.ts
-@@ -173,17 +173,8 @@ export interface KnowledgeCheckResult {
+@@ -207,17 +207,8 @@ export interface KnowledgeCheckResult {
      koStatus: KoStatus | null;
      koCategory: string | null;
    }[];
@@ -21,18 +21,19 @@ index c0182a63..18137416 100644
    objectId: string;
    transcript: string | null;
 diff --git a/apps/web/src/components/capture/intake/LiveReactionZone.tsx b/apps/web/src/components/capture/intake/LiveReactionZone.tsx
-index 9d36879e..3643c28c 100644
+index 316ca05d79f405663577a1672923a61470960e6c..84e5f6588912e5a9ac10427811ad0240ebef8fd2 100644
 --- a/apps/web/src/components/capture/intake/LiveReactionZone.tsx
 +++ b/apps/web/src/components/capture/intake/LiveReactionZone.tsx
-@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
+@@ -2,8 +2,7 @@ import { useTranslation } from "react-i18next";
  import { Link } from "react-router-dom";
  import type { KoStatus } from "../../../api/types";
  import type { LiveVerdict } from "../../../lib/intakeSimilarity";
 -import { umfangErklaerung } from "../../../lib/vorschauUmfang";
+ import { WISSENSSTATUS_BESTAETIGT } from "../../../lib/wissensstatus";
  import { StatusPill } from "../../trust/StatusPill";
  
  // JOB 3045: DIE FUNDORTZEILE — wo der Treffer liegt (Kategorie) und wie er dasteht (Zustand).
-@@ -54,7 +53,7 @@ function Fundort({
+@@ -69,7 +68,7 @@ function Fundort({
  
  // SCRUM-527 (WP2-Design): die „Das System denkt mit"-Zone — die Hauptattraktion, kein grauer Spinner.
  // Sie reagiert sichtbar/lebendig auf den Entwurfstext: idle (hört zu), checking (ehrlicher Lauf-Zustand
@@ -41,7 +42,7 @@ index 9d36879e..3643c28c 100644
  // Präsentation: der Verdict kommt vom gekapselten Hook (useLiveKnowledgeCheck) bzw. im Test gemockt.
  //
  // JOB 3556 (LIVE-CHECK-VERDRAHTUNG A) — DIESE ZONE SPRICHT NICHT MEHR ÜBER DEN PRÜFSTATUS.
-@@ -64,11 +63,6 @@ function Fundort({
+@@ -79,11 +78,6 @@ function Fundort({
  // entfernt, und der TYP hält es fest: was diese Zone nicht mehr darstellen kann, kann ihr auch
  // niemand mehr übergeben. Ein unerreichbarer Zweig wäre sonst genau die Leiche, die beim nächsten
  // Umbau wieder mitgepflegt wird.
@@ -53,7 +54,7 @@ index 9d36879e..3643c28c 100644
  export function LiveReactionZone({
    verdict,
  }: {
-@@ -85,19 +79,15 @@ export function LiveReactionZone({
+@@ -100,19 +94,15 @@ export function LiveReactionZone({
            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ai [animation-delay:150ms]" />
            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ai [animation-delay:300ms]" />
          </span>
@@ -78,7 +79,7 @@ index 9d36879e..3643c28c 100644
      );
    }
 diff --git a/apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts b/apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts
-index 7dea5f25..c19a2605 100644
+index 7dea5f25fb3e9ca02662687c789b00100c58fb17..c19a26052b65c8392cc588fe34efbb90e29c9f21 100644
 --- a/apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts
 +++ b/apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts
 @@ -1,4 +1,4 @@
@@ -137,18 +138,19 @@ index 7dea5f25..c19a2605 100644
 -  return { kind: "unknown" };
 -}
 diff --git a/apps/web/src/components/erfassen/Blatt.tsx b/apps/web/src/components/erfassen/Blatt.tsx
-index da90a288..c7e49ac9 100644
+index 27ef8f7e1e3717add85629dea4969a50d33e0ccf..68dbebc86eface9489f412268de308f09cafb85e 100644
 --- a/apps/web/src/components/erfassen/Blatt.tsx
 +++ b/apps/web/src/components/erfassen/Blatt.tsx
-@@ -71,7 +71,6 @@ import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
+@@ -86,8 +86,7 @@ import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
  import { type Speicherzustand, speicherzustand } from "../../lib/speicherzustand";
  import type { TitelMitQuelle } from "../../lib/titelRangfolge";
  import { useAiBillable } from "../../lib/useAiBillable";
 -import { umfangKurz } from "../../lib/vorschauUmfang";
  import { AiAssistInstructions } from "../AiAssistBox";
+ import { AiAusfuehrerZeile } from "../AiAusfuehrerZeile";
  import { AiCostHint } from "../AiCostHint";
  import { AiGeneratedNotice } from "../AiGeneratedNotice";
-@@ -646,7 +645,7 @@ export function Blatt({
+@@ -959,7 +958,7 @@ export function Blatt({
          : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
      [declaredConfidentiality, activeDraftId],
    );
@@ -157,7 +159,7 @@ index da90a288..c7e49ac9 100644
      liveText,
      livePruefHerkunft,
      gespeicherterStand,
-@@ -661,13 +660,6 @@ export function Blatt({
+@@ -974,13 +973,6 @@ export function Blatt({
            nl: "Nog niet op tegenstrijdigheid gecontroleerd.",
          }[toReasonerLocale(i18n.language)]
        : t("intake.live.unavailable");
@@ -171,7 +173,7 @@ index da90a288..c7e49ac9 100644
  
    // Die Bereiche kommen aus dem BESTAND, nicht aus einer erfundenen Liste: was es im Haus gibt,
    // steht zur Wahl. Fehlt der Bestand noch, sagt das Menü das (Zustandsmodell §9), statt eine
-@@ -2914,15 +2906,7 @@ export function Blatt({
+@@ -3833,15 +3825,7 @@ export function Blatt({
                {liveAusfallSatz}
              </output>
            ) : null}
@@ -188,11 +190,11 @@ index da90a288..c7e49ac9 100644
            verdict.status === "similar" ||
            verdict.status === "conflict" ? (
              <div data-testid="blatt-live-chip" data-lage={verdict.status} className="w-fit">
-@@ -2932,15 +2916,12 @@ export function Blatt({
+@@ -3851,15 +3835,12 @@ export function Blatt({
                  onClick={() => setLiveOffen((v) => !v)}
                  className="inline-flex w-fit items-center gap-1.5 rounded-[999px] border border-hairline bg-page px-2.5 py-1 text-[12px] text-muted hover:text-text"
                >
--                <span className="font-semibold uppercase text-[10.5px]">{t("vorschau.name")}</span>
+-                <span className="font-semibold uppercase text-klein">{t("vorschau.name")}</span>
                  {verdict.status === "conflict"
                    ? t("erfassen.live.widerspruch")
                    : verdict.status === "similar"
@@ -207,7 +209,7 @@ index da90a288..c7e49ac9 100644
                  )}
                </button>
 diff --git a/apps/web/src/hooks/useLiveKnowledgeCheck.ts b/apps/web/src/hooks/useLiveKnowledgeCheck.ts
-index 4db64db3..c2817fa5 100644
+index 361e668d9d8058d7d79417d7d358950fd9abd94f..a3de64ac79005588b59c3578bb57e1811392e3f3 100644
 --- a/apps/web/src/hooks/useLiveKnowledgeCheck.ts
 +++ b/apps/web/src/hooks/useLiveKnowledgeCheck.ts
 @@ -1,19 +1,12 @@
@@ -232,7 +234,7 @@ index 4db64db3..c2817fa5 100644
  }
  
  // JOB 3556: Die Herkunft gehört zur FRAGE, nicht nur zur Antwort — derselbe Text mit einer anderen
-@@ -66,7 +59,6 @@ export function useLiveKnowledgeCheck(
+@@ -76,7 +69,6 @@ export function useLiveKnowledgeCheck(
      schluessel: "\n\n",
      checkStatus: "idle",
      verdict: { status: "idle" },
@@ -240,7 +242,7 @@ index 4db64db3..c2817fa5 100644
    });
  
    // `herkunft` ist bei jedem Rendern ein NEUES Objekt (`draftProvenance(...)`); als Abhängigkeit
-@@ -76,15 +68,10 @@ export function useLiveKnowledgeCheck(
+@@ -86,15 +78,10 @@ export function useLiveKnowledgeCheck(
    // biome-ignore lint/correctness/useExhaustiveDependencies: Begründung eine Zeile höher.
    useEffect(() => {
      if (clean.length < INTAKE_MIN_LENGTH) {
@@ -258,7 +260,7 @@ index 4db64db3..c2817fa5 100644
      let cancelled = false;
      const handle = setTimeout(async () => {
        try {
-@@ -96,15 +83,10 @@ export function useLiveKnowledgeCheck(
+@@ -107,15 +94,10 @@ export function useLiveKnowledgeCheck(
          const verdict = mapKnowledgeCheck(
            checkStatus === "done" ? result : { ...result, conflicts: [] },
          );
@@ -276,7 +278,7 @@ index 4db64db3..c2817fa5 100644
          }
        }
      }, debounceMs);
-@@ -118,7 +100,7 @@ export function useLiveKnowledgeCheck(
+@@ -129,7 +111,7 @@ export function useLiveKnowledgeCheck(
    // nicht mehr.
    if (state.schluessel !== schluessel) {
      const status = clean.length < INTAKE_MIN_LENGTH ? "idle" : "checking";
@@ -286,16 +288,16 @@ index 4db64db3..c2817fa5 100644
    return state;
  }
 diff --git a/apps/web/src/lib/intakeSimilarity.ts b/apps/web/src/lib/intakeSimilarity.ts
-index d94a6070..a48a2d87 100644
+index a66b1f433ab903e224098ec52f2775618030b7a0..698159290cc8fa332a18f60f65b6b2f2da48596b 100644
 --- a/apps/web/src/lib/intakeSimilarity.ts
 +++ b/apps/web/src/lib/intakeSimilarity.ts
 @@ -1,4 +1,4 @@
--import type { KnowledgeCheckCoverage, KnowledgeObject, KoStatus } from "../api/types";
-+import type { KnowledgeObject, KoStatus } from "../api/types";
+-import type { KnowledgeCheckCoverage, KoStatus } from "../api/types";
++import type { KoStatus } from "../api/types";
  
  // SCRUM-527 (WP2-Design): die Live-Reaktion braucht eine ehrliche Einschätzung „neu vs. ähnlich" schon
- // WÄHREND des Tippens. Es gibt (Stand 0b-Kartierung) KEINEN dedizierten Pro-Text-Ähnlichkeits-/
-@@ -9,11 +9,8 @@ import type { KnowledgeCheckCoverage, KnowledgeObject, KoStatus } from "../api/t
+ // WÄHREND des Tippens. Damals gab es (Stand 0b-Kartierung) KEINEN dedizierten Pro-Text-Ähnlichkeits-/
+@@ -8,11 +8,8 @@ import type { KnowledgeCheckCoverage, KoStatus } from "../api/t
  export type LiveVerdict =
    | { status: "idle" }
    | { status: "checking" }
@@ -309,28 +311,9 @@ index d94a6070..a48a2d87 100644
    // G-2-EHRLICHKEIT (SCRUM-527): der Server hat NICHT auf Widerspruch geprüft (kein Modell/Cloud, weil
    // der Freitext unklassifiziert/vertraulich ist). Das ist NICHT „neu" — es ist „noch nicht geprüft".
    | { status: "pending" }
-@@ -75,9 +72,8 @@ export function textSimilarity(left: string, right: string): number {
- }
- 
- // Klassifiziert den Entwurfstext gegen den Bestand: idle (zu kurz) · similar (bester Treffer über
--// Schwelle) · empty. „checking"/„conflict" werden hier NICHT erzeugt (der Hook setzt checking; conflict
--// bleibt dem serverseitigen Check vorbehalten). Der Umfang dieses Wegs ist der geladene Bestand, und
--// ob der vollständig ist, weiss diese Funktion nicht — deshalb `unknown` (Vorschau-Reichweite).
-+// Schwelle) · new. „checking"/„conflict" werden hier NICHT erzeugt (der Hook setzt checking; conflict
-+// bleibt dem serverseitigen Check vorbehalten).
- export function classifyIntake(
-   text: string,
-   kos: readonly KnowledgeObject[] | undefined,
-@@ -105,5 +101,5 @@ export function classifyIntake(
-   if (best && best.score >= INTAKE_SIMILAR_THRESHOLD) {
-     return { status: "similar", match: best };
-   }
--  return { status: "empty", coverage: { kind: "unknown" } };
-+  return { status: "new" };
- }
 diff --git a/apps/web/src/lib/vorschauUmfang.ts b/apps/web/src/lib/vorschauUmfang.ts
 deleted file mode 100644
-index 25b48df8..00000000
+index 25b48df87d6dba0ac585c6a410a03d1761294018..0000000000000000000000000000000000000000
 --- a/apps/web/src/lib/vorschauUmfang.ts
 +++ /dev/null
 @@ -1,32 +0,0 @@
@@ -368,7 +351,7 @@ index 25b48df8..00000000
 -}
 diff --git a/apps/web/src/texte/vorschau.ts b/apps/web/src/texte/vorschau.ts
 deleted file mode 100644
-index a28d4f8b..00000000
+index a28d4f8b5d7d0cb446cf564f9cc76d1a19e66adf..0000000000000000000000000000000000000000
 --- a/apps/web/src/texte/vorschau.ts
 +++ /dev/null
 @@ -1,81 +0,0 @@

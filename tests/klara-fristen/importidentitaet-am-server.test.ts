@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { KoSource } from "../../services/knowledge-object";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 import {
   FRISTEN_PRUEFSTAND,
   type FristenRegel,
   verarbeiteFristenQuelle,
 } from "../../services/app/src/klara-fristen";
-import { erkenneFristen, type FristenQuelle } from "../../services/app/src/klara-fristen-erkennung";
+import { type FristenQuelle, erkenneFristen } from "../../services/app/src/klara-fristen-erkennung";
+import type { KoSource } from "../../services/knowledge-object";
 import { type Konto, neuesKonto } from "../klara-quellen-nutzerweg/kette";
 
 let s: ReturnType<typeof assembleServices>;

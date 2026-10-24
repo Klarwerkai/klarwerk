@@ -1,7 +1,17 @@
 // RT-001 (bens Sammel-Review 3): anbieterneutrale, strukturierte Fehlerklasse eines Judge-Versuchs
 // (nur Klasse + optionaler HTTP-Status — nie Rohmeldung/Secret/Provider-Detail) reist bis zum Runner.
 import type { AiGeneratedMark } from "../../model-runs";
-import type { ModelFailureClass, ModelFailureInfo } from "./model-errors";
+
+// AUFTRAG-mega4 Block D (bens Sammel-Review 4): „unknown" ist der ehrliche Rückfall für einen
+// uneingeordneten geworfenen Fehler. Er darf NICHT als „network" verkleidet werden — sonst meldet die
+// nutzerseitige Ableitung (reasonFromModelFailure: network → unreachable) „Anbieter nicht erreichbar",
+// obwohl dafür kein Netzbeleg existiert. „unknown" bleibt beim generischen „model-error".
+export type ModelFailureClass = "timeout" | "http" | "network" | "parse" | "unknown";
+
+export interface ModelFailureInfo {
+  failureClass: ModelFailureClass;
+  status?: number;
+}
 
 // SCRUM-88 / FR-I18N-01: sprachbewusste Reasoner-Steuerung. Steuert Prompting, Interview-Fragen
 // und Step-Labels — NICHT den Quelleninhalt.

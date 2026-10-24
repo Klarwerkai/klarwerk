@@ -10,45 +10,23 @@ import {
 import { can } from "../../rbac";
 import { kernaussageAusKlartext } from "../../structure";
 import type { SessionUser } from "./http";
-import type { PrivateBesprechung } from "./klara-besprechung";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
+import type { KlaraWissensHerkunft } from "./klara-wissensherkunft-typen";
+import {
+  WissensFehler,
+  type WissensZiel,
+  liste,
+  objekt,
+  text,
+  wissensZiel,
+} from "./klara-wissensziel";
 import { darfSehen } from "./sichtbarkeit";
 import { type SpacesRepo, darfInSpaceSchreiben, darfSpaceInhalteLesen } from "./spaces";
 import type { VorlagenEinreichungPort } from "./vorlagen";
 
-/** Serverseitige Herkunft am privaten Original. Keine Übernahme eines fremden Chatverlaufs. */
-export interface KlaraWissensHerkunft {
-  besprechung?: PrivateBesprechung;
-  projekt: string;
-  abschnitt: string;
-  antwortFassung: string;
-  anbieter: string | null;
-  modell: string | null;
-  vorherigeNotiz: string | null;
-  textAbdruck: string;
-  aussagen: {
-    text: string;
-    art: "behauptung" | "empfehlung" | "kreativ" | "nutzerentscheidung";
-    quellen: { id: string; fassung: number }[];
-  }[];
-}
-export interface WissensZiel {
-  art: "artikel" | "space";
-  spaceId?: string;
-  confidentiality: "intern" | "vertraulich" | "streng_vertraulich";
-  type: CreateKoInput["type"];
-  category: string;
-  conditions: string[];
-  vorlage?: { id: string; version: number };
-}
-export class WissensFehler extends Error {
-  constructor(
-    readonly status: 400 | 403 | 404 | 409,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export type { KlaraWissensHerkunft };
+export type { WissensZiel };
+export { WissensFehler };
 const abdruck = (text: string) => createHash("sha256").update(text).digest("hex");
 /** Gemeinsame bestehende F08-Identität für Anlage und rein lesenden Journalreadback. */
 export const wissensUebernahmeVorgang = (id: string, fassung: number) =>
@@ -59,47 +37,7 @@ const html = (text: string) =>
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
-function text(x: unknown, max: number, kuerzen = true): string {
-  if (typeof x !== "string" || !x.trim() || x.length > max)
-    throw new WissensFehler(400, "Ungültige oder fehlende Textangabe.");
-  return kuerzen ? x.trim() : x;
-}
-function liste(x: unknown): unknown[] {
-  if (!Array.isArray(x) || x.length > 50) throw new WissensFehler(400, "Ungültige Liste.");
-  return x;
-}
-function objekt(x: unknown): Record<string, unknown> {
-  if (!x || typeof x !== "object" || Array.isArray(x))
-    throw new WissensFehler(400, "Objekt erwartet.");
-  return x as Record<string, unknown>;
-}
-export function wissensZiel(roh: unknown): WissensZiel {
-  const x = objekt(roh);
-  if (x.art !== "artikel" && x.art !== "space")
-    throw new WissensFehler(400, "Artikel oder Space wählen.");
-  if (!["intern", "vertraulich", "streng_vertraulich"].includes(String(x.confidentiality)))
-    throw new WissensFehler(400, "Sichtbarkeit bewusst wählen.");
-  if (
-    !["bauchgefuehl", "best_practice", "lernkurve", "technik", "negativwissen"].includes(
-      String(x.type),
-    )
-  )
-    throw new WissensFehler(400, "Wissensart wählen.");
-  const vorlage = x.vorlage === undefined ? undefined : objekt(x.vorlage);
-  if (vorlage && (!Number.isInteger(vorlage.version) || Number(vorlage.version) < 1))
-    throw new WissensFehler(400, "Vorlagenfassung fehlt.");
-  return {
-    art: x.art,
-    ...(x.art === "space" ? { spaceId: text(x.spaceId, 200) } : {}),
-    confidentiality: x.confidentiality as WissensZiel["confidentiality"],
-    type: x.type as WissensZiel["type"],
-    category: text(x.category, 200),
-    conditions: liste(x.conditions ?? []).map((v) => text(v, 500)),
-    ...(vorlage
-      ? { vorlage: { id: text(vorlage.id, 200), version: Number(vorlage.version) } }
-      : {}),
-  };
-}
+export { wissensZiel };
 export interface WissensDienste {
   notizen: KlaraNotizRepo;
   ko: KoService;

@@ -189,6 +189,7 @@ describe(
         statement: `Fiktiver Artikel mit ${endung}-Anhang.`,
         type: "best_practice",
         category: "Testanlage",
+        confidentiality: "intern",
         author: "anna",
       });
       const mitAnhang = await ko.addAttachment(artikel.id, "anna", {

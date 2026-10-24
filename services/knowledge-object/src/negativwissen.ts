@@ -19,9 +19,9 @@
 // OPTIONAL UND OHNE MIGRATION: das Objekt liegt als Voll-JSONB. Fehlt das Feld, ist der Fall nicht
 // geführt erfasst worden (Altbestand, andere Wissensart) — es wird nichts abgeleitet.
 import { confidentialityRank } from "./confidentiality";
-import type { Confidentiality } from "./types";
+import type { Confidentiality, NegativwissenAngaben, NegativwissenBezug } from "./types";
 
-export type NegativwissenBezug = "personen" | "kunden" | "produktion" | "qualitaet";
+export type { NegativwissenBezug, NegativwissenAngaben };
 
 export const NEGATIVWISSEN_BEZUEGE: readonly NegativwissenBezug[] = [
   "personen",
@@ -29,23 +29,6 @@ export const NEGATIVWISSEN_BEZUEGE: readonly NegativwissenBezug[] = [
   "produktion",
   "qualitaet",
 ];
-
-export interface NegativwissenAngaben {
-  /** Was hat den Fall ausgelöst? */
-  incidentTrigger?: string;
-  /** Welche Annahme war falsch / was wurde vorher gemacht? */
-  mistakePattern?: string;
-  /** Welche Auswirkungen hatte es? */
-  impact?: string;
-  /** Wie wurde es behoben? */
-  recoveryAction?: string;
-  /** Was sollten wir künftig vermeiden? */
-  avoidanceRule?: string;
-  /** Welche Warnsignale gab es? Eines je Eintrag, in Eingabereihenfolge, ohne Doppelte. */
-  earlyWarningSigns: string[];
-  /** Art des Bezugs (nie ein Name). Leer = kein schutzbedürftiger Bezug angegeben. */
-  bezug: NegativwissenBezug[];
-}
 
 export const NEGATIVWISSEN_TEXTFELDER = [
   "incidentTrigger",

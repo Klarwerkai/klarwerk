@@ -2,7 +2,7 @@
 // Nur der bestehende CI-Integrationsweg führt diese Auswahl aus; lokal nur Quellenmetadaten.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertTests, environment, git, hash, integrationSelection } from "./release.mjs";
@@ -10,6 +10,81 @@ import { assertTests, environment, git, hash, integrationSelection } from "./rel
 export function pgSelection(paths) {
   return integrationSelection(paths);
 }
+function assertFehlgeschlageneTests(report, tests, root) {
+  assert(report && typeof report === "object" && report.success === false);
+  const files = report.testResults;
+  assert(Array.isArray(files) && tests.length > 0 && files.length === tests.length);
+  assert(files.every((file) => typeof file.name === "string"));
+  assert.deepEqual(
+    files.map((file) => resolve(file.name)).sort(),
+    tests.map((file) => resolve(root, file)).sort(),
+  );
+  assert(
+    files.every((file) => Array.isArray(file.assertionResults) && file.assertionResults.length > 0),
+  );
+  const assertions = files.flatMap((file) => file.assertionResults);
+  assert(
+    assertions.every(
+      (a) =>
+        ["passed", "failed"].includes(a.status) &&
+        Array.isArray(a.failureMessages) &&
+        (a.status === "passed"
+          ? a.failureMessages.length === 0
+          : a.failureMessages.length > 0 &&
+            a.failureMessages.every((message) => typeof message === "string" && message.trim())),
+    ),
+  );
+  const failed = assertions.filter((a) => a.status === "failed").length;
+  assert(failed > 0, "kein vollständig gemessener fachlicher Rotbefund");
+  for (const key of Object.keys(report).filter((key) => /^num[A-Z]/.test(key))) {
+    assert(Number.isSafeInteger(report[key]) && report[key] >= 0, key);
+  }
+  assert.equal(report.numTotalTests, assertions.length);
+  assert.equal(report.numFailedTests, failed);
+  assert.equal(report.numPassedTests, assertions.length - failed);
+  assert.equal(report.numPendingTests, 0);
+  assert.equal(report.numTodoTests ?? 0, 0);
+  assert.equal(report.numPendingTestSuites, 0);
+  assert.equal(report.numRuntimeErrorTestSuites ?? 0, 0);
+  assert.equal(report.wasInterrupted ?? false, false);
+  assert.deepEqual(report.unhandledErrors ?? [], []);
+  assert(files.every((file) => file.testExecError === undefined || file.testExecError === null));
+  const failedFiles = files.filter((file) =>
+    file.assertionResults.some((a) => a.status === "failed"),
+  ).length;
+  assert(
+    files.every(
+      (file) =>
+        file.status ===
+        (file.assertionResults.some((a) => a.status === "failed") ? "failed" : "passed"),
+    ),
+  );
+  assert(report.numFailedTestSuites >= failedFiles);
+  assert(report.numPassedTestSuites >= files.length - failedFiles);
+  assert.equal(report.numTotalTestSuites, report.numPassedTestSuites + report.numFailedTestSuites);
+}
+
+function gesamtbericht(reports) {
+  const combined = {
+    success: reports.every((report) => report.success === true),
+    testResults: reports.flatMap((report) => report.testResults),
+  };
+  const counters = new Set(
+    reports.flatMap((report) => Object.keys(report).filter((key) => /^num[A-Z]/.test(key))),
+  );
+  for (const key of counters) {
+    const values = reports.map((report) => report[key]);
+    assert(
+      values.every((value) => Number.isSafeInteger(value) && value >= 0),
+      key,
+    );
+    const total = values.reduce((sum, value) => sum + value, 0);
+    assert(Number.isSafeInteger(total), key);
+    combined[key] = total;
+  }
+  return combined;
+}
+
 export function runPgSelection(root, base, output) {
   assert.equal(
     process.env.KLARWERK_PG_PFLICHT,
@@ -32,50 +107,132 @@ export function runPgSelection(root, base, output) {
     applicable: files.length > 0,
     success: false,
     startedAt: new Date().toISOString(),
+    runs: [],
   };
+  const logPath = join(output, "pg.log");
+  let logBegonnen = false;
   try {
     if (files.length > 0) {
       const rawPath = join(output, "pg.vitest.json");
-      const command = [
-        "./node_modules/.bin/vitest",
-        "run",
-        ...files,
-        "--config",
-        "vitest.integration.config.ts",
-        "--allowOnly=false",
-        "--passWithNoTests=false",
-        "--pool=forks",
-        "--poolOptions.forks.minForks=1",
-        "--poolOptions.forks.maxForks=1",
-        "--minWorkers=1",
-        "--maxWorkers=1",
-        "--no-file-parallelism",
-        "--testTimeout=60000",
-        "--reporter=default",
-        "--reporter=json",
-        `--outputFile=${rawPath}`,
-      ];
-      const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
-        cwd: root,
-        env: { ...environment(), KLARWERK_PG_PFLICHT: "1" },
-        encoding: "utf8",
-        timeout: 240000,
-        maxBuffer: 32 * 1024 * 1024,
-      });
-      result.command = command;
-      result.exit = run.status;
-      writeFileSync(join(output, "pg.log"), `${run.stdout ?? ""}${run.stderr ?? ""}`, {
-        flag: "wx",
-      });
-      assert.equal(run.status, 0);
-      const raw = readFileSync(rawPath);
-      assertTests(JSON.parse(raw), files, root);
+      const teile = join(output, "dateien");
+      for (const path of [rawPath, logPath, teile, join(output, "pg-auswahl.json")]) {
+        assert(!existsSync(path), `Ergebnisablage existiert bereits: ${path}`);
+      }
+      mkdirSync(teile);
+      writeFileSync(logPath, "", { flag: "wx" });
+      logBegonnen = true;
+      const reports = [];
+      for (const [index, file] of files.entries()) {
+        const ordner = join(teile, String(index + 1).padStart(4, "0"));
+        mkdirSync(ordner);
+        const einzelRaw = join(ordner, "pg.vitest.json");
+        const einzelLog = join(ordner, "pg.log");
+        const command = [
+          "./node_modules/.bin/vitest",
+          "run",
+          file,
+          "--config",
+          "vitest.integration.config.ts",
+          "--allowOnly=false",
+          "--passWithNoTests=false",
+          "--pool=forks",
+          "--poolOptions.forks.minForks=1",
+          "--poolOptions.forks.maxForks=1",
+          "--minWorkers=1",
+          "--maxWorkers=1",
+          "--no-file-parallelism",
+          "--testTimeout=60000",
+          "--reporter=default",
+          "--reporter=json",
+          `--outputFile=${einzelRaw}`,
+        ];
+        const part = {
+          file,
+          command,
+          rawPath: einzelRaw,
+          logPath: einzelLog,
+          startedAt: new Date().toISOString(),
+          actualWaitCompleted: false,
+          success: false,
+        };
+        result.runs.push(part);
+        try {
+          const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
+            cwd: root,
+            env: { ...environment(), KLARWERK_PG_PFLICHT: "1" },
+            encoding: "utf8",
+            timeout: 240000,
+            maxBuffer: 32 * 1024 * 1024,
+          });
+          Object.assign(part, {
+            pid: run.pid,
+            exit: run.status,
+            signal: run.signal,
+            processError: run.error
+              ? {
+                  ...run.error,
+                  name: run.error.name,
+                  message: run.error.message,
+                  stack: run.error.stack,
+                }
+              : null,
+            actualWaitCompleted: true,
+          });
+          result.command = command;
+          result.exit = run.status;
+          const log = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+          writeFileSync(einzelLog, log, { flag: "wx" });
+          part.logSha256 = hash(log);
+          appendFileSync(
+            logPath,
+            `\n=== ${index + 1}/${files.length}: ${file} ===\n${log}\n=== exit=${JSON.stringify(run.status)} signal=${JSON.stringify(run.signal)} ===\n`,
+          );
+          if (run.error) throw run.error;
+          assert.equal(run.signal, null);
+          assert(run.status === 0 || run.status === 1);
+          const raw = readFileSync(einzelRaw);
+          part.rawSha256 = hash(raw);
+          const report = JSON.parse(raw);
+          if (run.status === 0) assertTests(report, [file], root);
+          else assertFehlgeschlageneTests(report, [file], root);
+          assert(
+            !/Vitest caught \d+ unhandled error/iu.test(log) &&
+              !/⎯+[^\n]*(?:Unhandled Errors|Unhandled Rejection|Uncaught Exception)/iu.test(log),
+            "ungeklärter PG-Laufzeitfehler",
+          );
+          assert(report.wasInterrupted !== true, "abgebrochener PG-Rohbericht");
+          assert.equal(report.numRuntimeErrorTestSuites ?? 0, 0);
+          reports.push(report);
+          part.success = report.success;
+        } catch (error) {
+          part.error = error.message;
+          throw error;
+        } finally {
+          part.endedAt = new Date().toISOString();
+          writeFileSync(join(ordner, "run.json"), `${JSON.stringify(part, null, 2)}\n`, {
+            flag: "wx",
+          });
+        }
+      }
+      const combined = gesamtbericht(reports);
+      if (combined.success) assertTests(combined, files, root);
+      else assertFehlgeschlageneTests(combined, files, root);
+      const raw = `${JSON.stringify(combined, null, 2)}\n`;
+      writeFileSync(rawPath, raw, { flag: "wx" });
       result.rawSha256 = hash(raw);
-      result.success = true;
+      result.success = combined.success;
+      result.exit = combined.success ? 0 : 1;
+      if (!combined.success) {
+        result.error = `Fehlgeschlagene PG-Dateien: ${result.runs
+          .filter((part) => !part.success)
+          .map((part) => part.file)
+          .join(", ")}`;
+      }
     }
   } catch (error) {
     result.error = error.message;
   }
+  if (logBegonnen) result.logSha256 = hash(readFileSync(logPath));
   result.endedAt = new Date().toISOString();
   writeFileSync(join(output, "pg-auswahl.json"), `${JSON.stringify(result, null, 2)}\n`, {
     flag: "wx",

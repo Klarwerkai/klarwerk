@@ -39,6 +39,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { enthaeltFremdeAnweisung } from "./assistenz-faehigkeiten";
 import { aktionskennung } from "./klara-aktionsverlauf";
 import { KLARA_QUELLEN_DES_AUFTRAGS, type KlaraAuftragsQuelle } from "./klara-auftrag";
+import type {
+  BrowserEreignis,
+  BrowserErgebnis,
+  BrowserLaufStand,
+  BrowserRuecknahme,
+  BrowserSchritt,
+  BrowserSchrittArt,
+  BrowserSchrittStand,
+  BrowserUebergabe,
+  BrowserUebergabeGrund,
+  BrowserVerlaufseintrag,
+} from "./klara-browser-verlauf-typen";
 
 // ------------------------------------------------------------------------------------------------
 // DAS CAPABILITY-REGISTER
@@ -266,19 +278,9 @@ export class BrowserFaehigkeitsregister {
 // DIE MANUELLE ÜBERGABE
 // ------------------------------------------------------------------------------------------------
 
-export type BrowserUebergabeGrund =
-  | "nicht_unterstuetzt"
-  | "captcha"
-  | "mfa"
-  | "anmeldung"
-  | "gesperrte_handlung"
-  | "pruefen";
+export type { BrowserUebergabeGrund };
 
-export interface BrowserUebergabe {
-  readonly grund: BrowserUebergabeGrund;
-  /** Der konkrete nächste Schritt für die Person. */
-  readonly schritt: string;
-}
+export type { BrowserUebergabe };
 
 /** Die manuelle Übergabe mit ihrem konkreten nächsten Schritt (auch für den Produktweg). */
 export function uebergabe(
@@ -547,39 +549,12 @@ export function aussenFingerabdruck(a: BrowserAuftrag, formularFingerabdruck: st
 // DIE AUSFÜHRUNG
 // ------------------------------------------------------------------------------------------------
 
-export type BrowserSchrittArt = "lesen" | "fuellen" | "speichern" | "nachlesen" | "ausloesen";
-export type BrowserSchrittStand =
-  | "offen"
-  | "erfolgt"
-  | "unklar"
-  | "fehlgeschlagen"
-  | "uebersprungen"
-  | "zurueckgenommen";
+export type { BrowserSchrittArt };
+export type { BrowserSchrittStand };
 
-export interface BrowserSchritt {
-  readonly nr: number;
-  /** Dieselbe Kennungsform wie die Schritte des Aktionskerns. */
-  readonly aktionskennung: string;
-  readonly art: BrowserSchrittArt;
-  readonly feld: string | null;
-  readonly knopf: string | null;
-  readonly stand: BrowserSchrittStand;
-  /** Was nachgelesen bzw. abgeglichen wurde — Kennungen und Zustände, keine Seiteninhalte. */
-  readonly beleg: string | null;
-  readonly am: string | null;
-}
+export type { BrowserSchritt };
 
-export type BrowserLaufStand =
-  | "bereit"
-  | "laeuft"
-  | "pausiert"
-  | "abgebrochen"
-  | "klaerung"
-  | "uebergabe"
-  | "bestaetigung_noetig"
-  | "unklar"
-  | "gestoppt_recht"
-  | "fertig";
+export type { BrowserLaufStand };
 
 /** Nach diesen Ständen läuft kein Schritt mehr; ein neuer Versuch ist ein neuer Auftrag. */
 const ENDSTAENDE: readonly BrowserLaufStand[] = [
@@ -589,31 +564,9 @@ const ENDSTAENDE: readonly BrowserLaufStand[] = [
   "uebergabe",
 ];
 
-export type BrowserEreignis =
-  | "begonnen"
-  | "gelesen"
-  | "eingetragen"
-  | "gespeichert"
-  | "nachgelesen"
-  | "abgeglichen"
-  | "ausgeloest"
-  | "ziel_aktualisiert"
-  | "klaerung"
-  | "uebergabe"
-  | "bestaetigung_noetig"
-  | "bestaetigt"
-  | "unklar"
-  | "pausiert"
-  | "fortgesetzt"
-  | "abgebrochen"
-  | "recht_entzogen"
-  | "zurueckgenommen";
+export type { BrowserEreignis };
 
-export interface BrowserVerlaufseintrag {
-  readonly ereignis: BrowserEreignis;
-  readonly nr: number | null;
-  readonly am: string;
-}
+export type { BrowserVerlaufseintrag };
 
 export interface BrowserInhaltBefund {
   readonly herkunft: "seite" | "tooltip" | "download";
@@ -622,11 +575,7 @@ export interface BrowserInhaltBefund {
   readonly fremdeAnweisung: boolean;
 }
 
-export interface BrowserErgebnis {
-  readonly entwurfId: string;
-  readonly nachgelesen: boolean;
-  readonly zurueckgenommen: boolean;
-}
+export type { BrowserErgebnis };
 
 export interface BrowserAnsicht {
   readonly auftragId: string;
@@ -646,10 +595,7 @@ export interface BrowserAnsicht {
   readonly verlauf: readonly BrowserVerlaufseintrag[];
 }
 
-export type BrowserRuecknahme =
-  | { readonly art: "zurueckgenommen"; readonly beleg: string }
-  | { readonly art: "nicht_ruecknehmbar"; readonly text: string }
-  | { readonly art: "ziel_fehlt" | "unklar" | "nichts" | "laeuft"; readonly text: string };
+export type { BrowserRuecknahme };
 
 export interface BrowserAusfuehrungDeps {
   readonly adapter: BrowserSeitenadapter;

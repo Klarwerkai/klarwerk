@@ -19,8 +19,8 @@
 //                                                                                  früheren Einträge
 //                                                                                  bitgleich
 //
-// Dazu: AuditService und PgAuditRepo haben KEINE weitere Methode — jede Methode am Prototyp ist hier
-// als lesend oder schreibend eingeordnet; eine neue, nicht eingeordnete Methode lässt den Test fallen.
+// Das reine Prototypinventar samt expliziter Einordnung steht in
+// append-only-methodeninventar.test.ts; neue, nicht eingeordnete Methoden lassen diesen Test fallen.
 //
 // GRENZE (R-0613, ausdrücklich so aufgenommen): wer die Datenbank selbst beherrscht, kann eine Zeile
 // per SQL ändern. Das wird NICHT verhindert, sondern beim Prüflauf erkannt — der letzte Fall zeigt
@@ -37,6 +37,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices, createPool, migrate } from "../../services/app";
 import { type AuditEntry, AuditService, PgAuditRepo } from "../../services/audit";
 import { guardedLocalPgTestUrl, withPgTx } from "../../services/db-tx";
+import { poolAbschluss } from "./pool-abschluss";
 
 const PREFIX = "[KLARWERK][gesamt-auditprotokoll L5 append-only]";
 const DB = "klarwerk_test_auditprotokoll_l5_appendonly";
@@ -49,25 +50,14 @@ function mitDatenbank(url: string, name: string): string {
   return `${treffer[1]}${name}${treffer[3]}`;
 }
 
-/** Jede Methode am Prototyp, eingeordnet. Schreibend heißt: kann eine Zeile in `audit` erzeugen. */
-// Seit der Zusammenführung mit dem Dubletten-Rückzug laufen `record`/`recordOnce` unter der
-// `kettenSperre`; ihr Rumpf steht in je einer privaten Methode — beide hängen nur an (`appendNext`
-// bzw. `last` + `append`/`appendOnce`) und werden von den Fällen zu `record`/`recordOnce` geprüft.
-const AUDIT_SERVICE_METHODEN = {
-  schreibend: ["record", "recordUngeteilt", "recordOnce", "recordOnceUngeteilt", "exportChain"],
-  lesend: ["list", "exists", "kopfSeq", "verify", "verifyReport", "baue"],
-};
-const PG_AUDIT_REPO_METHODEN = {
-  schreibend: ["append", "appendOnce", "appendNext"],
-  lesend: ["queryable", "all", "findBy", "existsBy", "last", "findBySeq"],
-};
-
 const METHODEN = ["POST", "PUT", "PATCH", "DELETE"] as const;
 
 describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
+  let verwaltungSchliessen: (() => Promise<void>) | undefined;
   let pool: Pool | undefined;
+  let poolSchliessen: (() => Promise<void>) | undefined;
   let app: FastifyInstance | undefined;
   let services: ReturnType<typeof buildPgServices> | undefined;
   let headers: Record<string, string> = {};
@@ -95,12 +85,13 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
     }
     if (basisUrl) {
       const kandidat = createPool(basisUrl);
+      verwaltungSchliessen = poolAbschluss(kandidat);
       try {
         await kandidat.query("SELECT 1");
         verwaltung = kandidat;
       } catch (fehler) {
         grund = `Datenbank unter der genannten URL nicht erreichbar: ${String(fehler)}`;
-        await kandidat.end().catch(() => undefined);
+        await verwaltungSchliessen();
       }
     }
     if (!verwaltung) {
@@ -110,6 +101,7 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
     await verwaltung.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
     await verwaltung.query(`CREATE DATABASE ${DB}`);
     pool = new Pool({ connectionString: mitDatenbank(basisUrl, DB), max: 6 });
+    poolSchliessen = poolAbschluss(pool);
     await migrate(pool);
     services = buildPgServices(pool);
     app = buildApp(services);
@@ -154,9 +146,9 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
 
   afterAll(async () => {
     await app?.close().catch(() => undefined);
-    await pool?.end().catch(() => undefined);
+    await poolSchliessen?.();
     await verwaltung?.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`).catch(() => undefined);
-    await verwaltung?.end();
+    await verwaltungSchliessen?.();
     await container?.stop();
   });
 
@@ -210,23 +202,6 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
     expect(await abbild(p)).toEqual(vorher);
     await kette(p);
   }
-
-  it("Inventar: jede Methode von AuditService und PgAuditRepo ist eingeordnet, keine ändert oder löscht", () => {
-    for (const [Klasse, liste] of [
-      [AuditService, AUDIT_SERVICE_METHODEN],
-      [PgAuditRepo, PG_AUDIT_REPO_METHODEN],
-    ] as const) {
-      const vorhanden = Object.getOwnPropertyNames(Klasse.prototype)
-        .filter((n) => n !== "constructor")
-        .sort();
-      expect(vorhanden, `${Klasse.name}: Methode ohne Einordnung`).toEqual(
-        [...liste.schreibend, ...liste.lesend].sort(),
-      );
-    }
-    process.stderr.write(
-      `${PREFIX} geprüfte Schreibmethoden: AuditService.{${AUDIT_SERVICE_METHODEN.schreibend.join(",")}} · PgAuditRepo.{${PG_AUDIT_REPO_METHODEN.schreibend.join(",")}} · HTTP ${METHODEN.join("/")} /api/audit/** · DELETE /api/kos/:id, /api/kos/trash/:id, /api/admin/demo-seed, /api/users/:id\n`,
-    );
-  });
 
   it("HTTP: POST/PUT/PATCH/DELETE auf jede /api/audit-Adresse → 404/405, Tabelle bitgleich", async (ctx) => {
     const { a, p } = bereit(ctx);

@@ -52,16 +52,12 @@ import {
 } from "./klara-auftrag";
 import { liesAuftragsnotiz } from "./klara-auftragsnotiz";
 import { pruefeAuftragswissen } from "./klara-auftragswissen";
+import type { KlaraRufe } from "./klara-ausfuehrung-typen";
 import { pruefeBeschaffungsquellen } from "./klara-beschaffungsquellen";
 import { type KlaraGespraechDienst, KlaraGespraechFehler } from "./klara-gespraech";
 import { wissensUebernahmeVorgang } from "./klara-wissensuebernahme";
 
-/** Ein Aufruf einer vorhandenen Tür der Anwendung — mit der Anmeldung der Person. */
-export type KlaraRufe = (
-  methode: "GET" | "POST" | "PUT" | "DELETE",
-  url: string,
-  rumpf?: unknown,
-) => Promise<{ status: number; daten: unknown }>;
+export type { KlaraRufe };
 
 type Ergebnis = { auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean };
 

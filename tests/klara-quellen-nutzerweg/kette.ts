@@ -206,11 +206,15 @@ export type Dienste = Parameters<typeof buildApp>[0];
  *
  * `vorBereit` (D5 KI aus) läuft zwischen Bau und `ready()` — der einzige Zeitpunkt, an dem sich noch
  * ein Hook anbringen lässt. Ohne ihn ändert sich nichts.
+ *
+ * `bestehenderAdmin` gehört zum bereits eingerichteten Ablagebestand; beim Wiederaufbau ist
+ * dieses Konto weiter das erste, statt ein neues Erstkonto zu behaupten.
  */
 export async function appAufbauen(
   ohneModell = false,
   diensteBauen?: () => Dienste,
   vorBereit?: (app: App) => void,
+  bestehenderAdmin?: Konto,
 ): Promise<Aufbau> {
   const gemerkt = process.env.KLARWERK_LOCAL_LLM_URL;
   if (ohneModell) {
@@ -222,7 +226,7 @@ export async function appAufbauen(
     const app = buildApp(diensteBauen ? diensteBauen() : buildServices());
     vorBereit?.(app);
     await app.ready();
-    const admin = await neuesKonto(app, "admin");
+    const admin = bestehenderAdmin ?? (await neuesKonto(app, "admin"));
     return { app, admin };
   } finally {
     if (ohneModell && gemerkt !== undefined) {

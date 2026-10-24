@@ -2,15 +2,7 @@
 import type { BildKorrekturDienst } from "./assistenz-bildkorrekturen";
 import { DatenFehler, type Erfassungsauftrag } from "./praesentation-daten";
 
-export interface BildtextUebernahme {
-  readonly rohText: string;
-  /** Eingefrorener Übernahmestand, keine Aussage über spätere persönliche Berichtigungen. */
-  readonly korrektur?: {
-    readonly quelle: string;
-    readonly geaendertAm: string;
-    readonly text: string;
-  };
-}
+export type { BildtextUebernahme } from "./praesentation-daten";
 
 export async function mitPowerPointBildquelle(
   auftrag: Erfassungsauftrag,

@@ -1,4 +1,3 @@
-import type { BildtextUebernahme } from "./praesentation-bildquellen";
 // ================================================================================================
 // KLARA POWERPOINT · PP-02 — DATENHERKUNFT UND BINDUNG AN FOLIEN
 // (Auftrag produkt:20261015:klara-powerpoint-datenherkunft, Integrationsplan Abschnitt 2).
@@ -36,6 +35,16 @@ import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { KnowledgeObject } from "../../knowledge-object";
 import { BERECHNUNGSARTEN, rechne } from "./office-nachbearbeitung";
+
+export interface BildtextUebernahme {
+  readonly rohText: string;
+  /** Eingefrorener Übernahmestand, keine Aussage über spätere persönliche Berichtigungen. */
+  readonly korrektur?: {
+    readonly quelle: string;
+    readonly geaendertAm: string;
+    readonly text: string;
+  };
+}
 
 // ------------------------------------------------------------------------------------------------
 // FEHLER

@@ -1,4 +1,8 @@
-import type { AssistenzProfilRepo } from "./assistenz-profil";
+import type {
+  AssistenzProfilRepo,
+  BildKorrekturEintrag,
+  BildKorrekturStand,
+} from "./assistenz-profil";
 
 // ================================================================================================
 // produkt:20261012:klara-ocr-fundstellen-korrekturen (OCR-E02) — BERICHTIGTER BILDTEXT, JE KONTO.
@@ -32,21 +36,7 @@ const QUELLE_MAX = 300;
 const KENNUNG = /^sha256:[0-9a-f]{64}$/;
 const ORT = /^[a-z0-9-]{1,40}$/;
 
-export interface BildKorrekturEintrag {
-  readonly quelle: string;
-  readonly inhaltskennung: string;
-  /** Die Stelle des Bildes in der Quelle (nur zur Anzeige, z. B. `f2-b1`) — keine Bindung. */
-  readonly ort: string | null;
-  /** Der berichtigte Text. */
-  readonly text: string;
-  /** Frühere berichtigte Fassungen, die älteste zuerst — „Rückgängig“ nimmt die letzte. */
-  readonly vorher: readonly string[];
-  readonly geaendertAm: string;
-}
-
-export interface BildKorrekturStand {
-  readonly eintraege: readonly BildKorrekturEintrag[];
-}
+export type { BildKorrekturEintrag, BildKorrekturStand };
 
 export type BildKorrekturGrund =
   | "aktion"

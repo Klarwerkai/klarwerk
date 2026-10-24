@@ -557,7 +557,13 @@ describe("K6 · Bearbeitungshinweis mit zwei echten Browsern, zwei App-Prozessen
         verliererMarke.trim(),
       );
       // Der Hinweis des Verlierers steht weiter — seine Arbeit ist ja noch da.
-      expect((await zeilenAmPool(pool, koId)).map((z) => z.nutzer_name)).toEqual([verliererName]);
+      // Die Abmeldung des Gewinners nach UI-Unmount ist asynchron; hier nur ihr Ende am Pool lesen.
+      await expect
+        .poll(async () => (await zeilenAmPool(pool, koId)).map((z) => z.nutzer_name), {
+          timeout: 5000,
+          interval: 100,
+        })
+        .toEqual([verliererName]);
       tastatur.verlierer_abbrechen = await mitTaste(
         verlierer.seite,
         ABBRECHEN,

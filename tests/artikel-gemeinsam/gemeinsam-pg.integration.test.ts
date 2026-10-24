@@ -28,6 +28,7 @@ import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { textAusRumpf } from "../../services/app/src/gemeinsamer-entwurf";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 type App = ReturnType<typeof buildApp>;
 type Kopf = { authorization: string };
@@ -66,17 +67,21 @@ interface Lage {
 describe("Gemeinsamer Artikelentwurf gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
+  let verwaltungSchliessen: () => Promise<void>;
   let datenbank = "";
   let url = "";
   /** Eine eigene Verbindung zur Testdatenbank, an der die Tabelle direkt gelesen wird. */
   let direkt: Pool | undefined;
-  const offen: { pool: Pool; app: App }[] = [];
+  const offen: { app: App; schliessen: () => Promise<void> }[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
 
   async function neueApp(): Promise<App> {
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     const app = buildApp(buildPgServices(pool));
+    offen.push({ app, schliessen });
     await app.ready();
-    offen.push({ pool, app });
     return app;
   }
 
@@ -86,7 +91,7 @@ describe("Gemeinsamer Artikelentwurf gegen echtes PostgreSQL", () => {
     if (eintrag) {
       offen.splice(i, 1);
       await eintrag.app.close();
-      await eintrag.pool.end();
+      await eintrag.schliessen();
     }
   }
 
@@ -150,32 +155,36 @@ describe("Gemeinsamer Artikelentwurf gegen echtes PostgreSQL", () => {
     }
     datenbank = `klarwerk_gemeinsam_test_${`${Date.now()}`.slice(-9)}`;
     verwaltung = new Pool({ connectionString: basis });
+    verwaltungSchliessen = poolAbschluss(verwaltung);
     await verwaltung.query(`CREATE DATABASE ${datenbank}`);
     const ziel = new URL(basis);
     ziel.pathname = `/${datenbank}`;
     url = ziel.toString();
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     try {
       // Zweimal: die Stufen sind wiederholbar und lassen den Bestand stehen.
       await migrate(pool);
       await migrate(pool);
       await buildPgServices(pool).ko.activateSearchProjectionV2();
     } finally {
-      await pool.end();
+      await schliessen();
     }
     direkt = new Pool({ connectionString: url });
+    poolAbschluesse.push(poolAbschluss(direkt));
   }, 300_000);
 
   afterAll(async () => {
     for (const o of [...offen]) {
       await beenden(o.app);
     }
-    await direkt?.end();
+    for (const schliessen of poolAbschluesse) await schliessen();
     if (verwaltung) {
       await verwaltung
         .query(`DROP DATABASE IF EXISTS ${datenbank} WITH (FORCE)`)
         .catch(() => undefined);
-      await verwaltung.end();
+      await verwaltungSchliessen();
     }
     await container?.stop();
   }, 120_000);

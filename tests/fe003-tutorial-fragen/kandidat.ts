@@ -26,13 +26,34 @@
 // `tools/fe003-vorschau` — Zugangsdaten eines Anbieters aus der Aufrufer-Shell erreichen ihn nicht,
 // kein lokales Modell, kein externer Suchdienst, Schlüsselbund zu. In-Memory, keine Datenbank.
 import { type ChildProcess, execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 
 export const WURZEL = resolve(import.meta.dirname, "../..");
 export const MARKE = "FE-003 Vorschauweg";
 export const DIST_INDEX = join(WURZEL, "apps/web/dist/index.html");
+
+const phasenBeginn = process.hrtime.bigint();
+
+export function meldePhase(
+  phase: string,
+  prozess: {
+    pid: number | undefined;
+    exit?: number | null;
+    signal?: NodeJS.Signals | null;
+  } = { pid: process.pid },
+): void {
+  writeSync(
+    2,
+    `FE003-PHASE ${JSON.stringify({
+      phase,
+      utc: new Date().toISOString(),
+      dauerMs: Number((process.hrtime.bigint() - phasenBeginn) / 1_000_000n),
+      ...prozess,
+    })}\n`,
+  );
+}
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -173,11 +194,13 @@ export interface Kandidat {
 
 /** Baut den Kandidaten mit `tools/build` — derselbe Befehl wie im Tor. */
 export function baueKandidat(): void {
+  meldePhase("build-start");
   const lauf = spawnSync(join(WURZEL, "tools/build"), [], {
     cwd: WURZEL,
     stdio: "inherit",
     env: process.env,
   });
+  meldePhase("build-ende", { pid: lauf.pid, exit: lauf.status, signal: lauf.signal });
   if (lauf.status !== 0) {
     throw new Error(`${MARKE}: tools/build endet mit ${String(lauf.status ?? lauf.signal)}.`);
   }
@@ -202,6 +225,7 @@ function arbeitsbaumSauber(): void {
 export async function starteKandidat(fristMs = 120_000): Promise<Kandidat> {
   arbeitsbaumSauber();
   baueKandidat();
+  meldePhase("server-start");
   const port = await freierPort();
   const commit = aktuellerCommit();
   const teile: string[] = [];
@@ -226,11 +250,13 @@ export async function starteKandidat(fristMs = 120_000): Promise<Kandidat> {
       },
     },
   );
+  meldePhase("server-gestartet", { pid: kind.pid });
   kind.stdout?.on("data", (d: Buffer) => teile.push(d.toString()));
   kind.stderr?.on("data", (d: Buffer) => teile.push(d.toString()));
   let beendet = false;
-  kind.on("exit", () => {
+  kind.on("exit", (code, signal) => {
     beendet = true;
+    meldePhase("server-ende", { pid: kind.pid, exit: code, signal });
   });
   const lebt = (): boolean => !beendet;
   const ausgabe = (): string => teile.join("").slice(-4000);
@@ -269,6 +295,7 @@ export async function starteKandidat(fristMs = 120_000): Promise<Kandidat> {
       .then((r) => r.ok)
       .catch(() => false);
     if (ok) {
+      meldePhase("health-bereit", { pid: kind.pid });
       break;
     }
     if (Date.now() > ende) {

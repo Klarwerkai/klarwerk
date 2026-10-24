@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
-import { AUDIT_KETTENSPERRE } from "../../audit/src/repo-pg";
-import { SPERRSCHLUESSEL_BESTANDSRESET } from "../../db-tx/src/reset-lock";
+import { AUDIT_KETTENSPERRE } from "../../audit";
+import { SPERRSCHLUESSEL_BESTANDSRESET } from "../../db-tx";
 import { MIGRATIONSSPERRE, migrate, schemas } from "./db";
 
 // ================================================================================================

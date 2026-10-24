@@ -4,13 +4,9 @@
 // hier bleibt zusätzlich robust gegen fremde/injizierte Clients (Tests, künftige Provider), die nur
 // generische Errors mit den etablierten Meldungen werfen — dann greifen Meldungs-Heuristiken.
 // Es wird NIE Prompt-/Antwortinhalt transportiert: nur Klasse, optionaler HTTP-Status, Meldung.
-import type { KiErsatzGrund } from "./types";
+import type { KiErsatzGrund, ModelFailureClass, ModelFailureInfo } from "./types";
 
-// AUFTRAG-mega4 Block D (bens Sammel-Review 4): „unknown" ist der ehrliche Rückfall für einen
-// uneingeordneten geworfenen Fehler. Er darf NICHT als „network" verkleidet werden — sonst meldet die
-// nutzerseitige Ableitung (reasonFromModelFailure: network → unreachable) „Anbieter nicht erreichbar",
-// obwohl dafür kein Netzbeleg existiert. „unknown" bleibt beim generischen „model-error".
-export type ModelFailureClass = "timeout" | "http" | "network" | "parse" | "unknown";
+export type { ModelFailureClass, ModelFailureInfo };
 
 // Zeitlimit überschritten (AbortController im Client). Meldung bleibt identisch zur bisherigen
 // generischen Error-Meldung — bestehende Aufrufer/Anzeigen (z. B. extract-Fallback-Note) unverändert.
@@ -126,11 +122,6 @@ export function ersatzGrundAus(err: unknown): KiErsatzGrund {
     default:
       return "fehler";
   }
-}
-
-export interface ModelFailureInfo {
-  failureClass: ModelFailureClass;
-  status?: number;
 }
 
 export function classifyModelFailure(err: unknown): ModelFailureInfo {

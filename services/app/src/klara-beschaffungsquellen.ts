@@ -1,4 +1,4 @@
-import type { KlaraRufe } from "./klara-ausfuehrung";
+import type { KlaraRufe } from "./klara-ausfuehrung-typen";
 import type { KlaraBeschaffungsziel } from "./klara-beschaffungsziel";
 import { KlaraGespraechFehler } from "./klara-gespraech";
 /** Nur der normale heutige Wissensleseweg, keine erfundene Freigabe aus Zeitstempeln oder Quelltext. */

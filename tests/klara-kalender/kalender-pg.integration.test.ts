@@ -21,6 +21,7 @@ import {
   pruefeInternenTermin,
 } from "../../services/app/src/klara-kalender-anbindung";
 import { gatedPool, guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 import { DOUBLE_KALENDER, StrengerTestkalender, testTermin } from "./vertragsdouble";
 
 const ANNA = "u-pg-kalender-anna";
@@ -29,14 +30,14 @@ const BERT = "u-pg-kalender-bert";
 describe("Klara 11 · Kalenderanbindung gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let url = "";
-  const pools: Pool[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
   const kalender = new StrengerTestkalender();
   let uhr = Date.parse("2026-10-15T08:00:00.000Z");
 
   /** Ein frischer Dienst auf einem frischen Pool — so sieht ein Neustart des Servers aus. */
   function neuerDienst(): KalenderAnbindungDienst {
     const pool = createPool(url);
-    pools.push(pool);
+    poolAbschluesse.push(poolAbschluss(pool));
     return new KalenderAnbindungDienst({
       repo: new PgKalenderZuordnungRepo(pool),
       anbieterFuer: async (kontoId) => (kontoId === ANNA ? kalender : null),
@@ -70,6 +71,8 @@ describe("Klara 11 · Kalenderanbindung gegen echtes PostgreSQL", () => {
       url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     }
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     try {
       // Zweimal: die Stufe ist wiederholbar und lässt den Bestand stehen.
       await migrate(pool);
@@ -78,13 +81,13 @@ describe("Klara 11 · Kalenderanbindung gegen echtes PostgreSQL", () => {
         await pool.query(`DELETE FROM ${tabelle} WHERE konto_id = ANY($1)`, [[ANNA, BERT]]);
       }
     } finally {
-      await pool.end();
+      await schliessen();
     }
   }, 180_000);
 
   afterAll(async () => {
-    for (const pool of pools) {
-      await pool.end();
+    for (const schliessen of poolAbschluesse) {
+      await schliessen();
     }
     await container?.stop();
   });
@@ -184,7 +187,7 @@ describe("Klara 11 · Kalenderanbindung gegen echtes PostgreSQL", () => {
     });
     expect(await neu.vorkommenSperre(ANNA, t.auftragId, t.ereignisId)).toBe("beendet");
     const pool = createPool(url);
-    pools.push(pool);
+    poolAbschluesse.push(poolAbschluss(pool));
     const raw = (
       await pool.query<{ data: Record<string, unknown> }>(
         "SELECT data FROM klara_kalender_zuordnungen WHERE schluessel = $1",
@@ -220,9 +223,9 @@ describe("Klara 11 · Kalenderanbindung gegen echtes PostgreSQL", () => {
     const r = await d.projiziere(ANNA, a.id, t);
     if (!r.ok) throw new Error("Projektion fehlt");
     const pool = createPool(url);
-    pools.push(pool);
+    poolAbschluesse.push(poolAbschluss(pool));
     const andererPool = createPool(url);
-    pools.push(andererPool);
+    poolAbschluesse.push(poolAbschluss(andererPool));
     const repo = new PgKalenderZuordnungRepo(gatedPool(andererPool));
     const client = await pool.connect();
     let entfernen: Promise<unknown> | undefined;
@@ -288,7 +291,7 @@ describe("Klara 11 · Kalenderanbindung gegen echtes PostgreSQL", () => {
     );
     if (!r.ok) throw new Error("Projektion fehlt");
     const pool = createPool(url);
-    pools.push(pool);
+    poolAbschluesse.push(poolAbschluss(pool));
     const repo = new PgKalenderZuordnungRepo(gatedPool(pool));
     expect(await repo.entferneAnbindung(BERT, a.id, new Date(uhr).toISOString())).toBe(false);
     await pool.query(

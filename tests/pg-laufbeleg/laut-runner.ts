@@ -36,7 +36,7 @@ function melde(datei: Aufgabe): void {
   if (meldung !== undefined) {
     process.stderr.write(meldung);
   }
-  if (pflichtVerletzt(bild)) {
+  if (pflichtVerletzt(bild) && datei.result?.state !== "fail") {
     throw new Error("PG-Pflicht verletzt: übersprungene, fehlgeschlagene oder keine Fälle");
   }
 }

@@ -27,10 +27,10 @@ gebundenen** Stand?*
 | `@fastify/static` | `node_modules/@fastify/static` | 9.1.3 | nicht exponiert |
 | `brace-expansion` (unter `@fastify/static`) | `node_modules/@fastify/static/node_modules/brace-expansion` | 5.0.12 | nicht exponiert |
 | `brace-expansion` (Wurzel, dev-markiert) | `node_modules/brace-expansion` | 2.1.7 | nicht exponiert |
-| `fast-uri` | `node_modules/fast-uri` | 3.1.8 | nicht exponiert |
+| `fast-uri` | `node_modules/fast-uri` | 3.1.9 | nicht exponiert |
 | `fastify` | `node_modules/fastify` | 5.12.1 | nicht exponiert |
 | `find-my-way` | `node_modules/find-my-way` | 9.6.0 | nicht exponiert |
-| `nodemailer` | `node_modules/nodemailer` | 6.10.1 | exponiert |
+| `nodemailer` | `node_modules/nodemailer` | 10.1.4 | nicht exponiert |
 | `sharp` | `node_modules/sharp` | 0.35.5 | nicht exponiert |
 
 > **Nachtrag 08.10.2026 (R-1398, GHSA-wq5f-xc86-pv6w):** Die `sharp`-Zeile steht jetzt auf
@@ -210,7 +210,7 @@ weil er die HTTP/2-Bedingung nicht kennt — genau der Unterschied, um den es di
 Hebung wäre also vermutlich kompatibel zu haben; sie wurde hier bewusst **nicht** vorgenommen, weil
 sie ein Nebenbei-Upgrade ohne Exposition wäre (Auftrag §4).
 
-### `nodemailer` — exponiert
+### `nodemailer` — historische Messung vom 17.09.2026 (6.10.1)
 
 **Advisorybedingung.** GHSA-2x7j-588g-ccc2 (high, `<9.1.0`, quadratische Laufzeit im Adressparser)
 und GHSA-cc9r-2j5m-2m83 (moderate, `>=6.9.16 <9.1.0`, Fehlparsen von RFC-5322-Kommentaren bis zur
@@ -568,6 +568,88 @@ wirkungslos, weil `normalizeFragekontext` nur drei Felder übernimmt. Ferner neu
 Laufzeit gemessen: nicht in mammoths Modulgraph), die SSR-Meldung und die beiden
 Open-Redirect-Meldungen von React Router (siehe oben). Die Prüfung gibt seit diesem Stand je Meldung
 npms eigene Auskunft zur Behebbarkeit (`fixAvailable`) aus.
+
+## 7. Nachtrag 24.10.2026 — Nodemailer 10.1.4, eigener begrenzter Prüfteil
+
+Die Tabelle führt jetzt die npm-gebundene Fassung **10.1.4**. Der Nodemailer-Abschnitt und die
+damalige offene Major-Entscheidung zu **6.10.1** bleiben als historische Messung erhalten; sie
+beschreiben keine heute gemessene Inkompatibilität. Der SMTP-Produktpfad bleibt bytegleich.
+
+Anlass sind drei konkrete Adressparsermeldungen, jeweils behoben ab 10.1.4:
+[verschachtelte Kommentare](https://github.com/advisories/GHSA-8c8m-p3m8-cjg8),
+[Semikolon in Gruppenkommentaren](https://github.com/advisories/GHSA-m943-m63m-w62w) und
+[Größerzeichen im quoted local part](https://github.com/advisories/GHSA-85x2-q946-cp5h).
+Der [gebundene Upstreamstand](https://raw.githubusercontent.com/nodemailer/nodemailer/v10.1.4/package.json)
+verlangt Node >=20; das Projekt verlangt bereits >=20.19. Er bringt keine Produktionsabhängigkeit
+mit. Die verwendeten öffentlichen Wege createTransport, sendMail und jsonTransport bestehen weiter.
+
+**Tatsächlicher Vorherbefund:** Die drei neuen synthetischen jsonTransport-Fälle liefen einmal auf
+der wirklich installierten 6.10.1: **3 Assertionfehler, 0 bestanden**. Die sechs alten Fälle waren
+dabei unselektiert, nicht grün. Die Roh-Envelopes zeigen die jeweils falsche Empfängerableitung.
+Die drei 6.10.1-Assertionfehler sowie beide nachfolgenden Zwischenläufe bleiben als Historie
+erhalten: Der erste 10.1.4-Kandidat stoppte nach zwei Typgrüns an einer zusätzlichen LF; der reine
+LF-Child bestand fünf Pflichtstufen und 371 von 372 Assertions (acht von neun Mailfällen).
+Dessen neue Gesamt-Envelope-Bytegleichheit im dritten Fall war zu weitgehend: Bereits 6.10.1
+normalisiert MIME-Sonderzeichen nach dem eigentlichen Parser. Das ist keine neu eingeführte
+Produktanforderung. Kein SMTP-Server, keine Verbindung und kein Versand waren beteiligt.
+
+**Enge Paketänderung:** npm erzeugte nur die geänderte Projektbindung auf exakt 10.1.4 und den
+Nodemailer-Lockknoten. Alle anderen Lockknoten bleiben einschließlich ihrer Objektbytes gleich.
+Ein normales npm ci im eigenen Installationsordner ist abgeschlossen; Integrität und installierte
+Fassung sind gebunden. Die ursprünglichen E-Installationen werden nicht beschrieben oder geändert.
+
+**Funktionserhaltung:** Die bisherigen Fälle für unverfälschte Weitergabe, gewöhnliche Empfänger,
+Terminierung und Kommentar-ohne-Empfänger bleiben erhalten. Der historische Komma-Messpunkt ist
+für die beabsichtigte einzelne zitierte Adresse ausgerichtet; die alte 6.10.1-Beobachtung bleibt
+oben nachlesbar. Hinzu kommen die drei kausalen Empfängerfälle. Der feste Kandidat wird im normalen
+Pflichtlauf sowie mit Versions-/Reportbindung und anschließendem Registry-Audit beider Bestände
+geprüft. Die tatsächlichen Endresultate und Rohberichte gehören zum Prüfabschnitt
+NODEMAILER3-20261024/P (RESULTAT.json, PFLICHTLAUF und AUDIT-Bericht).
+
+**Dritter Fall: Parser und MIME sind getrennte öffentliche Vertragsebenen.** Die echte exportierte
+API `nodemailer/lib/addressparser` muss aus `<"a@angriff.invalid>"@beispiel.invalid>` genau die
+vollständige Mailbox `"a@angriff.invalid>"@beispiel.invalid` erkennen — einschließlich Quotes und
+Größerzeichen, ohne einen zusätzlichen Empfänger. Danach läuft derselbe unveränderte
+jsonTransport-Weg: Erwartet wird exakt ein Envelope-Empfänger
+`"a@angriff.invalid "@beispiel.invalid`, also an der beabsichtigten Domain und nicht an
+`angriff.invalid`. Beide Werte sind explizite Erwartungen; sie werden nicht aus dem Ist abgeleitet.
+
+Die schon in 6.10.1 vorhandene nachgelagerte MIME-Normalisierung ersetzt `>` durch ein Leerzeichen
+im local part. Daher wird weder unveränderte Lokalteil-Bytegleichheit im Envelope noch eine
+SMTP-Lieferung dieser Sonderzeichenform behauptet. Der vollständige Parserwert wird trotzdem
+eigenständig geprüft; es gibt keinen custom-envelope-Bypass, Mock oder Vendor-/Produktpatch.
+Die übrigen acht Mailfälle und der historische Bericht bleiben unverändert.
+
+Diese Aussage gilt für die drei genannten Meldungen am gebundenen Knoten und die geprüften
+Adressformen. Andere Auditmeldungen bleiben gesondert sichtbar; eine Gesamtsicherheitsaussage
+folgt daraus nicht. Echtversand und das Verhalten einer laufenden SMTP-Umgebung sind nicht gemessen.
+
+## 8. Nachtrag 24.10.2026 — fast-uri 3.1.9 und 4.2.3
+
+Die aktuelle Tabelle bindet den Rootknoten jetzt an **3.1.9**; der Knoten
+**node_modules/fastify/node_modules/fast-uri** ist an **4.2.3** gebunden.
+Die historischen Messungen und damaligen Versionsentscheidungen oben bleiben erhalten.
+
+Der tatsächliche Registryaudit nach NODEMAILER3 meldete vier Advisories jeweils an
+3.1.8 und 4.2.1, zusammen acht Einträge:
+[GHSA-w74x-v6f9-j3xg](https://github.com/advisories/GHSA-w74x-v6f9-j3xg),
+[GHSA-xhq7-xmqj-769h](https://github.com/advisories/GHSA-xhq7-xmqj-769h),
+[GHSA-wjr9-j795-jxcr](https://github.com/advisories/GHSA-wjr9-j795-jxcr) und
+[GHSA-333x-w4r6-6crp](https://github.com/advisories/GHSA-333x-w4r6-6crp).
+Die Primärquellen nennen mehrere betroffene Versionsbereiche; beide alten Fassungen
+sind betroffen. Die kompatiblen behobenen Patchstände sind 3.1.9 und 4.2.3.
+
+**Tatsächlich ausgeführt:** Ein normales gezieltes npm update fast-uri --package-lock-only
+erzeugte genau diese beiden geänderten Lockobjekte. Alle anderen Lockobjekte einschließlich
+Nodemailer 10.1.4 bleiben einschließlich ihrer Objektbytes unverändert; package.json bleibt bytegleich.
+Ein anschließendes normales npm ci im eigenen neuen Installationsordner ist abgeschlossen.
+Die vorhandenen Elternbereiche ^3 und ^4 bleiben erhalten; es gibt keine neue Projektbindung.
+
+Der feste Kandidat wird einmal über den normalen sechsstufigen Pflichtlauf geprüft,
+danach über die bestehende Versionsbindung und den normalen Registryaudit beider Bestände.
+Die tatsächlichen Endresultate, Assertions und Auditmeldungen stehen im Prüfteil
+FASTURI8-20261024/P (RESULTAT.json, PFLICHTLAUF und AUDIT-BERICHT.txt).
+Das Prüfurteil bleibt auf diese Knoten, Meldungen und vorhandenen Funktionstests begrenzt.
 
 ## Nicht gemessen
 

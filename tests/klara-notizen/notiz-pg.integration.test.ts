@@ -19,6 +19,7 @@ import { createPool, migrate } from "../../services/app/src/db";
 import { KlaraGespraechDienst, PgKlaraGespraechRepo } from "../../services/app/src/klara-gespraech";
 import { KlaraNotizDienst, PgKlaraNotizRepo } from "../../services/app/src/klara-notiz";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 const ANNA = "u-pg-notiz-anna";
 const BERT = "u-pg-notiz-bert";
@@ -36,13 +37,13 @@ const BEZUG = {
 describe("Klara 06 · Notizen gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let url = "";
-  const pools: Pool[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
   let uhr = Date.parse("2026-10-12T08:00:00.000Z");
   let vorgaenge = 0;
 
   function neuePool(): Pool {
     const pool = createPool(url);
-    pools.push(pool);
+    poolAbschluesse.push(poolAbschluss(pool));
     return pool;
   }
 
@@ -97,6 +98,8 @@ describe("Klara 06 · Notizen gegen echtes PostgreSQL", () => {
       url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     }
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     try {
       // Zweimal: die Stufe ist wiederholbar und lässt den Bestand stehen.
       await migrate(pool);
@@ -104,13 +107,13 @@ describe("Klara 06 · Notizen gegen echtes PostgreSQL", () => {
       await pool.query("DELETE FROM klara_notizen WHERE konto_id = ANY($1)", [[ANNA, BERT]]);
       await pool.query("DELETE FROM klara_gespraeche WHERE konto_id = ANY($1)", [[ANNA, BERT]]);
     } finally {
-      await pool.end();
+      await schliessen();
     }
   }, 180_000);
 
   afterAll(async () => {
-    for (const pool of pools) {
-      await pool.end();
+    for (const schliessen of poolAbschluesse) {
+      await schliessen();
     }
     await container?.stop();
   });

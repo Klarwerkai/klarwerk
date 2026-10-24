@@ -6,7 +6,7 @@ import {
   ADDON_KEY_HEADER,
   addonApiEnabled,
 } from "./addon-api";
-import type { BremsGrenze } from "./anfragebremse";
+import type { AddonCapability, AddonPrincipal } from "./addon-principal-typen";
 import {
   DIENST_SCHLUESSEL_HEADER,
   type DienstSchluessel,
@@ -36,18 +36,8 @@ export const ADDON_ACTOR_ID = "addon:klara";
 // KEINE breite Sammel-Capability. SCRUM-491 Slice 5 ergänzt checktext.validated neben ask.validated.
 export const ASK_CAPABILITY = "ask.validated" as const;
 export const CHECKTEXT_CAPABILITY = "checktext.validated" as const;
-// Aufnahme gesamt-integrations-api: die drei weiteren Rechte trägt nur ein Dienst-Schlüssel
-// (`dienst-schluessel.ts`) — der Klara-Schlüssel bleibt bei den beiden obigen.
-// Aufnahme gesamt-mcp (R-0713): `mcp.werkzeug` öffnet den MCP-Zugang (`routes/mcp-routes.ts`),
-// ebenfalls nur für einen Dienst-Schlüssel.
-export type AddonCapability =
-  | typeof ASK_CAPABILITY
-  | typeof CHECKTEXT_CAPABILITY
-  | "export.validated"
-  | "import.kandidaten"
-  | "mail.entwurf"
-  | "status.read"
-  | "mcp.werkzeug";
+export type { AddonCapability, AddonPrincipal };
+export type { AuthContext } from "./addon-principal-typen";
 
 // Die Capabilities, die der HEUTE per Key aufgelöste Principal trägt: EIN Key bedient beide Endpunkte
 // (ein Tenant), also beide Rechte. Die Enge liegt pro Route (jede verlangt GENAU ihr Recht), nicht am
@@ -57,14 +47,6 @@ export const ADDON_CAPABILITIES: readonly AddonCapability[] = [
   ASK_CAPABILITY,
   CHECKTEXT_CAPABILITY,
 ];
-
-export interface AddonPrincipal {
-  readonly kind: "addon";
-  readonly id: string; // ADDON_ACTOR_ID — stabile Bucket-/Audit-ID
-  readonly capabilities: readonly AddonCapability[];
-  // Nur bei einem Dienst-Schlüssel: seine Kennung und seine eigene Grenze. Fehlt beim Klara-Schlüssel.
-  readonly dienst?: { readonly schluessel: string; readonly grenze: BremsGrenze };
-}
 
 // Trägt der Principal genau dieses schmale Recht? Fail-closed gegen unbekannte/fehlende Capabilities.
 export function principalHasCapability(principal: AddonPrincipal, cap: AddonCapability): boolean {
@@ -125,26 +107,12 @@ export function matchAddonRoute(
   return null;
 }
 
-// Request-lokaler Auth-Kontext: EINMAL pro Request bestimmt (onRequest-Hook), danach von
-// Rate-Limiter, allowList und Handler GELESEN — nie neu validiert. Ersetzt die zuvor dreifache
-// Key-Prüfung (keyGenerator/allowList/handler) durch eine einzige Auflösung.
-export type AuthContext =
-  | { readonly authKind: "addon"; readonly principal: AddonPrincipal }
-  | { readonly authKind: "session"; readonly principal: null };
-
 // Ergebnis der EINEN Key-Auflösung pro Request.
 export type AddonAuthResolution =
   | { readonly kind: "valid"; readonly principal: AddonPrincipal }
   // Key vorhanden, aber falsch → 401 (kein Session-Fallback). `dienst` nur beim Dienst-Schlüssel-Kopf.
   | { readonly kind: "invalid"; readonly dienst?: true }
   | { readonly kind: "none" }; // kein Add-on-Versuch → Session-Pfad
-
-// request.authContext am Fastify-Request tragen (Typaugmentation).
-declare module "fastify" {
-  interface FastifyRequest {
-    authContext?: AuthContext | null;
-  }
-}
 
 // Konstantzeit-Vergleich gegen den konfigurierten Key. Ohne gesetzten Env-Key ist der Pfad ZU (false),
 // auch bei aktivem Flag. PRIVAT — die einzige Stelle im Code, die den Key prüft. Der Key wird nie

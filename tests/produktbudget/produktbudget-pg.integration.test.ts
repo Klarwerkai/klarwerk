@@ -17,17 +17,18 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
 import { PgProduktbudgetRepo, Produktbudget } from "../../services/app/src/produktbudget";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 const ADMIN = "konto-pg-admin-fiktiv";
 
 describe("Produktbudgets gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let url = "";
-  const pools: Pool[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
 
   function neuePool(): Pool {
     const pool = createPool(url);
-    pools.push(pool);
+    poolAbschluesse.push(poolAbschluss(pool));
     return pool;
   }
 
@@ -71,6 +72,8 @@ describe("Produktbudgets gegen echtes PostgreSQL", () => {
       url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     }
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     try {
       // Zweimal: die Stufe ist wiederholbar und lässt den Bestand stehen.
       await migrate(pool);
@@ -78,13 +81,13 @@ describe("Produktbudgets gegen echtes PostgreSQL", () => {
       const t = await pool.query("SELECT to_regclass('produktbudget') AS r");
       expect(t.rows[0]?.r).not.toBeNull();
     } finally {
-      await pool.end();
+      await schliessen();
     }
   }, 180_000);
 
   afterAll(async () => {
-    for (const pool of pools) {
-      await pool.end();
+    for (const schliessen of poolAbschluesse) {
+      await schliessen();
     }
     await container?.stop();
   });

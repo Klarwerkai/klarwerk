@@ -38,6 +38,7 @@ import { buildApp, buildPgServices, createPool, migrate } from "../../services/a
 import { type AuditRepo, AuditService, PgAuditRepo, inspectChain } from "../../services/audit";
 import { guardedLocalPgTestUrl, withPgTx } from "../../services/db-tx";
 import { type KnowledgeObject, PgKoRepo } from "../../services/knowledge-object";
+import { poolAbschluss } from "./pool-abschluss";
 
 const PREFIX = "[KLARWERK][gesamt-auditprotokoll Rot-Kalibrierung]";
 const DB = "klarwerk_test_auditprotokoll_rot";
@@ -115,8 +116,11 @@ function zweiGelesen(): () => Promise<void> {
 describe("Rot-Kalibrierung auf PostgreSQL · Fassung vor der Behebung (Algorithmus 41fad46c)", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
+  let verwaltungSchliessen: () => Promise<void>;
   let poolA: Pool | undefined;
+  let poolASchliessen: () => Promise<void>;
   let poolB: Pool | undefined;
+  let poolBSchliessen: () => Promise<void>;
   const offeneApps: FastifyInstance[] = [];
   let basisUrl = "";
 
@@ -141,12 +145,13 @@ describe("Rot-Kalibrierung auf PostgreSQL · Fassung vor der Behebung (Algorithm
     }
     if (basisUrl) {
       const kandidat = createPool(basisUrl);
+      verwaltungSchliessen = poolAbschluss(kandidat);
       try {
         await kandidat.query("SELECT 1");
         verwaltung = kandidat;
       } catch (fehler) {
         grund = `Datenbank unter der genannten URL nicht erreichbar: ${String(fehler)}`;
-        await kandidat.end().catch(() => undefined);
+        await verwaltungSchliessen().catch(() => undefined);
       }
     }
     if (!verwaltung) {
@@ -157,7 +162,9 @@ describe("Rot-Kalibrierung auf PostgreSQL · Fassung vor der Behebung (Algorithm
     await verwaltung.query(`CREATE DATABASE ${DB}`);
     const url = mitDatenbank(basisUrl, DB);
     poolA = new Pool({ connectionString: url, max: 6 });
+    poolASchliessen = poolAbschluss(poolA);
     poolB = new Pool({ connectionString: url, max: 6 });
+    poolBSchliessen = poolAbschluss(poolB);
     await migrate(poolA);
     await poolA.query(PROBE_DDL);
   }, 180_000);
@@ -166,10 +173,16 @@ describe("Rot-Kalibrierung auf PostgreSQL · Fassung vor der Behebung (Algorithm
     for (const app of offeneApps.splice(0)) {
       await app.close().catch(() => undefined);
     }
-    await poolA?.end().catch(() => undefined);
-    await poolB?.end().catch(() => undefined);
+    if (poolA) {
+      await poolASchliessen().catch(() => undefined);
+    }
+    if (poolB) {
+      await poolBSchliessen().catch(() => undefined);
+    }
     await verwaltung?.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`).catch(() => undefined);
-    await verwaltung?.end();
+    if (verwaltung) {
+      await verwaltungSchliessen();
+    }
     await container?.stop();
   });
 

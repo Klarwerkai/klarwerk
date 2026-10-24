@@ -288,6 +288,7 @@ describe("P09 · isolierter Wiederanlauf mit gemessener Dauer und gemessenem Dat
       statement: "Wird vor der Sicherung validiert und erst danach zugestellt (fiktiv).",
       type: "best_practice",
       category: "Allgemein",
+      confidentiality: "intern",
       author: b.kennung.admin,
     } as never);
     await quellServices.validation.adminValidate(offenerVorgang.id, b.kennung.admin);

@@ -40,7 +40,7 @@ import {
   vorschau,
 } from "./assistenz-lernen";
 import { korrekturQuellen, korrekturZeile } from "./assistenz-lernen-korrektur";
-import type { Lernsitzung, Rohbeobachtung } from "./vormachen";
+import type { Lernsitzung, Rohbeobachtung } from "./vormachen-lernsitzung-typen";
 
 /**
  * Klarwerk-Web IST diese Anwendung: es gibt keine fremde Hostfassung, die sich unter der Routine

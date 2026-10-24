@@ -155,7 +155,7 @@ export function Normereignisse({
                 </div>
               ))}
               {vorschau.ungeprueft.length ? (
-                <p role="status">{t("normereignisse.quellenUngeprueft")}</p>
+                <output className="block">{t("normereignisse.quellenUngeprueft")}</output>
               ) : null}
               <p className="text-muted">{t("normereignisse.umfang")}</p>
               <Button disabled={laeuft || !erlaubt} onClick={() => void erfassen()}>
@@ -373,9 +373,7 @@ function Normkarte({
         </div>
       ))}
       {n.widerspruch ? (
-        <p role="status" className="text-trust-warn-text">
-          {t("normereignisse.widerspruch")}
-        </p>
+        <output className="block text-trust-warn-text">{t("normereignisse.widerspruch")}</output>
       ) : null}
       {(n.klaerungen ?? []).map((k) => (
         <div

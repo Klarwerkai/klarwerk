@@ -120,6 +120,7 @@ describe("I51 · der Check-Job fährt dasselbe Gesamttor wie die Hand", () => {
 
   it("versorgt den getrennten Postgres-Integrationsjob mit denselben Abhängigkeiten", () => {
     const integration = jobBlock("integration");
+    expect(integration).toMatch(/^ {4}runs-on: ubuntu-24\.04$/m);
     expect(runBefehle(integration)).toEqual([
       "npm ci",
       "npm ci --prefix apps/web",
@@ -188,4 +189,44 @@ describe("I51 · das aufgerufene Tor ist wirklich das Gesamttor", () => {
     expect(tor).toContain("smoke:ui:gate");
     expect(tor).toContain("./tools/test");
   });
+});
+
+it("Integration versorgt nur die breite Diagnose mit einem gesunden PostgreSQL-16-Testservice", () => {
+  const integration = jobBlock("integration");
+  const services = /^ {4}services:\n((?: {6}.*\n)+)/m.exec(integration)?.[1];
+  if (!services) throw new Error("Integration-Jobservice fehlt");
+  const postgres = /^ {6}postgres:\n((?: {8}.*\n)+)/m.exec(services)?.[1];
+  if (!postgres) throw new Error("PostgreSQL-Jobservice fehlt");
+  expect(postgres).toMatch(/^ {8}image: postgres:16-alpine$/m);
+  const env = /^ {8}env:\n((?: {10}.*\n)+)/m.exec(postgres)?.[1];
+  if (!env) throw new Error("PostgreSQL-Testumgebung fehlt");
+  const user = /^ {10}POSTGRES_USER: ([a-z_]+)$/m.exec(env)?.[1];
+  const password = /^ {10}POSTGRES_PASSWORD: (fiktiv-[a-z-]+)$/m.exec(env)?.[1];
+  const db = /^ {10}POSTGRES_DB: (klarwerk_ci_test)$/m.exec(env)?.[1];
+  if (!user || !password || !db) throw new Error("Fiktiver PostgreSQL-Testzugang fehlt");
+  expect(postgres).toMatch(/^ {8}ports:\n {10}- 5432:5432$/m);
+  expect(postgres).toContain(
+    `        options: >-\n          --health-cmd "pg_isready -U ${user} -d ${db}"`,
+  );
+  expect(postgres).not.toContain("secrets.");
+
+  const steps = integration.split(/^ {6}- /m).slice(1);
+  const broad = steps.filter((step) => runBefehle(step).includes("npm run test:integration"));
+  expect(broad).toHaveLength(1);
+  const address = /^ {10}KLARWERK_PG_TEST_URL: "([^"]+)"$/m.exec(broad[0] ?? "")?.[1];
+  if (!address) throw new Error("Test-URL am breiten Integrationsschritt fehlt");
+  const url = new URL(address);
+  expect(url.protocol).toBe("postgresql:");
+  expect(url.hostname).toBe("localhost");
+  expect(url.port).toBe("5432");
+  expect(url.pathname).toBe(`/${db}`);
+  expect(url.username).toBe(user);
+  expect(url.password).toBe(password);
+  expect(integration.match(/^\s+KLARWERK_PG_TEST_URL:/gm)).toHaveLength(1);
+  for (const step of steps.filter((step) => !broad.includes(step))) {
+    expect(step).not.toContain("KLARWERK_PG_TEST_URL:");
+  }
+  for (const name of ["pflicht", "check", "abbild"]) {
+    expect(jobBlock(name)).not.toMatch(/^\s+(?:services|KLARWERK_PG_TEST_URL):/m);
+  }
 });

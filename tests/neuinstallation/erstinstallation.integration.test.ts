@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 // ==================================================================================================
 // JOB 4201 — DIE LEERE KUNDENINSTANZ: AUFSETZEN, BEFUELLEN, NEU STARTEN, WIEDERFINDEN.
@@ -212,6 +213,7 @@ function pgUrl(v: Verbindung, datenbank: string): string {
 describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu starten", () => {
   let container: StartedTestContainer | undefined;
   let adminPool: Pool | undefined;
+  let adminPoolSchliessen: () => Promise<void>;
   let verbindung: Verbindung | undefined;
   let verfuegbar = false;
 
@@ -239,7 +241,11 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
         container = await new GenericContainer("postgres:16-alpine")
           .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
           .withExposedPorts(5432)
-          .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+          .withWaitStrategy(
+            Wait.forSuccessfulCommand(
+              "PGPASSWORD=test psql -h 127.0.0.1 -p 5432 -U postgres -d klarwerk_test -Atqc 'SELECT 1'",
+            ),
+          )
           .start();
         url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
       } catch {
@@ -259,6 +265,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
     }
 
     adminPool = new Pool({ connectionString: url });
+    adminPoolSchliessen = poolAbschluss(adminPool);
     await adminPool.query("SELECT 1");
     // Die LEEREN Wegwerf-Datenbanken. Nichts darin — das ist der Ausgangspunkt dieses Auftrags.
     await adminPool.query(`CREATE DATABASE ${kundeDb}`);
@@ -271,7 +278,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
       for (const db of [kundeDb, prozessDb]) {
         await adminPool.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => undefined);
       }
-      await adminPool.end();
+      await adminPoolSchliessen();
     }
     await container?.stop();
   }, 120_000);
@@ -305,6 +312,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
     // 1. DIE LEERE INSTANZ — und die Ersteinrichtung, die sie kontrolliert verlaesst.
     // ---------------------------------------------------------------------------------------------
     let pool = createPool(kundenUrl);
+    let poolSchliessen = poolAbschluss(pool);
     try {
       await migrate(pool);
       const app = buildApp(buildPgServices(pool));
@@ -476,7 +484,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
       });
       expect(gastVorher.statusCode, gastVorher.body).toBe(403);
     } finally {
-      await pool.end();
+      await poolSchliessen();
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -491,10 +499,14 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
     // selbst besitzt. Gehoert die PostgreSQL dem Pruefstand (`KLARWERK_PG_TEST_URL`), wird sie
     // NICHT angefasst, und das wird sichtbar gemeldet statt stillschweigend mitgezaehlt.
     if (container) {
+      await adminPoolSchliessen();
+      adminPool = undefined;
       await container.restart({ timeout: 60_000 });
       // Der veroeffentlichte Port kann sich am Wirt neu ergeben — er wird deshalb NEU gelesen und
       // nicht angenommen.
       v.port = String(container.getMappedPort(5432));
+      adminPool = new Pool({ connectionString: pgUrl(v, "klarwerk_test") });
+      adminPoolSchliessen = poolAbschluss(adminPool);
     } else {
       process.stderr.write(
         `${JOB} TEILMESSUNG: gegen eine vorgegebene PostgreSQL (KLARWERK_PG_TEST_URL) wird NUR die Anwendung neu gestartet — der Datenbankdienst gehoert dann nicht dieser Suite und wird nicht angefasst.\n`,
@@ -505,6 +517,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
     // 4. DER BELEG — dieselbe Sitzung, derselbe Inhalt, dieselbe Datei.
     // ---------------------------------------------------------------------------------------------
     pool = createPool(pgUrl(v, kundeDb));
+    poolSchliessen = poolAbschluss(pool);
     try {
       // KEINE zweite Migration und KEINE zweite Ersteinrichtung: was jetzt kommt, kommt aus der
       // Datenhaltung.
@@ -574,7 +587,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
       const zeilen = await pool.query("SELECT count(*)::int AS n FROM objects");
       expect(zeilen.rows[0].n).toBe(1);
     } finally {
-      await pool.end();
+      await poolSchliessen();
     }
   }, 900_000);
 
@@ -793,6 +806,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
       // Vergleich oben MUSS rot werden. Ohne sie waere „byteweise gleich" auch dann wahr, wenn hier
       // gar nicht verglichen wuerde.
       const pruefPool = createPool(url);
+      const pruefPoolSchliessen = poolAbschluss(pruefPool);
       try {
         const verfaelscht = Buffer.from(QUELLBYTES);
         verfaelscht.writeUInt8(verfaelscht.readUInt8(0) ^ 0xff, 0);
@@ -801,7 +815,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
           objektKennung,
         ]);
       } finally {
-        await pruefPool.end();
+        await pruefPoolSchliessen();
       }
       const rohVerfaelscht = await fetch(`${basis}/api/objects/${objektKennung}/raw`, {
         headers: { authorization: `Bearer ${token}` },

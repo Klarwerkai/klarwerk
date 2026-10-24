@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import type { TutorialDefinition } from "../typen";
+import type { TutorialDefinition, TutorialDemoProps } from "../typen";
 import { SEITEN } from "./daten";
 export const SEITEN_TUTORIALS: readonly TutorialDefinition[] = SEITEN.flatMap((seite) =>
   seite.pfade.map((pfad) => ({
@@ -28,7 +28,7 @@ export const SEITEN_TUTORIALS: readonly TutorialDefinition[] = SEITEN.flatMap((s
     })),
     laden: () =>
       import("./SeitenDemo").then((m) => ({
-        Demo: (props) => createElement(m.SeitenDemo, { ...props, seite }),
+        Demo: (props: TutorialDemoProps) => createElement(m.SeitenDemo, { ...props, seite }),
         Uebergang: m.SeitenUebergang,
       })),
   })),

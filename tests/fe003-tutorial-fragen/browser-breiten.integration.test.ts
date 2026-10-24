@@ -21,17 +21,19 @@
 //       `inert` und nimmt einen echten Klick an.
 //   E5  Eine vorbefüllte echte Frage bleibt beim Öffnen, Durchlaufen, Schliessen und beim Übergang
 //       „Eigene Frage stellen“ stehen; ab dem Öffnen geht keine verändernde Anfrage hinaus.
-// Dazu einmal: reduzierte Bewegung, eine vorhandene Antwort bleibt stehen, andere Seiten ohne Knopf.
+// Dazu einmal: reduzierte Bewegung, eine vorhandene Antwort bleibt stehen und Seiten ohne
+// Registereintrag tragen keinen Knopf.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, type Page, type Request, chromium } from "playwright";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import {
   type Befund,
   type Kandidat,
   WURZEL,
   erwarteterStand,
   kandidatBereitstellen,
+  meldePhase,
   pruefeKandidat,
 } from "./kandidat";
 
@@ -212,10 +214,16 @@ function demoBlatt(page: Page) {
 }
 
 beforeAll(async () => {
+  meldePhase("vorbereitung-start");
   kandidat = await kandidatBereitstellen(inject("fe003KandidatUrl"));
+  meldePhase("kandidatpruefung-start");
   befund = await pruefeKandidat(kandidat.url, erwarteterStand());
+  meldePhase("kandidatpruefung-ende");
   mkdirSync(BELEGORDNER, { recursive: true });
+  meldePhase("chromium-start");
   browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-gpu"] });
+  meldePhase("chromium-bereit");
+  meldePhase("login-start");
   // Einmal anmelden (Ersteinrichtung oder Anmeldung), dann den Zustand für jede Breite mitnehmen.
   const ktx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "de-DE" });
   const page = await ktx.newPage();
@@ -241,14 +249,20 @@ beforeAll(async () => {
   rolle = ich.role ?? "unbekannt";
   anmeldung = await ktx.storageState();
   await ktx.close();
+  meldePhase("login-ende");
 }, 900_000);
 
 afterAll(async () => {
+  meldePhase("abschluss-start");
   await browser?.close();
   if (kandidat?.selbstGestartet) {
     expect(await kandidat.beenden(), "der selbst gestartete Server ist beendet").toBe(true);
   }
+  meldePhase("abschluss-ende");
 });
+
+beforeEach(() => meldePhase("browserfall-start"));
+afterEach(() => meldePhase("browserfall-ende"));
 
 describe("FE-003 im echten Chromium — je Breite", () => {
   for (const b of BREITEN) {
@@ -628,10 +642,10 @@ describe("FE-003 im echten Chromium — einmalige Fälle", () => {
     }
   });
 
-  it("E7 · andere Seiten tragen kein Tutorial", async () => {
+  it("E7 · Seiten ohne Registereintrag tragen kein Tutorial", async () => {
     const { ktx, page } = await kontext({ width: 1280, height: 800 });
     try {
-      for (const pfad of ["/start", "/bibliothek"]) {
+      for (const pfad of ["/klara-vorschau", "/begleitung/pruefformular"]) {
         await page.goto(url(pfad));
         await page.getByTestId("kopfband").waitFor({ state: "visible" });
         await page.waitForTimeout(300);

@@ -347,9 +347,8 @@ describe("AW20 · Wissenspflege in der vorhandenen Erinnerungssteuerung", () => 
     });
   });
   it("Normfolgeprüfung erhält den wirklichen gehaltenen D-Lauf und denselben Memoryguard; Pause sperrt die Folge vor Wirkung", async () => {
-    let s: ReturnType<typeof system>;
     let aufrufe = 0;
-    s = system(async (konto, quellen, bedingung, folge) => {
+    const s: ReturnType<typeof system> = system(async (konto, quellen, bedingung, folge) => {
       aufrufe++;
       expect(konto).toBe(ICH);
       expect(quellen).toEqual(["anleitung-a4"]);

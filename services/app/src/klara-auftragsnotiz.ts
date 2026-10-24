@@ -1,18 +1,8 @@
-import type { KlaraRufe } from "./klara-ausfuehrung";
+import type { KlaraAuftragsnotiz } from "./klara-auftragsnotiz-typen";
+import type { KlaraRufe } from "./klara-ausfuehrung-typen";
 import { KlaraGespraechFehler } from "./klara-gespraech";
 
-/** Herkunft des tatsächlich berechtigt gelesenen Originals, kein zweiter Quellenbestand. */
-interface Notizbindung {
-  readonly id: string;
-  readonly fassung: number;
-  readonly titel: string;
-}
-
-export type KlaraAuftragsnotiz = Notizbindung &
-  (
-    | { readonly weg?: "gespraech"; readonly gespraechId: string; readonly nachrichtId: string }
-    | { readonly weg: "geschrieben"; readonly gespraechId?: never; readonly nachrichtId?: never }
-  );
+export type { KlaraAuftragsnotiz };
 
 /** Ausschließlich die normale authentifizierte Notiztür entscheidet über Eigentum/Quellrecht. */
 export async function liesAuftragsnotiz(

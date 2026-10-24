@@ -1,25 +1,63 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": { "enabled": true },
+  "organizeImports": {
+    "enabled": true
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
-      "suspicious": { "noExplicitAny": "error" },
-      "complexity": { "noUselessTypeConstraint": "error" }
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
+      "complexity": {
+        "noUselessTypeConstraint": "error"
+      }
     }
   },
   "overrides": [
     {
       "include": ["tsconfig.tests-tsx.json"],
-      "json": { "parser": { "allowComments": true } }
+      "json": {
+        "parser": {
+          "allowComments": true
+        }
+      }
     },
     {
       "include": ["**/*.test.ts"],
       "linter": {
         "rules": {
-          "style": { "noNonNullAssertion": "off" },
-          "performance": { "noDelete": "off" }
+          "style": {
+            "noNonNullAssertion": "off"
+          },
+          "performance": {
+            "noDelete": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": ["apps/web/public/word-addin/kalender.js"],
+      "linter": {
+        "enabled": true,
+        "rules": {
+          "style": {
+            "noVar": "off",
+            "useTemplate": "off",
+            "noArguments": "off"
+          },
+          "complexity": {
+            "useArrowFunction": "off"
+          },
+          "suspicious": {
+            "noRedundantUseStrict": "off"
+          }
+        }
+      },
+      "javascript": {
+        "formatter": {
+          "trailingCommas": "es5"
         }
       }
     }

@@ -423,6 +423,29 @@ export function speichernKnopfDa(): boolean {
 
 /** Ein Feld des Experten-Formulars, an seiner sichtbaren Beschriftung gefunden. */
 export function feld(label: string): HTMLInputElement | HTMLTextAreaElement {
+  // Beide Beschriftungen gehören zum selben Titelfeld im heutigen und im echten Vergleichsstand.
+  // Alle anderen Felder behalten ihre exakte Abfrage.
+  const titelLabels = new Set([i18n.t("capture.fTitle"), i18n.t("capture.wizard.titleLabel")]);
+  if (titelLabels.has(label)) {
+    const treffer = [...container.querySelectorAll("label")].filter((x) => {
+      const span = x.querySelector("span");
+      return (
+        span !== null && titelLabels.has((span.textContent ?? "").trim()) && !unerreichbar(span)
+      );
+    });
+    if (treffer.length !== 1) {
+      throw new Error(`Feld „${label}" nicht eindeutig (${treffer.length} Beschriftungen)`);
+    }
+    const [l] = treffer;
+    const el = l?.querySelector("input, textarea");
+    if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) {
+      throw new Error(`Feld „${label}" nicht gefunden`);
+    }
+    if (unerreichbar(el) || (el instanceof HTMLInputElement && el.type === "hidden")) {
+      throw new Error(`Feld „${label}" nicht sichtbar`);
+    }
+    return el;
+  }
   const l = [...container.querySelectorAll("label")].find(
     (x) => (x.querySelector("span")?.textContent ?? "").trim() === label,
   );

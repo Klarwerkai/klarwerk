@@ -29,6 +29,7 @@ export {
   AUDIT_SCHEMA,
   AUDIT_EVENT_ID_SCHEMA,
   AUDIT_HASH_VERSION_SCHEMA,
+  AUDIT_KETTENSPERRE,
 } from "./src/repo-pg";
 export {
   verifyChain,

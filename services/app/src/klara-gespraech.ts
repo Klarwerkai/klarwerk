@@ -25,8 +25,8 @@ import {
   setzeSchritt as setzeAuftragSchritt,
   unterbrechung,
 } from "./klara-auftrag";
-import type { BrowserAuftragEintrag } from "./klara-browser-aktion-dienst";
-import type { NotizSchreibbedingung } from "./klara-notiz";
+import type { BrowserAuftragEintrag } from "./klara-browser-verlauf-typen";
+import type { NotizSchreibbedingung } from "./klara-notiz-schreibbedingung";
 
 // ================================================================================================
 // produkt:20261008:klara-basis — DAS PERSÖNLICHE KLARA-GESPRÄCH, SERVERSEITIG UNTER DER EIGENEN PERSON.

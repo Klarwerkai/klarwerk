@@ -1,23 +1,16 @@
 import type { KlaraAufgabeRepo } from "./klara-aufgabe";
-import type { KlaraErinnerung, KlaraErinnerungMeldung } from "./klara-erinnerung";
+import type {
+  ErinnerungQuellfreigabe,
+  ErinnerungQuellschutz,
+  KlaraErinnerung,
+  KlaraErinnerungMeldung,
+} from "./klara-erinnerung";
 import type { GeleseneFristenQuelle } from "./klara-fristen-dienst";
 import { type FristenQuellenDeps, KlaraFristenQuellen } from "./klara-fristen-quellen";
 import type { KlaraGespraechAusgabe } from "./klara-gespraech-ausgabe";
-import type { KlaraNotizRepo, NotizSchreibbedingung } from "./klara-notiz";
+import type { KlaraNotizRepo } from "./klara-notiz";
 
-/** Heutige vorhandene Quellrechte, niemals eine gespeicherte Freigabe. */
-export interface ErinnerungQuellfreigabe extends NotizSchreibbedingung {
-  readonly koIds: readonly string[];
-  /** Positiv geprüfte freie Herkunft, nicht bloß eine leere Liste bekannter KO-IDs. */
-  readonly quelleFrei?: true;
-  readonly nochAktuell: () => Promise<boolean>;
-}
-
-export type ErinnerungQuellschutz = (
-  erinnerung: KlaraErinnerung,
-  betrachterId: string,
-  meldung?: KlaraErinnerungMeldung,
-) => Promise<ErinnerungQuellfreigabe | null>;
+export type { ErinnerungQuellfreigabe, ErinnerungQuellschutz };
 
 interface QuellenDeps extends FristenQuellenDeps {
   readonly notizenRoh: Pick<KlaraNotizRepo, "hole">;

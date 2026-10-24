@@ -155,6 +155,31 @@ describe("JOB 943/D2 · der cwd-Waechter erkennt relative Ausfuehrung semantisch
     expect(waechter(w).code, "ein cwd-unabhaengiger Starter wurde gemeldet").toBe(0);
   });
 
+  it("B7 · NODE: Datei-URL mit import.meta.url ist modulrelativ", () => {
+    const w = echteWurzel();
+    skript(
+      w,
+      "modul.mjs",
+      'import { readFileSync } from "node:fs";\nreadFileSync(new URL("./datei.json", import.meta.url), "utf8");\n',
+    );
+    const lauf = waechter(w);
+    expect(lauf.code, lauf.aus).toBe(0);
+    expect(lauf.aus).toMatch(/unabhaengig 1/);
+  });
+
+  it("B8 · NODE: Modul-URL gibt keinen weiteren CWD-Dateizugriff frei", () => {
+    const w = echteWurzel();
+    skript(
+      w,
+      "gemischt.mjs",
+      'import { readFileSync } from "node:fs";\nreadFileSync(new URL("./datei.json", import.meta.url), "utf8");\nreadFileSync("./cwd-datei.json");\n',
+    );
+    const lauf = waechter(w);
+    expect(lauf.code, lauf.aus).toBe(1);
+    expect(lauf.aus).toContain("gemischt.mjs");
+    expect(lauf.aus).toMatch(/unverankert 1/);
+  });
+
   // ----------------------------------------------------------------------------------------------
   // C · DIE MASCHINENLESBARE AUSNAHME
   // ----------------------------------------------------------------------------------------------

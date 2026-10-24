@@ -6,7 +6,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { MediaAnalysisService } from "../../services/media";
 import { liesPcmWav } from "../../services/media/src/wav-abschnitte";
-import { pcmQuelle, markerAntwort } from "./segment-fixture";
+import { markerAntwort, pcmQuelle } from "./segment-fixture";
 let app: ReturnType<typeof buildApp>;
 let server: Server;
 let browser: Browser;

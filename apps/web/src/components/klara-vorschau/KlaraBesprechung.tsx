@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { alsDatenUrl } from "../../api/besprechungen";
 import { api } from "../../api/client";
-import { klaraFristenApi, type FristenStand } from "../../api/klaraFristen";
+import { type FristenStand, klaraFristenApi } from "../../api/klaraFristen";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import { ladeAufgaben } from "./aufgaben";
 import { ladeNotizen, oeffneNotiz } from "./notizen";
@@ -205,6 +205,7 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
   const audio = useRef<HTMLAudioElement>(null);
   const [fristquelle, setFristquelle] = useState<string | null>(null);
   const [fristen, setFristen] = useState<FristenStand | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies(fassung): Neue Notizfassung lädt die Serverauswertung erneut.
   useEffect(() => {
     let aktiv = true;
     void api

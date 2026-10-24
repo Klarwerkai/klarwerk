@@ -66,7 +66,12 @@ describe("W2 · Herkunftsgruppen am heutigen Antwortschluss", () => {
       herkunft: "revision:rev-17-3",
       koIds: ["a", "b"],
     });
-    const andere = { ...SEITE_V3, id: "src-anders", externalId: "page-99", sourceRecordId: "rev-99-1" };
+    const andere = {
+      ...SEITE_V3,
+      id: "src-anders",
+      externalId: "page-99",
+      sourceRecordId: "rev-99-1",
+    };
     const mitDritter = schluss([a, b, ko("c", titel, [andere])]);
     expect(mitDritter.unabhaengig).toBe(true);
     expect(mitDritter.gestuetztAuf).toEqual(["a", "b", "c"]);

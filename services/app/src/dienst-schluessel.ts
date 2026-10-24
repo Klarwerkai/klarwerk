@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import type { Role } from "../../auth";
-import type { AddonCapability, AddonPrincipal } from "./addon-principal";
+import type { Role, SessionUser } from "../../auth";
+import type { AddonCapability, AddonPrincipal } from "./addon-principal-typen";
 import type { BremsGrenze } from "./anfragebremse";
-import type { SessionUser } from "./http";
 
 // ================================================================================================
 // Aufnahme gesamt-integrations-api (R-0677 / R-0688 / R-0704 / R-0698) — DIENST-SCHLÜSSEL.

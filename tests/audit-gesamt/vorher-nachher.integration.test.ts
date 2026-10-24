@@ -12,6 +12,10 @@
 //            Verzeichnis kopiert und dort mit `vorher/behebung-rueckwaerts.patch` (die Behebung
 //            rückwärts, von Git erzeugt) per `git apply` zurückgesetzt. Danach wird GELADEN — es ist
 //            das `buildPgServices`/`buildApp`/`migrate` dieser Fassung, kein Nachbau.
+//            Aktualisierung: Der Rückwärtspatch ist vom festen Stand `12d84170` gegen den echten
+//            Commit `6c576c70` mit `git diff --binary --full-index` für `services/` ohne Tests neu
+//            erzeugt und mit `git apply --check` geprüft. Import und PostgreSQL-Gegenprobe bleiben
+//            dem regulären Integrationslauf vorbehalten (genauer Befehl in `vorher/fassung.json`).
 //   NACHHER  der Kandidat selbst (statische Importe unten).
 //
 // Erwartung: VORHER verletzt jede Sollprüfung FACHLICH (die Verletzungen werden benannt und
@@ -20,9 +24,10 @@
 // übersprungen und nicht als Produktbefund ausgegeben.
 //
 //   VORHER 758e76c1  (Nacharbeit 8) die Fassung, an der Ben beleg:6818bd52 meldete. Sie ist von
-//            keinem Branch erreichbar, liegt aber als Git-Objekt vor; `vorher/fassung-758e76c1.patch`
-//            (von Git erzeugt, Kandidat → 758e76c1, `services/` ohne Tests) macht sie zu verfolgtem
-//            Prüfmaterial. Sie hat den Exportweg `GET /api/audit/export` — der gemeldete Auslöser
+//            keinem Branch erreichbar; das Git-Objekt ist hier derzeit nicht auflösbar. Der alte
+//            Patch `vorher/fassung-758e76c1.patch` und seine Lauf-2-Metadaten bleiben unverändert.
+//            Diese getrennte Quelllücke ist offen; die Fassung ist damit nicht als wiederhergestellt
+//            belegt. Sie hat den Exportweg `GET /api/audit/export` — der gemeldete Auslöser
 //            „gleichzeitige Exporte" läuft dort und am Kandidaten mit DERSELBEN Sollprüfung.
 //
 // FASSUNGEN JE BEFUND: beleg:6818bd52 (gleichzeitige Exporte) an 758e76c1 gegen den Kandidaten;

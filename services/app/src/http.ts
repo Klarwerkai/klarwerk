@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { type AuthService, type Freigabestufe, type Role, meldung, sprache } from "../../auth";
+import { type AuthService, type Role, type SessionUser, meldung, sprache } from "../../auth";
 import { type Permission, can } from "../../rbac";
 import { dienstSitzungsnutzer } from "./dienst-schluessel";
 import { stapelRahmen } from "./log-positivliste";
@@ -10,22 +10,7 @@ import { RECHTEKONTEXT_KOPF, rechtekontextStempel } from "./rechtekontext";
 
 const SESSION_COOKIE = "kw_session";
 
-export interface SessionUser {
-  id: string;
-  role: Role;
-  /**
-   * produkt:20261007:spaces — die Spaces, deren Inhalte dieser Mensch lesen darf, EINMAL je Anfrage
-   * erhoben (`makeGuards`, Option `spaceLesbar`). Ausgewertet allein in `sichtbarkeit.ts`. FEHLT das
-   * Feld (ein Aufbau ohne Spaces), ist kein Objekt mit führendem Space sichtbar — fail-closed.
-   */
-  spaceLesbar?: ReadonlySet<string>;
-  /**
-   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche
-   * Freigabeniveau aus dem Konto. Ausgewertet allein in `sichtbarkeit.ts` (`freigaberang`); fehlt
-   * es, gilt dort die Übergangsregel.
-   */
-  freigabe?: Freigabestufe;
-}
+export type { SessionUser };
 
 /** Erhebt je Anfrage die lesbaren Spaces eines angemeldeten Kontos (s. `SessionUser.spaceLesbar`). */
 export type SpaceLesbarQuelle = (user: { id: string; role: Role }) => Promise<ReadonlySet<string>>;

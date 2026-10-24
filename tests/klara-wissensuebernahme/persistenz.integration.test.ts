@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 let container: StartedTestContainer;
-const pools: Pool[] = [];
+const poolAbschluesse: (() => Promise<void>)[] = [];
 const apps: ReturnType<typeof buildApp>[] = [];
 let url = "";
+let adminKopf: { authorization: string };
 function appFuer(db = "klara_f_test") {
   const p = createPool(`${url}/${db}`);
-  pools.push(p);
+  poolAbschluesse.push(poolAbschluss(p));
   const app = buildApp(buildPgServices(p));
   apps.push(app);
   return app;
@@ -25,22 +26,40 @@ beforeAll(async () => {
     .start();
   url = `postgresql://postgres:f-synthetic@${container.getHost()}:${container.getMappedPort(5432)}`;
   const p = createPool(`${url}/klara_f_test`);
+  const schliessen = poolAbschluss(p);
+  poolAbschluesse.push(schliessen);
   await migrate(p);
   await migrate(p);
-  await p.end();
-}, 120000);
-afterAll(async () => {
-  for (const a of apps) await a.close();
-  for (const p of pools) await p.end();
-  await container?.stop();
-});
-it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private Löschung", async () => {
-  let a = appFuer();
-  await a.inject({
+  await schliessen();
+  const admin = appFuer();
+  const registriert = await admin.inject({
     method: "POST",
     url: "/api/auth/register",
     payload: { name: "F Synthetisch", email: "f@wissen.test", password: "synthetisch123" },
   });
+  expect(registriert.statusCode, registriert.body).toBe(201);
+  expect(registriert.json()).toMatchObject({
+    email: "f@wissen.test",
+    role: "admin",
+    approved: true,
+  });
+  const login = await admin.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "f@wissen.test", password: "synthetisch123" },
+  });
+  expect(login.statusCode, login.body).toBe(200);
+  const token = login.json().token as string;
+  expect(token).toBeTruthy();
+  adminKopf = { authorization: `Bearer ${token}` };
+}, 120000);
+afterAll(async () => {
+  for (const a of apps) await a.close();
+  for (const schliessen of poolAbschluesse) await schliessen();
+  await container?.stop();
+});
+it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private Löschung", async () => {
+  let a = appFuer();
   async function login(app: typeof a) {
     const r = await app.inject({
       method: "POST",
@@ -100,6 +119,8 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
   const id = rs[0]?.json().beitrag.id;
   expect(rs[1]?.json().beitrag.id).toBe(id);
   const p = createPool(`${url}/klara_f_test`);
+  const schliessen = poolAbschluss(p);
+  poolAbschluesse.push(schliessen);
   expect(
     (
       await p.query(
@@ -107,7 +128,7 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
       )
     ).rows[0].n,
   ).toBe(1);
-  await p.end();
+  await schliessen();
   for (const cmd of [
     ["pg_dump", "-U", "postgres", "-d", "klara_f_test", "-f", "/tmp/f08.sql"],
     ["createdb", "-U", "postgres", "klara_f_restore_test"],
@@ -146,11 +167,27 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
 
 it("F15 · Besprechungsfassung, private Übergabe und Folgeaufgabe überstehen PG-Neustart und echten Dump/Restore", async () => {
   const a = appFuer();
-  await a.inject({
+  const registriert = await a.inject({
     method: "POST",
     url: "/api/auth/register",
     payload: { name: "F Meeting PG", email: "f15@wissen.test", password: "synthetisch123" },
   });
+  expect(registriert.statusCode, registriert.body).toBe(201);
+  const kontoId = registriert.json().id as string;
+  expect(kontoId).toBeTruthy();
+  const gesperrt = await a.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "f15@wissen.test", password: "synthetisch123" },
+  });
+  expect(gesperrt.statusCode, gesperrt.body).toBe(403);
+  expect(gesperrt.json().error).toBe("NOT_APPROVED");
+  const frei = await a.inject({
+    method: "POST",
+    url: `/api/auth/users/${kontoId}/approve`,
+    headers: adminKopf,
+  });
+  expect(frei.statusCode, frei.body).toBe(200);
   const login = await a.inject({
     method: "POST",
     url: "/api/auth/login",

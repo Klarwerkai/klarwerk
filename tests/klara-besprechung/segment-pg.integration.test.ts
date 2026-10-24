@@ -7,16 +7,18 @@ import { createPool, migrate } from "../../services/app/src/db";
 import { KlaraBesprechungsDienst } from "../../services/app/src/klara-besprechung";
 import { MediaAnalysisService } from "../../services/media";
 import { liesPcmWav } from "../../services/media/src/wav-abschnitte";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 import { markerAntwort, pcmQuelle } from "./segment-fixture";
 let container: StartedTestContainer;
 let url = "";
 let token = "";
-const pools: Pool[] = [];
+const pools = new Map<Pool, () => Promise<void>>();
 const apps: ReturnType<typeof buildApp>[] = [];
 type Adapter = (marker: number, signal?: AbortSignal) => Promise<ReturnType<typeof markerAntwort>>;
 function instanz(adapter: Adapter) {
   const pool = createPool(url);
-  pools.push(pool);
+  const schliessen = poolAbschluss(pool);
+  pools.set(pool, schliessen);
   const s = buildPgServices(pool);
   s.media = new MediaAnalysisService({
     objects: s.objects,
@@ -32,7 +34,7 @@ function instanz(adapter: Adapter) {
   });
   const app = buildApp(s);
   apps.push(app);
-  return { app, s, pool };
+  return { app, s, pool, schliessen };
 }
 function api(
   i: ReturnType<typeof instanz>,
@@ -100,8 +102,13 @@ beforeAll(async () => {
   );
   url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klara_f15_seg`;
   const p = createPool(url);
-  await migrate(p);
-  await p.end();
+  const schliessen = poolAbschluss(p);
+  pools.set(p, schliessen);
+  try {
+    await migrate(p);
+  } finally {
+    await schliessen();
+  }
   const i = instanz(async (m) => markerAntwort(m));
   expect(
     (
@@ -122,7 +129,7 @@ beforeAll(async () => {
 }, 120000);
 afterAll(async () => {
   for (const a of apps) await a.close();
-  for (const p of pools) await p.end();
+  for (const schliessen of pools.values()) await schliessen();
   await container?.stop();
   console.log(
     JSON.stringify({
@@ -189,9 +196,9 @@ it("echte PG-Teilfassung überlebt Fehler und neue App/Pools: nur offener Rest, 
   expect(b(n).verarbeitung.stand).toBe("fehlgeschlagen");
   expect(b(n).segmente).toHaveLength(1);
   await i.app.close();
-  await i.pool.end();
+  await i.schliessen();
   apps.splice(apps.indexOf(i.app), 1);
-  pools.splice(pools.indexOf(i.pool), 1);
+  pools.delete(i.pool);
   const j = instanz(async (m) => {
     calls.push(m);
     return markerAntwort(m);

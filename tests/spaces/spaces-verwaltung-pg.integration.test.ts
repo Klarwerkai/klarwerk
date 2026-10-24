@@ -21,6 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 type App = ReturnType<typeof buildApp>;
 type Kopf = { authorization: string };
@@ -31,15 +32,19 @@ const WORT = "Gewindelehrenpflege";
 describe("ADMIN-07 · Spaces verwalten gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
+  let verwaltungSchliessen: () => Promise<void>;
   let datenbank = "";
   let url = "";
-  const offen: { pool: Pool; app: App }[] = [];
+  const offen: { app: App; schliessen: () => Promise<void> }[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
 
   async function neueApp(): Promise<App> {
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     const app = buildApp(buildPgServices(pool));
+    offen.push({ app, schliessen });
     await app.ready();
-    offen.push({ pool, app });
     return app;
   }
 
@@ -49,7 +54,7 @@ describe("ADMIN-07 · Spaces verwalten gegen echtes PostgreSQL", () => {
     if (eintrag) {
       offen.splice(i, 1);
       await eintrag.app.close();
-      await eintrag.pool.end();
+      await eintrag.schliessen();
     }
   }
 
@@ -88,16 +93,19 @@ describe("ADMIN-07 · Spaces verwalten gegen echtes PostgreSQL", () => {
     }
     datenbank = `klarwerk_spaces_admin_test_${`${Date.now()}`.slice(-9)}`;
     verwaltung = new Pool({ connectionString: basis });
+    verwaltungSchliessen = poolAbschluss(verwaltung);
     await verwaltung.query(`CREATE DATABASE ${datenbank}`);
     const ziel = new URL(basis);
     ziel.pathname = `/${datenbank}`;
     url = ziel.toString();
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     try {
       await migrate(pool);
       await buildPgServices(pool).ko.activateSearchProjectionV2();
     } finally {
-      await pool.end();
+      await schliessen();
     }
   }, 300_000);
 
@@ -105,11 +113,12 @@ describe("ADMIN-07 · Spaces verwalten gegen echtes PostgreSQL", () => {
     for (const o of [...offen]) {
       await beenden(o.app);
     }
+    for (const schliessen of poolAbschluesse) await schliessen();
     if (verwaltung) {
       await verwaltung
         .query(`DROP DATABASE IF EXISTS ${datenbank} WITH (FORCE)`)
         .catch(() => undefined);
-      await verwaltung.end();
+      await verwaltungSchliessen();
     }
     await container?.stop();
   }, 120_000);

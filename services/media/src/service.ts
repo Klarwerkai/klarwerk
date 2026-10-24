@@ -1,6 +1,6 @@
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
-import { wavAusschnitt, type WavAbschnitt } from "./wav-abschnitte";
 import { type MediaAnalysis, MediaAnalysisError, type Transcriber } from "./types";
+import { type WavAbschnitt, wavAusschnitt } from "./wav-abschnitte";
 
 // SCRUM-521 (WP1): Vertraulichkeits-Rangordnung (self-contained; media bleibt von knowledge-object
 // entkoppelt). intern < vertraulich < streng_vertraulich.

@@ -8,6 +8,7 @@ import {
   writeSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import type { Loeschmarkierung, LoeschmarkierungsAblage } from "./loeschmarkierung-typen";
 import type { RoutinenRepo } from "./vormachen";
 
 // ================================================================================================
@@ -44,19 +45,7 @@ export const LOESCHMARKIERUNGEN_ENV = "KLARWERK_LOESCHMARKIERUNGEN";
 export const LOESCHMARKIERUNG_ARTEN = ["persoenliche_routinen"] as const;
 export type LoeschmarkierungArt = (typeof LOESCHMARKIERUNG_ARTEN)[number];
 
-export interface Loeschmarkierung {
-  readonly art: LoeschmarkierungArt;
-  readonly kontoId: string;
-  /** Zeitpunkt der Löschung (ISO, UTC). */
-  readonly am: string;
-}
-
-export interface LoeschmarkierungsAblage {
-  /** Wo die Markierungen liegen — für die Auskunft, nie ein Inhalt. */
-  readonly ort: string;
-  vermerke(m: Loeschmarkierung): Promise<void>;
-  alle(): Promise<Loeschmarkierung[]>;
-}
+export type { Loeschmarkierung, LoeschmarkierungsAblage };
 
 function istMarkierung(x: unknown): x is Loeschmarkierung {
   const m = x as Partial<Loeschmarkierung> | null | undefined;

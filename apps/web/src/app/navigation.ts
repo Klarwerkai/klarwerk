@@ -22,12 +22,13 @@ import {
   User,
   Users,
 } from "lucide-react";
+import type { Role } from "../api/types";
 // AUFTRAG-mega51 BLOCK A: die bewachten Deep-Link-Routen ziehen ihren Pfad aus derselben
 // Konstante wie der Router — keine abgeschriebene Zeichenfolge.
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
 
 // Rollenmodell (BRIEF §9). Jede höhere Rolle schließt die niedrigeren ein.
-export type Role = "viewer" | "experte" | "controller" | "admin";
+export type { Role };
 export const ROLES: readonly Role[] = ["viewer", "experte", "controller", "admin"];
 export const ROLE_RANK: Record<Role, number> = {
   viewer: 0,
