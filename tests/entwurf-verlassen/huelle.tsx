@@ -430,9 +430,7 @@ export function feld(label: string): HTMLInputElement | HTMLTextAreaElement {
     const treffer = [...container.querySelectorAll("label")].filter((x) => {
       const span = x.querySelector("span");
       return (
-        span !== null &&
-        titelLabels.has((span.textContent ?? "").trim()) &&
-        !unerreichbar(span)
+        span !== null && titelLabels.has((span.textContent ?? "").trim()) && !unerreichbar(span)
       );
     });
     if (treffer.length !== 1) {
