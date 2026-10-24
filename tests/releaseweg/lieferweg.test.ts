@@ -329,7 +329,7 @@ const events=readFileSync(join(work,'kindereignisse.jsonl'),'utf8').trim().split
 
   it("setzt nach gemessenem Rot seriell fort und hält Gesamtbericht und CLI rot", () => {
     const files = ["tests/a.integration.test.ts", "tests/b.integration.test.ts"];
-    const work = vorrichtung("pg-serie-fachlich-rot", files, "", [files[0]]);
+    const work = vorrichtung("pg-serie-fachlich-rot", files, "", files.slice(0, 1));
     const run = node(
       `${cliProgramm}
 assert.deepEqual(events.map(e=>e.event+':'+e.file),${JSON.stringify(files)}.flatMap(file=>['start:'+file,'end:'+file]),'zweite unabhängige PG-Datei wurde nicht gestartet');
