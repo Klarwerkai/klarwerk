@@ -19,6 +19,13 @@ import {
 } from "./assistenz-lernen-vorfuehrungen";
 import type { LoeschmarkierungsAblage } from "./loeschmarkierung-typen";
 import type { PersoenlicheFunktion as BeschaffungsFunktion } from "./persoenliche-funktionsvertrag";
+import type {
+  LernKorrektur,
+  LernZustand,
+  Lernsitzung,
+  NichtAufgenommen,
+  Rohbeobachtung,
+} from "./vormachen-lernsitzung-typen";
 
 // ================================================================================================
 // produkt:20261011:peter-p06 — VORMACHEN, ZWECKGEBUNDENES MITSCHREIBEN UND PERSÖNLICHE ROUTINE (PoC).
@@ -139,60 +146,15 @@ export const VORMACHEN_MAX_ROUTINEN = 50;
 const STUNDE_MS = 60 * 60 * 1000;
 const TAG_MS = 24 * STUNDE_MS;
 
-export type LernZustand = "lernt" | "pausiert" | "abgebrochen";
+export type { LernZustand };
 
-export interface Rohbeobachtung {
-  readonly nr: number;
-  readonly vorgang: VormachenVorgang;
-  readonly beschreibung: string;
-  /** Der mitgeschriebene Rohwert (etwa ein Titel). Verlässt die Lernsitzung nie. */
-  readonly rohwert: string | null;
-  /**
-   * BPA-06: die gesetzten Felder eines angelegten Entwurfs mit Wert (Titel, Kernaussage,
-   * Ordnungsangaben, Prüfer) — Rohdaten wie `rohwert`, nur für die Ableitung aus mehreren
-   * Vorführungen. Verlassen die Lernsitzung nie und enden mit Bestätigung oder Abbruch.
-   */
-  readonly felder?: Readonly<Record<string, string>>;
-  readonly am: string;
-}
+export type { Rohbeobachtung };
 
-export interface LernKorrektur {
-  readonly beschreibung?: string;
-  readonly entfernt?: boolean;
-}
+export type { LernKorrektur };
 
-export interface NichtAufgenommen {
-  readonly host: number;
-  readonly vorgang: number;
-  readonly pausiert: number;
-  /** Arbeitsweg des gewählten Hosts, aber ohne sichtbaren Lernzustand im beobachteten Client. */
-  readonly unsichtbar: number;
-}
+export type { NichtAufgenommen };
 
-export interface Lernsitzung {
-  readonly id: string;
-  readonly kontoId: string;
-  readonly host: VormachenHost;
-  readonly vorgaenge: readonly VormachenVorgang[];
-  readonly zweck: string;
-  readonly abbruchRegel: VormachenAbbruchRegel;
-  readonly zustand: LernZustand;
-  readonly beobachtungen: readonly Rohbeobachtung[];
-  /** Je Beobachtungsnummer die Korrektur der Person — Teil der Lernnotiz. */
-  readonly korrekturen: Readonly<Record<number, LernKorrektur>>;
-  readonly nichtAufgenommen: NichtAufgenommen;
-  /**
-   * Rohdaten des Zielbezugs: welche Entwurfskennung in welchem Schritt entstand — damit ein späterer
-   * Schritt „Entwurf aus Schritt n" sagen kann. Wird mit den Rohwerten entfernt.
-   */
-  readonly ziele: Readonly<Record<string, number>>;
-  /** BPA-06: die Änderungen der Person an der Ableitung aus mehreren Vorführungen, in Folge. */
-  readonly ableitungsAenderungen?: readonly Aenderung[];
-  readonly angelegtAm: string;
-  readonly geaendertAm: string;
-  /** Bis wann Rohbeobachtungen höchstens bestehen (nach Abbruch: bis wann die Notiz besteht). */
-  readonly verfallAm: string;
-}
+export type { Lernsitzung };
 
 export interface LernnotizSchritt {
   readonly nr: number;
