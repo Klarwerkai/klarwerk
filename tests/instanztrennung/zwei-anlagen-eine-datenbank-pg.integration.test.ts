@@ -32,6 +32,7 @@ import {
   bindeInstanzVorMigration,
 } from "../../services/app/src/instanzbindung";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 const WURZEL = join(__dirname, "..", "..");
 const ANLAGE_A = "https://wissen.firma-a.test";
@@ -135,12 +136,13 @@ async function starteAnlage(datenbankUrl: string, appBaseUrl: string): Promise<S
 describe("Instanztrennung · zwei Anlagen an einer Datenbank", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
+  let verwaltungSchliessen: () => Promise<void>;
   let basisUrl = "";
-  const pools: Pool[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
 
   function neuerPool(url: string): Pool {
     const pool = createPool(url);
-    pools.push(pool);
+    poolAbschluesse.push(poolAbschluss(pool));
     return pool;
   }
 
@@ -222,17 +224,18 @@ describe("Instanztrennung · zwei Anlagen an einer Datenbank", () => {
       basisUrl = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     }
     verwaltung = createPool(basisUrl);
+    verwaltungSchliessen = poolAbschluss(verwaltung);
     await verwaltung.query("SELECT 1");
   }, 180_000);
 
   afterAll(async () => {
-    for (const pool of pools) {
-      await pool.end().catch(() => undefined);
+    for (const schliessen of poolAbschluesse) {
+      await schliessen();
     }
     for (const db of [DB_FUNKTION, DB_GLEICHZEITIG, DB_PROZESS, DB_STAND, DB_ADRESSE]) {
       await verwaltung?.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => undefined);
     }
-    await verwaltung?.end();
+    if (verwaltung) await verwaltungSchliessen();
     await container?.stop();
   });
 
