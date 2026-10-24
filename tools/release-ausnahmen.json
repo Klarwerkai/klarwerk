@@ -591,16 +591,6 @@
     },
     {
       "stage": "architecture",
-      "path": "services/app/src/praesentation-bildquellen.ts",
-      "target": "services/app/src/praesentation-daten.ts",
-      "rule": "no-circular",
-      "fingerprint": "6cfe545dc5c3067a68e9550a89e7dbc13e15b3db6d3f8bbef798c69c92e69976",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    },
-    {
-      "stage": "architecture",
       "path": "services/app/src/praesentation-vortrag-deck.ts",
       "target": "services/app/src/praesentation-vortrag.ts",
       "rule": "no-circular",
