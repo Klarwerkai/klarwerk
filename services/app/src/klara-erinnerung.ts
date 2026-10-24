@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { KlaraAufgabeRepo } from "./klara-aufgabe";
-import type { ErinnerungQuellfreigabe, ErinnerungQuellschutz } from "./klara-erinnerung-quellen";
 import {
   type LokaleZeit,
   SOMMERZEIT_VORGABE,
@@ -352,6 +351,20 @@ export interface KlaraErinnerungMeldung {
   /** Der Laufstatus, mit dem ein Readback den Lauf abschließt. */
   readonly laufStatus: KlaraErinnerungLaufStatus;
 }
+
+/** Heutige vorhandene Quellrechte, niemals eine gespeicherte Freigabe. */
+export interface ErinnerungQuellfreigabe extends NotizSchreibbedingung {
+  readonly koIds: readonly string[];
+  /** Positiv geprüfte freie Herkunft, nicht bloß eine leere Liste bekannter KO-IDs. */
+  readonly quelleFrei?: true;
+  readonly nochAktuell: () => Promise<boolean>;
+}
+
+export type ErinnerungQuellschutz = (
+  erinnerung: KlaraErinnerung,
+  betrachterId: string,
+  meldung?: KlaraErinnerungMeldung,
+) => Promise<ErinnerungQuellfreigabe | null>;
 
 /** Ein vorhandener Sammelbeleg gilt nur für die tatsächlich darin gespeicherten Vorkommen. */
 function umfasstMeldung(beleg: KlaraErinnerungMeldung, neu: KlaraErinnerungMeldung): boolean {
