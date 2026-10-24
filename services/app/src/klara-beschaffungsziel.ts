@@ -1,5 +1,5 @@
 import { canonicalJson } from "../../audit";
-import { KlaraAuftragFehler, type KlaraPlanSchritt } from "./klara-auftrag";
+import { KlaraAuftragFehler, type KlaraPlanSchritt } from "./klara-auftragsvertrag";
 import { istDatum } from "./klara-erinnerung-zeit";
 import {
   AUSSENAKTIONEN,

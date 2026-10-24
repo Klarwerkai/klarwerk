@@ -8,16 +8,5 @@
     "architectureErrors": 74,
     "architectureRawExit": 0
   },
-  "entries": [
-    {
-      "stage": "architecture",
-      "path": "services/app/src/klara-auftrag.ts",
-      "target": "services/app/src/klara-beschaffungsziel.ts",
-      "rule": "no-circular",
-      "fingerprint": "221412e528c91a88cb046440547dd1ab62792b75b4665a749e3dd16bb1848e4a",
-      "owner": "Root",
-      "expires": "2026-10-23T18:00:00Z",
-      "reason": "Unveränderter konkret gemessener Importzyklus (einschließlich seiner Typ-/Laufzeitkanten); Root löst diese konkrete Kante vor Frist, keine globale Typzyklus-/Modulregel-Abschaltung."
-    }
-  ]
+  "entries": []
 }
