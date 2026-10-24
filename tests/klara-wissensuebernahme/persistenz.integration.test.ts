@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 let container: StartedTestContainer;
-const pools: Pool[] = [];
+const poolAbschluesse: (() => Promise<void>)[] = [];
 const apps: ReturnType<typeof buildApp>[] = [];
 let url = "";
 let adminKopf: { authorization: string };
 function appFuer(db = "klara_f_test") {
   const p = createPool(`${url}/${db}`);
-  pools.push(p);
+  poolAbschluesse.push(poolAbschluss(p));
   const app = buildApp(buildPgServices(p));
   apps.push(app);
   return app;
@@ -26,9 +26,11 @@ beforeAll(async () => {
     .start();
   url = `postgresql://postgres:f-synthetic@${container.getHost()}:${container.getMappedPort(5432)}`;
   const p = createPool(`${url}/klara_f_test`);
+  const schliessen = poolAbschluss(p);
+  poolAbschluesse.push(schliessen);
   await migrate(p);
   await migrate(p);
-  await p.end();
+  await schliessen();
   const admin = appFuer();
   const registriert = await admin.inject({
     method: "POST",
@@ -53,7 +55,7 @@ beforeAll(async () => {
 }, 120000);
 afterAll(async () => {
   for (const a of apps) await a.close();
-  for (const p of pools) await p.end();
+  for (const schliessen of poolAbschluesse) await schliessen();
   await container?.stop();
 });
 it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private Löschung", async () => {
@@ -117,6 +119,8 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
   const id = rs[0]?.json().beitrag.id;
   expect(rs[1]?.json().beitrag.id).toBe(id);
   const p = createPool(`${url}/klara_f_test`);
+  const schliessen = poolAbschluss(p);
+  poolAbschluesse.push(schliessen);
   expect(
     (
       await p.query(
@@ -124,7 +128,7 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
       )
     ).rows[0].n,
   ).toBe(1);
-  await p.end();
+  await schliessen();
   for (const cmd of [
     ["pg_dump", "-U", "postgres", "-d", "klara_f_test", "-f", "/tmp/f08.sql"],
     ["createdb", "-U", "postgres", "klara_f_restore_test"],
