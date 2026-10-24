@@ -22,6 +22,7 @@ import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { PgSpacesRepo } from "../../services/app/src/spaces";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 type App = ReturnType<typeof buildApp>;
 type Kopf = { authorization: string };
@@ -32,15 +33,19 @@ const WORT = "Kalibrierlehrenpruefung";
 describe("Spaces gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
+  let verwaltungSchliessen: () => Promise<void>;
   let datenbank = "";
   let url = "";
-  const offen: { pool: Pool; app: App }[] = [];
+  const offen: { app: App; schliessen: () => Promise<void> }[] = [];
+  const poolAbschluesse: (() => Promise<void>)[] = [];
 
   async function neueApp(): Promise<App> {
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     const app = buildApp(buildPgServices(pool));
+    offen.push({ app, schliessen });
     await app.ready();
-    offen.push({ pool, app });
     return app;
   }
 
@@ -50,7 +55,7 @@ describe("Spaces gegen echtes PostgreSQL", () => {
     if (eintrag) {
       offen.splice(i, 1);
       await eintrag.app.close();
-      await eintrag.pool.end();
+      await eintrag.schliessen();
     }
   }
 
@@ -91,18 +96,21 @@ describe("Spaces gegen echtes PostgreSQL", () => {
     // Kontentabelle, und kein anderer Lauf soll diesen Bestand sehen.
     datenbank = `klarwerk_spaces_test_${`${Date.now()}`.slice(-9)}`;
     verwaltung = new Pool({ connectionString: basis });
+    verwaltungSchliessen = poolAbschluss(verwaltung);
     await verwaltung.query(`CREATE DATABASE ${datenbank}`);
     const ziel = new URL(basis);
     ziel.pathname = `/${datenbank}`;
     url = ziel.toString();
     const pool = createPool(url);
+    const schliessen = poolAbschluss(pool);
+    poolAbschluesse.push(schliessen);
     try {
       // Zweimal: die Stufen sind wiederholbar und lassen den Bestand stehen.
       await migrate(pool);
       await migrate(pool);
       await buildPgServices(pool).ko.activateSearchProjectionV2();
     } finally {
-      await pool.end();
+      await schliessen();
     }
   }, 300_000);
 
@@ -110,11 +118,12 @@ describe("Spaces gegen echtes PostgreSQL", () => {
     for (const o of [...offen]) {
       await beenden(o.app);
     }
+    for (const schliessen of poolAbschluesse) await schliessen();
     if (verwaltung) {
       await verwaltung
         .query(`DROP DATABASE IF EXISTS ${datenbank} WITH (FORCE)`)
         .catch(() => undefined);
-      await verwaltung.end();
+      await verwaltungSchliessen();
     }
     await container?.stop();
   }, 120_000);
@@ -300,6 +309,8 @@ describe("Spaces gegen echtes PostgreSQL", () => {
       geaendertAm: "2026-10-08T08:00:00.000Z",
     };
     const erster = createPool(url);
+    const ersterSchliessen = poolAbschluss(erster);
+    poolAbschluesse.push(ersterSchliessen);
     try {
       const repo = new PgSpacesRepo(erster);
       expect(await repo.lege({ ...basis, version: 1 })).toBe(true);
@@ -310,9 +321,11 @@ describe("Spaces gegen echtes PostgreSQL", () => {
       // Nacharbeit 6: der Löschvermerk ist endgültig — eine weitere Fassung wird nicht geschrieben.
       expect(await repo.lege({ ...basis, version: 3 })).toBe(false);
     } finally {
-      await erster.end();
+      await ersterSchliessen();
     }
     const zweiter = createPool(url);
+    const zweiterSchliessen = poolAbschluss(zweiter);
+    poolAbschluesse.push(zweiterSchliessen);
     try {
       const repo = new PgSpacesRepo(zweiter);
       expect((await repo.aktuelle()).map((s) => s.id)).not.toContain(id);
@@ -322,7 +335,7 @@ describe("Spaces gegen echtes PostgreSQL", () => {
         [2, "2026-10-08T09:00:00.000Z"],
       ]);
     } finally {
-      await zweiter.end();
+      await zweiterSchliessen();
     }
   });
 
@@ -331,7 +344,11 @@ describe("Spaces gegen echtes PostgreSQL", () => {
   // Warteschlange allein trennte sie nicht, erst die Datenbanksperre.
   it("exklusiv schliesst zwei Prozesse an derselben Datenbank gegenseitig aus", async () => {
     const poolA = createPool(url);
+    const poolASchliessen = poolAbschluss(poolA);
+    poolAbschluesse.push(poolASchliessen);
     const poolB = createPool(url);
+    const poolBSchliessen = poolAbschluss(poolB);
+    poolAbschluesse.push(poolBSchliessen);
     try {
       const a = new PgSpacesRepo(poolA);
       const b = new PgSpacesRepo(poolB);
@@ -355,8 +372,8 @@ describe("Spaces gegen echtes PostgreSQL", () => {
       ).rejects.toThrow("Probe");
       expect(await b.exklusiv(async () => "frei")).toBe("frei");
     } finally {
-      await poolA.end();
-      await poolB.end();
+      await poolASchliessen();
+      await poolBSchliessen();
     }
   });
 });
