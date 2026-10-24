@@ -52,6 +52,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 
 const JOB = "[KLARWERK] JOB 4155";
 const PASSWORT = "Wiederanlauf-2026!";
@@ -134,6 +135,8 @@ async function abdruck(pool: Pool): Promise<Bestandsabdruck> {
 describe("JOB 4155 · G2/G9 — Neustart und Wiederanlauf am echten Postgres", () => {
   let container: StartedTestContainer | undefined;
   let adminPool: Pool | undefined;
+  let adminSchliessen: () => Promise<void>;
+  const poolAbschluesse: (() => Promise<void>)[] = [];
   let quellPool: Pool | undefined;
   let zielPool: Pool | undefined;
   let app: FastifyInstance | undefined;
@@ -191,6 +194,7 @@ describe("JOB 4155 · G2/G9 — Neustart und Wiederanlauf am echten Postgres", (
       return;
     }
     adminPool = new Pool({ connectionString: url });
+    adminSchliessen = poolAbschluss(adminPool);
     await adminPool.query("SELECT 1");
     await adminPool.query(`CREATE DATABASE ${quellDb}`);
     ordner = mkdtempSync(join(tmpdir(), "klarwerk-4155-"));
@@ -200,14 +204,14 @@ describe("JOB 4155 · G2/G9 — Neustart und Wiederanlauf am echten Postgres", (
   afterAll(async () => {
     await app?.close();
     await zweiteApp?.close();
-    await quellPool?.end();
-    await zweiterPool?.end();
-    await zielPool?.end();
+    for (const schliessen of poolAbschluesse) {
+      await schliessen();
+    }
     if (adminPool) {
       for (const db of [quellDb, zielDb]) {
         await adminPool.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => undefined);
       }
-      await adminPool.end();
+      await adminSchliessen();
     }
     await container?.stop();
     if (ordner) {
@@ -225,6 +229,7 @@ describe("JOB 4155 · G2/G9 — Neustart und Wiederanlauf am echten Postgres", (
     }
     const v = verbindung as Verbindung;
     quellPool = new Pool({ connectionString: pgUrl(v, quellDb) });
+    poolAbschluesse.push(poolAbschluss(quellPool));
     await migrate(quellPool);
 
     const dienste = buildPgServices(quellPool);
@@ -293,6 +298,7 @@ describe("JOB 4155 · G2/G9 — Neustart und Wiederanlauf am echten Postgres", (
     // das ist kein Prozessneustart und wird hier auch nicht als einer ausgegeben (s. Dateikopf).
     // ------------------------------------------------------------------------------------------
     zweiterPool = new Pool({ connectionString: pgUrl(v, quellDb) });
+    poolAbschluesse.push(poolAbschluss(zweiterPool));
     const zweiteDienste = buildPgServices(zweiterPool);
     zweiteApp = buildApp(zweiteDienste);
     await zweiteApp.ready();
@@ -358,6 +364,7 @@ describe("JOB 4155 · G2/G9 — Neustart und Wiederanlauf am echten Postgres", (
 
     // GLIED 3 — der Vergleich. Nicht „es sind Zeilen da", sondern: DIESELBEN wie vor dem Dump.
     zielPool = new Pool({ connectionString: pgUrl(v, zielDb) });
+    poolAbschluesse.push(poolAbschluss(zielPool));
     const wiederhergestellt = await abdruck(zielPool);
 
     expect(wiederhergestellt.kanten, "die Kantenzahl weicht ab").toBe(vorher.kanten);
