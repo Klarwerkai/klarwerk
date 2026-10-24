@@ -65,4 +65,5 @@ node tools/typpruefung-umfang.mjs
 # (apps/web/package.json: `tsc --noEmit && vite build`) — der Befehl, den der Container ohnehin fährt.
 # BEWUSST KEIN `references`-Umbau der Wurzel-Config: sie ist absichtlich Node-rein, ohne DOM und ohne
 # JSX. Der Web-Typecheck braucht beides und bringt es in seiner EIGENEN Config mit.
-(cd apps/web && npx vite build)
+# Auch bei NODE_ENV=test des Aufrufers erhält nur das Vite-Kind production.
+(cd apps/web && NODE_ENV=production npx vite build)

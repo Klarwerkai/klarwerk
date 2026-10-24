@@ -87,10 +87,10 @@ function pgUrl(v: Verbindung, datenbank: string): string {
  * `/assets/index-*.js`: `nenntSw: false, nenntRegister: false`, Länge 1 896 271 Zeichen.
  *
  * Ohne den Dienstarbeiter gibt es kein Neuladen ohne Netz (`apps/web/public/sw.js:45`) — Station (b)
- * wäre schlicht nicht fahrbar, und zwar an der VORRICHTUNG und nicht an der Zusage. Der echte
- * Auslieferungsweg (`tools/build` → `npx vite build`, und der Docker-Stage darüber) läuft ohne
- * `NODE_ENV=test`; diese Zeile stellt also den Zustand her, der ausgeliefert wird, statt einen
- * eigenen zu erfinden.
+ * wäre schlicht nicht fahrbar, und zwar an der VORRICHTUNG und nicht an der Zusage.
+ * Der gemeinsame Produktionsbau (`tools/build`) setzt jetzt `NODE_ENV=production` gezielt am letzten
+ * Vite-Kindbefehl. Dieser direkte Vite-Aufruf muss production weiterhin selbst setzen, damit auch
+ * unter Vitest das zugesagte Produktionsbündel entsteht.
  *
  * DIESELBE FALLE STEHT UNBEHOBEN IN `gastweg-pg-im-browser.integration.test.ts:107` — dort fällt sie
  * nicht auf, weil jener Weg den Dienstarbeiter nicht braucht. Sie ist in der Rückgabe benannt; die
