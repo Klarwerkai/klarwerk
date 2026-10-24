@@ -27,7 +27,7 @@ gebundenen** Stand?*
 | `@fastify/static` | `node_modules/@fastify/static` | 9.1.3 | nicht exponiert |
 | `brace-expansion` (unter `@fastify/static`) | `node_modules/@fastify/static/node_modules/brace-expansion` | 5.0.12 | nicht exponiert |
 | `brace-expansion` (Wurzel, dev-markiert) | `node_modules/brace-expansion` | 2.1.7 | nicht exponiert |
-| `fast-uri` | `node_modules/fast-uri` | 3.1.8 | nicht exponiert |
+| `fast-uri` | `node_modules/fast-uri` | 3.1.9 | nicht exponiert |
 | `fastify` | `node_modules/fastify` | 5.12.1 | nicht exponiert |
 | `find-my-way` | `node_modules/find-my-way` | 9.6.0 | nicht exponiert |
 | `nodemailer` | `node_modules/nodemailer` | 10.1.4 | nicht exponiert |
@@ -623,6 +623,33 @@ Die übrigen acht Mailfälle und der historische Bericht bleiben unverändert.
 Diese Aussage gilt für die drei genannten Meldungen am gebundenen Knoten und die geprüften
 Adressformen. Andere Auditmeldungen bleiben gesondert sichtbar; eine Gesamtsicherheitsaussage
 folgt daraus nicht. Echtversand und das Verhalten einer laufenden SMTP-Umgebung sind nicht gemessen.
+
+## 8. Nachtrag 24.10.2026 — fast-uri 3.1.9 und 4.2.3
+
+Die aktuelle Tabelle bindet den Rootknoten jetzt an **3.1.9**; der Knoten
+**node_modules/fastify/node_modules/fast-uri** ist an **4.2.3** gebunden.
+Die historischen Messungen und damaligen Versionsentscheidungen oben bleiben erhalten.
+
+Der tatsächliche Registryaudit nach NODEMAILER3 meldete vier Advisories jeweils an
+3.1.8 und 4.2.1, zusammen acht Einträge:
+[GHSA-w74x-v6f9-j3xg](https://github.com/advisories/GHSA-w74x-v6f9-j3xg),
+[GHSA-xhq7-xmqj-769h](https://github.com/advisories/GHSA-xhq7-xmqj-769h),
+[GHSA-wjr9-j795-jxcr](https://github.com/advisories/GHSA-wjr9-j795-jxcr) und
+[GHSA-333x-w4r6-6crp](https://github.com/advisories/GHSA-333x-w4r6-6crp).
+Die Primärquellen nennen mehrere betroffene Versionsbereiche; beide alten Fassungen
+sind betroffen. Die kompatiblen behobenen Patchstände sind 3.1.9 und 4.2.3.
+
+**Tatsächlich ausgeführt:** Ein normales gezieltes npm update fast-uri --package-lock-only
+erzeugte genau diese beiden geänderten Lockobjekte. Alle anderen Lockobjekte einschließlich
+Nodemailer 10.1.4 bleiben einschließlich ihrer Objektbytes unverändert; package.json bleibt bytegleich.
+Ein anschließendes normales npm ci im eigenen neuen Installationsordner ist abgeschlossen.
+Die vorhandenen Elternbereiche ^3 und ^4 bleiben erhalten; es gibt keine neue Projektbindung.
+
+Der feste Kandidat wird einmal über den normalen sechsstufigen Pflichtlauf geprüft,
+danach über die bestehende Versionsbindung und den normalen Registryaudit beider Bestände.
+Die tatsächlichen Endresultate, Assertions und Auditmeldungen stehen im Prüfteil
+FASTURI8-20261024/P (RESULTAT.json, PFLICHTLAUF und AUDIT-BERICHT.txt).
+Das Prüfurteil bleibt auf diese Knoten, Meldungen und vorhandenen Funktionstests begrenzt.
 
 ## Nicht gemessen
 
