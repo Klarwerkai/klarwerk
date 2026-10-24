@@ -36,15 +36,12 @@ import {
   BROWSER_ADRESSBINDUNG_OHNE,
   type BrowserAnsicht,
   BrowserAusfuehrung,
-  type BrowserErgebnis,
   type BrowserFaehigkeitsregister,
   type BrowserFeldwert,
   type BrowserLaufStand,
   type BrowserRuecknahme,
-  type BrowserSchritt,
   type BrowserSchrittArt,
   type BrowserUebergabe,
-  type BrowserVerlaufseintrag,
   neuerBrowserAuftrag,
   uebergabe,
 } from "./klara-browser-aktion";
@@ -55,6 +52,7 @@ import {
   type BrowserBefehl,
   BrowserBefehlsrelais,
 } from "./klara-browser-relais";
+import type { BrowserAuftragEintrag } from "./klara-browser-verlauf-typen";
 import { type KlaraGespraechDienst, KlaraGespraechFehler } from "./klara-gespraech";
 import { KLARA_SINGLE_TENANT_ID } from "./services/klara-session-service";
 
@@ -97,44 +95,7 @@ export class BrowserAktionFehler extends Error {
 
 const eingabe = (text: string) => new BrowserAktionFehler(400, "eingabe", text);
 
-/** Ein Browserauftrag im Verlauf des Gesprächs — sein Ergebnisbeleg. */
-export interface BrowserAuftragEintrag {
-  readonly id: string;
-  /** Der Vorgangsschlüssel des Klicks in der Leiste — derselbe ist derselbe Auftrag (AC07). */
-  readonly vorgang?: string;
-  readonly quelle: KlaraAuftragsQuelle;
-  readonly wortlaut: string;
-  /** Herkunft und Pfad der Seite, ohne Abfrage und Anker. */
-  readonly ort: string;
-  readonly formular: string | null;
-  readonly profil: { readonly id: string; readonly fassung: string } | null;
-  readonly host: {
-    readonly browser: string;
-    readonly version: string;
-    readonly erweiterung: string;
-    readonly adapter: string;
-  };
-  /** Die beauftragten Felder (Beschriftungen); die Werte stehen im Wortlaut der Person. */
-  readonly felder: readonly string[];
-  readonly speichern: boolean;
-  readonly ausloesen: string | null;
-  readonly stand: BrowserLaufStand | "unterbrochen";
-  readonly erfolg: boolean;
-  readonly text: string;
-  readonly schritte: readonly BrowserSchritt[];
-  readonly ergebnis: BrowserErgebnis | null;
-  readonly klaerung: string | null;
-  readonly uebergabe: BrowserUebergabe | null;
-  readonly bestaetigung: { readonly knopf: string; readonly bestaetigtAm: string } | null;
-  readonly ruecknahme: {
-    readonly art: BrowserRuecknahme["art"];
-    readonly text: string;
-    readonly am: string;
-  } | null;
-  readonly verlauf: readonly BrowserVerlaufseintrag[];
-  readonly angelegtAm: string;
-  readonly geaendertAm: string;
-}
+export type { BrowserAuftragEintrag };
 
 /** Was eine Rücknahme jetzt tatsächlich bewirken kann — angeboten wird nur, was möglich ist. */
 export type BrowserRuecknahmeAngebot =

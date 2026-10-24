@@ -25,7 +25,7 @@ import {
   setzeSchritt as setzeAuftragSchritt,
   unterbrechung,
 } from "./klara-auftrag";
-import type { BrowserAuftragEintrag } from "./klara-browser-aktion-dienst";
+import type { BrowserAuftragEintrag } from "./klara-browser-verlauf-typen";
 import type { NotizSchreibbedingung } from "./klara-notiz-schreibbedingung";
 
 // ================================================================================================
