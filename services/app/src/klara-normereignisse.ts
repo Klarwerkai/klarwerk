@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { KlaraDNormAuftragsEingabe } from "./klara-d-normauftrag-vertrag";
+import type { KlaraDNormAuftragsEingabe } from "./klara-d-normauftrag-eingabe";
 import { istDatum } from "./klara-erinnerung-zeit";
 import type { FristenQuelle } from "./klara-fristen-erkennung";
 
