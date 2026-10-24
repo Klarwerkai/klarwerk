@@ -836,10 +836,11 @@ export const BEZIEHUNGEN = [
 /**
  * DER VOLLSTAENDIGE VORZUSTAND ALS ZAHL — jede Rolle, jeder Eintrag, kein „ausgewaehlt".
  *
- * DIE ZAHLEN SIND ABGELESEN UND NICHT GERATEN. `darfSehen`
- * (`services/app/src/sichtbarkeit.ts:68-79`) laesst `vertraulich` UND `streng_vertraulich` nur fuer
- * `ko.validate` durch; `ko.validate` hat laut `services/rbac/src/policy.ts:33,37` genau `controller`
- * und `admin`. Autor aller fuenf Eintraege ist der Admin, die Autor-Ausnahme greift fuer Experte
+ * DIE ZAHLEN SIND ABGELESEN UND NICHT GERATEN. `freigaberang` und `darfSehen`
+ * (`services/app/src/sichtbarkeit.ts`) pruefen persoenliche Freigabe und Objekt-/Gruppenrechte.
+ * Der Controller erhaelt ausdruecklich `streng_vertraulich`. Ohne Niveau gibt `ko.validate` nur
+ * Rang 1. Entzogener bleibt ohne Niveau; der Rollenwechsel zu `experte` setzt seinen Rang auf 0.
+ * Autor aller fuenf Eintraege ist der Admin, die Autor-Ausnahme greift fuer Experte
  * und Entzogenen also nicht. `total` zaehlt NACH dem Trimm (`kanten-service.ts:518-523`).
  */
 export const ERWARTETE_SICHT: Record<string, Record<string, number>> = {
@@ -947,6 +948,12 @@ export async function baueBestandAuf(basis: string): Promise<Bestand> {
   }
   expect(controllerId).toBeTruthy();
   expect(entzogenId).toBeTruthy();
+
+  const controllerFreigabe = await sende(basis, "PUT", `/api/users/${controllerId}`, adminToken, {
+    freigabe: "streng_vertraulich",
+  });
+  expect(controllerFreigabe.status, controllerFreigabe.text).toBe(200);
+  expect((controllerFreigabe.json as { freigabe: string }).freigabe).toBe("streng_vertraulich");
 
   const anmelde = async (email: string): Promise<string> => {
     const a = await sende(basis, "POST", "/api/auth/login", undefined, {
