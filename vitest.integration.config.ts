@@ -21,6 +21,8 @@ if (streckeBenannt(process.argv.slice(2))) {
 // Braucht einen laufenden Docker-Daemon. Aufruf: `npm run test:integration`.
 export default defineConfig({
   test: {
+    // Die Browserstrecken bauen und lesen dasselbe apps/web/dist.
+    fileParallelism: false,
     allowOnly: false,
     passWithNoTests: false,
     include: ["services/**/*.integration.test.ts", "tests/**/*.integration.test.ts"],
