@@ -74,6 +74,30 @@ assert(m.selection(['tests/unbekannt.test.ts']).includes('tests/unbekannt.test.t
 `);
     expect(run.status, run.stderr).toBe(0);
   });
+  it("ordnet Browser nachgelagert und Nicht-Browsertests der Pflicht zu", () => {
+    const browser = "tests/klara-besprechung/segment-browser.test.ts";
+    const unit = "tests/klara-besprechung/segmentierung.test.ts";
+    const jsdom = "tests/rechteentzug-gespraeche/ask-rueckmeldung-rechtewechsel.test.tsx";
+    const unknown = "tests/unbekannt.test.ts";
+    const run = node(
+      `const m=await import(process.argv[1]);
+const paths=${JSON.stringify([browser, unit, jsdom, unknown])};
+console.log(JSON.stringify({pflicht:m.selection(paths),nachgelagert:m.deferredSelection(paths)}));`,
+    );
+    expect(run.status, run.stderr).toBe(0);
+    const result = JSON.parse(run.stdout);
+    expect(result.pflicht, "Browserdiagnose fälschlich Pflicht").not.toContain(browser);
+    for (const path of [unit, jsdom, unknown]) expect(result.pflicht).toContain(path);
+    expect(result.nachgelagert).toEqual([
+      expect.objectContaining({
+        path: browser,
+        owner: "Root",
+        withinHours: 24,
+        diagnosis: "Volltor und Browserdiagnosen",
+        importChain: [browser],
+      }),
+    ]);
+  });
   it("gezielte PG-Auswahl bleibt dem CI-Weg zugeordnet und startet durch Import nichts", () => {
     const run = node(`
 import assert from 'node:assert/strict';
