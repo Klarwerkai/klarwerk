@@ -208,6 +208,17 @@ index 27ef8f7e1e3717add85629dea4969a50d33e0ccf..68dbebc86eface9489f412268de308f0
                    <span className="font-medium">{verdict.match.title}</span>
                  )}
                </button>
+@@ -3872,7 +3853,7 @@ export function Blatt({
+           ) : null}
+-          {/* AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — abgeschlossen
+-              ohne Treffer ODER ohne Konfliktprüfung, aber mit belegtem leeren Ähnlichkeitsumfang. */}
+-          {verdict.status === "empty" || liveVorschauSatz !== null ? (
++          {/* AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Angebot bleibt für den alten
++              No-Match-Zustand erhalten. */}
++          {verdict.status === "new" ? (
+             <LueckenInterviewAngebot onStart={lueckenInterviewOeffnen} />
+           ) : null}
+ 
 diff --git a/apps/web/src/hooks/useLiveKnowledgeCheck.ts b/apps/web/src/hooks/useLiveKnowledgeCheck.ts
 index 361e668d9d8058d7d79417d7d358950fd9abd94f..a3de64ac79005588b59c3578bb57e1811392e3f3 100644
 --- a/apps/web/src/hooks/useLiveKnowledgeCheck.ts

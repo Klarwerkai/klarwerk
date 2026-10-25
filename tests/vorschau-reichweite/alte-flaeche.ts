@@ -71,6 +71,10 @@ export function bereiteAlteQuelle(ziel: string): void {
     "Blatt.tsx ist nicht der alte Stand.",
   );
   wache(
+    !blatt.includes("liveVorschauSatz"),
+    "Blatt.tsx enthält noch den entfernten Verweis liveVorschauSatz.",
+  );
+  wache(
     !zone.includes("vorschauUmfang") && zone.includes('"intake.live.new"'),
     "LiveReactionZone.tsx ist nicht der alte Stand.",
   );

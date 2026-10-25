@@ -28,6 +28,10 @@ describe("Vorschau-Reichweite · alte Fläche für die Rücknahme", () => {
     const blatt = readFileSync(join(ziel, "apps/web/src/components/erfassen/Blatt.tsx"), "utf8");
     expect(blatt).toContain('"erfassen.live.neu"');
     expect(blatt).not.toMatch(/["'`]vorschau\./);
+    expect(blatt).not.toContain("liveVorschauSatz");
+    expect(blatt).toMatch(
+      /\{verdict\.status === "new" \? \(\s*<LueckenInterviewAngebot onStart=\{lueckenInterviewOeffnen\} \/>/,
+    );
     // Nur diese Änderung ist zurückgenommen: der übrige heutige Stand des Blatts steht noch da.
     expect(blatt).toContain('data-testid="blatt-titel-voll"');
     expect(blatt).toContain('t("wordvorschau.menu")');
