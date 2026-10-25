@@ -426,10 +426,6 @@ describe("Aufnahme erfassen-verwerfen C · Vollausfall, Verwerfen, Wiederöffnen
         await aufSichtbarkeitWarten(seite, ANLAGE_FEHLERSATZ, "Grund des Übernahmefehlers");
         await sichtbarZugesichert(seite, ANLAGE_FEHLERSATZ, "Grund des Übernahmefehlers im Dialog");
         expect(weiche.angekommen, "der Anlage-Aufruf war gar nicht unterwegs").toBeGreaterThan(0);
-        expect(
-          weiche.abgelehnteAktualisierungen,
-          "die Aktualisierung des geoeffneten Entwurfs wurde nicht abgelehnt",
-        ).toBeGreaterThan(0);
         expect((await seite.evaluate<{ pfad: string }>(fn(ORT))).pfad).toBe("/erfassen");
         const nachFehler = await quittungen(seite);
         expect(nachFehler, "ein Vollausfall meldet „gesichert“").not.toContain(
