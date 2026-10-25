@@ -150,4 +150,40 @@ describe("native Datumsabschnitte: reine Auswertung öffentlicher AX-Antworten",
       );
     }
   });
+
+  it("wertet Chromiums booleanOrUndefined-Fokus aus und verwirft missgebildete Werte", () => {
+    const beispiele: [Teil[], string][] = [
+      [["tag", "monat", "jahr"], "14032031"],
+      [["monat", "tag", "jahr"], "03142031"],
+      [["jahr", "monat", "tag"], "20310314"],
+    ];
+    for (const [folge, ziffern] of beispiele) {
+      const nodes = antwort(folge);
+      for (const node of nodes) {
+        if (node.properties) {
+          node.properties = node.properties.filter((wert) => wert.name !== "focused");
+        }
+      }
+      const fokus = knoten(nodes, folge[0] ?? "");
+      fokus.properties = [
+        ...(fokus.properties ?? []),
+        { name: "focused", value: { type: "booleanOrUndefined", value: true } },
+      ];
+      const plan = datumsabschnitte(nodes, 77, "2031-03-14");
+      expect(plan.abschnitte.map((teil) => teil.art)).toEqual(folge);
+      expect(plan.ziffern).toBe(ziffern);
+      expect(plan.fokus).toBe(0);
+      for (const value of [
+        { type: "booleanOrUndefined" },
+        { type: "booleanOrUndefined", value: "true" },
+        { type: "booleanOrUndefined", value: {} },
+      ]) {
+        fokus.properties = [
+          ...(fokus.properties ?? []).filter((wert) => wert.name !== "focused"),
+          { name: "focused", value },
+        ];
+        expect(() => datumsabschnitte(nodes, 77, "2031-03-14")).toThrow(/Fokuswert/);
+      }
+    }
+  });
 });

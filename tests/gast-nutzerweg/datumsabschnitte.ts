@@ -24,7 +24,8 @@ function eigenschaft(knoten: DatumsAXKnoten, name: string) {
 function fokussiert(knoten: DatumsAXKnoten, zielBackendId: number, station: string): boolean {
   const wert = eigenschaft(knoten, "focused");
   if (!wert) return false;
-  if (wert.type !== "boolean" || typeof wert.value !== "boolean") {
+  // Chromium FillGlobalStates (697d70a5) liefert focused=true als booleanOrUndefined.
+  if (!["boolean", "booleanOrUndefined"].includes(wert.type) || typeof wert.value !== "boolean") {
     const fokuswert = wert.value;
     unklar(
       `Fokuswert ${JSON.stringify({
