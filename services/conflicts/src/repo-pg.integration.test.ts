@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -18,8 +19,8 @@ import type { Conflict } from "./types";
 // ohne dass je ein Datensatz committed wird. Muster/Gating wie repo-pg.integration.test.ts im
 // knowledge-object-Modul: braucht Docker (Testcontainers) bzw. KLARWERK_PG_TEST_URL, läuft NUR
 // unter `test:integration`, wird ohne Infrastruktur sauber übersprungen, nie gefälscht.
-// Die kos-Tabelle wird hier als minimaler Stand-in angelegt (id + data->>'version' — genau die
-// Fläche, die das Prädikat liest); die echte Tabelle des KO-Moduls ist strukturell identisch.
+// Die kos-Tabelle ist eine schmale Prädikatsfixture (id + data->>'version'), kein vollständiges
+// KO-Schema. Am freigegebenen Testserver bleibt sie in einer eigenen Wegwerf-Testdatenbank.
 const KOS_STANDIN_SCHEMA = `
 CREATE TABLE IF NOT EXISTS kos (
   id text PRIMARY KEY,
@@ -65,6 +66,8 @@ function overlap(id: string, over: Partial<OverlapEntry> = {}): OverlapEntry {
 describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres", () => {
   let container: StartedTestContainer | undefined;
   let pool: Pool | undefined;
+  let adminPool: Pool | undefined;
+  let eigeneDatenbank: string | undefined;
   let available = false;
 
   beforeAll(async () => {
@@ -72,18 +75,27 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
     // Die lokale URL läuft durch die Sicherung in pg-test-guard — nie eine echte DB.
     const localUrl = guardedLocalPgTestUrl();
     if (localUrl) {
-      try {
-        pool = new Pool({ connectionString: localUrl });
-        await pool.query("SELECT 1");
-        available = true;
-        return;
-      } catch {
-        process.stderr.write(
-          "[KLARWERK] Pg-Integrationssuite ÜBERSPRUNGEN: KLARWERK_PG_TEST_URL gesetzt, aber keine Verbindung möglich.\n",
-        );
-        available = false;
-        return;
+      const datenbankName = `klarwerk_conflicts_test_${randomUUID().replaceAll("-", "")}`;
+      if (!/^[a-z][a-z0-9_]{0,61}$/.test(datenbankName) || !datenbankName.includes("test")) {
+        throw new Error("Ungueltiger Name fuer die eigene Konflikt-Testdatenbank");
       }
+      // Nur das Pfadsegment ersetzen; auch Socket-Authority und Query bleiben unveraendert.
+      const urlTeile = /^([^:]+:\/\/[^/?#]*\/)[^/?#]*(.*)$/.exec(localUrl);
+      if (!urlTeile) {
+        throw new Error("Kein Datenbank-Pfadsegment in der freigegebenen Testverbindung");
+      }
+      adminPool = new Pool({ connectionString: localUrl });
+      await adminPool.query(`CREATE DATABASE ${datenbankName}`);
+      eigeneDatenbank = datenbankName;
+      pool = new Pool({ connectionString: `${urlTeile[1]}${datenbankName}${urlTeile[2]}` });
+      const verbindung = await pool.query<{ datenbank: string }>(
+        "SELECT current_database() AS datenbank",
+      );
+      if (verbindung.rows[0]?.datenbank !== eigeneDatenbank) {
+        throw new Error("Testverbindung erreicht nicht die eigene Konflikt-Testdatenbank");
+      }
+      available = true;
+      return;
     }
     if (process.env.KLARWERK_PG_TEST_URL) {
       available = false;
@@ -105,8 +117,37 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
   });
 
   afterAll(async () => {
-    await pool?.end();
-    await container?.stop();
+    const fehler: unknown[] = [];
+    let poolBeendet = false;
+    try {
+      await pool?.end();
+      poolBeendet = true;
+    } catch (error) {
+      fehler.push(error);
+    }
+    try {
+      if (adminPool && eigeneDatenbank && poolBeendet) {
+        await adminPool.query(`DROP DATABASE ${eigeneDatenbank}`);
+      }
+    } catch (error) {
+      fehler.push(error);
+    }
+    try {
+      await adminPool?.end();
+    } catch (error) {
+      fehler.push(error);
+    }
+    try {
+      await container?.stop();
+    } catch (error) {
+      fehler.push(error);
+    }
+    if (fehler.length === 1) {
+      throw fehler[0];
+    }
+    if (fehler.length > 1) {
+      throw new AggregateError(fehler, "Fehler beim Aufraeumen der Konflikt-Testdatenbank");
+    }
   });
 
   function requirePool(ctx: { skip: () => void }): Pool {
