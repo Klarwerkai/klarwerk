@@ -499,11 +499,15 @@ function konfliktsatz(lage: Fachlage): Promise<string> {
 }
 
 /** Die Erfolgsquittung, wie ein Mensch sie sieht. */
-async function quittungAbwarten(lage: Fachlage): Promise<void> {
+async function quittungAbwarten(lage: Fachlage, erwarteteFassung: number): Promise<void> {
+  const satz = [
+    i18n.t("ko.revise.saved"),
+    i18n.t("statusfreigabe.speichern.nichtFreigegebenFassung", { version: erwarteteFassung }),
+  ].join(" ");
   await warteAufSichtbarenSatz(
     lage.seite,
     ANKER_QUITTUNG,
-    i18n.t("ko.revise.saved"),
+    satz,
     "die Erfolgsquittung des Speicherns",
   );
 }
@@ -714,7 +718,7 @@ describe("JOB 4334 · der Einordnungskonflikt gegen echtes PostgreSQL im echten 
       await speichernDruecken(lage);
 
       // (a) DIE SICHTBARE ERFOLGSQUITTUNG.
-      await quittungAbwarten(lage);
+      await quittungAbwarten(lage, vorher.fassung + 1);
       const quittung = await sichtbefund(lage.seite, ANKER_QUITTUNG);
       expect(quittung.verdeckt, "P1: die Quittung führt unlesbaren Text").toEqual([]);
       expect(
@@ -837,7 +841,7 @@ describe("JOB 4334 · der Einordnungskonflikt gegen echtes PostgreSQL im echten 
         "P3: der Stand vor dem Entscheid",
       );
       await tastaturGriff(lage.seite, i18n.t("ko.revise.again"));
-      await quittungAbwarten(lage);
+      await quittungAbwarten(lage, vorEntscheid.fassung + 1);
       const nachEntscheid = await pgStand(
         lage.db.pool,
         lage.koId,

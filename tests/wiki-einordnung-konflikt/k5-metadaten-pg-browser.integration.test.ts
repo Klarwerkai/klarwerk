@@ -210,7 +210,10 @@ async function einordnenUndSpeichern(seite: Seite, ziel: Einordnung, was: string
   const gesetzt = await schlagwortMarken(seite);
   expect(gesetzt, `${K5}: ${was} — Marken vor dem Speichern`).toEqual(ziel.schlagworte);
   await tastaturGriff(seite, i18n.t("ko.saveEdit"));
-  const satz = i18n.t("ko.revise.saved");
+  const satz = [
+    i18n.t("ko.revise.saved"),
+    i18n.t("statusfreigabe.speichern.nichtFreigegebenFassung", { version: 2 }),
+  ].join(" ");
   await warteAufSichtbarenSatz(
     seite,
     ANKER_SPEICHERQUITTUNG,
