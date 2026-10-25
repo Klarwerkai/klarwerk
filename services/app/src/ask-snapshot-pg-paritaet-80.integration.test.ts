@@ -119,41 +119,57 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
 
   afterAll(async () => {
     // BELEGTES CLEANUP: erst abraeumen, dann nachsehen, dass wirklich nichts blieb.
+    const fehler: unknown[] = [];
     let poolBeendet = false;
     let adminPoolBeendet = false;
     try {
-      try {
-        await pool?.end();
-        poolBeendet = true;
-      } finally {
-        try {
-          if (adminPool && schemaVerbindungBestaetigt) {
-            await adminPool.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
-            const rest = await adminPool.query<{ n: string }>(
-              "SELECT count(*)::text AS n FROM information_schema.schemata WHERE schema_name = $1",
-              [SCHEMA],
-            );
-            if (rest.rows[0]?.n !== "0") {
-              throw new Error(`Cleanup unvollstaendig: Schema ${SCHEMA} existiert noch.`);
-            }
-          }
-        } finally {
-          await adminPool?.end();
-          adminPoolBeendet = true;
+      await pool?.end();
+      poolBeendet = true;
+    } catch (error) {
+      fehler.push(error);
+    }
+    try {
+      if (adminPool && schemaVerbindungBestaetigt) {
+        await adminPool.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
+        const rest = await adminPool.query<{ n: string }>(
+          "SELECT count(*)::text AS n FROM information_schema.schemata WHERE schema_name = $1",
+          [SCHEMA],
+        );
+        if (rest.rows[0]?.n !== "0") {
+          throw new Error(`Cleanup unvollstaendig: Schema ${SCHEMA} existiert noch.`);
         }
       }
-    } finally {
-      try {
-        if (serverPool && eigeneDatenbank && poolBeendet && adminPoolBeendet) {
-          await serverPool.query(`DROP DATABASE ${eigeneDatenbank}`);
-        }
-      } finally {
-        try {
-          await serverPool?.end();
-        } finally {
-          await container?.stop();
-        }
+    } catch (error) {
+      fehler.push(error);
+    }
+    try {
+      await adminPool?.end();
+      adminPoolBeendet = true;
+    } catch (error) {
+      fehler.push(error);
+    }
+    try {
+      if (serverPool && eigeneDatenbank && poolBeendet && adminPoolBeendet) {
+        await serverPool.query(`DROP DATABASE ${eigeneDatenbank}`);
       }
+    } catch (error) {
+      fehler.push(error);
+    }
+    try {
+      await serverPool?.end();
+    } catch (error) {
+      fehler.push(error);
+    }
+    try {
+      await container?.stop();
+    } catch (error) {
+      fehler.push(error);
+    }
+    if (fehler.length === 1) {
+      throw fehler[0];
+    }
+    if (fehler.length > 1) {
+      throw new AggregateError(fehler, "Fehler beim Aufraeumen der Snapshot-80-Testdatenbank");
     }
   }, 120_000);
 
