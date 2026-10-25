@@ -191,7 +191,7 @@ describe("I51 · das aufgerufene Tor ist wirklich das Gesamttor", () => {
   });
 });
 
-it("Integration versorgt nur die breite Diagnose mit einem gesunden PostgreSQL-16-Testservice", () => {
+it("Integration: gezielte und breite PG-Diagnose mit gesundem PostgreSQL-16-Testservice", () => {
   const integration = jobBlock("integration");
   const services = /^ {4}services:\n((?: {6}.*\n)+)/m.exec(integration)?.[1];
   if (!services) throw new Error("Integration-Jobservice fehlt");
@@ -211,8 +211,17 @@ it("Integration versorgt nur die breite Diagnose mit einem gesunden PostgreSQL-1
   expect(postgres).not.toContain("secrets.");
 
   const steps = integration.split(/^ {6}- /m).slice(1);
+  const targeted = steps.filter((step) =>
+    runBefehle(step).includes('node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt'),
+  );
+  expect(targeted).toHaveLength(1);
   const broad = steps.filter((step) => runBefehle(step).includes("npm run test:integration"));
   expect(broad).toHaveLength(1);
+  for (const step of [...targeted, ...broad]) {
+    expect(step.match(/^ {10}KLARWERK_PG_TEST_URL: "[^"]+"$/gm)).toHaveLength(1);
+  }
+  const targetedAddress = /^ {10}KLARWERK_PG_TEST_URL: "([^"]+)"$/m.exec(targeted[0] ?? "")?.[1];
+  if (!targetedAddress) throw new Error("Test-URL am gezielten Integrationsschritt fehlt");
   const address = /^ {10}KLARWERK_PG_TEST_URL: "([^"]+)"$/m.exec(broad[0] ?? "")?.[1];
   if (!address) throw new Error("Test-URL am breiten Integrationsschritt fehlt");
   const url = new URL(address);
@@ -222,8 +231,10 @@ it("Integration versorgt nur die breite Diagnose mit einem gesunden PostgreSQL-1
   expect(url.pathname).toBe(`/${db}`);
   expect(url.username).toBe(user);
   expect(url.password).toBe(password);
-  expect(integration.match(/^\s+KLARWERK_PG_TEST_URL:/gm)).toHaveLength(1);
-  for (const step of steps.filter((step) => !broad.includes(step))) {
+  expect(targetedAddress).toBe(address);
+  expect(address).toBe(`postgresql://${user}:${password}@localhost:5432/${db}`);
+  expect(integration.match(/^\s+KLARWERK_PG_TEST_URL:/gm)).toHaveLength(2);
+  for (const step of steps.filter((step) => !targeted.includes(step) && !broad.includes(step))) {
     expect(step).not.toContain("KLARWERK_PG_TEST_URL:");
   }
   for (const name of ["pflicht", "check", "abbild"]) {
