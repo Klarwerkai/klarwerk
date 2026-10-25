@@ -1212,17 +1212,16 @@ export class ValidationService {
     const openByKo = offeneZuweisungenJeKo(await this.assignments.all());
     // Pedi 05.07.: Board zeigt „X von Y grün" — dafür je KO die Peer-Stimmen (grün/gelb/rot) als
     // read-only Anreicherung mitgeben. Reine Lese-Sicht auf das Rating-Repo, kein neues Datenmodell.
-    return Promise.all(
-      kos.map(async (ko) => {
-        // SCRUM-507 R2: nur Bewertungen der AKTUELLEN Version zählen für die Anzeige; frühere werden
-        // als „veraltet (vor Revision)" separat gezählt (staleVotes), nicht in up/warn/down gemischt.
-        // JOB 3024: die Zählung selbst steht in `stimmenAus` — dieselbe, die `pruefstandFuer` ruft.
-        const { votes, staleVotes } = stimmenAus(await this.ratings.listByKo(ko.id), ko.version);
-        const assigned = openByKo.get(ko.id);
-        const base = assigned ? { ...ko, assignments: assigned } : ko;
-        return { ...base, reviewVotes: votes, staleVotes };
-      }),
-    );
+    const ratingsByKo = bewertungenJeKo(await this.ratings.listByKos(kos.map((ko) => ko.id)));
+    return kos.map((ko) => {
+      // SCRUM-507 R2: nur Bewertungen der AKTUELLEN Version zählen für die Anzeige; frühere werden
+      // als „veraltet (vor Revision)" separat gezählt (staleVotes), nicht in up/warn/down gemischt.
+      // JOB 3024: die Zählung selbst steht in `stimmenAus` — dieselbe, die `pruefstandFuer` ruft.
+      const { votes, staleVotes } = stimmenAus(ratingsByKo.get(ko.id) ?? [], ko.version);
+      const assigned = openByKo.get(ko.id);
+      const base = assigned ? { ...ko, assignments: assigned } : ko;
+      return { ...base, reviewVotes: votes, staleVotes };
+    });
   }
 
   /**
