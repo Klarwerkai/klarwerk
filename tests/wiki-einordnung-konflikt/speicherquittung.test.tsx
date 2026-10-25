@@ -28,12 +28,7 @@ beforeEach(async () => {
   wurzel = root;
   await act(async () => {
     root.render(
-      createElement(
-        ToastProvider,
-        null,
-        createElement(KiLageZeile),
-        createElement(ToastViewport),
-      ),
+      createElement(ToastProvider, null, createElement(KiLageZeile), createElement(ToastViewport)),
     );
   });
 });
