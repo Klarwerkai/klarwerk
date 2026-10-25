@@ -87,7 +87,7 @@ function mitschreibenderProvider(): {
   return { provider, gesehen };
 }
 
-async function aufbauen(vertraulich: boolean) {
+async function aufbauen(stufe: "intern" | "vertraulich" | undefined) {
   const koService = new KoService({ repo: new InMemoryKoRepo() });
   // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
   // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
@@ -97,9 +97,9 @@ async function aufbauen(vertraulich: boolean) {
     title: "Xylophon Notfall",
     statement: "Xylophon-Anlage bei Störung sofort abschalten.",
     type: "best_practice",
-    category: vertraulich ? "Geheim" : "Betrieb",
+    category: stufe === "vertraulich" ? "Geheim" : "Betrieb",
     author: "anna",
-    ...(vertraulich ? { confidentiality: "vertraulich" as const } : {}),
+    ...(stufe === undefined ? {} : { confidentiality: stufe }),
   });
   const { provider, gesehen } = mitschreibenderProvider();
   const reasoner = new Reasoner(provider);
@@ -119,14 +119,23 @@ describe("mega61 G · vertrauliche Inhalte erreichen den Antwortweg nicht", () =
   it("KALIBRIERUNG: ein NICHT-vertrauliches Objekt kommt beim Modell an", async () => {
     // Ohne diesen Fall wäre jeder „ist nicht dabei"-Fall unten auch dann grün, wenn der
     // Antwortweg gar kein Objekt mehr übergäbe. Er ist die Messlatte, nicht die Zusage.
-    const { ask, ko, gesehen } = await aufbauen(false);
+    const { ask, ko, gesehen } = await aufbauen("intern");
     await ask.ask(FRAGE, "anna");
     expect(gesehen.length).toBe(1);
     expect(gesehen[0]?.kontext.map((k) => k.id)).toContain(ko.id);
   });
 
+  it("P6 · ungeklärte Anlage wird bei aktivem Antwortweg nicht an den Modelladapter gegeben", async () => {
+    const { ask, ko, gesehen } = await aufbauen(undefined);
+    expect(Object.hasOwn(ko, "confidentiality")).toBe(false);
+    await ask.ask(FRAGE, "anna");
+    expect(gesehen).toHaveLength(1);
+    expect(gesehen[0]?.kontext.map((k) => k.id)).not.toContain(ko.id);
+    expect(JSON.stringify(gesehen[0]?.kontext)).not.toContain("Xylophon");
+  });
+
   it("G1 · ein VERTRAULICHES Objekt ist im Modellkontext NICHT enthalten", async () => {
-    const { ask, ko, gesehen } = await aufbauen(true);
+    const { ask, ko, gesehen } = await aufbauen("vertraulich");
     await ask.ask(FRAGE, "anna");
     expect(gesehen.length).toBe(1);
     const kontext = gesehen[0]?.kontext ?? [];
@@ -140,7 +149,7 @@ describe("mega61 G · vertrauliche Inhalte erreichen den Antwortweg nicht", () =
   it("G2 · das Objekt taucht auch nicht in Quellen, Zitaten oder Schritten auf", async () => {
     // Derselbe Filter deckt alle drei Egress-Wege — das ist die Zusage aus SCRUM-502, und sie
     // bleibt hier festgenagelt, weil Abschnitt 8 der Datenschutzerklärung darauf aufbaut.
-    const { ask, ko } = await aufbauen(true);
+    const { ask, ko } = await aufbauen("vertraulich");
     const { result } = await ask.ask(FRAGE, "anna");
     expect(result.sources).not.toContain(ko.id);
     expect(result.citedSources).not.toContain(ko.id);
@@ -152,7 +161,7 @@ describe("mega61 G · vertrauliche Inhalte erreichen den Antwortweg nicht", () =
     // stand still im Reasoner). Jetzt kommt einer an, und er ist aus dem tatsächlich übergebenen
     // Kontext abgeleitet — also `false`, weil der Filter davor greift. Wäre er `undefined`, hätte
     // die Kette den Wert wieder verschluckt.
-    const { ask, gesehen } = await aufbauen(true);
+    const { ask, gesehen } = await aufbauen("vertraulich");
     await ask.ask(FRAGE, "anna");
     expect(gesehen[0]?.confidential).toBe(false);
   });
