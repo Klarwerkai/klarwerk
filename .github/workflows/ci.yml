@@ -110,6 +110,7 @@ jobs:
         id: pg_gezielt
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          KLARWERK_PG_TEST_URL: "postgresql://klarwerk_ci:fiktiv-ci-postgres@localhost:5432/klarwerk_ci_test"
         run: node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt
       - uses: actions/upload-artifact@v4
         if: always()

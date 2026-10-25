@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { guardedLocalPgTestUrl } from "../services/db-tx/src/pg-test-guard.ts";
 import { assertTests, environment, git, hash, integrationSelection } from "./release.mjs";
 
 const kandidatPfad = join(
@@ -202,6 +203,13 @@ export function runPgSelection(root, base, output) {
   const logPath = join(output, "pg.log");
   let logBegonnen = false;
   try {
+    const angebotenePgUrl = process.env.KLARWERK_PG_TEST_URL;
+    const pgUrl = guardedLocalPgTestUrl({ KLARWERK_PG_TEST_URL: angebotenePgUrl });
+    assert(
+      angebotenePgUrl === undefined || pgUrl !== undefined,
+      "angebotene KLARWERK_PG_TEST_URL nicht als Testdatenbank freigegeben",
+    );
+    const pgEnv = pgUrl === undefined ? {} : { KLARWERK_PG_TEST_URL: pgUrl };
     if (files.length > 0) {
       const rawPath = join(output, "pg.vitest.json");
       const teile = join(output, "dateien");
@@ -261,7 +269,7 @@ export function runPgSelection(root, base, output) {
         try {
           const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
             cwd: root,
-            env: { ...environment(), KLARWERK_PG_PFLICHT: "1", ...bauEnv },
+            env: { ...environment(), KLARWERK_PG_PFLICHT: "1", ...pgEnv, ...bauEnv },
             encoding: "utf8",
             timeout: 240000,
             maxBuffer: 32 * 1024 * 1024,

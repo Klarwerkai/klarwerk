@@ -247,6 +247,11 @@ describe("gezielte PG-Dateien: getrennte serielle Prozessbudgets", () => {
     inkonsistent = "",
   ) {
     const work = join(realpathSync(directory), name);
+    mkdirSync(join(work, "services/db-tx/src"), { recursive: true });
+    copyFileSync(
+      join(root, "services/db-tx/src/pg-test-guard.ts"),
+      join(work, "services/db-tx/src/pg-test-guard.ts"),
+    );
     for (const path of ["bin", "tools", "tests", "node_modules/.bin"]) {
       mkdirSync(join(work, path), { recursive: true });
     }
@@ -448,6 +453,11 @@ describe("FE003: belegter Bau und Browser haben getrennte Prozessbudgets", () =>
 
   function phaseFixture(name: string, files: string[], mode = "ok") {
     const work = join(realpathSync(directory), name);
+    mkdirSync(join(work, "services/db-tx/src"), { recursive: true });
+    copyFileSync(
+      join(root, "services/db-tx/src/pg-test-guard.ts"),
+      join(work, "services/db-tx/src/pg-test-guard.ts"),
+    );
     for (const path of ["tools", "tests/fe003-tutorial-fragen", "node_modules/.bin"]) {
       mkdirSync(join(work, path), { recursive: true });
     }
@@ -610,6 +620,86 @@ const lines=(name)=>existsSync(join(work,name))?readFileSync(join(work,name),'ut
 const events=lines('events.jsonl'),calls=lines('calls.jsonl');
 for(const call of calls){assert.equal(call.requestedTimeout,240000);assert(call.endedAt>=call.startedAt);assert(call.pid>0);assert.deepEqual(call.args.slice(0,2),['tools/browserdeckel.sh','smoke']);}
 `;
+
+  const pgUrlCliSetup = String.raw`
+import {writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+const probeWork=process.argv[2],expectedUrl=JSON.parse(process.argv[4]),offeredUrl=JSON.parse(process.argv[5]);
+const forbidden=['KLARWERK_PG_TEST_ALLOW_DESTRUCTIVE','UNGEWOLLTER_PROVIDER_MARKER','DATABASE_URL','PGHOST','KLARWERK_FASSUNG_MANIFEST'];
+const absent=keys=>keys.map(key=>'assert(!Object.hasOwn(process.env,'+JSON.stringify(key)+'));').join('\n');
+const urlCheck=expectedUrl===null?absent(['KLARWERK_PG_TEST_URL']):'assert.equal(process.env.KLARWERK_PG_TEST_URL,'+JSON.stringify(expectedUrl)+');';
+for(const [file,anchor,checks]of [
+  ['worker.mjs','const args=',urlCheck+'\n'+absent(forbidden)+"\nconsole.log(JSON.stringify({pgUrl:process.env.KLARWERK_PG_TEST_URL??null}));\n"],
+  ['tools/build','const mode=',absent([...forbidden,'KLARWERK_PG_TEST_URL','KLARWERK_PG_PFLICHT'])+"\nconsole.log('Bau ohne PG-Umgebung');\n"],
+]){
+  const path=join(probeWork,file),source=readFileSync(path,'utf8');
+  assert.equal(source.split(anchor).length,2);writeFileSync(path,source.replace(anchor,checks+anchor));
+}
+const gitOptions={cwd:probeWork,env:process.env,timeout:20000};
+execFileSync('git',['add','worker.mjs','tools/build'],gitOptions);
+execFileSync('git',['-c','user.name=Fixture','-c','user.email=fixture@klarwerk.test','-c','commit.gpgsign=false','commit','-qm','URL-Pruefung im kontrollierten Kind'],gitOptions);
+if(offeredUrl===null)delete process.env.KLARWERK_PG_TEST_URL;
+else process.env.KLARWERK_PG_TEST_URL=offeredUrl;
+for(const key of forbidden)process.env[key]=key==='KLARWERK_PG_TEST_ALLOW_DESTRUCTIVE'?'1':'fiktiver-nicht-weiterzureichender-Marker';
+`;
+
+  it("gibt freigegebene Test-URLs samt Query und Socket exakt nur an die Testkinder", () => {
+    const urls = [
+      "postgresql://klarwerk_ci:fiktiv-ci-postgres@localhost:5432/klarwerk_ci_test?application_name=pgurl%20ci&sslmode=disable",
+      "postgres://klarwerk_ci@/klarwerk_%74est?host=%2Ftmp%2Fpg-fiktiv&application_name=pgurl%20socket",
+    ];
+    for (const [index, url] of urls.entries()) {
+      const { work, base } = phaseFixture(`pg-url-freigegeben-${index}`, [browserFile, laterFile]);
+      const run = node(
+        `${pgUrlCliSetup}${phaseCli}
+assert.equal(cli.status,0,cli.stderr);assert.equal(result.success,true,JSON.stringify(result));
+assert.deepEqual(calls.map(c=>c.phase),['build','test','test']);
+assert(result.preparation.success&&result.preparation.actualWaitCompleted);
+assert(readFileSync(result.preparation.logPath,'utf8').includes('Bau ohne PG-Umgebung'));
+assert.equal(result.runs.length,2);
+for(const part of result.runs){assert(part.success&&part.actualWaitCompleted);assert(readFileSync(part.logPath,'utf8').includes(JSON.stringify({pgUrl:expectedUrl})));}
+`,
+        pgUrl,
+        [work, base, JSON.stringify(url), JSON.stringify(url)],
+      );
+      expect(run.status, run.stderr).toBe(0);
+    }
+  });
+
+  it("laesst ohne angebotenes URLfeld die kontrollierten Kinder feldlos", () => {
+    const { work, base } = phaseFixture("pg-url-fehlend", [browserFile, laterFile]);
+    const run = node(
+      `${pgUrlCliSetup}${phaseCli}
+assert.equal(cli.status,0,cli.stderr);assert.equal(result.success,true,JSON.stringify(result));
+assert.deepEqual(calls.map(c=>c.phase),['build','test','test']);
+assert(readFileSync(result.preparation.logPath,'utf8').includes('Bau ohne PG-Umgebung'));
+assert.equal(result.runs.length,2);
+for(const part of result.runs){assert(part.success&&part.actualWaitCompleted);assert(readFileSync(part.logPath,'utf8').includes('{"pgUrl":null}'));}
+`,
+      pgUrl,
+      [work, base, "null", "null"],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+
+  it("weist angebotene unfreigegebene URLs trotz DestructiveOverride vor jedem Kind ab", () => {
+    const urls = ["postgresql://klarwerk_ci@localhost/klarwerk_live", "keine-pg-url", ""];
+    for (const [index, url] of urls.entries()) {
+      const { work, base } = phaseFixture(`pg-url-abgelehnt-${index}`, [browserFile, laterFile]);
+      const run = node(
+        `${pgUrlCliSetup}${phaseCli}
+assert.equal(cli.status,1,cli.stderr);assert.equal(result.success,false);
+assert(result.error.includes('angebotene KLARWERK_PG_TEST_URL nicht als Testdatenbank freigegeben'));
+assert.equal(result.preparation,undefined);assert.deepEqual(result.runs,[]);
+assert.deepEqual(calls,[]);assert.deepEqual(events,[]);
+assert(!existsSync(join(out,'fe003-bau')));assert(!existsSync(join(out,'pg.vitest.json')));
+`,
+        pgUrl,
+        [work, base, "null", JSON.stringify(url)],
+      );
+      expect(run.status, run.stderr).toBe(0);
+    }
+  });
 
   it("baut einmal fuer zwei FE003-Dateien und wartet jede eigene 240s-Phase ab", () => {
     const files = [browserFile, previewFile, laterFile];
