@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -21,15 +22,18 @@ import { migrate } from "./db";
 // laut — eine uebersprungene Paritaetsprobe waere genau die Art von gruener Zeile, die nichts
 // belegt und trotzdem so aussieht.
 //
-// EIGENES SCHEMA STATT `public`: der Lauf legt seinen Datenraum selbst an, arbeitet ausschliesslich
-// darin und raeumt ihn nachweislich wieder ab. So kann er weder fremde Testdaten sehen noch eigene
-// hinterlassen.
+// EIGENE TESTDATENBANK UND PRIVATES SCHEMA: am freigegebenen Server entsteht eine eigene
+// Wegwerf-Datenbank, damit migrate() pg_trgm selbst im privaten Suchpfad anlegt. Der Lauf
+// arbeitet weiterhin ausschliesslich im eigenen Schema und raeumt Schema und Datenbank ab.
 
 const SCHEMA = `w3c1_80_${process.pid}`;
 
 describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let adminPool: Pool | undefined;
+  let serverPool: Pool | undefined;
+  let eigeneDatenbank: string | undefined;
+  let schemaVerbindungBestaetigt = false;
   let pool: Pool | undefined;
   let services: ReturnType<typeof buildPgServices> | undefined;
   let gehaltenesKo: { id: string; version: number } | undefined;
@@ -39,6 +43,21 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
   beforeAll(async () => {
     const localUrl = guardedLocalPgTestUrl();
     let url = localUrl;
+    if (localUrl) {
+      const datenbankName = `klarwerk_snapshot80_test_${randomUUID().replaceAll("-", "")}`;
+      if (!/^[a-z][a-z0-9_]{0,62}$/.test(datenbankName) || !datenbankName.includes("test")) {
+        throw new Error("Ungueltiger Name fuer die eigene Snapshot-80-Testdatenbank");
+      }
+      // Nur das Pfadsegment ersetzen; auch Socket-Authority und Query bleiben unveraendert.
+      const urlTeile = /^([^:]+:\/\/[^/?#]*\/)[^/?#]*(.*)$/.exec(localUrl);
+      if (!urlTeile) {
+        throw new Error("Kein Datenbank-Pfadsegment in der freigegebenen Testverbindung");
+      }
+      serverPool = new Pool({ connectionString: localUrl });
+      await serverPool.query(`CREATE DATABASE ${datenbankName}`);
+      eigeneDatenbank = datenbankName;
+      url = `${urlTeile[1]}${datenbankName}${urlTeile[2]}`;
+    }
     if (!url) {
       container = await new GenericContainer("postgres:16-alpine")
         .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
@@ -51,6 +70,15 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     adminPool = new Pool({ connectionString: url });
     // KEIN Skip, KEIN Fallback: eine nicht erreichbare Datenbank ist ein Fehlschlag.
     await adminPool.query("SELECT 1");
+    if (eigeneDatenbank) {
+      const verbindung = await adminPool.query<{ datenbank: string }>(
+        "SELECT current_database() AS datenbank",
+      );
+      if (verbindung.rows[0]?.datenbank !== eigeneDatenbank) {
+        throw new Error("Testverbindung erreicht nicht die eigene Snapshot-80-Testdatenbank");
+      }
+    }
+    schemaVerbindungBestaetigt = true;
     await adminPool.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
     await adminPool.query(`CREATE SCHEMA ${SCHEMA}`);
 
@@ -91,19 +119,42 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
 
   afterAll(async () => {
     // BELEGTES CLEANUP: erst abraeumen, dann nachsehen, dass wirklich nichts blieb.
-    await pool?.end();
-    if (adminPool) {
-      await adminPool.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
-      const rest = await adminPool.query<{ n: string }>(
-        "SELECT count(*)::text AS n FROM information_schema.schemata WHERE schema_name = $1",
-        [SCHEMA],
-      );
-      if (rest.rows[0]?.n !== "0") {
-        throw new Error(`Cleanup unvollstaendig: Schema ${SCHEMA} existiert noch.`);
+    let poolBeendet = false;
+    let adminPoolBeendet = false;
+    try {
+      try {
+        await pool?.end();
+        poolBeendet = true;
+      } finally {
+        try {
+          if (adminPool && schemaVerbindungBestaetigt) {
+            await adminPool.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
+            const rest = await adminPool.query<{ n: string }>(
+              "SELECT count(*)::text AS n FROM information_schema.schemata WHERE schema_name = $1",
+              [SCHEMA],
+            );
+            if (rest.rows[0]?.n !== "0") {
+              throw new Error(`Cleanup unvollstaendig: Schema ${SCHEMA} existiert noch.`);
+            }
+          }
+        } finally {
+          await adminPool?.end();
+          adminPoolBeendet = true;
+        }
+      }
+    } finally {
+      try {
+        if (serverPool && eigeneDatenbank && poolBeendet && adminPoolBeendet) {
+          await serverPool.query(`DROP DATABASE ${eigeneDatenbank}`);
+        }
+      } finally {
+        try {
+          await serverPool?.end();
+        } finally {
+          await container?.stop();
+        }
       }
     }
-    await adminPool?.end();
-    await container?.stop();
   }, 120_000);
 
   function db(): Pool {
