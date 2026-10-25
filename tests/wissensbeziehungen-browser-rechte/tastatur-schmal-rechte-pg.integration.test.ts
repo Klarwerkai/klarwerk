@@ -51,7 +51,9 @@ import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
+import { stelleSuchprojektionBereit } from "../../services/app/src/search-projection-startup";
 import {
   AUDIT_KETTENSPERRE,
   AuditService,
@@ -478,7 +480,18 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
     const vorfaelle: PgVorfall[] = [];
     const fehler: unknown[] = [];
     try {
-      await migrate(pool);
+      // Der Aufbau braucht neben der Freigabeklammer weitere Clients für die echte Readiness.
+      // Vor der Messapp abschließen; deren onReady prüft V2_ACTIVE weiterhin unverändert.
+      const vorbereitung = createPool(url);
+      try {
+        await migrate(vorbereitung);
+        const bereit = await stelleSuchprojektionBereit(buildPgServices(vorbereitung).ko);
+        expect(bereit.projectionState, "Suchprojektion vor der Ein-Verbindungs-Messung").toBe(
+          "V2_ACTIVE",
+        );
+      } finally {
+        await vorbereitung.end();
+      }
       strecke = await starteStrecke({
         pool,
         vorListen: async (app) => {
