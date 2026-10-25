@@ -89,7 +89,9 @@ async function inhaltshoehe(seite) {
     for (const e of document.querySelectorAll("*")) {
       const s = getComputedStyle(e);
       if ((s.overflowY === "auto" || s.overflowY === "scroll") && e.scrollHeight > e.clientHeight) {
-        h = Math.max(h, e.scrollHeight + e.getBoundingClientRect().top);
+        // Kopf und unterer Rahmen bleiben stehen; ersetzt wird nur die sichtbare Scrollbox.
+        const rahmen = e.offsetHeight - e.clientHeight;
+        h = Math.max(h, window.innerHeight - e.getBoundingClientRect().height + e.scrollHeight + rahmen);
       }
     }
     return Math.ceil(h);
