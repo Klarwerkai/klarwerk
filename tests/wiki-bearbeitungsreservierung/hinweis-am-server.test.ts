@@ -394,3 +394,66 @@ describe("S7 · STALE_WRITE der Ablage erreicht den Konfliktweg (409), CAS bleib
     expect(amServer).toBe("Fremder Prozess war schneller.");
   });
 });
+
+describe("S8 · revise-release übersetzt denselben echten Speicher-CAS", () => {
+  it("liefert 409 KO_STALE mit aktueller Version, erhält Fremdtext und versucht nur einmal", async () => {
+    const repos = inMemoryRepos();
+    const echt = repos.koRepo;
+    let dazwischen = false;
+    let schreibversuche = 0;
+    repos.koRepo = Object.assign(Object.create(Object.getPrototypeOf(echt)), echt, {
+      update: async (ko: KnowledgeObject, tx?: unknown): Promise<void> => {
+        schreibversuche++;
+        if (dazwischen) {
+          dazwischen = false;
+          const fremd = await echt.findById(ko.id);
+          if (fremd) {
+            await echt.update({
+              ...fremd,
+              version: fremd.version + 1,
+              statement: "Fremder Prozess war schneller.",
+            });
+          }
+        }
+        return echt.update(ko, tx as never);
+      },
+    }) as typeof echt;
+    app = buildApp(assembleServices(repos));
+    try {
+      await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { name: "Pedi", email: "pedi@klarwerk.test", password: "secret123" },
+      });
+      adminToken = await token("pedi@klarwerk.test");
+      const id = await eintrag();
+      const fassung = (
+        (await auf(adminToken, "GET", `/api/kos/${id}`)).json() as { version: number }
+      ).version;
+
+      dazwischen = true;
+      const vorher = schreibversuche;
+      const antwort = await app.inject({
+        method: "PUT",
+        url: `/api/kos/${id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          action: "revise-release",
+          changes: { statement: "Meine Fassung.", type: "best_practice" },
+          expectedVersion: fassung,
+        },
+      });
+      expect(antwort.statusCode, antwort.body).toBe(409);
+      const koerper = antwort.json() as { error: string; currentVersion?: number };
+      expect(koerper.error).toBe("KO_STALE");
+      expect(dazwischen).toBe(false);
+      expect(schreibversuche - vorher).toBe(1);
+      const amServer = (await auf(adminToken, "GET", `/api/kos/${id}`)).json() as KnowledgeObject;
+      expect(amServer.version).toBe(fassung + 1);
+      expect(koerper.currentVersion).toBe(amServer.version);
+      expect(amServer.statement).toBe("Fremder Prozess war schneller.");
+    } finally {
+      await app.close();
+    }
+  });
+});

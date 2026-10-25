@@ -459,6 +459,7 @@ export function bestandsObjekt(id: string, bodyHtml: string): KnowledgeObject {
     version: 1,
     originalAuthor: "admin-1",
     author: "admin-1",
+    confidentiality: "intern",
     neededValidations: 1,
     assignments: [],
     asset: null,
@@ -777,15 +778,15 @@ export function deuteVerlierer(antwort: Antwort): string {
  * Wie weit der Schreibzähler bei EINER wirksamen Rückgabe steigt — GEMESSEN und danach im Quelltext
  * nachgeschlagen, nicht angenommen.
  *
- * Der Auftrag (§5.3 a) erwartete 1. Der erste Lauf maß in 40 von 40 Runden 2, und der Grund steht im
- * Produkt: `ko_schreibstand` zählt JEDEN wirksamen KO-Schreibvorgang, und eine `revise-release`
- * schreibt in ihrer einen Transaktion ZWEI — den bedingten UPDATE am Bestand
- * (`services/knowledge-object/src/repo-pg.ts:438`) und die Zeile der neuen Fassung
- * (`PgKoVersionRepo.append`, `repo-pg.ts:807`). 2 ist damit der Wert EINES Gewinners, kein Befund;
- * die Erwartung wurde berichtigt, nicht abgeschwächt. Ihre Aussage bleibt dieselbe und ist sogar
- * schärfer: ein zweiter, stiller Gewinner stünde als 4 da, ein wirkungsloser als 0.
+ * Der frühere Wert 2 erfasste Bestand und Versionssnapshot. Heute schreibt `revise-release`
+ * innerhalb derselben Transaktion DREI zählende Schritte: den bedingten Bestands-UPDATE
+ * (`PgKoRepo.update`), den Versionssnapshot (`PgKoVersionRepo.append`) und die Annahmereferenz
+ * (zweiter `repo.update` aus `KoService.verweisAufAnnahme`). Alle erhalten denselben `tx` aus
+ * `mutateKoTxRoh`; `withPgTx` committet sie gemeinsam. Ein verlorener CAS wirft vor seiner
+ * Zählererhöhung und rollt zurück. Genau 3 ist daher der Wert EINES Gewinners; zwei Gewinner
+ * stünden als 6 da, ein wirkungsloser als 0. Inhaltsversion und Konflikt-currentVersion bleiben 2.
  */
-export const SCHREIBSTAND_JE_RUECKGABE = 2;
+export const SCHREIBSTAND_JE_RUECKGABE = 3;
 
 /** Ein Befund darf das Serverprotokoll ZITIEREN — erfinden darf er nichts. */
 export function mitServerzeilen(text: string, zeilen: readonly string[]): string {
