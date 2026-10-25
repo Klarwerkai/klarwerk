@@ -200,6 +200,7 @@ export function bauplan(optionen: Bauoptionen = {}): Eintragsplan[] {
         type: ART,
         category: "Handbuch",
         author: ZIEL_AUTOR,
+        confidentiality: "intern",
         bodyHtml:
           "<p>Vor dem Kaltstart wird der Pruefstift entnommen und das Protokoll gezeichnet.</p>",
       },
@@ -219,6 +220,7 @@ export function bauplan(optionen: Bauoptionen = {}): Eintragsplan[] {
         type: ART,
         category: "Protokoll",
         author: "protokoll-4271",
+        confidentiality: "intern",
         bodyHtml: `<p>Im Protokoll wurde die ${VOLLTEXT_BEGRIFF} beilaeufig erwaehnt (${nr}).</p>`,
       },
       validierung: { trust: 90, status: "validiert" },
@@ -256,6 +258,7 @@ export function bauplan(optionen: Bauoptionen = {}): Eintragsplan[] {
         type: ART,
         category: "Handbuch",
         author: "linie-4271",
+        confidentiality: "intern",
         tags: [HERKUNFT],
         bodyHtml: `<p>Der Bericht ${nr} haelt den Betriebsstand fest.</p>`,
       },
@@ -274,6 +277,7 @@ export function bauplan(optionen: Bauoptionen = {}): Eintragsplan[] {
         type: ART,
         category: "Betrieb",
         author: "bestand-4271",
+        confidentiality: "intern",
         bodyHtml: `<p>${fuellsatz(nr)}</p>`,
       },
     });

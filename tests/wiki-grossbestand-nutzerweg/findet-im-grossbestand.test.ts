@@ -18,6 +18,8 @@
 // SIE BEHAUPTET AUSDRÜCKLICH NICHT, dass der Nutzerweg funktioniert. Wer das wissen will, liest die
 // Ausgabe des Integrationslaufs.
 import { describe, expect, it } from "vitest";
+import { darfSehen } from "../../services/app/src/sichtbarkeit";
+import type { SessionUser } from "../../services/auth/src/types";
 import { LIBRARY_SEARCH_HIT_LIMIT } from "../../services/library-analytics/src/service";
 import {
   ABLENKER,
@@ -272,6 +274,37 @@ describe("JOB 4271 · der Bauplan des Großbestands", () => {
     // Und ein VERSTELLTES Stück fällt an der Prüfsumme auf, obwohl die Zahl der Stücke stimmt.
     const verstellt = zeilen.map((z, i) => (i === 5 ? z.replace(/.$/, "X") : z));
     expect(() => manifestAusZeilen(verstellt)).toThrow(/Prüfsumme|verstümmelt/);
+  });
+
+  it("B10 · der echte Viewer sieht 9950 interne Einträge, 161 Volltext-Anwärter und 12 Herkunftstreffer", () => {
+    const viewer: SessionUser = { id: "viewer-4271", role: "viewer" };
+    expect(plan.every((p) => p.eingabe.author !== viewer.id)).toBe(true);
+    const sichtbar = plan.filter((p) => darfSehen(viewer, p.eingabe));
+    expect(sichtbar).toHaveLength(9950);
+    expect(sichtbar.filter((p) => p.eingabe.bodyHtml?.includes(VOLLTEXT_BEGRIFF))).toHaveLength(
+      161,
+    );
+    expect(sichtbar.filter((p) => p.eingabe.tags?.includes(HERKUNFT))).toHaveLength(12);
+    const fremde = plan.filter((p) => p.gruppe === "fremd-vertraulich");
+    expect(fremde).toHaveLength(50);
+    expect(fremde.every((p) => !darfSehen(viewer, p.eingabe))).toBe(true);
+  });
+
+  it("B11 · der Zielentzug entfernt nur das Ziel und lässt 9949 positive Einträge sichtbar", () => {
+    const viewer: SessionUser = { id: "viewer-4271", role: "viewer" };
+    expect(ziel).toBeTruthy();
+    const z = ziel as NonNullable<typeof ziel>;
+    const vorher = plan.filter((p) => darfSehen(viewer, p.eingabe));
+    expect(vorher).toHaveLength(9950);
+    expect(vorher).toContain(z);
+    const entzogen = { ...z.eingabe, confidentiality: "vertraulich" as const };
+    expect(darfSehen(viewer, entzogen)).toBe(false);
+    const nachher = plan.filter((p) => darfSehen(viewer, p === z ? entzogen : p.eingabe));
+    expect(nachher).toHaveLength(9949);
+    expect(nachher).not.toContain(z);
+    expect(nachher).toEqual(vorher.filter((p) => p !== z));
+    expect(nachher.filter((p) => p.eingabe.bodyHtml?.includes(VOLLTEXT_BEGRIFF))).toHaveLength(160);
+    expect(nachher.filter((p) => p.eingabe.tags?.includes(HERKUNFT))).toHaveLength(11);
   });
 
   it("B7 · und es wird LAUT gesagt, dass der ausgeführte Lauf hier nicht stattgefunden hat", () => {

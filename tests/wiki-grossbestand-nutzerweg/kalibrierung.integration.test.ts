@@ -197,6 +197,7 @@ function deckelfamilie(): Eintragsplan[] {
         type: ART,
         category: "Protokoll",
         author: "kal-protokoll",
+        confidentiality: "intern",
         bodyHtml: `<p>Im Protokoll wurde ${TERM_DECKEL} beilaeufig erwaehnt (${nr}).</p>`,
       },
       validierung: { trust: 90, status: "validiert" },
@@ -213,6 +214,7 @@ function deckelfamilie(): Eintragsplan[] {
       type: ART,
       category: "Handbuch",
       author: "kal-anna",
+      confidentiality: "intern",
       bodyHtml: `<p>Hier steht ${TERM_DECKEL} im Fliesstext und nirgends sonst.</p>`,
     },
     // Trust 1 — derselbe Platz in der Ordnung wie im echten Bestand.
