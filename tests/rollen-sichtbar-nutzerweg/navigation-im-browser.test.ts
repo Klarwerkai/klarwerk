@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { type Browser, type Route, chromium } from "playwright";
+import { type Browser, type BrowserContext, type Route, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { Akteur } from "../beta-rollenabnahme/buehne";
@@ -124,10 +124,6 @@ describe("Rollen-Navigation in Seitenleiste und Kopfband", () => {
       });
       expect(response.statusCode).toBe(201);
     }
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-    });
   }, 60_000);
 
   afterAll(async () => {
@@ -153,11 +149,16 @@ describe("Rollen-Navigation in Seitenleiste und Kopfband", () => {
       expect(tueren).toHaveLength(2);
       const akteure = Object.keys(tueren[0]!.erwartet) as Akteur[];
       for (const akteur of akteure) {
-        const kontext = await browser!.newContext({
-          viewport: { width: breite, height: 900 },
-          locale: "de-DE",
+        browser = await chromium.launch({
+          headless: true,
+          args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
         });
+        let kontext: BrowserContext | undefined;
         try {
+          kontext = await browser.newContext({
+            viewport: { width: breite, height: 900 },
+            locale: "de-DE",
+          });
           await kontext.route("**/*", (route) => {
             const arbeit = antworte(route).catch((fehler: unknown) => {
               anfragefehler.push(String(fehler));
@@ -225,8 +226,12 @@ describe("Rollen-Navigation in Seitenleiste und Kopfband", () => {
             });
           }
         } finally {
-          await Promise.all([...offen]);
-          await kontext.close();
+          try {
+            await Promise.all([...offen]);
+            await kontext?.close();
+          } finally {
+            await browser.close();
+          }
         }
       }
       expect(seitenfehler).toEqual([]);
