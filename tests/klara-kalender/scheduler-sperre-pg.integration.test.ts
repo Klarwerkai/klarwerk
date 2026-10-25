@@ -19,6 +19,7 @@
 //
 // INFRASTRUKTUR: `KLARWERK_PG_TEST_URL` (Datenbankname mit `test`, s. `guardedLocalPgTestUrl`),
 // sonst ein Wegwerf-Container. Fehlt beides, SCHEITERT der Lauf — kein stiller Skip.
+import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -42,11 +43,33 @@ const BERLIN = "Europe/Berlin";
 
 describe("Klara 11 · Kalendersperre an der Erinnerungssteuerung gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
+  let eigeneDb: { verwaltung: string; name: string } | undefined;
   let url = "";
   const pools: Pool[] = [];
   const kalender = new StrengerTestkalender();
   let uhr = Date.parse("2026-10-19T08:00:00.000Z");
   const jetzt = (): number => uhr;
+
+  /** Eine frische Datenbank pro Suite; alle „Prozesse“ teilen weiterhin denselben Bestand. */
+  async function frischeDatenbank(lokal: string): Promise<string> {
+    const teile = /^([^:]+:\/\/[^/?#]*\/)([^/?#]*)(.*)$/.exec(lokal);
+    if (!teile) {
+      throw new Error("KLARWERK_PG_TEST_URL ist nicht lesbar — keine eigene Datenbank anlegbar.");
+    }
+    const name = `klarwerk_test_kalsperre_${randomUUID().replace(/-/g, "")}`;
+    const verwaltung = createPool(lokal);
+    try {
+      await verwaltung.query(`CREATE DATABASE "${name}"`);
+      eigeneDb = { verwaltung: lokal, name };
+    } catch (cause) {
+      throw new Error("Auf KLARWERK_PG_TEST_URL lässt sich keine eigene Testdatenbank anlegen.", {
+        cause,
+      });
+    } finally {
+      await verwaltung.end();
+    }
+    return `${teile[1]}${name}${teile[3]}`;
+  }
 
   /** Ein „Prozess“ nach einem Neustart: eigener Pool, eigene Dienste, EINE Steuerung. */
   function prozess(name: string) {
@@ -110,7 +133,7 @@ describe("Klara 11 · Kalendersperre an der Erinnerungssteuerung gegen echtes Po
   beforeAll(async () => {
     const lokal = guardedLocalPgTestUrl();
     if (lokal) {
-      url = lokal;
+      url = await frischeDatenbank(lokal);
     } else if (process.env.KLARWERK_PG_TEST_URL) {
       throw new Error(
         "KLARWERK_PG_TEST_URL abgelehnt (Grund auf stderr) — kein Container-Rückfall",
@@ -157,6 +180,14 @@ describe("Klara 11 · Kalendersperre an der Erinnerungssteuerung gegen echtes Po
   afterAll(async () => {
     for (const pool of pools) {
       await pool.end();
+    }
+    if (eigeneDb) {
+      const verwaltung = createPool(eigeneDb.verwaltung);
+      try {
+        await verwaltung.query(`DROP DATABASE IF EXISTS "${eigeneDb.name}" WITH (FORCE)`);
+      } finally {
+        await verwaltung.end();
+      }
     }
     await container?.stop();
   });
