@@ -39,18 +39,18 @@
 // Lücke in Runde 3 zu Recht offengelassen benannt: „für einen vollständigen Eingabenachweis Ziffern
 // bei festgelegtem Gebietsschema per Tastatur eingeben."
 //
-// Das Gebietsschema wird jetzt GESETZT (`GEBIETSSCHEMA`, am Browserprofil), genau wie die Sprache
-// der Fläche schon seit jeher gesetzt wird und aus demselben Grund: ein Prüfstand, dessen
-// Reihenfolge von der Umgebung abhängt, misst mal dies, mal das. Damit ist die Reihenfolge bekannt,
-// die Ziffern gehen als echte Tastendrücke hinein — und das Ergebnis wird am `value` des Feldes
-// nachgemessen (`tippeDatumMitTastatur`). Ein Feld, in das man den Tag nicht tippen kann, lässt
-// diesen Weg ab jetzt scheitern; `fill` kommt in dieser Datei nicht mehr vor.
+// Das gesetzte Gebietsschema beweist die native Abschnittsreihenfolge nicht (siehe G6 unten).
+// `tippeDatumMitTastatur` liest deshalb vor dem Tippen den tatsächlichen DOM-/AX-Teilbaum des
+// bereits per Tab erreichten Felds. Nur eindeutig gebundene Abschnitte erhalten ihre Sollziffern;
+// der abschließende ISO-Wertvergleich bleibt der Nachweis für den vollständig eingegebenen Tag.
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
+import type { Page } from "playwright-core";
 import { expect } from "vitest";
 import { registerWebStatic } from "../../services/app/src/web-static";
 import { MELDUNGEN, type Sprache } from "../../services/auth/src/meldungen";
+import { datumsabschnitte } from "./datumsabschnitte";
 import { PASSWORT, type Sitzung, type Strecke } from "./strecke";
 
 export const DIST = resolve(process.cwd(), "apps/web/dist");
@@ -69,10 +69,10 @@ export const SCHMAL = { width: 390, height: 844 };
  * dieselben acht Ziffern ergeben denselben Tag. Chromium richtet die Abschnittsreihenfolge dieses
  * Steuerelements also nicht nach dem Gebietsschema des Kontexts.
  *
- * Die Reihenfolge ist damit eine ANNAHME dieses Prüfstands und keine von ihm gesetzte Grösse. Sie
- * wird deshalb nicht geglaubt, sondern nach jeder Eingabe am `value` des Feldes NACHGEMESSEN
- * (`tippeDatumMitTastatur`). Ordnet ein Browser die Abschnitte eines Tages anders, wird dieser Weg
- * rot und sagt, was hineingelaufen ist — statt still einen falschen Tag zu speichern.
+ * `tippeDatumMitTastatur` liest die tatsächlichen Abschnitte am fokussierten Datumsfeld über
+ * öffentliche DOM-/AX-Abfragen. Weder dieses Gebietsschema noch eine andere Umgebungseinstellung
+ * bestimmt die eingegebene Reihenfolge. Unklare Ziel-, Abschnitts- oder Fokusdaten machen hart rot;
+ * anschließend wird der vollständige ISO-Wert des Feldes unverändert nachgemessen.
  */
 export const GEBIETSSCHEMA = "de-DE";
 
@@ -367,22 +367,10 @@ export async function tippeMitTastatur(
 }
 
 /**
- * JOB 4265 · DER TAG WIRD GETIPPT — ECHTE ZIFFERN, BEI FESTGELEGTEM GEBIETSSCHEMA.
- *
- * VORBEDINGUNG: Das Feld ist bereits per Tab angesteuert und sein Fokus nachgemessen. Diese
- * Funktion fasst den Fokus nicht an — sie tippt, wohin er zeigt. Ein eigener Weg zum Feld stünde
- * neben dem gemessenen, und der nächste Fall nähme den bequemeren (dasselbe Argument wie bei
- * `tastaturAusloesen`).
- *
- * DIE REIHENFOLGE IST TAG, MONAT, JAHR — und sie wird NACHGEMESSEN, nicht gesetzt (die Messung dazu
- * steht bei `GEBIETSSCHEMA`). Chromium schaltet nach jedem vollständigen Abschnitt von selbst
- * weiter, deshalb reichen die acht Ziffern am Stück.
- *
- * UND DAS ERGEBNIS WIRD NACHGEMESSEN. Der `value` einer Datumseingabe ist IMMER `YYYY-MM-DD`,
- * unabhängig davon, wie der Browser sie anzeigt — er ist damit der eine Wert, an dem sich
- * ablesen lässt, ob die Ziffern in den richtigen Abschnitten gelandet sind. Ohne diese Zusicherung
- * bliebe der Fall grün, wenn Tag und Monat vertauscht hineinliefen, und die Fehlermeldung zeigte
- * erst zwei Stationen später auf die falsche Stelle.
+ * Das Feld ist bereits per Tab erreicht und sichtbar fokussiert. Nur seine tatsächlichen
+ * nativen AX-Abschnitte bestimmen die Ziffernfolge; CDP liest und die normale Tastatur schreibt.
+ * Nach jeder Komponente zeigt ein neuer AX-Readback, ob Chromium bereits weitergeschaltet hat.
+ * Der abschließende vollständige ISO-Wertvergleich bleibt streng.
  */
 export async function tippeDatumMitTastatur(
   seite: Seite,
@@ -394,16 +382,66 @@ export async function tippeDatumMitTastatur(
   if (!teile) {
     throw new Error(`JOB 4265: „${tag}" ist kein Tag der Form JJJJ-MM-TT (${was}).`);
   }
-  const [, jahr, monat, tagZahl] = teile;
-  await seite.keyboard.type(`${tagZahl}${monat}${jahr}`);
-  const gesetzt = await seite.evaluate<string>(
-    fn(`(s) => { const e = document.querySelector(s); return e ? e.value : "(kein Feld)"; }`),
-    selektor,
-  );
-  expect(
-    gesetzt,
-    `die getippten Ziffern ${tagZahl}${monat}${jahr} sind im Feld „${was}" nicht als ${tag} angekommen (gelesen: „${gesetzt}") — dieser Browser nimmt die Abschnitte einer Datumseingabe in einer anderen Reihenfolge entgegen als Tag, Monat, Jahr`,
-  ).toBe(tag);
+  const page = seite as unknown as Page;
+  const cdp = await page.context().newCDPSession(page);
+  const fehler: unknown[] = [];
+  try {
+    const { root } = await cdp.send("DOM.getDocument");
+    const { nodeId } = await cdp.send("DOM.querySelector", {
+      nodeId: root.nodeId,
+      selector: selektor,
+    });
+    if (!nodeId) throw new Error(`Datumsfeld „${was}“ fehlt im DOM.`);
+    const { node } = await cdp.send("DOM.describeNode", { nodeId });
+    const typen: string[] = [];
+    const attribute = node.attributes ?? [];
+    for (let i = 0; i < attribute.length; i += 2) {
+      if (attribute[i] === "type") typen.push(attribute[i + 1] ?? "");
+    }
+    if (node.nodeId !== nodeId || node.nodeName !== "INPUT" || typen.join(",") !== "date") {
+      throw new Error(`DOM-Identität des Datumsfelds „${was}“ ist nicht eindeutig.`);
+    }
+    const lesen = async (erlaubt: readonly number[] = [0]) => {
+      const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+      return datumsabschnitte(nodes, node.backendNodeId, tag, erlaubt);
+    };
+    const plan = await lesen();
+    const folge = plan.abschnitte.map((teil) => teil.art).join(",");
+    const gleicheFolge = (stand: ReturnType<typeof datumsabschnitte>) => {
+      if (stand.abschnitte.map((teil) => teil.art).join(",") !== folge) {
+        throw new Error(`Native Datumsabschnitte von „${was}“ haben sich geändert.`);
+      }
+    };
+    for (const [position, abschnitt] of plan.abschnitte.entries()) {
+      await seite.keyboard.type(abschnitt.ziffern);
+      const letzter = position === plan.abschnitte.length - 1;
+      const stand = await lesen(letzter ? [position] : [position, position + 1]);
+      gleicheFolge(stand);
+      if (!letzter && stand.fokus === position) {
+        await seite.keyboard.press("ArrowRight");
+        gleicheFolge(await lesen([position + 1]));
+      }
+    }
+    const gesetzt = await seite.evaluate<string>(
+      fn(`(s) => { const e = document.querySelector(s); return e ? e.value : "(kein Feld)"; }`),
+      selektor,
+    );
+    expect(
+      gesetzt,
+      `die getippten Ziffern ${plan.ziffern} sind im Feld „${was}“ nicht als ${tag} angekommen (gelesen: „${gesetzt}“).`,
+    ).toBe(tag);
+  } catch (error) {
+    fehler.push(error);
+  }
+  try {
+    await cdp.detach();
+  } catch (error) {
+    fehler.push(error);
+  }
+  if (fehler.length === 1) throw fehler[0];
+  if (fehler.length > 1) {
+    throw new AggregateError(fehler, `Datumseingabe und CDP-Abschluss (${was})`);
+  }
 }
 
 /**
