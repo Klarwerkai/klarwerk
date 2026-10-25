@@ -824,13 +824,89 @@ describe("JOB 4334 · der Einordnungskonflikt gegen echtes PostgreSQL im echten 
     }
     const lage = await fachlage("p3");
     process.stderr.write(`${JOB} P3 läuft · Datenbank ${lage.db.name}\n`);
+
+    // Die Konfliktmeldung steht vor invalidate(). P3 wartet auf die ganze eigene KO-Antwort
+    // UND deren gerenderte Fachwerte; erst dann bedeutet „jetziger Stand“ den nachgelesenen Stand.
+    async function frischeKonfliktrunde(was: string): Promise<void> {
+      const vorher = await pgStand(lage.db.pool, lage.koId, `${was}: vor der Nachlese`);
+      type KoAntwort = {
+        url(): string;
+        status(): number;
+        request(): { method(): string; frame(): unknown };
+        json(): Promise<Record<string, unknown>>;
+      };
+      const seite = lage.seite as Seite & {
+        mainFrame(): unknown;
+        waitForResponse(
+          passt: (antwort: KoAntwort) => Promise<boolean>,
+          optionen: { timeout: number },
+        ): Promise<KoAntwort>;
+      };
+      const ziel = new URL(`/api/kos/${lage.koId}`, lage.instanz.basis).href;
+      // Vor dem auslösenden Griff installieren: auch eine schnelle Nachlese darf nicht entgehen.
+      const nachlese = seite.waitForResponse(
+        async (antwort) => {
+          if (
+            antwort.url() !== ziel ||
+            antwort.status() !== 200 ||
+            antwort.request().method() !== "GET" ||
+            antwort.request().frame() !== seite.mainFrame()
+          ) {
+            return false;
+          }
+          const ko = await antwort.json();
+          return (
+            ko.id === lage.koId &&
+            ko.version === vorher.fassung + 1 &&
+            ko.metadataRevision === vorher.stempel + 2 &&
+            ko.category === KATEGORIE_BERND &&
+            JSON.stringify(ko.tags) === JSON.stringify(SCHLAGWORTE_BERND)
+          );
+        },
+        { timeout: 60_000 },
+      );
+      await Promise.all([griffMitFremdemSchreiber(lage, "lage:stale", was), nachlese]);
+
+      const meta = `${testid("bib-lesen")} ${testid("bib-meta")}`;
+      const fassung = `${testid("bib-lesen")} ${testid("bib-fassungsstand")}`;
+      const fassungstext = i18n.t("fassungsangabe.kopfFassung", { version: vorher.fassung + 1 });
+      await seite.waitForFunction(
+        fn(`({ meta, fassung, kategorie, fassungstext }) => {
+          const m = document.querySelector(meta);
+          const f = document.querySelector(fassung);
+          return m && f &&
+            m.innerText.trim().split(" · ")[0] === kategorie &&
+            f.innerText.trim().split(" · ")[0] === fassungstext;
+        }`),
+        { meta, fassung, kategorie: KATEGORIE_BERND, fassungstext },
+        { timeout: 60_000 },
+      );
+      expect(
+        (await sichtbarerText(seite, meta, `${was}: die frisch gezeigte Kategorie`)).split(
+          " · ",
+        )[0],
+      ).toBe(KATEGORIE_BERND);
+      expect(
+        (await sichtbarerText(seite, fassung, `${was}: die frisch gezeigte Fassung`)).split(
+          " · ",
+        )[0],
+      ).toBe(fassungstext);
+      await entwurfErhalten(
+        lage,
+        await entwurfsfelder(lage, MEIN_TEXT, KATEGORIE_ANNA),
+        `${was}: nach der Nachlese`,
+      );
+      expect(await schlagwortbereich(lage), `${was}: der erhaltene Schlagwortentwurf`).toContain(
+        SCHLAGWORT_ANNA,
+      );
+    }
     try {
       // ── RUNDE 1: dieselbe Lage wie P2, damit der Konfliktknopf überhaupt dasteht. ─────────────
       await formularOeffnen(lage);
       await aussageTippen(lage, MEIN_TEXT);
       await schlagwortTippen(lage, SCHLAGWORT_ANNA);
       await kategorieTippen(lage, KATEGORIE_ANNA);
-      await griffMitFremdemSchreiber(lage, "lage:stale", "P3 (erste Runde)");
+      await frischeKonfliktrunde("P3 (erste Runde)");
       expect(await konfliktsatz(lage), "P3: der Konfliktsatz der ersten Runde").toBe(
         i18n.t("ko.revise.staleEinordnungTagsCategory"),
       );
@@ -878,7 +954,7 @@ describe("JOB 4334 · der Einordnungskonflikt gegen echtes PostgreSQL im echten 
       await aussageTippen(lage, MEIN_TEXT);
       await schlagwortTippen(lage, SCHLAGWORT_ANNA);
       await kategorieTippen(lage, KATEGORIE_ANNA);
-      await griffMitFremdemSchreiber(lage, "lage:stale", "P3 (zweite Runde)");
+      await frischeKonfliktrunde("P3 (zweite Runde)");
 
       await konfliktrundeNachweisen(
         lage,
