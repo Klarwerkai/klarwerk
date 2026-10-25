@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { datumsabschnitte, type DatumsAXKnoten } from "./datumsabschnitte";
+import { type DatumsAXKnoten, datumsabschnitte } from "./datumsabschnitte";
 
 type Teil = "tag" | "monat" | "jahr";
 const grenzen = { tag: [1, 31], monat: [1, 12], jahr: [1, 275760] };
