@@ -20,26 +20,17 @@
 //     nur additiv (neue Statuscodes, Kommentar, Diagnosezusatz); der Auffangzweig von `sendError`
 //     schreibt damals wie heute keine Logzeile.
 //
-// WAS DIESER FALL TUT: er faehrt DIESELBE Strecke (`fahreStrecke`, Stationen b–f) mit
-// `graphOffenBeiAnlage` — `/graph` bleibt waehrend der Anlagen offen wie in 715dd3abb — und mit der
-// Treiberdiagnose (`pg-fehlerdiagnose-vorladen.ts`) in Prozess 1 UND Prozess 2. Fuer jeden 500 wird
-// VOR dem Entfernen der Datenbank gelesen: der gescheiterte Beleg `ko.created:<id>` DIESER Anlage
-// (SQLSTATE, Constraint, seq), der erfolgreiche Eintrag mit derselben seq (zweiter Schreiber) und
-// jede gescheiterte SQL-Anfrage im Zeitfenster der Anlage.
+// HEUTIGER NACHFOLGER: dieselben drei vollen Strecken b–f mit Prozessneustart und offenem Graphen.
+// Der aktuelle PgAuditRepo serialisiert appendNext datenbankweit an AUDIT_KETTENSPERRE, VOR
+// Vorgänger und Insert. Jede der 303 Anlagen muss 201 liefern, genau EIN KO zur Titelkennung
+// hinterlassen und genau EINEN passenden ko.created-Beleg (event_id, action, target) tragen.
+// Jeder Nicht201/Abbruch/Diagnosefehler bleibt rot; die vorhandene innere Diagnose wird weiterhin
+// VOR dem Entfernen der Datenbank gelesen. Die positive Diagnoseaktivität bleibt Pflicht.
 //
-// WANN ER GRUEN IST: mindestens ein 500 trat auf, und JEDER 500 traegt intern `23505 audit_pkey`
-// am Beleg seiner Anlage — dieselbe Ursache, die ALT-500 minimal reproduziert. Dann ist der
-// historische Ablauf heute an diese Ursache gebunden; ALT-500 ist die minimale Reproduktion dazu.
-//
-// WANN ER ROT IST — UND WAS DAS HEISST:
-//   · kein 500 in `LAEUFE` vollen Strecken: am Originalablauf NICHT reproduziert. Das ist KEINE
-//     Schliessung (Nichtziel: erfolgreiche Anlagen gelten nicht als Schliessung).
-//   · ein 500 mit anderer oder ohne Treiberursache: ein eigener, belegter Befund — er steht in der
-//     Meldung. Ein Fehler ausserhalb von PostgreSQL bleibt fuer diese Diagnose unsichtbar, weil der
-//     Auffangzweig von `sendError` nichts protokolliert; das sagt die Meldung dann ausdruecklich.
-//
-// WAS AUCH EIN GRUENER LAUF NICHT BELEGT: dass der Lauf von 4328 R1 selbst genau diesen Verlauf
-// hatte — dessen interne Diagnose ist nicht erhalten (check.out/check.err tragen nur die Assertion).
+// HISTORIE: f4571f58/.690 belegte die damalige Diagnose/Reproduktion, keine damalige Heilung.
+// Der abgeschlossene Originalauftrag r7 samt History/Lieferung bleibt unverändert. Der interne
+// Verlauf von 4328 R1 ist weiterhin unbelegt; heutige 201 ordnen dessen Ursache nicht rückwirkend zu.
+// Ein tatsächlicher Lauf dieses fortgeschriebenen Falls belegt nur den heutigen Nachfolger.
 //
 // KEINE PRODUKTIVDATEN: jede Datenbank traegt `test` im Namen (`pgUrl`) und wird entfernt.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -68,8 +59,6 @@ const VORLADEN = resolve(
 );
 /** Volle Strecken b–f, hoechstens — der Vorfall trat in EINEM Lauf auf. */
 const LAEUFE = 3;
-/** Dieselbe Ursache, die ALT-500 minimal reproduziert. */
-const AUDIT_KOLLISION = "23505 audit_pkey";
 
 interface Diagnose {
   lauf: number;
@@ -89,8 +78,9 @@ interface Messung {
   status: Record<string, number>;
   diagnoseZeilen: number;
   auditEintraegeOk: number;
+  koMitBeleg: number;
   diagnosen: Diagnose[];
-  /** Ein Abbruch der Strecke, der KEIN 500 einer Anlage war — er wird nicht verschluckt. */
+  /** Jeder Abbruch bleibt rot — auch ein intern zugeordneter heutiger Anlagefehler. */
   andererAbbruch?: string;
 }
 
@@ -110,6 +100,23 @@ async function ruhe(pool: Pool): Promise<void> {
     stabil = n === vorher ? stabil + 1 : 0;
     vorher = n;
   }
+}
+
+/** Titelkennung, gespeichertes KO und genau EIN kausaler Erstanlagebeleg müssen zusammenpassen. */
+async function pruefeAnlagebeleg(pool: Pool, titel: string): Promise<void> {
+  const kos = await pool.query<{ id: string }>("SELECT id FROM kos WHERE data->>'title' = $1", [
+    titel,
+  ]);
+  expect(kos.rows, `genau ein KO zur eigenen Titelkennung ${titel}`).toHaveLength(1);
+  const id = kos.rows[0]?.id;
+  if (!id) throw new Error(`KO-Kennung fehlt: ${titel}`);
+  const belege = await pool.query<{ event_id: string; action: string; target: string }>(
+    "SELECT event_id,action,target FROM audit WHERE event_id=$1 OR (action='ko.created' AND target=$2)",
+    [`ko.created:${id}`, id],
+  );
+  expect(belege.rows, `genau ein passender ko.created-Beleg zu ${titel}`).toEqual([
+    { event_id: `ko.created:${id}`, action: "ko.created", target: id },
+  ]);
 }
 
 async function diagnostiziere(
@@ -169,7 +176,7 @@ describe(`${MARKE} · Stationen b–f, Prozessneustart, /graph offen — gegen P
     }
   }, 300_000);
 
-  it("der historische Ablauf mit interner Diagnose: jeder 500 mit SQLSTATE, Constraint und zweitem Schreiber", async () => {
+  it("heutiger serialisierter Nachfolger: volle b–f-Strecken, jede 201 mit genau einem KO und ko.created-Beleg", async () => {
     if (!zaehltAlsBestanden(zustand) || !umgebung) {
       process.stderr.write(befundsatz(MARKE.replace("[KLARWERK] ", ""), zustand));
       return;
@@ -181,11 +188,12 @@ describe(`${MARKE} · Stationen b–f, Prozessneustart, /graph offen — gegen P
       status: {},
       diagnoseZeilen: 0,
       auditEintraegeOk: 0,
+      koMitBeleg: 0,
       diagnosen: [],
     };
     messung = m;
     try {
-      for (let lauf = 1; lauf <= LAEUFE && m.diagnosen.length === 0; lauf += 1) {
+      for (let lauf = 1; lauf <= LAEUFE; lauf += 1) {
         const datei = join(ordner, `pg-vorfaelle-${lauf}.jsonl`);
         writeFileSync(datei, "");
         m.laeufe = lauf;
@@ -201,18 +209,17 @@ describe(`${MARKE} · Stationen b–f, Prozessneustart, /graph offen — gegen P
             nachAnlage: async (pool, a) => {
               m.anlagen += 1;
               m.status[String(a.status)] = (m.status[String(a.status)] ?? 0) + 1;
-              if (a.status >= 500) {
+              if (a.status !== 201) {
                 m.diagnosen.push(await diagnostiziere(pool, datei, lauf, a));
               }
+              expect(a.status, `${MARKE}: ${JSON.stringify(m.diagnosen)} ${a.text}`).toBe(201);
+              await pruefeAnlagebeleg(pool, `Grenzobjekt ${a.nr}`);
+              m.koMitBeleg += 1;
             },
           });
         } catch (fehler) {
-          // Nur der Abbruch an der Pruefung des 500 ist erwartet; alles andere ist ein eigener
-          // Befund und wird NICHT als Ergebnis dieses Falls gelesen.
-          if (!m.diagnosen.some((d) => d.lauf === lauf)) {
-            m.andererAbbruch = String(fehler).slice(0, 400);
-            throw fehler;
-          }
+          m.andererAbbruch = String(fehler).slice(0, 400);
+          throw fehler;
         } finally {
           const vorfaelle = lies(datei);
           m.diagnoseZeilen += vorfaelle.length;
@@ -225,14 +232,21 @@ describe(`${MARKE} · Stationen b–f, Prozessneustart, /graph offen — gegen P
         m.auditEintraegeOk,
         "die Treiberdiagnose in den Serverprozessen hat keinen Pruefprotokoll-Eintrag gesehen — sie war nicht aktiv",
       ).toBeGreaterThan(0);
+      expect(m.laeufe, "alle drei vollen Strecken einschließlich Neustart").toBe(LAEUFE);
+      expect(m.anlagen, "101 Anlagen je voller Strecke").toBe(LAEUFE * 101);
       expect(
-        m.diagnosen.length,
-        `${MARKE}: in ${m.laeufe} vollen Strecken (b–f, Prozessneustart, /graph offen) und ${m.anlagen} Anlagen kein 500 (${JSON.stringify(m.status)}). Der historische Fall ist am Originalablauf NICHT reproduziert und NICHT zugeordnet — das ist auch kein Beleg einer Schliessung.`,
-      ).toBeGreaterThan(0);
+        m.status,
+        `${MARKE}: jede Nicht201 bleibt rot: ${JSON.stringify(m.diagnosen)}`,
+      ).toEqual({
+        "201": LAEUFE * 101,
+      });
+      expect(m.koMitBeleg, "jede erfolgreiche Anlage mit exakt einem KO und passenden Beleg").toBe(
+        m.anlagen,
+      );
       expect(
-        m.diagnosen.map((d) => d.ursache),
-        `${MARKE}: mindestens ein 500 hat eine ANDERE oder keine Treiberursache — ein eigener, belegter Befund (ein Fehler ausserhalb von PostgreSQL bleibt hier unsichtbar, weil der Auffangzweig von sendError nichts protokolliert): ${JSON.stringify(m.diagnosen)}`,
-      ).toEqual(m.diagnosen.map(() => AUDIT_KOLLISION));
+        m.diagnosen,
+        "kein heutiger Anlagefehler; historische Akten bleiben unverändert",
+      ).toEqual([]);
     } finally {
       rmSync(ordner, { recursive: true, force: true });
     }

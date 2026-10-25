@@ -22,47 +22,23 @@
 // 23505 an `audit_pkey`, 23505 an einem anderen Schlüssel oder ein gewöhnlicher `Error`. Der Rumpf
 // ordnet also nichts zu. Deshalb steht hier zuerst eine DIAGNOSE AM AUSLÖSER:
 //
-// (1) ALT-500-AUSLÖSER — der historische Ablauf, so nah wie ausführbar: eigener Serverprozess über
-//     `starteKlarwerk`, derselbe Bestand (`baueBestandAuf`), Anmeldung und Stufe 2 im Browser,
-//     `/graph` offen, dann Grenzobjekte NACHEINANDER in der Nutzlastform von 4328 (bis zu
-//     `AUSLOESER_RUNDEN` × `AUSLOESER_ANLAGEN`). IM Serverprozess liegt die Treiberdiagnose
-//     (`pg-fehlerdiagnose-vorladen.ts`): jede gescheiterte SQL-Anfrage mit SQLSTATE und
-//     Constraint, jedes `INSERT INTO audit` mit `seq`, Handlung und Ereigniskennung. Für JEDEN 500
-//     wird daraus die Ursache gelesen: der gescheiterte Prüfprotokoll-Eintrag `ko.created:<id>`
-//     GENAU DIESER Anlage (Kennung über den Titel in `kos`), und der erfolgreiche Eintrag mit
-//     derselben `seq` benennt den zweiten Schreiber. Tritt kein 500 auf, ist der Fall ROT mit
-//     „nicht reproduziert — Zuordnung offen"; eine andere Ursache macht ihn ROT mit dieser Ursache.
-//     Nur „jeder 500 = 23505 an audit_pkey im Beleg dieser Anlage" ist grün.
+// HEUTIGER SERIALISIERTER NACHFOLGER: (1) behält die vollen 303 Anlagen bei offenem Graphen,
+// Anmeldung/Stufe 2, Serverprozess und Treiberdiagnose. Jede Nicht201 bleibt rot; jede 201 muss
+// genau EIN KO zur eigenen Titelkennung und genau EINEN passenden ko.created-Beleg tragen.
 //
-// (2) ALT-500 — die MINIMALE Reproduktion des in (1) diagnostizierten Mechanismus: EIN
-//     `POST /api/kos` über HTTP, ohne Browser, deterministisch (Technik aus
-//     `tests/pg-erstaufbau-konkurrenz/erstaufbau-konkurrenz.integration.test.ts`, Fall E3):
-//       (a) ein zweiter Schreiber legt in OFFENER Transaktion einen Prüfprotokoll-Eintrag an
-//           (`AuditService.record`, seq = n+1, noch nicht festgeschrieben);
-//       (b) die Anlage liest `last()` (sieht den offenen Eintrag nicht, MVCC), rechnet ebenfalls
-//           n+1, und ihr INSERT wartet am Primärschlüssel — gemessen in `pg_stat_activity`;
-//       (c) der zweite Schreiber schreibt fest → die Anlage scheitert.
-//     Belegt wird dieselbe INTERNE Ursache wie in (1) — per Treiberdiagnose im Testprozess:
-//     23505 an `audit_pkey` am Eintrag `ko.created:<id>` dieser Anlage —, dazu der Fingerabdruck
-//     (Eintrag in `kos`, Beleg fehlt) und die Gegenprobe ohne zweiten Schreiber (201 samt Beleg).
+// (2) bindet EINEN echten Pending-POST an den öffentlichen Backend-PID seines eigenen App-Pools.
+// Der unabhängige Halter schreibt über AuditService.record/withPgTx und hält damit die öffentliche
+// AUDIT_KETTENSPERRE. Vor seiner Freigabe muss genau dieser POST-Backend an genau diesem Schlüssel
+// auf genau diesen Halter warten (pg_stat_activity/pg_locks/pg_blocking_pids), ohne fertige Antwort.
+// Nach tatsächlichem COMMIT folgen 201, KO+Beleg, gültige/lückenlose Kette und Halterbeleg VOR
+// Anlegebeleg. Weitere legitime Schreiber dürfen dazwischen stehen. Die Gegenprobe bleibt.
 //
-// DIE ZUORDNUNG ENTSTEHT ERST AUS BEIDEN: (1) verbindet den historischen Auslöser mit der inneren
-// Ursache, (2) reproduziert genau diese Ursache minimal. Ohne ein grünes (1) ist die
-// Prüfprotokoll-Kollision nur ein KANDIDAT — so steht es dann auch in der Rückgabe. Was auch ein
-// grünes (1) nicht belegt: dass der Lauf von 4328 R1 selbst genau diesen Verlauf hatte; belegt ist,
-// dass sein Ablauf HEUTE diese Ursache auslöst.
-//
-// DER CODE, an dem die Ursache hängt: `AuditService.record`/`recordOnce`
-// (`services/audit/src/service.ts`) vergeben `seq` als `last()` → `seq + 1` ohne Serialisierung;
-// `audit.seq` ist Primärschlüssel, `appendOnce` fängt nur `event_id` ab. Auf Dienstebene steht die
-// Kollision seit `ad4c957d` (JOB 4271 Befund 3, Fall E3) als „REPRODUZIERTER REST, NICHT BEHOBEN".
-// Ein schliessender Nachfolger existiert im Stand dieses Zweigs nicht.
-//
-// WENN (2) ROT WIRD, WEIL DIE ANLAGE 201 LIEFERT: dann ist die Folge serialisiert (z. B.
-// `pg_advisory_xact_lock` in `PgAuditRepo` oder `seq` aus der Datenbank). Das ist der schliessende
-// Nachfolger — dann beide Fälle auf „geschlossen durch <Commit>" umstellen, nicht abschwächen.
-// (Eine rein prozessinterne Warteschlange schliesst (2) NICHT: der zweite Schreiber ist ein
-// eigener Client, wie eine zweite Instanz.)
+// HISTORIE: f4571f58/.690 lieferte die damalige zugeordnete Diagnose/Reproduktion, keine damalige
+// Reparatur. Die abgeschlossene Originalakte r7/History/Lieferung bleibt unverändert. Der interne
+// Verlauf von 4328 R1 ist weiterhin unbelegt; diese heutigen Fälle ordnen ihn nicht rückwirkend zu.
+// Konkreter heutiger Schutz: PgAuditRepo.appendNext nimmt die datenbankweite Kettensperre VOR
+// last/insert; KoService.schreibeErstanlage bindet KO und Belege an denselben Transaktionsclient.
+// Ein tatsächlicher neuer PG-Lauf muss diesen Nachfolger erst bestätigen.
 //
 // PRÜFGRENZE, SICHTBAR: ohne PostgreSQL (weder `KLARWERK_PG_TEST_URL` noch Container) oder ohne
 // Chromium steht der Grund auf stderr, und der Zeuge sagt, dass nichts belegt ist.
@@ -76,8 +52,19 @@ import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
-import { AuditService, PgAuditRepo } from "../../services/audit";
-import { guardedLocalPgTestUrl, withPgTx } from "../../services/db-tx";
+import {
+  AUDIT_KETTENSPERRE,
+  AuditService,
+  type ChainInspection,
+  PgAuditRepo,
+  inspectChain,
+} from "../../services/audit";
+import {
+  guardedLocalPgTestUrl,
+  pgQueryable,
+  vorratsKonfiguration,
+  withPgTx,
+} from "../../services/db-tx";
 import {
   ADMIN as BESTAND_ADMIN,
   PASSWORT as BESTAND_PASSWORT,
@@ -89,7 +76,7 @@ import {
   zerlege,
 } from "../beziehungs-restore-nutzerweg/vorrichtung";
 import { type Browser, fn, profil, starteChromium, warte } from "../gast-nutzerweg/browserweg";
-import { PASSWORT, starteStrecke } from "../gast-nutzerweg/strecke";
+import { type Antwort, PASSWORT, starteStrecke } from "../gast-nutzerweg/strecke";
 import { stelleFlaecheBereit } from "../gesamtanweisung-nutzerweg/weg";
 import {
   type Laufzustand,
@@ -112,8 +99,6 @@ const VORLADEN = resolve(
 /** Wie in 4328 R1 (`ZUSATZ_KOS`): 101 Grenzobjekte je Runde — und höchstens drei Runden. */
 const AUSLOESER_ANLAGEN = 101;
 const AUSLOESER_RUNDEN = 3;
-/** Die einzige Ursache, die (1) grün macht. */
-const AUDIT_KOLLISION = "23505 audit_pkey";
 
 /** Die Nutzlastform der Grenzobjekte aus 4328 R1 (`wissensnetz-nutzerweg/strecke.ts`). */
 const grenzobjekt = (nr: string, schlagwort: string) => ({
@@ -137,7 +122,24 @@ async function ruhe(pool: Pool): Promise<void> {
   }
 }
 
-/** Die Diagnose eines einzelnen 500 aus (1). */
+/** Jede tatsächliche 201 ist an ein KO und genau einen passenden Erstanlagebeleg gebunden. */
+async function pruefeAnlagebeleg(pool: Pool, titel: string): Promise<void> {
+  const kos = await pool.query<{ id: string }>("SELECT id FROM kos WHERE data->>'title' = $1", [
+    titel,
+  ]);
+  expect(kos.rows, `genau ein KO zur eigenen Titelkennung ${titel}`).toHaveLength(1);
+  const id = kos.rows[0]?.id;
+  if (!id) throw new Error(`KO-Kennung fehlt: ${titel}`);
+  const belege = await pool.query<{ event_id: string; action: string; target: string }>(
+    "SELECT event_id,action,target FROM audit WHERE event_id=$1 OR (action='ko.created' AND target=$2)",
+    [`ko.created:${id}`, id],
+  );
+  expect(belege.rows, `genau ein passender ko.created-Beleg zu ${titel}`).toEqual([
+    { event_id: `ko.created:${id}`, action: "ko.created", target: id },
+  ]);
+}
+
+/** Die Diagnose jedes Nicht201 aus (1); kein heutiger Fehler wird als Erfolg gezählt. */
 interface Diagnose {
   nr: string;
   status: number;
@@ -158,20 +160,36 @@ interface Ausloeser {
   status: Record<string, number>;
   diagnoseZeilen: number;
   auditEintraegeOk: number;
+  koMitBeleg: number;
   diagnosen: Diagnose[];
 }
 
-/** Was Fall ALT-500 gemessen hat — steht als Zeile auf stderr und im Zeugen. */
+interface SperrBeobachtung {
+  app_pid: number;
+  halter_pid: number;
+  datenbank: string;
+  lock_key: string;
+  waiter_granted: boolean;
+  holder_granted: boolean;
+  blocker: number[];
+  query: string;
+}
+
+/** Tatsächlicher heutiger Serialisierungs-/Belegnachweis, kein historisch erzwungener 500. */
 interface Alt500 {
   gegenprobe: number;
-  /** Die interne Ursache laut Treiberdiagnose im Testprozess. */
   ursache: string;
-  wartend: string;
+  wartend?: SperrBeobachtung;
+  vorFreigabe?: { postImHandler: boolean; antwortBeendet: boolean };
+  halterCommit: boolean;
+  halterSeq: number | null;
+  anlageSeq: number | null;
   status: number;
   rumpf: string;
   koGespeichert: number;
-  belegFehlt: boolean;
+  koCreatedBelege: number;
   folge: number[];
+  kettenPruefung: ChainInspection;
 }
 
 describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
@@ -270,7 +288,7 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
     }
   }, 1_200_000);
 
-  it("ALT-500-AUSLÖSER · der historische Ablauf mit interner Diagnose: eigener Serverprozess, /graph offen, Grenzobjekte nacheinander — jeder 500 mit SQLSTATE, Constraint und zweitem Schreiber", async () => {
+  it("ALT-500-AUSLÖSER · heutiger Nachfolger: 303 Anlagen mit offenem Graphen, jede 201 mit genau einem KO und ko.created-Beleg", async () => {
     if (!zaehltAlsBestanden(zustand) || !verbindung || !browser) {
       process.stderr.write(
         befundsatz(`${MARKE.replace("[KLARWERK] ", "")} PG ALT-500-AUSLOESER`, zustand),
@@ -339,11 +357,7 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
       await graphSteht();
 
       const anlagen: { nr: string; status: number; text: string; von: number; bis: number }[] = [];
-      for (
-        let runde = 0;
-        runde < AUSLOESER_RUNDEN && !anlagen.some((a) => a.status >= 500);
-        runde += 1
-      ) {
+      for (let runde = 0; runde < AUSLOESER_RUNDEN; runde += 1) {
         if (runde > 0) {
           await seite.reload({ waitUntil: "domcontentloaded" });
           await graphSteht();
@@ -368,7 +382,7 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
         .filter((z) => z.trim() !== "")
         .map((z) => JSON.parse(z) as PgVorfall);
       const diagnosen: Diagnose[] = [];
-      for (const a of anlagen.filter((x) => x.status >= 500)) {
+      for (const a of anlagen.filter((x) => x.status !== 201)) {
         const ids = (
           await lese.query<{ id: string }>("SELECT id FROM kos WHERE data->>'title' = $1", [
             `Grenzobjekt ${a.nr}`,
@@ -406,6 +420,7 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
         status,
         diagnoseZeilen: vorfaelle.length,
         auditEintraegeOk: vorfaelle.filter((v) => v.ok && v.seq !== undefined).length,
+        koMitBeleg: 0,
         diagnosen,
       };
 
@@ -414,14 +429,21 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
         ausloeser.auditEintraegeOk,
         "die Treiberdiagnose im Serverprozess hat keinen einzigen Prüfprotokoll-Eintrag gesehen — sie war nicht aktiv",
       ).toBeGreaterThan(0);
+      for (const a of anlagen.filter((a) => a.status === 201)) {
+        await pruefeAnlagebeleg(lese, `Grenzobjekt ${a.nr}`);
+        ausloeser.koMitBeleg += 1;
+      }
+      expect(anlagen).toHaveLength(AUSLOESER_RUNDEN * AUSLOESER_ANLAGEN);
+      expect(status, `${MARKE}: jede Nicht201 bleibt rot: ${JSON.stringify(diagnosen)}`).toEqual({
+        "201": AUSLOESER_RUNDEN * AUSLOESER_ANLAGEN,
+      });
+      expect(ausloeser.koMitBeleg, "jede 201 mit genau einem KO und passendem Beleg").toBe(
+        anlagen.length,
+      );
       expect(
-        diagnosen.length,
-        `${MARKE} ALT-500-AUSLÖSER: in ${anlagen.length} Anlagen bei offener /graph-Seite kein 500 (${JSON.stringify(status)}). Der historische Fall ist damit NICHT reproduziert und NICHT zugeordnet — die Prüfprotokoll-Kollision bleibt ein Kandidat; das ist auch kein Beleg einer Schliessung.`,
-      ).toBeGreaterThan(0);
-      expect(
-        diagnosen.map((d) => d.ursache),
-        `${MARKE} ALT-500-AUSLÖSER: mindestens ein 500 hat eine ANDERE innere Ursache als die Prüfprotokoll-Kollision — das ist ein eigener, belegter Befund: ${JSON.stringify(diagnosen)}`,
-      ).toEqual(diagnosen.map(() => AUDIT_KOLLISION));
+        diagnosen,
+        "keine heutige Anlage fehlgeschlagen; historische Diagnose bleibt erhalten",
+      ).toEqual([]);
     } finally {
       await kontext.close().catch(() => undefined);
       await instanz.beende();
@@ -430,25 +452,50 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
     }
   }, 1_800_000);
 
-  it("ALT-500 · minimal reproduziert: EIN POST /api/kos scheitert an 23505 audit_pkey (intern diagnostiziert), wenn ein gleichzeitiger Prüfprotokoll-Eintrag dieselbe seq belegt", async () => {
+  it("ALT-500 · serialisierter Nachfolger: echter POST wartet am Halter der Kettensperre, danach 201 und vollständiger Beleg", async () => {
     if (!zaehltAlsBestanden(zustand) || !verbindung || !verwaltung) {
       process.stderr.write(befundsatz(`${MARKE.replace("[KLARWERK] ", "")} PG ALT-500`, zustand));
       return;
     }
     const v = verwaltung;
     const url = pgUrl(verbindung, DATENBANK_500);
-    const pool = createPool(url);
+    // Gelesener Caller: Auth vor der Erstanlage; Insert/Snapshot/Projektion/Audit verwenden
+    // denselben tx. Nur dieser App-Pool hat Größe 1, die normalen Warte-/Idlegrenzen bleiben.
+    const pool = new Pool({ ...vorratsKonfiguration(url), max: 1 });
     pool.on("error", (fehler) => {
       process.stderr.write(`${MARKE} HINWEIS: Verbindung endete — ${String(fehler)}\n`);
     });
-    const halterPool = new Pool({ connectionString: url, max: 1 });
-    await migrate(pool);
-    const strecke = await starteStrecke({ pool });
-    // Dieselbe Treiberdiagnose wie im Serverprozess von (1) — hier im Testprozess, weil die
-    // Anwendung hier im Testprozess läuft. Sie wird am Ende wieder entfernt.
+    const halterPool = new Pool({ ...vorratsKonfiguration(url), max: 1 });
+    let strecke: Awaited<ReturnType<typeof starteStrecke>> | undefined;
+    let antwort: Promise<Antwort> | undefined;
+    let entferne: (() => void) | undefined;
+    let wartend: SperrBeobachtung | undefined;
+    let vorFreigabe: { postImHandler: boolean; antwortBeendet: boolean } | undefined;
+    let halterSeq: number | undefined;
+    let halterCommit = false;
+    let postImHandler = false;
+    let antwortBeendet = false;
     const vorfaelle: PgVorfall[] = [];
-    const entferne = installiere((x) => vorfaelle.push(x));
+    const fehler: unknown[] = [];
     try {
+      await migrate(pool);
+      strecke = await starteStrecke({
+        pool,
+        vorListen: async (app) => {
+          // Öffentlicher Hook: nur der Eintritt DIESER echten Anfrage wird beobachtet.
+          app.addHook("preHandler", (request, _reply, done) => {
+            if (
+              request.method === "POST" &&
+              request.url === "/api/kos" &&
+              (request.body as { title?: unknown } | undefined)?.title === "Grenzobjekt 0002"
+            ) {
+              postImHandler = true;
+            }
+            done();
+          });
+        },
+      });
+      entferne = installiere((x) => vorfaelle.push(x));
       const admin = strecke.profil("admin");
       const setup = await admin.sende("POST", "/api/auth/setup", {
         name: "Alt500 Admin",
@@ -460,92 +507,215 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
         (
           await pool.query<{ id: string }>("SELECT id FROM kos WHERE data->>'title' = $1", [titel])
         ).rows.map((r) => r.id);
-      const hatBeleg = async (id: string): Promise<boolean> =>
-        (
-          await pool.query<{ n: number }>(
-            "SELECT count(*)::int AS n FROM audit WHERE event_id = $1",
-            [`ko.created:${id}`],
-          )
-        ).rows[0]?.n === 1;
 
-      // GEGENPROBE: dieselbe Anlage ohne zweiten Schreiber → 201 samt Beleg.
+      // Gegenprobe und alle App-Abfragen VOR der Sperrphase.
       const frei = await admin.sende("POST", "/api/kos", grenzobjekt("0000", "wbr-alt500"));
       expect(frei.status, frei.text.slice(0, 300)).toBe(201);
       const freiId = (frei.json as { id: string }).id;
-      expect(await hatBeleg(freiId), "Gegenprobe: Beleg ko.created vorhanden").toBe(true);
+      await pruefeAnlagebeleg(pool, "Grenzobjekt 0000");
+      expect(await koIdZuTitel("Grenzobjekt 0000")).toEqual([freiId]);
       await ruhe(pool);
 
-      // (a)–(c): der zweite Schreiber hält seinen Eintrag offen, bis die Anlage an ihm wartet.
+      const appClient = await pool.connect();
+      let appBackendId: number;
+      try {
+        const pid = await appClient.query<{ pid: number; datenbank: string }>(
+          "SELECT pg_backend_pid() AS pid,current_database() AS datenbank",
+        );
+        expect(pid.rows[0]?.datenbank).toBe(DATENBANK_500);
+        const id = pid.rows[0]?.pid;
+        if (!id) throw new Error("App-Backend-PID fehlt.");
+        appBackendId = id;
+      } finally {
+        appClient.release();
+      }
+      expect(pool.totalCount).toBe(1);
+      expect(pool.idleCount).toBe(1);
+      expect(pool.waitingCount).toBe(0);
+
       const halter = new AuditService({ repo: new PgAuditRepo(halterPool) });
-      let antwort: ReturnType<typeof admin.sende> | undefined;
-      let wartend = "";
       await withPgTx(halterPool, async (tx) => {
-        await halter.record(
+        const pid = await pgQueryable(tx).query<{ pid: number; datenbank: string }>(
+          "SELECT pg_backend_pid() AS pid,current_database() AS datenbank",
+        );
+        expect(pid.rows[0]?.datenbank).toBe(DATENBANK_500);
+        const halterBackendId = pid.rows[0]?.pid;
+        if (!halterBackendId) throw new Error("Halter-Backend-PID fehlt.");
+        expect(halterBackendId).not.toBe(appBackendId);
+        const eintrag = await halter.record(
           { actor: "wbr-alt500-halter", action: "alt500.gleichzeitig", target: "audit" },
           tx,
         );
+        halterSeq = eintrag.seq;
         antwort = admin.sende("POST", "/api/kos", grenzobjekt("0002", "wbr-alt500"));
+        // Nur den realen Promise beobachten; das Original wird nach Commit und im finally erwartet.
+        void antwort.then(
+          () => {
+            antwortBeendet = true;
+          },
+          () => {
+            antwortBeendet = true;
+          },
+        );
         const frist = Date.now() + 30_000;
         while (Date.now() < frist && !wartend) {
-          const r = await v.query<{ q: string }>(
-            `SELECT query AS q FROM pg_stat_activity
-              WHERE datname = $1 AND wait_event_type = 'Lock' AND query ILIKE 'INSERT INTO audit%'`,
-            [DATENBANK_500],
+          expect(antwortBeendet, "POST darf unter gehaltenem Halterlock nicht fertig sein").toBe(
+            false,
           );
-          wartend = r.rows[0]?.q.replace(/\s+/g, " ").slice(0, 80) ?? "";
+          // Ausschließlich der unabhängige Verwaltungsleser, niemals der blockierte App-Pool.
+          const r = await v.query<SperrBeobachtung>(
+            `SELECT w.pid AS app_pid,h.pid AS halter_pid,w.datname AS datenbank,
+                    wl.objid::text AS lock_key,wl.granted AS waiter_granted,
+                    hl.granted AS holder_granted,pg_blocking_pids(w.pid) AS blocker,w.query
+               FROM pg_stat_activity w
+               JOIN pg_stat_activity h ON h.pid=$2 AND h.datid=w.datid
+               JOIN pg_locks wl ON wl.pid=w.pid AND wl.locktype='advisory'
+               JOIN pg_locks hl ON hl.pid=h.pid AND hl.locktype=wl.locktype
+                AND hl.database=wl.database AND hl.classid=wl.classid AND hl.objid=wl.objid
+                AND hl.objsubid=wl.objsubid AND hl.mode=wl.mode
+              WHERE w.pid=$1 AND w.datname=$3 AND h.datname=$3
+                AND wl.database=w.datid AND wl.classid=0 AND wl.objid=$4::oid AND wl.objsubid=1
+                AND wl.mode='ExclusiveLock' AND NOT wl.granted AND hl.granted
+                AND w.state='active' AND w.wait_event_type='Lock' AND w.query=$5
+                AND h.pid=ANY(pg_blocking_pids(w.pid))`,
+            [
+              appBackendId,
+              halterBackendId,
+              DATENBANK_500,
+              AUDIT_KETTENSPERRE,
+              `SELECT pg_advisory_xact_lock(${AUDIT_KETTENSPERRE})`,
+            ],
+          );
+          // Mit Größe 1 und eingetretenem POST darf keine Anfrage hinter einem Hintergrundclient
+          // am Pool warten; der belegte Backend muss DIESER Anfrage gehören.
+          if (
+            postImHandler &&
+            pool.waitingCount === 0 &&
+            pool.idleCount === 0 &&
+            r.rows.length === 1
+          ) {
+            wartend = r.rows[0];
+          }
           if (!wartend) await new Promise((weiter) => setTimeout(weiter, 50));
         }
+        expect(
+          wartend,
+          `kein exakter Pending-POST/Halter an ${DATENBANK_500}/${AUDIT_KETTENSPERRE}, App=${appBackendId}, Halter=${halterBackendId}`,
+        ).toBeDefined();
+        expect(wartend).toMatchObject({
+          app_pid: appBackendId,
+          halter_pid: halterBackendId,
+          datenbank: DATENBANK_500,
+          lock_key: String(AUDIT_KETTENSPERRE),
+          waiter_granted: false,
+          holder_granted: true,
+          query: `SELECT pg_advisory_xact_lock(${AUDIT_KETTENSPERRE})`,
+        });
+        expect(wartend?.blocker).toContain(halterBackendId);
+        vorFreigabe = { postImHandler, antwortBeendet };
+        expect(vorFreigabe).toEqual({ postImHandler: true, antwortBeendet: false });
       });
-      const r = await (antwort as ReturnType<typeof admin.sende>);
+      halterCommit = true; // withPgTx hat sein tatsächliches COMMIT abgewartet.
+      if (!antwort) throw new Error("Der echte POST wurde nicht gestartet.");
+      const r = await antwort;
       await ruhe(pool);
       const ids = await koIdZuTitel("Grenzobjekt 0002");
       const eigen = vorfaelle.find(
         (x) => !x.ok && ids.some((id) => x.eventId === `ko.created:${id}`),
       );
-      const folge = (
-        await pool.query<{ seq: number }>("SELECT seq FROM audit ORDER BY seq")
-      ).rows.map((z) => z.seq);
+      const eintraege = await new PgAuditRepo(pool).all();
+      const belege = eintraege.filter((e) =>
+        ids.some(
+          (id) =>
+            e.eventId === `ko.created:${id}` || (e.action === "ko.created" && e.target === id),
+        ),
+      );
+      const folge = eintraege.map((e) => e.seq);
+      const kettenPruefung = inspectChain(eintraege);
       alt500 = {
         gegenprobe: frei.status,
         ursache: eigen
           ? `${eigen.code ?? "?"} ${eigen.constraint ?? "?"}`
           : "(kein gescheiterter Beleg)",
-        wartend,
+        ...(wartend ? { wartend } : {}),
+        ...(vorFreigabe ? { vorFreigabe } : {}),
+        halterCommit,
+        halterSeq: halterSeq ?? null,
+        anlageSeq: belege[0]?.seq ?? null,
         status: r.status,
         rumpf: r.text.slice(0, 200),
         koGespeichert: ids.length,
-        belegFehlt: ids.length === 1 ? !(await hatBeleg(ids[0] as string)) : false,
+        koCreatedBelege: belege.length,
         folge,
+        kettenPruefung,
       };
-
+      expect(r.status, `${MARKE} ALT-500: ${JSON.stringify(alt500)}`).toBe(201);
+      await pruefeAnlagebeleg(pool, "Grenzobjekt 0002");
+      expect(ids).toEqual([(r.json as { id: string }).id]);
+      expect(belege).toHaveLength(1);
       expect(
-        wartend,
-        "die Anlage wartete nie am INSERT INTO audit — die Überlappung kam nicht zustande, der Fall sagt nichts",
-      ).not.toBe("");
-      expect(
-        r.status,
-        `${MARKE} ALT-500: die Anlage lieferte ${r.status} statt 500. Liefert sie 201, ist die Prüfprotokoll-Folge serialisiert — dann ist der Altbefund durch diesen Nachfolger GESCHLOSSEN; beide Fälle darauf umstellen, nicht abschwächen. Rumpf: ${r.text.slice(0, 200)}`,
-      ).toBe(500);
-      expect((r.json as { error?: string }).error, "Rumpf").toBe("INTERNAL");
-      expect(
-        alt500.ursache,
-        "die INNERE Ursache dieses 500 (Treiberdiagnose am Beleg ko.created dieser Anlage) — dieselbe, die ALT-500-AUSLÖSER am historischen Ablauf verlangt",
-      ).toBe(AUDIT_KOLLISION);
-      expect(
-        { koGespeichert: alt500.koGespeichert, belegFehlt: alt500.belegFehlt },
-        "Fingerabdruck: der Eintrag steht in kos, sein Beleg ko.created fehlt",
-      ).toEqual({ koGespeichert: 1, belegFehlt: true });
+        vorfaelle.some((x) => x.ok && x.seq !== undefined),
+        "Treiberdiagnose war aktiv",
+      ).toBe(true);
+      expect(eigen, "kein fehlgeschlagener Beleg der erfolgreichen Anlage").toBeUndefined();
       expect(new Set(folge).size, "keine doppelte seq").toBe(folge.length);
+      expect(folge, "die Folge bleibt lückenlos").toEqual(folge.map((_, i) => i + 1));
+      expect(kettenPruefung.ok, JSON.stringify(kettenPruefung)).toBe(true);
+      expect(kettenPruefung.linkageBreaks, "öffentliche inspectChain-Linkageprüfung").toBe(0);
+      const halterBelege = eintraege.filter(
+        (e) =>
+          e.actor === "wbr-alt500-halter" &&
+          e.action === "alt500.gleichzeitig" &&
+          e.target === "audit",
+      );
+      expect(halterBelege).toHaveLength(1);
+      expect(halterBelege[0]?.seq).toBe(halterSeq);
+      if (halterSeq === undefined || !belege[0]) throw new Error("Halter-/Anlagebeleg fehlt.");
       expect(
-        folge,
-        "die Folge bleibt lückenlos — der Verlierer hinterlässt keinen halben Eintrag",
-      ).toEqual(folge.map((_, i) => i + 1));
+        halterSeq,
+        "Halter tatsächlich vor Anlage, ohne direkte Nachbarschaft zu erzwingen",
+      ).toBeLessThan(belege[0].seq);
+    } catch (error) {
+      fehler.push(error);
     } finally {
-      entferne();
-      await strecke.schliessen();
-      await halterPool.end().catch(() => undefined);
-      await pool.end().catch(() => undefined);
+      if (antwort) {
+        try {
+          const r = await antwort;
+          if (!alt500) {
+            process.stderr.write(
+              `${MARKE} ALT-500-Abbruch: ${JSON.stringify({
+                status: r.status,
+                rumpf: r.text.slice(0, 200),
+                wartend,
+                vorFreigabe,
+                sqlFehler: vorfaelle.filter((x) => !x.ok),
+              })}\n`,
+            );
+          }
+        } catch (error) {
+          if (!fehler.includes(error)) fehler.push(error);
+        }
+      }
+      try {
+        entferne?.();
+      } catch (error) {
+        fehler.push(error);
+      }
+      try {
+        await strecke?.schliessen();
+      } catch (error) {
+        fehler.push(error);
+      }
+      for (const p of [halterPool, pool]) {
+        try {
+          await p.end();
+        } catch (error) {
+          fehler.push(error);
+        }
+      }
     }
+    if (fehler.length)
+      throw new AggregateError(fehler, "ALT-500-Nachfolger oder Abschluss fehlgeschlagen.");
   }, 300_000);
 
   it("Zeuge: der Lauf sagt selbst, ob er gelaufen ist — ein Skip ist kein Grün", () => {
