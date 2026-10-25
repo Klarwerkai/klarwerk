@@ -72,8 +72,9 @@ jobs:
   # SCRUM-496: der schnelle Gate-Lauf oben prüft nur JS/Referenzen — ein SQL-Syntaxfehler im
   # migrate()-DDL (z. B. reservierter Tabellenname) fiel dort NICHT auf und brach erst beim
   # Prod-Boot ab. Dieser Job fährt die Integrationstests (migrate() + App gegen echtes Postgres
-  # via Testcontainers; Docker ist auf ubuntu-latest vorhanden) — so ein Fehler stoppt jetzt die
-  # lange Diagnose. Der schnelle Pflichtjob des exakten Commits entscheidet über den Deploy.
+  # via Testcontainers; Docker ist auf ubuntu-latest vorhanden). Gezieltes Rot bleibt rot; die
+  # unabhängige breite Diagnose läuft trotzdem, solange der Lauf nicht abgebrochen wurde.
+  # Der schnelle Pflichtjob des exakten Commits entscheidet über den Deploy.
   #
   # Der Integrationsjob bleibt getrennt. Beide Jobs benötigen Root- und Web-Abhängigkeiten:
   # Integrationstests importieren auch Webmodule und führen den gemeinsamen Typecheck aus.
@@ -106,6 +107,7 @@ jobs:
       - name: browser (Chromium für die Postgres-Browser-Integration)
         run: npx playwright install --with-deps chromium
       - name: gezielte berührte PG-Verträge (vor der langen Diagnose)
+        id: pg_gezielt
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt
@@ -116,6 +118,7 @@ jobs:
           path: .local/run/ci-pg-gezielt/
           if-no-files-found: error
       - name: integration (Postgres via Testcontainers)
+        if: ${{ !cancelled() && (steps.pg_gezielt.outcome == 'success' || steps.pg_gezielt.outcome == 'failure') }}
         env:
           KLARWERK_PG_TEST_URL: "postgresql://klarwerk_ci:fiktiv-ci-postgres@localhost:5432/klarwerk_ci_test"
         run: npm run test:integration
