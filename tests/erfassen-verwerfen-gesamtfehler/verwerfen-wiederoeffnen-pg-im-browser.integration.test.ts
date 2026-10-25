@@ -22,10 +22,10 @@
 // JEDER MODUSWECHSEL GEHT ÜBER DAS MENÜ „Datei ▾" des Blatts — derselbe Griff wie
 // `dateiwegOeffnen` (`ux19-buehne.ts`) und der Formularweg in P2 der Nachbarstrecke.
 //
-// DER FEHLER KOMMT AM NETZ, NICHT IM PRODUKT: eine Weiche vor `POST <basis>/api/drafts` antwortet 500
-// im Fehlerschema von `services/app/src/http.ts` (dieselbe Bauform wie `entwurfsWeicheLegen` in
-// `ux19-buehne.ts` und `leseweicheLegen` in `../import-wiederoeffnen-nutzerweg/strecke.ts`). Alles
-// andere — auch das Hochladen des Originals — geht an die echte App.
+// DER FEHLER KOMMT AM NETZ, NICHT IM PRODUKT: die Weiche weist die Anlage und die
+// Aktualisierung von E1 mit 500 im Fehlerschema von `services/app/src/http.ts` zurueck.
+// Sie bleibt auf POST <basis>/api/drafts und PUT <basis>/api/drafts/<e1> beschraenkt;
+// alles andere — auch das Hochladen des Originals — geht an die echte App.
 //
 // PRÜFGRENZE, LAUT GEMELDET: ohne gesicherte KLARWERK_PG_TEST_URL wird der Grund auf stderr
 // geschrieben und übersprungen (Lehre 12.09., JOB 3668). Ausschliesslich eine Wegwerf-Datenbank mit
@@ -298,15 +298,21 @@ async function bisZurGeladenenDatei(s: SeiteMitDialogUndRoute, entwurfId: string
   );
 }
 
-/** Legt die Weiche vor `POST <basis>/api/drafts`; `aktiv` schaltet den 500er. */
+/** Weiche nur vor Anlage und Aktualisierung dieses Entwurfs; `aktiv` schaltet den 500er. */
 async function anlageweicheLegen(
   s: SeiteMitDialogUndRoute,
-): Promise<{ aktiv: boolean; angekommen: number }> {
+  entwurfId: string,
+): Promise<{ aktiv: boolean; angekommen: number; abgelehnteAktualisierungen: number }> {
   const basis = brauche(strecke, "die Messstrecke").basis;
-  const zustand = { aktiv: true, angekommen: 0 };
-  await s.route(`${basis}/api/drafts`, async (route) => {
+  const anlageUrl = `${basis}/api/drafts`;
+  const aktualisierungUrl = `${anlageUrl}/${encodeURIComponent(entwurfId)}`;
+  const zustand = { aktiv: true, angekommen: 0, abgelehnteAktualisierungen: 0 };
+  const handler = async (route: unknown): Promise<void> => {
     const r = route as unknown as Weiche;
-    if (r.request().method() !== "POST") {
+    const anfrage = r.request();
+    const istAnlage = anfrage.method() === "POST" && anfrage.url() === anlageUrl;
+    const istAktualisierung = anfrage.method() === "PUT" && anfrage.url() === aktualisierungUrl;
+    if (!istAnlage && !istAktualisierung) {
       await r.fallback();
       return;
     }
@@ -320,7 +326,10 @@ async function anlageweicheLegen(
       body: JSON.stringify({ error: ANLAGE_FEHLERCODE, message: ANLAGE_FEHLERSATZ }),
       headers: { "content-type": "application/json" },
     });
-  });
+    if (istAktualisierung) zustand.abgelehnteAktualisierungen += 1;
+  };
+  await s.route(anlageUrl, handler);
+  await s.route(aktualisierungUrl, handler);
   return zustand;
 }
 
@@ -404,7 +413,7 @@ describe("Aufnahme erfassen-verwerfen C · Vollausfall, Verwerfen, Wiederöffnen
       const seite = await frischeSeite(brauche(kontextA, "die Sitzung aus dem Aufbau"));
       try {
         await bisZurGeladenenDatei(seite, e1);
-        const weiche = await anlageweicheLegen(seite);
+        const weiche = await anlageweicheLegen(seite, e1);
 
         await seite.click(VERLASSEN_KNOPF, { timeout: wartebudget("zeigerklick") });
         await aufSichtbarkeitWarten(seite, satz("nav.guard.stay"), "Dialog der Wache");
@@ -417,6 +426,10 @@ describe("Aufnahme erfassen-verwerfen C · Vollausfall, Verwerfen, Wiederöffnen
         await aufSichtbarkeitWarten(seite, ANLAGE_FEHLERSATZ, "Grund des Übernahmefehlers");
         await sichtbarZugesichert(seite, ANLAGE_FEHLERSATZ, "Grund des Übernahmefehlers im Dialog");
         expect(weiche.angekommen, "der Anlage-Aufruf war gar nicht unterwegs").toBeGreaterThan(0);
+        expect(
+          weiche.abgelehnteAktualisierungen,
+          "die Aktualisierung des geoeffneten Entwurfs wurde nicht abgelehnt",
+        ).toBeGreaterThan(0);
         expect((await seite.evaluate<{ pfad: string }>(fn(ORT))).pfad).toBe("/erfassen");
         const nachFehler = await quittungen(seite);
         expect(nachFehler, "ein Vollausfall meldet „gesichert“").not.toContain(
