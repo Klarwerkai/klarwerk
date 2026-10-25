@@ -110,7 +110,7 @@ export function oberflaechenBindung(wurzel = WURZEL) {
   assert(skripte.length > 0, "keine gebaute Oberflaeche");
   for (const skript of skripte) {
     const src = skript[1];
-    assert(src?.startsWith("/"));
+    assert(typeof src === "string" && src.startsWith("/"));
     assert(dateien.some((datei) => datei.pfad === src.slice(1) && datei.bytes > 0));
   }
   return dateien;
