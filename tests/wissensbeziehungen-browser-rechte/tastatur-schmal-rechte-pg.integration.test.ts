@@ -715,7 +715,9 @@ describe(`${MARKE} · PostgreSQL im echten Chromium`, () => {
       }
     }
     if (fehler.length)
-      throw new AggregateError(fehler, "ALT-500-Nachfolger oder Abschluss fehlgeschlagen.");
+      throw new AggregateError(fehler, "ALT-500-Nachfolger oder Abschluss fehlgeschlagen.", {
+        cause: fehler[0],
+      });
   }, 300_000);
 
   it("Zeuge: der Lauf sagt selbst, ob er gelaufen ist — ein Skip ist kein Grün", () => {
