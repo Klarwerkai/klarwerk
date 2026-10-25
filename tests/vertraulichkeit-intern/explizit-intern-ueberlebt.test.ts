@@ -96,16 +96,17 @@ describe("JOB 3076 · ausdrücklich „Öffentlich-intern“ überlebt den Speic
     }
   });
 
-  it("V4 · der Ausschlussweg verschiebt sich NICHT: „intern“ passiert dropConfidential", async () => {
+  it("V4 · ausdrücklich intern passiert dropConfidential; ungeklärt bleibt geschützt", async () => {
     const { ko } = dienst();
     const intern = await ko.create(eingabe({ confidentiality: "intern" }));
     const ohne = await ko.create(eingabe());
     const vertraulich = await ko.create(eingabe({ confidentiality: "vertraulich" }));
     const alle = [intern, ohne, vertraulich].map((k) => (k as KnowledgeObject) ?? k);
-    // confidentiality.ts:107: „„intern"/fehlendes Feld bleibt drin". Das neu vorhandene Feld darf ein
-    // Objekt weder aus externen Kontexten werfen noch ein vertrauliches hineinlassen.
+    // P6: die bewusste Einstufung passiert weiter; ohne Einstufung entsteht keine Freigabe.
+    // Die echte Anlage ohne Stufe bleibt als Gegenprobe erhalten.
     const durchgelassen = dropConfidential(alle).map((k) => k.id);
-    expect(durchgelassen).toEqual([intern.id, ohne.id]);
+    expect(durchgelassen).toEqual([intern.id]);
+    expect(isConfidential(ohne.confidentiality)).toBe(true);
     expect(isConfidential(intern.confidentiality)).toBe(false);
   });
 

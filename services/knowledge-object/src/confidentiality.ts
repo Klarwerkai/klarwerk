@@ -1,9 +1,7 @@
 // SCRUM-415: Vertraulichkeitsstufen je Wissensobjekt — reine, testbare Helfer (kein Zustand).
-// „intern" ist der Standard (Öffentlich-intern, keine Einschränkung). „vertraulich" und
-// „streng_vertraulich" gelten als vertraulich: solche KOs gehen NIE in externe Kontexte
-// (Output Factory/Export). Fehlt das Feld ganz (Alt-KOs), legen DIESE Helfer „intern" aus — für
-// die Sichtbarkeit gilt das nicht mehr (Entscheidung 16, `schutzrang` in services/app/src/
-// sichtbarkeit.ts: ungeklärt = geschützt).
+// Für externe Kontexte ist nur ausdrücklich „intern“ freigegeben. Vertrauliche und ungeklärte
+// Einstufungen (fehlend/null/ungültig) bleiben geschützt. Normalisierung, Rang und Stufenauskunft
+// sind eigene Bestandsverträge und ersetzen diese Ausleitungsentscheidung nicht.
 import type { Confidentiality } from "./types";
 
 export const CONFIDENTIALITY_LEVELS: readonly Confidentiality[] = [
@@ -38,9 +36,9 @@ export function isConfidentialityDowngrade(
   return confidentialityRank(next) < confidentialityRank(current);
 }
 
-// Ist dieses KO vertraulich (→ nie in externe Kontexte)? Fehlendes Feld = „intern" = nicht vertraulich.
-export function isConfidential(level: Confidentiality | undefined | null): boolean {
-  return level === "vertraulich" || level === "streng_vertraulich";
+// Die gemeinsame Egress-Linie: nur eine ausdrücklich interne Einstufung darf hinaus.
+export function isConfidential(level: unknown): boolean {
+  return level !== "intern";
 }
 
 // ================================================================================================
@@ -107,9 +105,9 @@ export function discloseConfidentiality(value: unknown): ConfidentialityDisclosu
 // SCRUM-502: EIN geteilter Egress-Filter — entfernt vertrauliche KOs aus einer Auswahl, BEVOR sie in
 // einen externen Kontext gelangen (Modell/Embedder/Add-in/Export). Alle Egress-Stellen nutzen dasselbe
 // Prädikat isConfidential, damit die Semantik überall identisch zum Export-Filter (output-service) ist.
-// „intern"/fehlendes Feld bleibt drin — vertrauliche KOs bleiben intern voll nutzbar, verlieren aber
+// Nur ausdrücklich „intern“ bleibt drin — geschützte KOs bleiben im Haus nutzbar, verlieren aber
 // bewusst Modell-/Embedder-Features (korrekter Trade-off, kein Bug).
-export function dropConfidential<T extends { confidentiality?: Confidentiality | null }>(
+export function dropConfidential<T extends { confidentiality?: unknown }>(
   items: readonly T[],
 ): T[] {
   return items.filter((item) => !isConfidential(item.confidentiality));
