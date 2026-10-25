@@ -5326,6 +5326,14 @@ export function CaptureArbeitsraum({
         setFileImportMeldung(t(emptyKey, { name: f.name }));
         return;
       }
+      // WP-D2 („Original ist heilig"): die Quelldatei selbst merken — sie wird beim Speichern
+      // (Ganzdokument-Entwurf bzw. Punkte-Queue-KOs) als Anhang in den Object-Store mitgeführt.
+      const original = {
+        name: f.name,
+        mime: f.type || "application/octet-stream",
+        // JOB 2700 D1: fuer PDF bereits aus dem einen Lesevorgang da; die anderen Arten lesen wie bisher.
+        data: originalDataUrl ?? (await readFileAsDataUrl(f)),
+      };
       setFileText(text);
       // R-0020: eine NEU eingelesene Datei ist ein neuer Stand — auch wenn sie gleich heisst.
       // entscheidung:14ce8681: ein noch UNKLARER Vorgang (`ganzdokumentOffenRef`) bleibt dagegen
@@ -5334,14 +5342,7 @@ export function CaptureArbeitsraum({
       setFileRich(rich);
       setFileImageInfo(imageInfo);
       setFileImageTransfer(imageTransfer);
-      // WP-D2 („Original ist heilig"): die Quelldatei selbst merken — sie wird beim Speichern
-      // (Ganzdokument-Entwurf bzw. Punkte-Queue-KOs) als Anhang in den Object-Store mitgeführt.
-      setFileOriginal({
-        name: f.name,
-        mime: f.type || "application/octet-stream",
-        // JOB 2700 D1: fuer PDF bereits aus dem einen Lesevorgang da; die anderen Arten lesen wie bisher.
-        data: originalDataUrl ?? (await readFileAsDataUrl(f)),
-      });
+      setFileOriginal(original);
       // SCRUM-409: ehrliche Import-Quittung — Dateiname + Umfang (Zeichen; Seiten gibt der
       // Text-Extraktor nicht her, also wird auch keine Seitenzahl behauptet).
       // WP-D4: plus formatabhängige Format-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).

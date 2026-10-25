@@ -49,6 +49,8 @@ vi.mock("../../apps/web/src/api/endpoints", async () =>
   (await import("./attrappen")).endpointsAttrappe(),
 );
 
+import { act } from "../../apps/web/node_modules/react";
+import { ApiError } from "../../apps/web/src/api/client";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTURE_FILE_TEXT } from "../../apps/web/src/lib/captureFromFile";
 import {
@@ -56,6 +58,7 @@ import {
   draftsCreate,
   draftsUpdate,
   extrakt,
+  lasseNaechstenUploadScheitern,
   nutzlastJeTitel,
   objectsUpload,
   server,
@@ -66,6 +69,7 @@ import {
   dateiAblegen,
   feld,
   flaeche,
+  flush,
   fundzeilen,
   grundzustand,
   klick,
@@ -289,5 +293,95 @@ describe("JOB 4352 · der sichtbare Speicherknopf und die geladene Datei", () =>
     );
     // Und keine Datei-Quittung daneben: es gab keine Datei.
     expect(sichtbar()).not.toContain(String(i18n.t(CAPTURE_FILE_TEXT.wholeSaved, { name: DATEI })));
+  });
+
+  it("S4 · Original-Leseabschluss: erst vollständige Datei anbieten, Upload-500 erhält genau einen Volltextentwurf", async () => {
+    const leseOriginal = FileReader.prototype.readAsDataURL;
+    const gehalten: { reader: FileReader; blob: Blob }[] = [];
+    const originalRead = vi
+      .spyOn(FileReader.prototype, "readAsDataURL")
+      .mockImplementation(function (this: FileReader, blob: Blob): void {
+        gehalten.push({ reader: this, blob });
+      });
+    const freigeben = async (): Promise<void> => {
+      await act(async () => {
+        await Promise.all(
+          gehalten.splice(0).map(
+            ({ reader, blob }) =>
+              new Promise<void>((resolve) => {
+                reader.addEventListener("loadend", () => resolve(), { once: true });
+                leseOriginal.call(reader, blob);
+              }),
+          ),
+        );
+        await flush();
+      });
+    };
+    try {
+      await mount("/erfassen", "datei");
+      const input = flaeche().querySelector<HTMLInputElement>('input[type="file"]');
+      expect(input, "der normale Dateieingang fehlt").not.toBeNull();
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [new File([DATEITEXT], DATEI, { type: "text/plain" })],
+      });
+      await act(async () => {
+        input?.dispatchEvent(new Event("change", { bubbles: true }));
+        await flush();
+      });
+
+      expect(
+        originalRead,
+        "der echte Textparser muss den Originalleseweg erreichen",
+      ).toHaveBeenCalledTimes(1);
+      expect(gehalten).toHaveLength(1);
+      expect(
+        speicherKnopf().disabled,
+        "Q4-VORZEITIGES-ANGEBOT: der neue Dateiträger ist vor dem Original-Leseabschluss speicherbar",
+      ).toBe(true);
+      await klick(speicherKnopf());
+      expect(objectsUpload).not.toHaveBeenCalled();
+      expect(draftsCreate).not.toHaveBeenCalled();
+      expect(draftsUpdate).not.toHaveBeenCalled();
+      expect(traegerNutzlast()).toBeNull();
+
+      await freigeben();
+      expect(speicherKnopf().disabled, "die vollständig gelesene Datei wird nicht angeboten").toBe(
+        false,
+      );
+      lasseNaechstenUploadScheitern(
+        new ApiError(500, "INTERNAL", "kontrollierter Original-Uploadfehler"),
+      );
+      await klick(speicherKnopf());
+
+      expect(originalRead).toHaveBeenCalledTimes(1);
+      expect(objectsUpload).toHaveBeenCalledTimes(1);
+      expect(objectsUpload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: DATEI,
+          mime: "text/plain",
+          data: expect.stringMatching(/^data:text\/plain;base64,/),
+        }),
+      );
+      expect(draftsCreate).toHaveBeenCalledTimes(1);
+      expect(draftsUpdate).not.toHaveBeenCalled();
+      expect(bestandJeTitel()[TRAEGER_TITEL]).toBe(1);
+      expect(bestandJeTitel()[String(i18n.t("capture.draftFallbackTitle"))]).toBeUndefined();
+      const nutzlast = traegerNutzlast();
+      expect(nutzlast).not.toBeNull();
+      expect(nutzlast?.statement).toBe(DATEITEXT);
+      expect(String(nutzlast?.bodyHtml ?? "")).toContain(DATEI);
+      expect(String(nutzlast?.bodyHtml ?? "")).not.toMatch(/href=|data-object-id=/);
+      expect(server.objekte).toEqual({});
+      const warnung = String(i18n.t("capture.originalAttachFailed", { name: DATEI }));
+      expect(sichtbar()).toContain(warnung);
+      expect(sichtbar()).toContain(String(i18n.t(CAPTURE_FILE_TEXT.wholeSaved, { name: DATEI })));
+      expect(sichtbar().split(warnung).join("")).not.toMatch(
+        /Original(?:datei)?.*(?:gesichert|angehängt)/i,
+      );
+    } finally {
+      originalRead.mockRestore();
+      await freigeben();
+    }
   });
 });
