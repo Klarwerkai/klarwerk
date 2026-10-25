@@ -61,7 +61,7 @@ export interface LesevariantenRoutesDeps {
   audit?: AuditService;
   /**
    * confluence-import-rechte (Nacharbeit 6, F1): dieselbe Sichtbarkeitsgrenze wie die
-   * Warteschlange (`darfKandidatSehen`). Fehlt sie, bleibt ein Eintrag MIT Quellrechten verschlossen.
+   * Warteschlange (`darfKandidatSehen`). Fehlende erforderliche Sichtdaten bleiben im zentralen Helfer verschlossen.
    */
   kandidatenRechte?: KandidatenRechtequelle;
 }
@@ -155,9 +155,8 @@ export function lesevariantenRoutes(
     // Confluence-Seite rät, bekäme ihren Text, ohne dass irgendetwas davon im Bestand steht.
     //
     // DIESELBE RECHTESCHWELLE WIE DIE WARTESCHLANGE. `GET /api/library/import/candidates`
-    // (library-routes.ts) verlangt `ko.read` und filtert danach nicht weiter — die Queue ist eine
-    // Prüffläche, kein KO-Bestand. Diese Route verlangt DASSELBE Recht und zeigt nichts, was die
-    // Queue nicht zeigt: der Kandidatentext steht dort bereits, hier steht er übersetzt.
+    // (library-routes.ts) verlangt `ko.read` und prüft Einstufung, Quellleser und aktuelle KO-Sicht.
+    // Diese Route verwendet denselben Helfer: die Leseübersetzung öffnet keinen Nebenweg.
     // `tests/lesevariante-pruefkarte/kandidatenvariante-route.test.ts` (K6) hält beide Routen im
     // selben Fall gegeneinander.
     //
@@ -174,14 +173,9 @@ export function lesevariantenRoutes(
         const gefunden = await kandidaten.findById(request.params.id);
         // confluence-import-rechte (Nacharbeit 6, F1): ein Kandidat, den die Quelle diesem Menschen
         // nicht zeigt, gilt hier als nicht vorhanden — wie in der Warteschlange.
-        const traegtQuellrechte =
-          gefunden !== undefined && Object.hasOwn(gefunden.item as object, "quellrechte");
         const sichtbar =
-          gefunden === undefined
-            ? false
-            : deps.kandidatenRechte
-              ? await darfKandidatSehen(user, gefunden, deps.kandidatenRechte)
-              : !traegtQuellrechte;
+          gefunden !== undefined &&
+          (await darfKandidatSehen(user, gefunden, deps.kandidatenRechte));
         const kandidat = sichtbar ? gefunden : undefined;
         if (!kandidat) {
           // Kein Kandidat, keine Auskunft — auch keine über die Lieferung. Eine Antwort
@@ -341,14 +335,9 @@ export function lesevariantenRoutes(
           return;
         }
         const gefunden = await kandidaten.findById(request.params.id);
-        const traegtQuellrechte =
-          gefunden !== undefined && Object.hasOwn(gefunden.item as object, "quellrechte");
         const sichtbar =
-          gefunden === undefined
-            ? false
-            : deps.kandidatenRechte
-              ? await darfKandidatSehen(user, gefunden, deps.kandidatenRechte)
-              : !traegtQuellrechte;
+          gefunden !== undefined &&
+          (await darfKandidatSehen(user, gefunden, deps.kandidatenRechte));
         const kandidat = sichtbar ? gefunden : undefined;
         if (!kandidat) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Kandidat nicht gefunden." });

@@ -239,8 +239,8 @@ export function schluesselBetrachter(offeneSpaces: ReadonlySet<string>): Session
 //     aktuellen (ein späterer Abgleich hat sie womöglich schon nachgezogen).
 //   · sonst die Quellrechte des Eintrags selbst, auf Klara-Konten abgebildet — dieselbe Abbildung
 //     wie beim Annehmen.
-//   · ein Eintrag OHNE Quellrechte (Dateiweg, andere Quellen) bleibt, wie er war: die Warteschlange
-//     ist für ihn eine Prüffläche für jeden mit `ko.read`.
+//   · P2: jeder Kandidat durchläuft auch mit und ohne Quellrechte seine eigene Einstufung.
+//     Nach Annahme kommt die aktuelle Sicht auf das wirkliche KO hinzu; Rollenrecht allein genügt nicht.
 export interface KandidatenRechtequelle {
   /** Die Quellrechte eines Eintrags als Objektrechte — `undefined` = der Eintrag trägt keine. */
   quellrechteFuerKandidat(item: unknown): Promise<{ leser?: readonly string[] } | undefined>;
@@ -251,28 +251,30 @@ export interface KandidatenRechtequelle {
 export async function darfKandidatSehen(
   user: SessionUser,
   kandidat: { item: unknown; koId: string | null },
-  quelle: KandidatenRechtequelle,
+  quelle: KandidatenRechtequelle | undefined,
 ): Promise<boolean> {
-  const rechte = await quelle.quellrechteFuerKandidat(kandidat.item);
-  if (rechte === undefined) {
-    return true;
+  const item =
+    typeof kandidat.item === "object" && kandidat.item !== null
+      ? (kandidat.item as Pick<SichtbarkeitsFakten, "confidentiality">)
+      : {};
+  // P2: Der Importtext trägt eine Einstufung, aber keine vertrauenswürdige Autorschaft.
+  // Auch fehlende/unbekannte Stufen durchlaufen unverändert den zentralen Schutzrang.
+  const einstufung = { confidentiality: item.confidentiality };
+  if (!darfSehen(user, einstufung)) {
+    return false;
   }
   if (kandidat.koId) {
-    const ko = await quelle.wissensobjektFuerSicht(kandidat.koId);
-    if (ko) {
-      return darfSehen(user, ko);
-    }
+    const ko = await quelle?.wissensobjektFuerSicht(kandidat.koId);
+    return ko ? darfSehen(user, ko) : false;
   }
-  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 22): ein Kandidat ist (noch) kein
-  // Wissensobjekt und trägt keine Stufe. Ohne Leserliste (in der Quelle offen) bleibt er, wie ein
-  // Eintrag ohne Quellrechte, Prüffläche für jeden mit `ko.read` — die fehlende Stufe darf hier
-  // nicht als „ungeklärt“ (Entscheidung 16) gelesen werden, sonst sperrte Variante B jede offene
-  // Seite. Mit Liste entscheidet allein sie (R-0549). Die Einstufung beim Import selbst ist laut
-  // Entscheidung 16 ein eigener Arbeitsauftrag.
-  if (!Array.isArray(rechte.leser)) {
-    return true;
-  }
-  return darfSehen(user, { quellrechte: rechte });
+  // Ohne Abbildungszugang bleiben vorhandene Quellrechte verschlossen. Ein freier interner
+  // Kandidat bleibt dagegen lesbar; allein die fehlende Rechtequelle erteilt keine Freigabe.
+  const rechte = quelle
+    ? await quelle.quellrechteFuerKandidat(kandidat.item)
+    : Object.hasOwn(item, "quellrechte")
+      ? { leser: [] }
+      : undefined;
+  return darfSehen(user, { ...einstufung, quellrechte: rechte });
 }
 
 // ================================================================================================
