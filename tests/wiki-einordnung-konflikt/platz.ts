@@ -68,6 +68,7 @@ import {
   tabBisZu,
   warte,
 } from "../gast-nutzerweg/browserweg";
+import { AUSGANG } from "./speicherquittung";
 
 export const JOB = "[KLARWERK] JOB 4334";
 
@@ -1226,17 +1227,7 @@ export function warteAufLage(seite: Seite, soll: string, frist = 60_000): Promis
 // Fehlerkasten, Einreichpflicht, Quittung) und benennt ihn; der Fachfall entscheidet danach, ob es
 // der richtige war. Ein Versuch, der gar nichts hinterlässt, bleibt damit vom falschen Ausgang
 // unterscheidbar — „es kam nichts" und „es kam das Falsche" sind zwei verschiedene Befunde.
-const AUSGANG = `() => {
-  const lage = document.querySelector('[data-testid="bib-speichern-lage"]');
-  if (lage) { return "lage:" + lage.getAttribute("data-lage"); }
-  const fehler = document.querySelector('[data-testid="bib-speichern-fehler"]');
-  if (fehler) { return "fehlerkasten: " + (fehler.textContent || "").trim().slice(0, 200); }
-  const pflicht = document.querySelector('[data-testid="bib-einreichen-pflicht"]');
-  if (pflicht) { return "einreichpflicht"; }
-  const quittung = document.querySelector("output");
-  if (quittung) { return "quittung: " + (quittung.textContent || "").trim().slice(0, 120); }
-  return "";
-}`;
+// AUSGANG ist die gemeinsam gepruefte reine DOM-Abfrage aus speicherquittung.ts.
 
 /** Was gerade als Ausgang dasteht — leer, solange der Versuch noch läuft. */
 export function ausgang(seite: Seite): Promise<string> {

@@ -21,6 +21,7 @@ export function ToastViewport(): JSX.Element | null {
       {toasts.map((toast) => (
         <output
           key={toast.id}
+          data-testid="toast-meldung"
           className={`pointer-events-auto flex items-start gap-2 rounded-card border px-3 py-2.5 text-[13px] shadow-popover ${TONE[toast.kind]}`}
         >
           <span className="min-w-0 flex-1">{toast.message}</span>

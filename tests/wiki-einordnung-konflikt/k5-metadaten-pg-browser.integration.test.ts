@@ -62,6 +62,7 @@ import {
   tippenInFeld,
   warte,
 } from "./platz";
+import { ANKER_SPEICHERQUITTUNG } from "./speicherquittung";
 
 const K5 = `${JOB} · K5/R-0437`;
 const TAB_DECKEL = 600;
@@ -210,7 +211,12 @@ async function einordnenUndSpeichern(seite: Seite, ziel: Einordnung, was: string
   expect(gesetzt, `${K5}: ${was} — Marken vor dem Speichern`).toEqual(ziel.schlagworte);
   await tastaturGriff(seite, i18n.t("ko.saveEdit"));
   const satz = i18n.t("ko.revise.saved");
-  await warteAufSichtbarenSatz(seite, "output", satz, `${K5}: ${was} — Speicherquittung`);
+  await warteAufSichtbarenSatz(
+    seite,
+    ANKER_SPEICHERQUITTUNG,
+    satz,
+    `${K5}: ${was} — Speicherquittung`,
+  );
   const offen = await formularOffen(seite, i18n.t("capture.fStatement"));
   expect(offen, `${K5}: ${was} — Formular nach dem Speichern noch offen`).toBe(false);
 }

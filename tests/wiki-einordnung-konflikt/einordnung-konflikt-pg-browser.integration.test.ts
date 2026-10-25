@@ -120,6 +120,7 @@ import {
   tippenInFeld,
   warteAufAusgang,
 } from "./platz";
+import { ANKER_SPEICHERQUITTUNG } from "./speicherquittung";
 
 const TITEL = "Ventil X schließt bei Überdruck (JOB 4334)";
 const AUSGANGSTEXT = "Bei Überdruck Ventil X manuell schließen.";
@@ -136,8 +137,8 @@ const SCHLAGWORTE_BERND = ["bernd", "ueberdruck"];
 
 const ANKER_SATZ = testid("bib-speichern-satz");
 const ANKER_PFLICHT = testid("bib-einreichen-pflicht");
-/** Der Toast-Viewport zeichnet je Meldung ein `<output>` — der Ort der Erfolgsquittung. */
-const ANKER_QUITTUNG = "output";
+/** Nur der markierte Toast-Knoten traegt die Speicherquittung. */
+const ANKER_QUITTUNG = ANKER_SPEICHERQUITTUNG;
 
 let platz: Pruefplatz | undefined;
 let skipGrund = "";
