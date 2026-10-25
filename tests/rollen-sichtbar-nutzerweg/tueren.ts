@@ -280,10 +280,10 @@ export function erfolgsstatus(methode: string, registrierteRoute: string): numbe
 /**
  * DIE FÜNF TÜREN. Reihenfolge wie im Auftrag §5.2.
  *
- * T1 und T2 liegen an Kopfbandpunkten (`navigation.ts:121-125`, `:260-264`), T3–T5 hinter dem
- * Zahnrad. Für T1 IST der Kopfbandpunkt zugleich das Bedienelement — der Auftrag nennt für diese
- * Tür genau ihn („Kopfbandpunkt ‚Erfassen' / Deep-Link `/erfassen`"), deshalb steht er einmal und
- * wird einmal gemessen statt zweimal unter zwei Namen.
+ * T1 und T2 liegen in derselben Hauptnavigation: im Kopfband oder bei eingeblendeter
+ * Arbeitsbereichsleiste dort (Kopfband.tsx / SeitenleistenPunkte). T3–T5 liegen hinter dem
+ * Zahnrad. Für T1 IST dieser Navigationspunkt zugleich das Bedienelement; beide Darstellungen
+ * führen dieselbe Kennung und Route, ohne eine zweite Tür oder Rechteerwartung zu schaffen.
  */
 export const TUEREN: Tuer[] = [
   {
@@ -292,8 +292,8 @@ export const TUEREN: Tuer[] = [
     seite: "/erfassen",
     knopf: {
       art: "selektor",
-      sel: '[data-kopfband-punkt="erfassen"]',
-      name: `Kopfbandpunkt „${katalog("nav.capture")}" (KopfbandPunkte.tsx:56-57, navigation.ts:121-125)`,
+      sel: '[data-kopfband-punkt="erfassen"], [data-seitenleiste-punkt="erfassen"]',
+      name: `Navigationspunkt „${katalog("nav.capture")}" (KopfbandPunkte.tsx:56-57, navigation.ts:121-125)`,
     },
     beschriftung: katalog("kopfband.erfassen"),
     methode: "POST",
@@ -322,8 +322,8 @@ export const TUEREN: Tuer[] = [
     titel: "Freigeben",
     seite: "/validierung",
     menuepunkt: {
-      sel: '[data-kopfband-punkt="validierung"]',
-      name: `Kopfbandpunkt „${katalog("nav.validation")}"`,
+      sel: '[data-kopfband-punkt="validierung"], [data-seitenleiste-punkt="validierung"]',
+      name: `Navigationspunkt „${katalog("nav.validation")}"`,
     },
     knopf: {
       art: "selektor",
