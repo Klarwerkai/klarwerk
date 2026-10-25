@@ -1627,21 +1627,21 @@ interface Wechselstand {
  * JOB 3938 · L18d: der Weg in den Aufwärtszweig, mit allem, woraus er entstanden ist.
  *
  * Die Herleitung steht als MESSWERT im Ergebnis und nicht nur im Protokoll: `schwelle` und
- * `zielHoehe` sind aus `ausloeserObenFlach` gerechnet, und `vorher` belegt, dass dieselbe Karte in
- * der bekannten flachen Lage noch nach UNTEN aufklappte. Ohne diesen zweiten Befund hiesse „es
+ * `zielHoehe` sind aus `ausloeserObenVorher` gerechnet, und `vorher` belegt, dass dieselbe Karte in
+ * der bekannten hohen Referenzlage noch nach UNTEN aufklappte. Ohne diesen zweiten Befund hiesse „es
  * klappt nach oben" nur, dass irgendwo etwas nach oben klappt — nicht, dass die Weiche greift.
  */
 interface Aufwaertslauf {
-  /** `ausloeser.oben` in der bekannten flachen Lage — die einzige Eingangszahl der Herleitung. */
-  ausloeserObenFlach: number;
-  fensterHoeheFlach: number;
-  /** `2 · ausloeserObenFlach + 28`: darunter rechnet `PruefenMenue.tsx:187` `nachOben`. */
+  /** `ausloeser.oben` in der bekannten hohen Referenzlage — die einzige Eingangszahl der Herleitung. */
+  ausloeserObenVorher: number;
+  fensterHoeheVorher: number;
+  /** `2 · ausloeserObenVorher + 28`: darunter rechnet `PruefenMenue.tsx:187` `nachOben`. */
   schwelle: number;
   /** Die daraus gesetzte Fensterhöhe (`AUFWAERTS_ABSTAND_PX` unter der Schwelle). */
   zielHoehe: number;
-  /** Der Befund in der bekannten flachen Lage: dasselbe Menü, noch abwärts aufgeklappt. */
+  /** Der Befund in der bekannten hohen Referenzlage: dasselbe Menü, noch abwärts aufgeklappt. */
   vorher: Menuebefund;
-  /** Der Befund im wirklich flachen Fenster — der Zweig, den bis heute kein Browser gemessen hat. */
+  /** Der Befund im abgeleiteten kleineren Fenster — der tatsächliche Aufwärtszweig. */
   befund: Menuebefund;
 }
 
@@ -2260,7 +2260,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
        * was dieser Fall nicht ist. Er hat einen anderen Ausgangspunkt und einen anderen Zweck.
        *
        * VIER SCHRITTE, und der dritte ist der Grund für den zweiten:
-       *   a. In der bekannten flachen Lage öffnen und MESSEN — daher kommt `ausloeser.oben`.
+       *   a. In der bekannten hohen Referenzlage öffnen und MESSEN — daher kommt `ausloeser.oben`.
        *   b. Aus dieser Zahl die Fensterhöhe herleiten, bei der `:187` umschlägt (Rechnung an
        *      `AUFWAERTS_ABSTAND_PX`), und darauf warten, dass das Fenster wirklich steht.
        *   c. Das Blatt ZWISCHENDURCH schliessen. Die Lage wird einmal im Klick gerechnet; ein
@@ -2269,7 +2269,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
        *   d. Neu öffnen und messen.
        */
       const aufwaertsMessen = async (): Promise<Aufwaertslauf> => {
-        const s = await seiteOeffnen(FLACH);
+        const s = await seiteOeffnen(HOCH);
         const messen = async (was: string, marke: string): Promise<Menuebefund> => {
           const m = await s.evaluate<Omit<Menuebefund, "lage" | "probe"> | null>(fn(MENUE_LAGE), [
             KARTE_ANKER,
@@ -2288,9 +2288,9 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
         };
         // a. Die Ausgangslage — gemessen mit demselben einen Messkopf. Ein zweiter Leser nur für
         //    das Rechteck des Auslösers wäre ein zweiter Messstab für dieselbe Frage.
-        await oeffnen("Ausgangslage");
+        await oeffnen("hohe Abwärtsreferenz");
         await s.waitForFunction(fn(BLATT_DA), undefined, { timeout: 30_000 });
-        const vorher = await messen("Ausgangslage", `${FLACH.width}x${FLACH.height}`);
+        const vorher = await messen("hohe Abwärtsreferenz", `${HOCH.width}x${HOCH.height}`);
         // b. Die Herleitung. Die Zahl ist gerechnet, ihre Eingangsgrösse gemessen — und ob der
         //    Zweig dann wirklich genommen wurde, misst L18d noch einmal am Ergebnis.
         const schwelle = 2 * vorher.ausloeser.oben + 28;
@@ -2309,8 +2309,8 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
         await s.waitForFunction(fn(BLATT_DA), undefined, { timeout: 30_000 });
         const befund = await messen("flaches Fenster", `${FLACH.width}x${zielHoehe}`);
         const lauf: Aufwaertslauf = {
-          ausloeserObenFlach: vorher.ausloeser.oben,
-          fensterHoeheFlach: vorher.fensterHoehe,
+          ausloeserObenVorher: vorher.ausloeser.oben,
+          fensterHoeheVorher: vorher.fensterHoehe,
           schwelle,
           zielHoehe,
           vorher,
@@ -3202,10 +3202,14 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
     // 0. Die Bühne steht wirklich so flach, wie sie hergeleitet wurde.
     expect(
       a.befund.fensterHoehe,
-      `gemessen wurde bei ${a.befund.fensterHoehe} px statt bei den hergeleiteten ${a.zielHoehe} px (Ausloeser oben ${a.ausloeserObenFlach}, Schwelle ${a.schwelle})`,
+      `gemessen wurde bei ${a.befund.fensterHoehe} px statt bei den hergeleiteten ${a.zielHoehe} px (Ausloeser oben ${a.ausloeserObenVorher}, Schwelle ${a.schwelle})`,
     ).toBe(a.zielHoehe);
+    expect(a.vorher.fensterHoehe, "hohe Abwärtsreferenz").toBe(HOCH.height);
+    expect(a.befund.fensterHoehe, "kleineres Zielfenster").toBeLessThan(a.vorher.fensterHoehe);
+    expect(a.vorher.fensterHoehe, "Referenz ab der Schwelle").toBeGreaterThanOrEqual(a.schwelle);
+    expect(a.befund.fensterHoehe, "Ziel unter der Schwelle").toBeLessThan(a.schwelle);
     // 1. Das Blatt hängt WIRKLICH aufwärts — sonst misst dieser Fall den Abwärtszweig ein
-    //    viertes Mal. Und dieselbe Karte tat es in der bekannten flachen Lage noch NICHT: erst
+    //    viertes Mal. Und dieselbe Karte tat es in der bekannten hohen Referenzlage noch NICHT: erst
     //    beides zusammen sagt, dass die Weiche `:187` greift und nicht bloss etwas nach oben steht.
     expect(
       k.nachOben,
