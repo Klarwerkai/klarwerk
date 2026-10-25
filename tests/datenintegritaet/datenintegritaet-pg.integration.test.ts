@@ -30,6 +30,7 @@ import {
   ermittleWaisen,
 } from "../../services/app/src/datenintegritaet";
 import { createPool, migrate } from "../../services/app/src/db";
+import { AuthService, InMemorySessionRepo, InMemoryUserRepo } from "../../services/auth";
 import {
   HaengendeSitzungError,
   begrenztePruefung,
@@ -246,28 +247,41 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
       JSON.stringify({ ...basis, id: offen, status: "offen" }),
     ]);
     const ko = await neuesObjekt(s, "Beantwortet die Integritätsfrage.");
-    const app = buildApp(s);
+    // F5 prüft PG-Lücken/KO-Integrität, keinen PG-Authvertrag. Konten und Sitzungen sind
+    // falllokal; Erstkonto-Bootstrap, Register/Login und die App-Guards bleiben die echten Wege.
+    const auth = new AuthService({
+      users: new InMemoryUserRepo(),
+      sessions: new InMemorySessionRepo(),
+      audit: s.audit,
+    });
+    const app = buildApp({ ...s, auth });
     try {
       const email = `integritaet-${randomUUID().slice(0, 8)}@x.de`;
-      await app.inject({
+      const registrierung = await app.inject({
         method: "POST",
         url: "/api/auth/register",
         payload: { name: "Integrität", email, password: "secret123" },
       });
+      expect(registrierung.statusCode, registrierung.body).toBe(201);
+      expect(registrierung.json()).toMatchObject({ approved: true, role: "admin" });
       const login = await app.inject({
         method: "POST",
         url: "/api/auth/login",
         payload: { email, password: "secret123" },
       });
-      const headers = { authorization: `Bearer ${login.json().token}` };
+      expect(login.statusCode, login.body).toBe(200);
+      const token = login.json().token;
+      expect(token, login.body).toBeTypeOf("string");
+      expect(token, login.body).toMatch(/\S/);
+      const headers = { authorization: `Bearer ${token}` };
       const falsch = await app.inject({
         method: "PUT",
         url: `/api/gaps/${offen}`,
         headers,
         payload: { close: true, koId: "ko-gibt-es-nicht" },
       });
-      // Ohne Schliessrecht (nicht das erste Konto der Instanz) antwortet die Route 403 — dann
-      // trägt der Fall nichts, und das soll sichtbar sein statt grün.
+      // Die Anmeldung ist oben belegt. Hier muss die fachliche Ablehnung der erfundenen
+      // Objektkennung greifen.
       expect(falsch.statusCode, falsch.body).toBe(400);
       // Nacharbeit 4: der alte Schliessweg ohne Bezug schliesst nicht mehr.
       const ohneBezug = await app.inject({
