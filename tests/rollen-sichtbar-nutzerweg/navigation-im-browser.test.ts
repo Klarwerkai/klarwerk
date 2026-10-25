@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { type Browser, chromium, type Route } from "playwright";
+import { type Browser, type Route, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { Akteur } from "../beta-rollenabnahme/buehne";
@@ -30,9 +30,11 @@ const MIME: Record<string, string> = {
 const bindungsPfad = process.env.KLARWERK_NAV_BAUBINDUNG;
 const bindung = bindungsPfad
   ? new Map(
-      (JSON.parse(readFileSync(bindungsPfad, "utf8")) as {
-        dist_files: { path: string; sha256: string }[];
-      }).dist_files.map((datei) => [datei.path, datei.sha256]),
+      (
+        JSON.parse(readFileSync(bindungsPfad, "utf8")) as {
+          dist_files: { path: string; sha256: string }[];
+        }
+      ).dist_files.map((datei) => [datei.path, datei.sha256]),
     )
   : undefined;
 const dateien = new Map<string, { bytes: number; sha256: string }>();
@@ -144,79 +146,92 @@ describe("Rollen-Navigation in Seitenleiste und Kopfband", () => {
     expect(anfragefehler).toEqual([]);
   }, 60_000);
 
-  it.each([1440, 1280])("prüft echte T1/T2-Einstiege bei %i Pixeln", async (breite) => {
-    const tueren = TUEREN.filter((tuer) => tuer.nr === "T1" || tuer.nr === "T2");
-    expect(tueren).toHaveLength(2);
-    const akteure = Object.keys(tueren[0]!.erwartet) as Akteur[];
-    for (const akteur of akteure) {
-      const kontext = await browser!.newContext({
-        viewport: { width: breite, height: 900 },
-        locale: "de-DE",
-      });
-      try {
-        await kontext.route("**/*", (route) => {
-          const arbeit = antworte(route).catch((fehler: unknown) => {
-            anfragefehler.push(String(fehler));
-            throw fehler;
-          });
-          offen.add(arbeit);
-          return arbeit.finally(() => offen.delete(arbeit));
+  it.each([1440, 1280])(
+    "prüft echte T1/T2-Einstiege bei %i Pixeln",
+    async (breite) => {
+      const tueren = TUEREN.filter((tuer) => tuer.nr === "T1" || tuer.nr === "T2");
+      expect(tueren).toHaveLength(2);
+      const akteure = Object.keys(tueren[0]!.erwartet) as Akteur[];
+      for (const akteur of akteure) {
+        const kontext = await browser!.newContext({
+          viewport: { width: breite, height: 900 },
+          locale: "de-DE",
         });
-        const page = await kontext.newPage();
-        page.on("pageerror", (fehler) => seitenfehler.push(String(fehler)));
-        const seite = page as unknown as Seite;
-        if (akteur !== "anonym") {
-          await anmeldenAnDerMaske(seite, ORIGIN, email(akteur), PASSWORT);
-          const rolle = await page.evaluate(
-            'fetch("/api/auth/me").then(r => r.json()).then(u => u.role)',
-          );
-          expect(rolle).toBe(akteur);
-        }
-        for (const tuer of tueren) {
-          const soll = eintrag(tuer.erwartet[akteur]).soll;
-          const sel = navigationspunkt(tuer);
-          const id = tuer.nr === "T1" ? "erfassen" : "validierung";
-          const alt = `[data-kopfband-punkt="${id}"]`;
-          const ziel = `${ORIGIN}${soll === "erlaubt" ? "/" : tuer.seite}`;
-          await oeffneTuer(
-            seite,
-            ziel,
-            { art: "selektor", sel, name: tuer.nr },
-            SPERRSATZ,
-            `${akteur} an ${tuer.nr}`,
-          );
-          // Erst der frühere Selektor, dann der neue: dasselbe echte, unveränderte DOM.
-          const vorher = await sichtbarkeit(seite, alt);
-          const nachher = await sichtbarkeit(seite, sel);
-          expect(nachher.verfahren).toBe("checkVisibility");
-          if (soll === "erlaubt") {
-            expect(vorher.sichtbar).toBe(breite === 1280);
-            expect(vorher.da).toBe(breite === 1280);
-            expect(nachher.sichtbar).toBe(true);
-            expect(nachher.text.length).toBeGreaterThan(0);
-            expect((await textTraeger(seite, nachher.text)).sichtbar).toBe(true);
-            const link = page.locator(sel);
-            expect(await link.count()).toBe(1);
-            expect(await link.getAttribute("href")).toBe(tuer.seite);
-            await link.click();
-            await page.waitForURL(`${ORIGIN}${tuer.seite}`);
-            expect((await textTraeger(seite, SPERRSATZ)).sichtbar).toBe(false);
-          } else {
-            expect(nachher.sichtbar).toBe(false);
-            const sperre = akteur === "anonym"
-              ? await sichtbarkeit(seite, "#auth-email")
-              : await textTraeger(seite, SPERRSATZ);
-            expect(sperre.verfahren).toBe("checkVisibility");
-            expect(sperre.sichtbar).toBe(true);
+        try {
+          await kontext.route("**/*", (route) => {
+            const arbeit = antworte(route).catch((fehler: unknown) => {
+              anfragefehler.push(String(fehler));
+              throw fehler;
+            });
+            offen.add(arbeit);
+            return arbeit.finally(() => offen.delete(arbeit));
+          });
+          const page = await kontext.newPage();
+          page.on("pageerror", (fehler) => seitenfehler.push(String(fehler)));
+          const seite = page as unknown as Seite;
+          if (akteur !== "anonym") {
+            await anmeldenAnDerMaske(seite, ORIGIN, email(akteur), PASSWORT);
+            const rolle = await page.evaluate(
+              'fetch("/api/auth/me").then(r => r.json()).then(u => u.role)',
+            );
+            expect(rolle).toBe(akteur);
           }
-          protokoll.push({ breite, akteur, tuer: tuer.nr, soll, vorher, nachher, ziel: page.url() });
+          for (const tuer of tueren) {
+            const soll = eintrag(tuer.erwartet[akteur]).soll;
+            const sel = navigationspunkt(tuer);
+            const id = tuer.nr === "T1" ? "erfassen" : "validierung";
+            const alt = `[data-kopfband-punkt="${id}"]`;
+            const ziel = `${ORIGIN}${soll === "erlaubt" ? "/" : tuer.seite}`;
+            await oeffneTuer(
+              seite,
+              ziel,
+              { art: "selektor", sel, name: tuer.nr },
+              SPERRSATZ,
+              `${akteur} an ${tuer.nr}`,
+            );
+            // Erst der frühere Selektor, dann der neue: dasselbe echte, unveränderte DOM.
+            const vorher = await sichtbarkeit(seite, alt);
+            const nachher = await sichtbarkeit(seite, sel);
+            expect(nachher.verfahren).toBe("checkVisibility");
+            if (soll === "erlaubt") {
+              expect(vorher.sichtbar).toBe(breite === 1280);
+              expect(vorher.da).toBe(breite === 1280);
+              expect(nachher.sichtbar).toBe(true);
+              expect(nachher.text.length).toBeGreaterThan(0);
+              expect((await textTraeger(seite, nachher.text)).sichtbar).toBe(true);
+              const link = page.locator(sel);
+              expect(await link.count()).toBe(1);
+              expect(await link.getAttribute("href")).toBe(tuer.seite);
+              await link.click();
+              await page.waitForURL(`${ORIGIN}${tuer.seite}`);
+              expect((await textTraeger(seite, SPERRSATZ)).sichtbar).toBe(false);
+            } else {
+              expect(nachher.sichtbar).toBe(false);
+              const sperre =
+                akteur === "anonym"
+                  ? await sichtbarkeit(seite, "#auth-email")
+                  : await textTraeger(seite, SPERRSATZ);
+              expect(sperre.verfahren).toBe("checkVisibility");
+              expect(sperre.sichtbar).toBe(true);
+            }
+            protokoll.push({
+              breite,
+              akteur,
+              tuer: tuer.nr,
+              soll,
+              vorher,
+              nachher,
+              ziel: page.url(),
+            });
+          }
+        } finally {
+          await Promise.all([...offen]);
+          await kontext.close();
         }
-      } finally {
-        await Promise.all([...offen]);
-        await kontext.close();
       }
-    }
-    expect(seitenfehler).toEqual([]);
-    expect(anfragefehler).toEqual([]);
-  }, 60_000);
+      expect(seitenfehler).toEqual([]);
+      expect(anfragefehler).toEqual([]);
+    },
+    60_000,
+  );
 });
