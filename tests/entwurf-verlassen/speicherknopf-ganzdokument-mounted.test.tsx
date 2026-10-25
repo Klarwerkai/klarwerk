@@ -369,7 +369,7 @@ describe("JOB 4352 · der sichtbare Speicherknopf und die geladene Datei", () =>
       expect(bestandJeTitel()[String(i18n.t("capture.draftFallbackTitle"))]).toBeUndefined();
       const nutzlast = traegerNutzlast();
       expect(nutzlast).not.toBeNull();
-      expect(nutzlast?.statement).toBe(DATEITEXT);
+      expect(nutzlast?.statement).toBe(`${P1.sourceExcerpt} ${P2.sourceExcerpt}`);
       expect(String(nutzlast?.bodyHtml ?? "")).toContain(DATEI);
       expect(String(nutzlast?.bodyHtml ?? "")).not.toMatch(/href=|data-object-id=/);
       expect(server.objekte).toEqual({});
