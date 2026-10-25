@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -15,8 +16,9 @@ import { migrate } from "./db";
 // Grund, warum es den statischen Migrationswaechter ueberhaupt gibt, und sie schliesst sich nicht
 // dadurch, dass der Waechter gruen wird: er liest Quelltext, er startet keine Datenbank.
 //
-// DIESE PROBE FUEHRT DESHALB KEINE EINZIGE DDL SELBST AUS. Sie ruft `migrate(pool)` und sieht
-// danach im Katalog nach. Was hier gruen ist, ist ueber den REALEN Weg entstanden.
+// Die Fixture stellt am freigegebenen Server nur eine eigene leere Testdatenbank bereit.
+// Die Produkttabellen und Constraints entstehen ausschliesslich durch `migrate(pool)`, ohne
+// kopierte Produktschema-DDL. Danach prueft die Probe den real entstandenen Katalog.
 //
 // SIE LIEGT BEWUSST IN EINER EIGENEN DATEI: `db.migrate.integration.test.ts` steht unter Freeze 47
 // und wird gerade unabhaengig geprueft (BEN 53). Auftrag 61 Zeile 28-29 verlangt genau diese
@@ -25,6 +27,8 @@ import { migrate } from "./db";
 describe("Auftrag 61: migrate() legt External-Source- und Answer-Snapshot-Schema wirklich an", () => {
   let container: StartedTestContainer | undefined;
   let pool: Pool | undefined;
+  let adminPool: Pool | undefined;
+  let eigeneDatenbank: string | undefined;
   // Ohne Container-Runtime wird NICHT gefaelscht, sondern sauber uebersprungen — dasselbe Muster
   // wie in den vorhandenen Integrationssuiten.
   let available = false;
@@ -32,15 +36,27 @@ describe("Auftrag 61: migrate() legt External-Source- und Answer-Snapshot-Schema
   beforeAll(async () => {
     const localUrl = guardedLocalPgTestUrl();
     if (localUrl) {
-      try {
-        pool = new Pool({ connectionString: localUrl });
-        await pool.query("SELECT 1");
-        available = true;
-        return;
-      } catch {
-        available = false;
-        return;
+      const datenbankName = `klarwerk_migration61_test_${randomUUID().replaceAll("-", "")}`;
+      if (!/^[a-z][a-z0-9_]{0,62}$/.test(datenbankName) || !datenbankName.includes("test")) {
+        throw new Error("Ungueltiger Name fuer die eigene Migration-61-Testdatenbank");
       }
+      // Nur das Pfadsegment ersetzen; auch Socket-Authority und Query bleiben unveraendert.
+      const urlTeile = /^([^:]+:\/\/[^/?#]*\/)[^/?#]*(.*)$/.exec(localUrl);
+      if (!urlTeile) {
+        throw new Error("Kein Datenbank-Pfadsegment in der freigegebenen Testverbindung");
+      }
+      adminPool = new Pool({ connectionString: localUrl });
+      await adminPool.query(`CREATE DATABASE ${datenbankName}`);
+      eigeneDatenbank = datenbankName;
+      pool = new Pool({ connectionString: `${urlTeile[1]}${datenbankName}${urlTeile[2]}` });
+      const verbindung = await pool.query<{ datenbank: string }>(
+        "SELECT current_database() AS datenbank",
+      );
+      if (verbindung.rows[0]?.datenbank !== eigeneDatenbank) {
+        throw new Error("Testverbindung erreicht nicht die eigene Migration-61-Testdatenbank");
+      }
+      available = true;
+      return;
     }
     if (process.env.KLARWERK_PG_TEST_URL) {
       available = false;
@@ -62,8 +78,21 @@ describe("Auftrag 61: migrate() legt External-Source- und Answer-Snapshot-Schema
   });
 
   afterAll(async () => {
-    await pool?.end();
-    await container?.stop();
+    try {
+      await pool?.end();
+    } finally {
+      try {
+        if (adminPool && eigeneDatenbank) {
+          await adminPool.query(`DROP DATABASE ${eigeneDatenbank}`);
+        }
+      } finally {
+        try {
+          await adminPool?.end();
+        } finally {
+          await container?.stop();
+        }
+      }
+    }
   });
 
   function requirePool(ctx: { skip: () => void }): Pool {
