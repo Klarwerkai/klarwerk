@@ -3,9 +3,11 @@ import { GenericContainer, type StartedTestContainer, Wait } from "testcontainer
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
+import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
 import { pcmQuelle } from "./segment-fixture";
-let container: StartedTestContainer;
+let container: StartedTestContainer | undefined;
+let eigeneDb: { verwaltung: string; name: string } | undefined;
 let url = "";
 let admin = "";
 let token = "";
@@ -92,28 +94,80 @@ async function taskSicht(id: string, x = i) {
   ]);
   return { einzeln, liste, ids: liste.json().aufgaben.map((a: { id: string }) => a.id) };
 }
+/** Nur den Datenbankpfad ersetzen: Authority, Query und Socket-Optionen bleiben erhalten. */
+async function frischeDatenbank(lokal: string): Promise<string> {
+  const teile = /^([^:]+:\/\/[^/?#]*\/)([^/?#]*)(.*)$/.exec(lokal);
+  if (!teile) {
+    throw new Error("KLARWERK_PG_TEST_URL ist nicht lesbar — keine eigene F15-Datenbank anlegbar.");
+  }
+  const name = `klarwerk_f15_test_${randomUUID().replace(/-/g, "")}`;
+  const verwaltung = createPool(lokal);
+  const schliessen = poolAbschluss(verwaltung);
+  poolAbschluesse.push(schliessen);
+  const fehler: unknown[] = [];
+  try {
+    await verwaltung.query(`CREATE DATABASE "${name}"`);
+    eigeneDb = { verwaltung: lokal, name };
+  } catch (cause) {
+    fehler.push(
+      new Error("Auf KLARWERK_PG_TEST_URL lässt sich keine eigene F15-Testdatenbank anlegen.", {
+        cause,
+      }),
+    );
+  } finally {
+    try {
+      await schliessen();
+    } catch (cause) {
+      fehler.push(cause);
+    }
+  }
+  if (fehler.length) throw new AggregateError(fehler, "F15-Datenbankaufbau fehlgeschlagen.");
+  return `${teile[1]}${name}${teile[3]}`;
+}
 beforeAll(async () => {
-  container = await new GenericContainer("postgres:16-alpine")
-    .withName(`klara-f15-quellbindung-${randomUUID()}`)
-    .withLabels({ "klarwerk.owner": "klara-f15-quellbindung-20261020" })
-    .withEnvironment({ POSTGRES_PASSWORD: "f15-synthetic", POSTGRES_DB: "klara_f15_quellbindung" })
-    .withExposedPorts(5432)
-    .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
-    .start();
+  const lokal = guardedLocalPgTestUrl();
+  if (lokal) {
+    url = await frischeDatenbank(lokal);
+  } else if (process.env.KLARWERK_PG_TEST_URL) {
+    throw new Error("KLARWERK_PG_TEST_URL abgelehnt (Grund auf stderr) — kein Container-Rückfall.");
+  } else {
+    container = await new GenericContainer("postgres:16-alpine")
+      .withName(`klara-f15-quellbindung-${randomUUID()}`)
+      .withLabels({ "klarwerk.owner": "klara-f15-quellbindung-20261020" })
+      .withEnvironment({
+        POSTGRES_PASSWORD: "f15-synthetic",
+        POSTGRES_DB: "klara_f15_quellbindung",
+      })
+      .withExposedPorts(5432)
+      .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+      .start();
+    url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klara_f15_quellbindung`;
+  }
   console.log(
     JSON.stringify({
       ressource: "F15-1-PG",
       ereignis: "begonnen",
       at: new Date().toISOString(),
-      containerId: container.getId(),
+      backend: container ? "container" : "ci-url",
+      datenbank: eigeneDb?.name ?? "klara_f15_quellbindung",
     }),
   );
-  url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klara_f15_quellbindung`;
   const p = createPool(url);
   const schliessen = poolAbschluss(p);
   poolAbschluesse.push(schliessen);
-  await migrate(p);
-  await schliessen();
+  const fehler: unknown[] = [];
+  try {
+    await migrate(p);
+  } catch (cause) {
+    fehler.push(cause);
+  } finally {
+    try {
+      await schliessen();
+    } catch (cause) {
+      fehler.push(cause);
+    }
+  }
+  if (fehler.length) throw new AggregateError(fehler, "F15-Migration fehlgeschlagen.");
   const x = instanz();
   expect(
     (
@@ -159,12 +213,56 @@ beforeEach(async () => {
   ).json().token;
 });
 afterAll(async () => {
-  for (const a of apps) await a.close();
-  for (const schliessen of poolAbschluesse) await schliessen();
-  await container?.stop();
+  const fehler: unknown[] = [];
+  for (const a of apps) {
+    try {
+      await a.close();
+    } catch (cause) {
+      fehler.push(cause);
+    }
+  }
+  for (const schliessen of poolAbschluesse) {
+    try {
+      await schliessen();
+    } catch (cause) {
+      fehler.push(cause);
+    }
+  }
+  if (eigeneDb) {
+    try {
+      if (!/^klarwerk_f15_test_[a-f0-9]{32}$/.test(eigeneDb.name)) {
+        throw new Error("F15-Cleanup verweigert einen fremden Datenbanknamen.");
+      }
+      const verwaltung = createPool(eigeneDb.verwaltung);
+      const schliessen = poolAbschluss(verwaltung);
+      poolAbschluesse.push(schliessen);
+      try {
+        await verwaltung.query(`DROP DATABASE IF EXISTS "${eigeneDb.name}" WITH (FORCE)`);
+      } finally {
+        try {
+          await schliessen();
+        } catch (cause) {
+          fehler.push(cause);
+        }
+      }
+    } catch (cause) {
+      fehler.push(cause);
+    }
+  }
+  try {
+    await container?.stop();
+  } catch (cause) {
+    fehler.push(cause);
+  }
   console.log(
-    JSON.stringify({ ressource: "F15-1-PG", ereignis: "beendet", at: new Date().toISOString() }),
+    JSON.stringify({
+      ressource: "F15-1-PG",
+      ereignis: fehler.length ? "ende-mit-fehler" : "beendet",
+      at: new Date().toISOString(),
+    }),
   );
+  if (fehler.length)
+    throw new AggregateError(fehler, "F15-Prüfplatz nicht vollständig geschlossen.");
 });
 it("normaler Notiz→Aufgabe-Caller verweigert echte Teilfassung auch bei abweichendem Text/Clientflag vor jeder Kopie", async () => {
   const n = await meeting(await audio(true), true);
