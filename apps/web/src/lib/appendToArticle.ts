@@ -90,6 +90,8 @@ export const DEFINITE_APPEND_REJECTIONS: readonly string[] = [
   "INVALID_OPERATION_ID",
   // Nebenläufige Änderung: der Compare-and-Set hat NICHT geschrieben.
   "STALE_WRITE",
+  "KO_STALE",
+  "PROPOSAL_REQUIRED",
   "NOT_FOUND",
   "FORBIDDEN",
   "UNAUTHENTICATED",

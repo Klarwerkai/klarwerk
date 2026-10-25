@@ -127,12 +127,11 @@ export function Lifecycle(): JSX.Element {
       stand?: number;
       fassung?: number;
     }) =>
-      endpoints.ko.act(
-        id,
-        stand === undefined || fassung === undefined
-          ? { action: "revalidate" }
-          : { action: "revalidate", stand, fassung },
-      ),
+      endpoints.ko.act(id, {
+        action: "revalidate",
+        ...(fassung === undefined ? {} : { expectedVersion: fassung }),
+        ...(stand === undefined || fassung === undefined ? {} : { stand, fassung }),
+      }),
     onSuccess: (_data, vars) => {
       bestandNeuLaden(vars.id);
       setLastRevalidated({
@@ -689,7 +688,8 @@ export function Lifecycle(): JSX.Element {
                 id,
                 title: view.title,
                 found: view.found,
-                ...(fall ? { stand: fall.stand, fassung: fall.version } : {}),
+                fassung: fall?.version ?? kos.data?.find((k) => k.id === id)?.version,
+                ...(fall ? { stand: fall.stand } : {}),
               })
             }
           >

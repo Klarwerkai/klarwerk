@@ -752,6 +752,8 @@ export interface DocumentBundleInput {
 }
 
 export interface DocumentAppendInput {
+  /** Gelesene Inhaltsfassung; wird nach dem Replay-Nachschlag unter dem KO-Lock verglichen. */
+  expectedVersion?: number;
   /** Wiederholbarer Vorgangsschlüssel des Aufrufers (Idempotenz, s. document-append.ts). */
   operationId: string;
   /**
@@ -6706,6 +6708,7 @@ export class KoService {
         } satisfies DocumentAppendCommit;
       }
 
+      this.pruefeErwarteteVersion(before, input.expectedVersion);
       const at = new Date(this.now()).toISOString();
 
       // ---- 1. ANKER SICHERN ----------------------------------------------------------------

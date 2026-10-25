@@ -2114,6 +2114,7 @@ export function BibliothekLesen({
       fileName: string;
       original: OriginalDocument | null;
       nextBody: string;
+      expectedVersion: number | null;
     }): Promise<AppendDocumentOutcome> => {
       if (!appendOriginalRef.current.ref) {
         if (!input.original) {
@@ -2131,20 +2132,24 @@ export function BibliothekLesen({
       return commitDocumentAppend(
         {
           append: (opId) =>
-            endpoints.ko.appendDocument(koId, {
-              operationId: opId,
-              anchor: {
-                objectId: anchor.id,
-                name: input.original?.name ?? input.fileName,
-                mime: input.original?.mime ?? "application/octet-stream",
+            endpoints.ko.appendDocument(
+              koId,
+              {
+                operationId: opId,
+                anchor: {
+                  objectId: anchor.id,
+                  name: input.original?.name ?? input.fileName,
+                  mime: input.original?.mime ?? "application/octet-stream",
+                },
+                points: input.points.map((p) => fileSourcePayload(input.fileName, p)),
+                changes: {
+                  bodyHtml: input.nextBody,
+                  statement: edit?.statement ?? "",
+                  ...(edit?.title ? { title: edit.title } : {}),
+                },
               },
-              points: input.points.map((p) => fileSourcePayload(input.fileName, p)),
-              changes: {
-                bodyHtml: input.nextBody,
-                statement: edit?.statement ?? "",
-                ...(edit?.title ? { title: edit.title } : {}),
-              },
-            }),
+              input.expectedVersion ?? undefined,
+            ),
         },
         newAppendOperationId(),
       );
@@ -2168,13 +2173,27 @@ export function BibliothekLesen({
     );
     let outcome: AppendDocumentOutcome;
     try {
-      outcome = await appendDocument.mutateAsync({ points, fileName, original, nextBody });
+      outcome = await appendDocument.mutateAsync({
+        points,
+        fileName,
+        original,
+        nextBody,
+        expectedVersion: edit.version,
+      });
     } catch {
       return false;
     }
     if (outcome.kind === "committed") {
       setAppendUnclear(false);
-      setEdit((prev) => (prev ? { ...prev, bodyHtml: nextBody } : prev));
+      setEdit((prev) =>
+        prev
+          ? {
+              ...prev,
+              bodyHtml: nextBody,
+              version: outcome.commit?.koVersion ?? prev.version,
+            }
+          : prev,
+      );
       invalidate();
       const failedFollowUps = outcome.commit?.followUpsFailed ?? [];
       push(
@@ -2914,7 +2933,7 @@ export function BibliothekLesen({
                         // Server lehnt dann ab (409 `STAND_VERALTET`), und die Meldung führt in
                         // den Reiter „Erneut". Die Quittung erst nach dem Erfolg.
                         act.mutate(
-                          { action: "revalidate" },
+                          { action: "revalidate", expectedVersion: ko.version },
                           {
                             onSuccess: () => push("success", t("lib.revalidateDone")),
                             onError: (e) => {

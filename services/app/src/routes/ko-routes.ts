@@ -3388,6 +3388,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         if (
           body.expectedVersion !== undefined &&
           body.action !== "revise" &&
+          body.action !== "revalidate" &&
+          body.action !== "append-document" &&
           body.action !== "revise-release" &&
           body.action !== "decide-proposal" &&
           body.action !== "tags" &&
@@ -3400,7 +3402,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           body.action !== "weisung-sichten"
         ) {
           return badRequest(
-            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags", "category", "rate", "owner-validate", "admin-validate", "weisung-validate" und "weisung-sichten".',
+            'expectedVersion gilt nur für die Aktionen "revise", "revalidate", "append-document", "revise-release", "decide-proposal", "tags", "category", "rate", "owner-validate", "admin-validate", "weisung-validate" und "weisung-sichten".',
           );
         }
         // JOB 4251: der Stempel der EINORDNUNG greift nur dort, wo eine Einordnung geschrieben wird.
@@ -3416,6 +3418,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             'expectedMetadataRevision gilt nur für die Aktionen "tags" und "category".',
           );
         }
+        // Inhaltsänderungen verwenden denselben bestehenden Freigabevertrag.
+        const direkteBearbeitungErlaubt = (
+          user: SessionUser,
+          bestand: KnowledgeObject | undefined,
+        ): boolean => {
+          if (bestand?.status !== "validiert" || can(user.role, "users.manage")) {
+            return true;
+          }
+          reply.code(403).send({
+            error: "PROPOSAL_REQUIRED",
+            message:
+              'Dieses Wissensobjekt ist freigegeben. Ohne Freigaberecht wird eine Änderung als Vorschlag eingereicht (action "propose") und gilt erst nach der Freigabe durch jemand anderen.',
+          });
+          return false;
+        };
         // ADMIN-09: das Urteil des Freigabe-Prüfpunkts — oder `undefined`, dann ist die Absage
         // schon gesendet und es wird nichts entschieden.
         const freigabeUrteil = async (
@@ -3923,12 +3940,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // WER NICHT DARF, BEKOMMT DEN WEG GENANNT: 403 mit `PROPOSAL_REQUIRED` und dem Verweis
             // auf `propose`. Eine Ablehnung ohne Weg wäre eine Sackgasse.
             const bestand = await ko.get(id);
-            if (bestand?.status === "validiert" && !can(user.role, "users.manage")) {
-              reply.code(403).send({
-                error: "PROPOSAL_REQUIRED",
-                message:
-                  'Dieses Wissensobjekt ist freigegeben. Ohne Freigaberecht wird eine Änderung als Vorschlag eingereicht (action "propose") und gilt erst nach der Freigabe durch jemand anderen.',
-              });
+            if (!direkteBearbeitungErlaubt(user, bestand)) {
               return;
             }
             // JOB 3667: `expectedVersion` ist der bedingte Schreibzugriff. Gelesen wird er hier,
@@ -4496,6 +4508,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               });
               return;
             }
+            // Ein quittierter Retry schreibt nichts. Neue Übernahmen durchlaufen das
+            // Freigabegate und vergleichen die gelesene Fassung im serialisierten Schreibweg.
+            if (!direkteBearbeitungErlaubt(user, target)) {
+              return;
+            }
+            const erwartet = erwarteteKoVersion(body.expectedVersion);
+            if (erwartet === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss eine Ganzzahl ab 1 sein (die Version, die beim Laden zu sehen war).",
+              );
+            }
             // SCRUM-421 / mega14 Block E: derselbe Anhangs-Vertrag wie `attach` — Anzahl UND die
             // GESPEICHERTE Größe gegen die Admin-Grenze. Der Anker ist ein ganz normaler
             // Dokumentanhang und bekommt keine Sonderbehandlung; `objects.metadata` ist zugleich
@@ -4542,6 +4565,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // Ab hier: geprüfte Fakten in die Komposition. Sie entscheidet nichts nach — außer
             // (II), ihrer eigenen Regel.
             const commit = await ko.appendDocumentExtract(id, user.id, {
+              ...(erwartet === undefined ? {} : { expectedVersion: erwartet }),
               operationId: payload.operationId ?? "",
               anchor: {
                 objectId: anchorInput.objectId,
@@ -5176,6 +5200,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
+            if (!direkteBearbeitungErlaubt(user, await ko.get(id))) {
+              return;
+            }
+            const erwartet = erwarteteKoVersion(body.expectedVersion);
+            if (erwartet === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss eine Ganzzahl ab 1 sein (die Version, die beim Laden zu sehen war).",
+              );
+            }
             // produkt:20261010:aenderungsfolgen-sichtbar: mit `stand` gilt die Bestätigung genau dem
             // gesehenen Stand; eine inzwischen eingegangene Änderung ergibt 409 `STAND_VERALTET`.
             const stand = body.stand;
@@ -5188,6 +5221,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (stand !== undefined && !(Number.isInteger(fassung) && (fassung as number) > 0)) {
               return badRequest("fassung (die angezeigte Fassung) muss mit stand mitkommen.");
             }
+            if (stand !== undefined && erwartet !== undefined && erwartet !== fassung) {
+              return badRequest("expectedVersion und fassung müssen dieselbe gelesene Fassung nennen.");
+            }
             reply
               .code(200)
               .send(
@@ -5195,7 +5231,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                   id,
                   user.id,
                   stand as number | undefined,
-                  stand === undefined ? undefined : (fassung as number),
+                  erwartet ?? (stand === undefined ? undefined : (fassung as number)),
                 ),
               );
             return;

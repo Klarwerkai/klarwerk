@@ -104,14 +104,18 @@ export function AppendToArticleModal({
       const outcome = await commitDocumentAppend(
         {
           append: (opId) =>
-            endpoints.ko.appendDocument(targetId, {
-              operationId: opId,
-              anchor: { objectId: anchorRef.id, name: anchorName, mime: anchorMime },
-              points: points.map((p) => fileSourcePayload(fileName, p)),
-              // statement bewusst erhalten: sonst würde die Revision die Kurzfassung aus dem
-              // ganzen Body neu ableiten.
-              changes: { bodyHtml: nextBody, statement: target.statement },
-            }),
+            endpoints.ko.appendDocument(
+              targetId,
+              {
+                operationId: opId,
+                anchor: { objectId: anchorRef.id, name: anchorName, mime: anchorMime },
+                points: points.map((p) => fileSourcePayload(fileName, p)),
+                // statement bewusst erhalten: sonst würde die Revision die Kurzfassung aus dem
+                // ganzen Body neu ableiten.
+                changes: { bodyHtml: nextBody, statement: target.statement },
+              },
+              target.version,
+            ),
         },
         operationId,
       );

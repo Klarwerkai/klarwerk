@@ -514,7 +514,7 @@ export type KoAction =
   // Capture-Finalizer). Der Aufruf läuft NICHT über `ko.act`, weil die Antwort kein
   // KnowledgeObject ist, sondern ein COMMIT-ERGEBNIS: sie sagt, was tatsächlich gilt (Version,
   // Anker, Belegstellen) — s. `endpoints.ko.appendDocument`.
-  | { action: "append-document"; appendDocument: DocumentAppendRequest }
+  | { action: "append-document"; appendDocument: DocumentAppendRequest; expectedVersion?: number }
   // ================================================================================================
   // JOB 3667 R3 — DIE ZWEI AKTIONEN DES RÜCKWEGS, DIE DER BROWSER BISHER NICHT AUFRUFEN KONNTE.
   // ================================================================================================
@@ -574,7 +574,7 @@ export type KoAction =
   // produkt:20261010:aenderungsfolgen-sichtbar: `stand` bindet die Bestätigung an den gesehenen
   // Stand der Folgeprüfung (sonst 409 `STAND_VERALTET`).
   // Nacharbeit 6: `fassung` = die angezeigte Inhaltsfassung (Pflicht zusammen mit `stand`).
-  | { action: "revalidate"; stand?: number; fassung?: number }
+  | { action: "revalidate"; stand?: number; fassung?: number; expectedVersion?: number }
   // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
   | { action: "confirm-fresh" }
   // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
@@ -826,8 +826,12 @@ export const endpoints = {
       api.put<{ markiert: number }>(`/kos/${id}`, { action: "neighbors-changed" }),
     // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
     // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
-    appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
-      api.put<DocumentAppendResponse>(`/kos/${id}`, { action: "append-document", appendDocument }),
+    appendDocument: (id: string, appendDocument: DocumentAppendRequest, expectedVersion?: number) =>
+      api.put<DocumentAppendResponse>(`/kos/${id}`, {
+        action: "append-document",
+        appendDocument,
+        ...(expectedVersion === undefined ? {} : { expectedVersion }),
+      }),
     remove: (id: string) => api.del<void>(`/kos/${id}`),
     // WP-SUBMIT-ASYNC: reiht die Hintergrund-KI-Pruefung neu ein (Retry am failed-Badge).
     aiCheckRetry: (id: string) => api.post<{ status: string }>(`/kos/${id}/ai-check`, {}),

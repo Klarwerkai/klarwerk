@@ -285,6 +285,7 @@ describe("R-0953 · „Noch gültig“ meldet einen Fehler", () => {
       action: "revalidate",
       stand: 1,
       fassung: 1,
+      expectedVersion: 1,
     });
     const einblendungen = Array.from(container.querySelectorAll("output"), (o) => o.textContent);
     expect(einblendungen).toContain(i18n.t("lcy.toast.revalidateFailed"));
