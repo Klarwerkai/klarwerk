@@ -2,7 +2,7 @@
 // herstellbar (Ben, Lauf 6 Runde 2, Befund P1). Hier ohne Bau und ohne Browser: nur, dass die
 // Umkehrung auf den heutigen Stand passt und wirklich den alten Stand ergibt. Den Bau und die
 // Messung macht die Integrationsdatei.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { lstatSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -14,6 +14,17 @@ describe("Vorschau-Reichweite · alte Fläche für die Rücknahme", () => {
 
   it("die Umkehrung passt auf den aktuellen Stand und ergibt das alte Verhalten", () => {
     bereiteAlteQuelle(ziel);
+    const profilzeit = "services/app/src/klara-erinnerung-zeit.ts";
+    const kopie = join(ziel, profilzeit);
+    const original = join(__dirname, "..", "..", profilzeit);
+    const kopieStand = lstatSync(kopie);
+    const originalStand = lstatSync(original);
+    expect(kopieStand.isFile()).toBe(true);
+    expect({ dev: kopieStand.dev, ino: kopieStand.ino }).not.toEqual({
+      dev: originalStand.dev,
+      ino: originalStand.ino,
+    });
+    expect(readFileSync(kopie)).toEqual(readFileSync(original));
     const blatt = readFileSync(join(ziel, "apps/web/src/components/erfassen/Blatt.tsx"), "utf8");
     expect(blatt).toContain('"erfassen.live.neu"');
     expect(blatt).not.toMatch(/["'`]vorschau\./);

@@ -18,7 +18,7 @@
 // sein. Sonst liefe die Rücknahme gegen das Neue. Passt die Umkehrung nicht mehr auf den heutigen
 // Stand, scheitert `git apply` laut — `alte-flaeche.test.ts` meldet das schon im normalen Testlauf.
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, readFileSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
 const WURZEL = join(__dirname, "..", "..");
@@ -52,6 +52,12 @@ export function bereiteAlteQuelle(ziel: string): void {
     "der Arbeitsbaum trägt die Vorschau-Änderung nicht — es gäbe nichts zurückzunehmen.",
   );
   cpSync(join(WURZEL, "apps/web"), join(ziel, "apps/web"), { recursive: true, filter: mitnehmen });
+  // Die Kalender-Profilzeit importiert diesen reinen Löser relativ über die Webwurzel hinaus.
+  mkdirSync(join(ziel, "services/app/src"), { recursive: true });
+  cpSync(
+    join(WURZEL, "services/app/src/klara-erinnerung-zeit.ts"),
+    join(ziel, "services/app/src/klara-erinnerung-zeit.ts"),
+  );
   execFileSync("git", ["apply", "--whitespace=nowarn", PATCH], {
     cwd: ziel,
     stdio: ["ignore", "pipe", "pipe"],
