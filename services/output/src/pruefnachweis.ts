@@ -6,7 +6,7 @@
 // `findBySeq` adressiert und mit `pruefeValidationDecisionRef` gegen Hash, Kette, Ereignisart und
 // die aktuelle Fassung geprüft (KW-W3-19). Nur „OK" liefert ein Datum; jeder andere Zustand bleibt
 // als Zustand stehen und wird im Herkunftsnachweis als Unsicherheit genannt.
-import { type AuditEntry, type AuditRepo, pruefeValidationDecisionRef } from "../../audit";
+import { type AuditEntry, type AuditRepo, validationDecisionPruefer } from "../../audit";
 import type { KnowledgeObject } from "../../knowledge-object";
 import type { OutputPruefnachweis } from "./types";
 
@@ -23,6 +23,7 @@ export async function pruefnachweiseFuer(
   }
   // Die Kette wird nur geladen, wenn mindestens eine Quelle einen Nachweis trägt.
   const kette: AuditEntry[] = await audit.all();
+  const pruefe = validationDecisionPruefer(kette);
   const raus: OutputPruefnachweis[] = [];
   for (const ko of kos) {
     const ref = ko.validationDecisionRef;
@@ -31,12 +32,7 @@ export async function pruefnachweiseFuer(
       continue;
     }
     const eintrag = await findBySeq(ref.auditSeq);
-    const zustand = pruefeValidationDecisionRef(
-      eintrag,
-      ref,
-      { koId: ko.id, koVersion: ko.version },
-      kette,
-    );
+    const zustand = pruefe(eintrag, ref, { koId: ko.id, koVersion: ko.version });
     raus.push(
       zustand === "OK" && eintrag
         ? { zustand: "OK", am: eintrag.at, ereignis: eintrag.action }

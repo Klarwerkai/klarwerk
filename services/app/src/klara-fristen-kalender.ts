@@ -61,17 +61,25 @@ export class FristenKalenderRepo implements EigenerKalenderRepo {
   ) {}
 
   async persoenliche(kontoId: string): Promise<KalenderEintrag[]> {
+    return (await this.persoenlicherLesestand(kontoId)).eintraege;
+  }
+
+  /** Projektion und Fristindex stammen aus genau derselben Lesung dieses Aufrufs. */
+  async persoenlicherLesestand(kontoId: string) {
     const [kalender, stand] = await Promise.all([
       this.kalender.persoenliche(kontoId),
       this.fristen.hole(kontoId),
     ]);
-    return [
-      ...kalender,
-      ...(stand?.fristen.flatMap((f) => {
-        const e = eintrag(f, new Date(this.jetzt()).toISOString(), stand.regel?.zeitzone);
-        return e ? [e] : [];
-      }) ?? []),
-    ];
+    const fristen = new Map<string, ErkannteFrist>();
+    const am = new Date(this.jetzt()).toISOString();
+    const eintraege = [...kalender];
+    for (const f of stand?.fristen ?? []) {
+      // Wie beim bisherigen find: die erste Kennung ist maßgeblich, die Projektion bleibt in Reihenfolge.
+      if (!fristen.has(f.id)) fristen.set(f.id, f);
+      const e = eintrag(f, am, stand?.regel?.zeitzone);
+      if (e) eintraege.push(e);
+    }
+    return { eintraege, fristen };
   }
   vonTeams(ids: readonly string[]) {
     return this.kalender.vonTeams(ids);

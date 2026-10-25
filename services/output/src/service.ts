@@ -47,6 +47,9 @@ export interface OutputServiceDeps {
   audit?: AuditLeser;
 }
 
+/** Keine echte Quelle wird still ausgelassen: mehr eindeutige Quellen werden abgewiesen. */
+export const MAX_OUTPUT_SOURCES = 200;
+
 export class OutputService {
   private readonly koService: KoService;
   private readonly now: () => number;
@@ -91,8 +94,18 @@ export class OutputService {
     if (input.koIds.length === 0) {
       throw new OutputError("NO_SOURCES", "Mindestens ein validiertes Wissensobjekt wählen.");
     }
-    const selected: KnowledgeObject[] = [];
+    const ids = new Set<string>();
     for (const id of input.koIds) {
+      ids.add(id);
+      if (ids.size > MAX_OUTPUT_SOURCES) {
+        throw new OutputError(
+          "BAD_REQUEST",
+          `Höchstens ${MAX_OUTPUT_SOURCES} unterschiedliche Wissensobjekte je Dokument wählen.`,
+        );
+      }
+    }
+    const selected: KnowledgeObject[] = [];
+    for (const id of ids) {
       const ko = await this.koService.get(id);
       // aufnahme:20260922:gesamt-leserechte / R-1175: ein Objekt, das der Betrachter nicht sehen
       // darf, gibt es für ihn nicht — dieselbe Antwort wie für eine unbekannte Kennung, damit weder

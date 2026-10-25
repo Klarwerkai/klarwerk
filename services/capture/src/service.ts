@@ -10,7 +10,7 @@ import {
   isValidConfidentiality,
   normalizeNegativwissen,
 } from "../../knowledge-object";
-import { sanitizeHtml } from "../../structure";
+import { mitKanonischerAussage } from "../../structure";
 import { normalizeAblauf } from "./ablauf";
 import { DRAFT_LIMITS } from "./draft-limits";
 import {
@@ -259,10 +259,7 @@ export function leiteNaechstenSchrittAb(
 // Allowlist-Sanitizer säubern — dieselbe harte Grenze wie beim KO (NFR-SEC-04). Gültige Formatierung
 // (fett/kursiv/Listen/Links) übersteht das; aktives Markup nicht. Leerer/kein Body bleibt unverändert.
 function sanitizeDraftPayload(payload: DraftPayload): DraftPayload {
-  if (typeof payload.bodyHtml !== "string" || !payload.bodyHtml.trim()) {
-    return payload;
-  }
-  return { ...payload, bodyHtml: sanitizeHtml(payload.bodyHtml) };
+  return mitKanonischerAussage(payload);
 }
 
 // AUFTRAG-mega5 Block B (bens Zusatzpunkt 1): Runtime-Normalisierung + harte Obergrenzen für die neu

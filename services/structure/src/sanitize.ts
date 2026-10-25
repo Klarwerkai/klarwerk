@@ -884,12 +884,23 @@ export function decodeHtmlEntities(text: string): string {
 // alten, doppel-dekodier-anfälligen Ersetzungskette) — damit landen &uuml;/&#228;/&middot; aus dem
 // Confluence-Storage-Format als echte Zeichen im importierten Text.
 export function htmlToPlainText(html: string): string {
-  return decodeHtmlEntities(
-    html
-      .replace(/<\/(p|h2|h3|li|blockquote|div|caption|figcaption|th|td|tr)>/gi, " ")
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/<[^>]*>/g, ""),
-  )
-    .replace(/\s+/g, " ")
-    .trim();
+  const teile: string[] = [];
+  let position = 0;
+  while (position < html.length) {
+    const start = html.indexOf("<", position);
+    if (start < 0) break;
+    const ende = html.indexOf(">", start + 1);
+    // Wie bisher bleibt ein nicht geschlossenes Konstrukt Klartext. Einmal suchen genügt.
+    if (ende < 0) break;
+    teile.push(html.slice(position, start));
+    const tag = html.slice(start, ende + 1);
+    if (
+      /^<\/(p|h2|h3|li|blockquote|div|caption|figcaption|th|td|tr)>$/i.test(tag) ||
+      /^<br\s*\/?>$/i.test(tag)
+    )
+      teile.push(" ");
+    position = ende + 1;
+  }
+  teile.push(html.slice(position));
+  return decodeHtmlEntities(teile.join("")).replace(/\s+/g, " ").trim();
 }

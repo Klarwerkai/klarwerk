@@ -4,7 +4,12 @@ export { sanitizeHtml, htmlToPlainText, decodeHtmlEntities } from "./src/sanitiz
 // JOB 2703 D1/D2: DIE EINE Kuerzungsregel fuer die Kernaussage (Confluence-Mapper, Word-Serverroute,
 // Entwurfsanlage) — hier neben `htmlToPlainText`, weil sie es nutzt und `structure` nicht
 // eingefroren ist (D1 hatte sie in `library-analytics` mit selbst gezeichneter Freeze-Freigabe).
-export { kernaussageAusKlartext, kernaussageAusHtml, KERNAUSSAGE_MAX } from "./src/kernaussage";
+export {
+  kernaussageAusKlartext,
+  kernaussageAusHtml,
+  mitKanonischerAussage,
+  KERNAUSSAGE_MAX,
+} from "./src/kernaussage";
 // WP-BILD-1g: body-sparender Fußnoten-Scanner — von der KO-Persistenz (captionTexts-Suchfeld)
 // UND der Bibliotheks-Suche genutzt (eine Implementierung, keine Zweitlogik).
 // WP-BILD-1h: searchCaptionTexts = Scanner + kanonischer Größendeckel (500 Zeichen/Caption,

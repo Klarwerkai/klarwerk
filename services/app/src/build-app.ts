@@ -6353,8 +6353,23 @@ export function buildApp(
   app.register(klaraFristenRoutes({ dienst: fristenDienst, audit: services.audit }, guards));
 
   app.register(klaraNormereignisRoutes({ dienst: normereignisse, audit: services.audit }, guards));
+  const fristenKalender = new FristenKalenderRepo(services.eigenerKalender, services.klaraFristen);
   const eigenerKalenderDienst = new EigenerKalenderDienst({
-    repo: new FristenKalenderRepo(services.eigenerKalender, services.klaraFristen),
+    repo: fristenKalender,
+    persoenlicherLesestand: async (user) => {
+      const stand = await fristenKalender.persoenlicherLesestand(user.id);
+      return {
+        eintraege: stand.eintraege,
+        informationLesbar: async (anfragender, id) => {
+          const f = stand.fristen.get(id);
+          return (
+            anfragender.id === user.id &&
+            f !== undefined &&
+            (await fristenDienst.lesbar(anfragender, f))
+          );
+        },
+      };
+    },
     informationLesbar: async (user, id) => {
       const f = (await services.klaraFristen.hole(user.id))?.fristen.find((f) => f.id === id);
       return f !== undefined && (await fristenDienst.lesbar(user, f));

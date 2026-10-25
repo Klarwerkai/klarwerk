@@ -36,7 +36,7 @@ import {
 } from "../../../knowledge-object";
 // JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
 // Confluence-Mapper (services/confluence/src/mapper.ts). Der Server kuerzt; der Client nicht mehr.
-import { kernaussageAusHtml, kernaussageAusKlartext, sanitizeHtml } from "../../../structure";
+import { kernaussageAusKlartext, mitKanonischerAussage, sanitizeHtml } from "../../../structure";
 import type { ValidationService } from "../../../validation";
 import type { AiCheckWorker } from "../ai-check-worker";
 import type { ChatEntwurfAusgabe } from "../chat-entwurf-ausgabe";
@@ -107,16 +107,6 @@ export function canManageDraft(user: SessionUser, draft: Draft): boolean {
 // Die Client-Kuerzungen sind stillgelegt (sie liefern die Rohaussage); der Word-Docx-Weg ruft die
 // Funktion direkt (unten). Ein Paritaetstest (tests/capture/job2703-paritaet-beide-wege.test.ts)
 // haelt Mapper und Serverroute zeichengenau gleich.
-function mitKanonischerAussage<T extends Partial<DraftPayload>>(payload: T): T {
-  if (typeof payload.statement !== "string") {
-    return payload;
-  }
-  const gekuerzt =
-    kernaussageAusKlartext(payload.statement) ||
-    (typeof payload.bodyHtml === "string" ? kernaussageAusHtml(payload.bodyHtml) : "") ||
-    (typeof payload.title === "string" ? payload.title : "");
-  return gekuerzt === payload.statement ? payload : { ...payload, statement: gekuerzt };
-}
 
 /**
  * JOB 3668 — LIEGT DIESER ENTWURF IM PAPIERKORB?

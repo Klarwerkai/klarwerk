@@ -677,6 +677,11 @@ export interface EigenerKalenderDeps {
   /** Darf diese Person das Wissensobjekt HEUTE sehen? Unbekannt heisst nein (fail-closed). */
   readonly quelleLesbar: (user: SessionUser, koId: string) => Promise<boolean>;
   readonly informationLesbar?: (user: SessionUser, fristId: string) => Promise<boolean>;
+  /** Persönliche Listenprojektion und Quellprüfung desselben, nur für diesen Aufruf gelesenen Stands. */
+  readonly persoenlicherLesestand?: (user: SessionUser) => Promise<{
+    eintraege: KalenderEintrag[];
+    informationLesbar: (user: SessionUser, fristId: string) => Promise<boolean>;
+  }>;
   /** Der maßgebliche Ausführungsnachweis. Ohne Angabe: keine Verknüpfung, keine Ausführungsaktion. */
   readonly ausfuehrung?: AusfuehrungsNachweis;
   /** Die Aufgabenablage. Ohne Angabe (und ohne Ausführungsnachweis): keine Auftragsverknüpfung. */
@@ -723,6 +728,7 @@ export class EigenerKalenderDienst {
   private readonly teams: EigenerKalenderDeps["teams"];
   private readonly quelleLesbar: EigenerKalenderDeps["quelleLesbar"];
   private readonly informationLesbar: EigenerKalenderDeps["informationLesbar"];
+  private readonly persoenlicherLesestand: EigenerKalenderDeps["persoenlicherLesestand"];
   private readonly ausfuehrung: AusfuehrungsNachweis | undefined;
   private readonly aufgaben: AufgabenNachweis | undefined;
   private readonly vorhanden: VorhandenerKalender | undefined;
@@ -734,6 +740,7 @@ export class EigenerKalenderDienst {
     this.teams = deps.teams;
     this.quelleLesbar = deps.quelleLesbar;
     this.informationLesbar = deps.informationLesbar;
+    this.persoenlicherLesestand = deps.persoenlicherLesestand;
     this.ausfuehrung = deps.ausfuehrung;
     this.aufgaben = deps.aufgaben;
     this.vorhanden = deps.vorhandenerKalender;
@@ -790,10 +797,14 @@ export class EigenerKalenderDienst {
     return auftrag ? { titel: auftrag.titel, persoenlich: false } : null;
   }
 
-  private async inhaltLesbar(user: SessionUser, e: KalenderEintrag): Promise<boolean> {
+  private async inhaltLesbar(
+    user: SessionUser,
+    e: KalenderEintrag,
+    informationLesbar = this.informationLesbar,
+  ): Promise<boolean> {
     if (e.herkunft.art === "wissensobjekt") return this.quelleLesbar(user, e.herkunft.koId);
     if (e.herkunft.art === "information")
-      return (await this.informationLesbar?.(user, e.herkunft.fristId)) === true;
+      return (await informationLesbar?.(user, e.herkunft.fristId)) === true;
     return true;
   }
 
@@ -801,8 +812,9 @@ export class EigenerKalenderDienst {
     user: SessionUser,
     e: KalenderEintrag,
     team: TeamFassung | null,
+    informationLesbar = this.informationLesbar,
   ): Promise<KalenderSicht> {
-    const geschuetzt = !(await this.inhaltLesbar(user, e));
+    const geschuetzt = !(await this.inhaltLesbar(user, e, informationLesbar));
     const a = this.ausfuehrung;
     const auftrag = e.auftrag ? await this.auftragLesen(user, e.auftrag.taskId) : null;
     const lauf =
@@ -892,13 +904,19 @@ export class EigenerKalenderDienst {
     const teams = await this.meineTeams(user);
     // PERSÖNLICH UND TEAM SIND GETRENNTE MENGEN: die Teamsicht liest ausschliesslich Teameinträge
     // der heutigen Teams — ein persönlicher Eintrag kann dort nicht auftauchen.
+    const lesestand =
+      bereich === "persoenlich" ? await this.persoenlicherLesestand?.(user) : undefined;
     const roh =
-      bereich === "persoenlich"
+      lesestand?.eintraege ??
+      (bereich === "persoenlich"
         ? await this.repo.persoenliche(user.id)
-        : await this.repo.vonTeams(teams.map((t) => t.id));
+        : await this.repo.vonTeams(teams.map((t) => t.id)));
+
     const teamVon = (e: KalenderEintrag): TeamFassung | null =>
       teams.find((t) => t.id === e.teamId) ?? null;
-    const sichten = await Promise.all(roh.map((e) => this.sicht(user, e, teamVon(e))));
+    const sichten = await Promise.all(
+      roh.map((e) => this.sicht(user, e, teamVon(e), lesestand?.informationLesbar)),
+    );
     sichten.sort((a, b) => a.beginn.localeCompare(b.beginn) || a.id.localeCompare(b.id));
     const einstellungen = await this.einstellungen(user);
     return {

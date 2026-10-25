@@ -21,6 +21,7 @@ export {
 // denselben geprüften Leseweg wie jeder andere Verbraucher eines Validierungsnachweises.
 export {
   pruefeValidationDecisionRef,
+  validationDecisionPruefer,
   type ValidationDecisionRef,
   type ValidationDecisionRefState,
 } from "./src/repo";

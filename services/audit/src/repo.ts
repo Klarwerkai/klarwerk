@@ -245,6 +245,52 @@ export function pruefeValidationDecisionRef(
   subject: ValidationDecisionSubject,
   kette: readonly AuditEntry[],
 ): ValidationDecisionRefState {
+  return pruefeDecisionRef(
+    entry,
+    ref,
+    subject,
+    (e) => kette.some((k) => k.seq === e.seq && k.hash === e.hash),
+    () => verifyChain(kette),
+  );
+}
+
+/**
+ * Prüfstand genau einer gelesenen Kette. Die eigene Kopie und der geschlossene Prüfweg können
+ * weder durch ein Wahrheitsflag übersprungen noch durch spätere Änderungen des Aufrufers ersetzt werden.
+ */
+export function validationDecisionPruefer(kette: readonly AuditEntry[]) {
+  const stand = structuredClone([...kette]);
+  const mitglieder = new Map<number, Set<string>>();
+  for (const e of stand) {
+    const hashes = mitglieder.get(e.seq) ?? new Set<string>();
+    hashes.add(e.hash);
+    mitglieder.set(e.seq, hashes);
+  }
+  let gueltig: boolean | undefined;
+  return (
+    entry: AuditEntry | undefined,
+    ref: ValidationDecisionRef,
+    subject: ValidationDecisionSubject,
+  ): ValidationDecisionRefState =>
+    pruefeDecisionRef(
+      entry,
+      ref,
+      subject,
+      (e) => mitglieder.get(e.seq)?.has(e.hash) === true,
+      () => {
+        if (gueltig === undefined) gueltig = verifyChain(stand);
+        return gueltig;
+      },
+    );
+}
+
+function pruefeDecisionRef(
+  entry: AuditEntry | undefined,
+  ref: ValidationDecisionRef,
+  subject: ValidationDecisionSubject,
+  enthaelt: (entry: AuditEntry) => boolean,
+  gueltigeKette: () => boolean,
+): ValidationDecisionRefState {
   if (!entry || entry.seq !== ref.auditSeq) {
     return "MISSING";
   }
@@ -264,7 +310,7 @@ export function pruefeValidationDecisionRef(
   // WARUM DAS KEIN VERBOTENER SUCHWEG IST: gesucht wird nichts. Der Eintrag ist ueber `findBySeq`
   // bereits adressiert; die Kette dient allein der Integritaetspruefung, die KW-W3-19 Schritt 3
   // ausdruecklich verlangt.
-  const inKette = kette.some((k) => k.seq === entry.seq && k.hash === entry.hash);
+  const inKette = enthaelt(entry);
   if (!inKette) {
     // Ein Eintrag, der in der vorgelegten Kette gar nicht vorkommt, ist fuer diesen Leser nicht
     // belegt — dieselbe Aussage wie ein fehlender Eintrag.
@@ -278,7 +324,7 @@ export function pruefeValidationDecisionRef(
   // `HASH_MISMATCH` — die Referenz verlöre ihre Deckung, ohne dass irgendetwas manipuliert wäre.
   // `undefined` (unbekannte Version) ist nie gleich einem gespeicherten Hash und fällt fail-closed.
   const eigenhash = hashEntryFuerVersion(entry);
-  if (entry.hash !== ref.auditHash || eigenhash !== entry.hash || !verifyChain(kette)) {
+  if (entry.hash !== ref.auditHash || eigenhash !== entry.hash || !gueltigeKette()) {
     // Gebrochene Kette faellt bewusst auf HASH_MISMATCH und nicht auf einen neuen Zustand:
     // KW-W3-19 legt die Zustandsmenge fest, und was hier kaputt ist, IST die Hashbindung —
     // nur eine Ebene hoeher als die einzelne Zeile.

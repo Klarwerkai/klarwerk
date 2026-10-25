@@ -33,7 +33,7 @@
 // ist neu — `services/structure` statt `services/library-analytics`: `structure` ist nicht
 // eingefroren, und die Funktion nutzt ohnehin `htmlToPlainText` von hier. Die selbst gezeichnete
 // Freeze-144-Freigabe aus D1 entfaellt damit (BEN: „Autoritaet offen").
-import { htmlToPlainText } from "./sanitize";
+import { htmlToPlainText, sanitizeHtml } from "./sanitize";
 
 export const KERNAUSSAGE_MAX = 500;
 
@@ -88,4 +88,25 @@ export function kernaussageAusHtml(html: string, max: number = KERNAUSSAGE_MAX):
     return ausErstem;
   }
   return kernaussageAusKlartext(htmlToPlainText(html), max);
+}
+
+/** Eine Aussage wird nur aus dem bereinigten, tatsächlich speicherbaren Rumpf abgeleitet. */
+export function mitKanonischerAussage<
+  T extends {
+    statement?: unknown;
+    bodyHtml?: unknown;
+    title?: unknown;
+  },
+>(payload: T): T {
+  const bodyHtml =
+    typeof payload.bodyHtml === "string" && payload.bodyHtml.trim()
+      ? sanitizeHtml(payload.bodyHtml)
+      : payload.bodyHtml;
+  const sauber = bodyHtml === payload.bodyHtml ? payload : { ...payload, bodyHtml };
+  if (typeof payload.statement !== "string") return sauber;
+  const statement =
+    kernaussageAusKlartext(payload.statement) ||
+    (typeof bodyHtml === "string" ? kernaussageAusHtml(bodyHtml) : "") ||
+    (typeof payload.title === "string" ? payload.title : "");
+  return statement === payload.statement ? sauber : { ...sauber, statement };
 }
