@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -429,5 +437,304 @@ assert(!existsSync(join(out,'pg.vitest.json')));assert(!events.some(e=>e.file===
       [work],
     );
     expect(run.status, run.stderr).toBe(0);
+  });
+});
+
+describe("FE003: belegter Bau und Browser haben getrennte Prozessbudgets", () => {
+  const pgUrl = pathToFileURL(join(root, "tools/pg-auswahl.mjs")).href;
+  const browserFile = "tests/fe003-tutorial-fragen/browser-breiten.integration.test.ts";
+  const previewFile = "tests/fe003-tutorial-fragen/vorschau-weg.integration.test.ts";
+  const laterFile = "tests/z.integration.test.ts";
+
+  function phaseFixture(name: string, files: string[], mode = "ok") {
+    const work = join(realpathSync(directory), name);
+    for (const path of ["tools", "tests/fe003-tutorial-fragen", "node_modules/.bin"]) {
+      mkdirSync(join(work, path), { recursive: true });
+    }
+    copyFileSync(join(root, "tools/pg-auswahl.mjs"), join(work, "tools/pg-auswahl.mjs"));
+    copyFileSync(
+      join(root, "tests/fe003-tutorial-fragen/kandidat.ts"),
+      join(work, "tests/fe003-tutorial-fragen/kandidat.ts"),
+    );
+    symlinkSync(join(root, "tools/release.mjs"), join(work, "tools/release.mjs"));
+    writeFileSync(join(work, "package.json"), '{"type":"module","version":"1.0.0-test"}\n');
+    writeFileSync(
+      join(work, ".gitignore"),
+      "out/\nnode_modules/\napps/web/dist/\nevents.jsonl\ncalls.jsonl\n",
+    );
+    writeFileSync(join(work, "fassung-beleg.json"), '{"kontrollierterInput":true}\n');
+    // Kontrollierte CLI statt Produktbau; kein globales Lock unter dem Normal6-Testdeckel.
+    writeFileSync(join(work, "tools/browserdeckel.sh"), '#!/bin/bash\nshift\nexec "$@"\n', {
+      mode: 0o755,
+    });
+    writeFileSync(
+      join(work, "tools/build"),
+      String.raw`#!${process.execPath}
+import assert from 'node:assert/strict';
+import {appendFileSync,mkdirSync,writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {join} from 'node:path';
+const mode=${JSON.stringify(mode)},root=process.cwd();
+if(mode==='fallback-manifest'){
+  assert.equal(process.env.KLARWERK_FASSUNG_MANIFEST,join(root,'fassung-beleg.json'));
+  assert.equal(process.env.UNGEWOLLTER_PROVIDER_MARKER,undefined);
+}
+for(const [key,value]of Object.entries({KLARWERK_SKIP_KEYCHAIN:'1',EXTERNAL_SEARCH:'off',NODE_ENV:'test',KLARWERK_DEV_PERSIST:'0'}))assert.equal(process.env[key],value);
+assert.equal(process.env.HOME,${JSON.stringify(process.env.HOME)});
+const event=(event)=>appendFileSync(join(root,'events.jsonl'),JSON.stringify({event,phase:'build',pid:process.pid})+'\n');
+event('start');console.log('kontrollierter Bauprozess');
+if(mode==='build-timeout')await new Promise(resolve=>setTimeout(resolve,2000));
+if(mode==='build-red'){event('end');process.exit(7);}
+mkdirSync(join(root,'apps/web/dist/assets'),{recursive:true});
+writeFileSync(join(root,'apps/web/dist/assets/app.js'),'export const gebaut=true;\n');
+if(mode!=='missing-index')writeFileSync(join(root,'apps/web/dist/index.html'),'<div id="root"></div><script type="module" src="/assets/app.js"></script>');
+if(mode==='dirty')appendFileSync(join(root,${JSON.stringify(files.at(0) ?? "")}), '// nicht festgehalten\n');
+if(mode==='wrong-head')execFileSync('git',['-c','user.name=Fixture','-c','user.email=fixture@klarwerk.test','-c','commit.gpgsign=false','commit','--allow-empty','-qm','anderer Stand'],{cwd:root,env:process.env});
+event('end');
+`,
+      { mode: 0o755 },
+    );
+    writeFileSync(
+      join(work, "worker.mjs"),
+      String.raw`#!${process.execPath}
+import assert from 'node:assert/strict';
+import {appendFileSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+const args=process.argv.slice(2),file=args[1],mode=${JSON.stringify(mode)};
+for(const [key,value]of Object.entries({KLARWERK_SKIP_KEYCHAIN:'1',EXTERNAL_SEARCH:'off',NODE_ENV:'test',KLARWERK_DEV_PERSIST:'0',KLARWERK_PG_PFLICHT:'1'}))assert.equal(process.env[key],value);
+assert.equal(process.env.HOME,${JSON.stringify(process.env.HOME)});
+for(const flag of ['--pool=forks','--minWorkers=1','--maxWorkers=1','--poolOptions.forks.minForks=1','--poolOptions.forks.maxForks=1','--no-file-parallelism','--testTimeout=60000'])assert(args.includes(flag));
+const event=(event)=>appendFileSync(join(process.cwd(),'events.jsonl'),JSON.stringify({event,phase:'test',file,pid:process.pid})+'\n');
+event('start');let failed=false;
+if(file.startsWith('tests/fe003-tutorial-fragen/')&&mode!=='no-consumer'){
+  const {baueKandidat}=await import('./tests/fe003-tutorial-fragen/kandidat.ts');
+  try{baueKandidat();}catch(error){failed=true;console.error(error.message);}
+}
+if(mode==='fachlich-rot'&&file===${JSON.stringify(files.at(0) ?? "")})failed=true;
+const count=2;
+const report={success:!failed,numTotalTestSuites:1,numPassedTestSuites:failed?0:1,numFailedTestSuites:failed?1:0,numPendingTestSuites:0,numTotalTests:count,numPassedTests:failed?1:2,numFailedTests:failed?1:0,numPendingTests:0,numTodoTests:0,testResults:[{name:join(process.cwd(),file),status:failed?'failed':'passed',assertionResults:Array.from({length:count},(_,i)=>({title:'kontrollierte CLI '+i,status:failed&&i===0?'failed':'passed',failureMessages:failed&&i===0?['tatsaechlicher kontrollierter Gegenfall']:[]}))}]};
+const raw=args.find(arg=>arg.startsWith('--outputFile=')).slice('--outputFile='.length);
+if(mode!=='browser-fatal')writeFileSync(raw,JSON.stringify(report),{flag:'wx'});
+event('end');process.exitCode=failed?1:0;
+`,
+      { mode: 0o755 },
+    );
+    symlinkSync(join(work, "worker.mjs"), join(work, "node_modules/.bin/vitest"));
+    writeFileSync(
+      join(work, "hook.mjs"),
+      String.raw`
+import cp from 'node:child_process';
+import {syncBuiltinESMExports} from 'node:module';
+import {appendFileSync,readFileSync,unlinkSync,writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {join} from 'node:path';
+const original=cp.spawnSync,mode=${JSON.stringify(mode)};
+cp.spawnSync=function(command,args,options){
+  if(command!=='bash')return original(command,args,options);
+  const phase=args[2]==='tools/build'?'build':'test',startedAt=Date.now();
+  if(phase==='test'){
+    const env=options.env,p=env.FE003_BAU_BELEG;
+    if(p){
+      if(mode==='missing-proof')unlinkSync(p);
+      if(mode==='changed-proof')appendFileSync(p,' ');
+      if(mode==='partial-env')delete env.FE003_BAU_SHA256;
+      if(mode==='changed-surface')writeFileSync(join(process.cwd(),'apps/web/dist/assets/app.js'),'anders');
+      if(['wrong-proof-head','foreign-proof','unawaited-proof'].includes(mode)){
+        const proof=JSON.parse(readFileSync(p));
+        if(mode==='wrong-proof-head')proof.stand.commit='d'.repeat(40);
+        if(mode==='foreign-proof')proof.stand.wurzel='/fremder/checkout';
+        if(mode==='unawaited-proof')proof.bau.actualWaitCompleted=false;
+        const text=JSON.stringify(proof);writeFileSync(p,text);
+        env.FE003_BAU_SHA256=createHash('sha256').update(text).digest('hex');
+      }
+    }
+  }
+  // Nur die echte Wartefrist des kontrollierten Timeout-Kindes wird fuer die Gegenprobe gekuerzt.
+  const actual=mode==='build-timeout'&&phase==='build'?{...options,timeout:50}:options;
+  const run=original(command,args,actual);
+  appendFileSync(join(process.cwd(),'calls.jsonl'),JSON.stringify({phase,args,requestedTimeout:options.timeout,startedAt,endedAt:Date.now(),pid:run.pid,exit:run.status,signal:run.signal,error:run.error?.code??null})+'\n');
+  return run;
+};
+syncBuiltinESMExports();
+`,
+    );
+    const env = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      KLARWERK_SKIP_KEYCHAIN: "1",
+      EXTERNAL_SEARCH: "off",
+      NODE_ENV: "test",
+      KLARWERK_DEV_PERSIST: "0",
+    };
+    function git(...args: string[]) {
+      const run = spawnSync("git", args, { cwd: work, env, encoding: "utf8", timeout: 20000 });
+      expect(run.status, run.stderr).toBe(0);
+      return run.stdout.trim();
+    }
+    git("init", "-q");
+    git("add", ".");
+    const commit = (message: string) =>
+      git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@klarwerk.test",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-qm",
+        message,
+      );
+    commit("kontrollierte CLI");
+    const base = git("rev-parse", "HEAD");
+    for (const file of files) {
+      mkdirSync(join(work, file, ".."), { recursive: true });
+      writeFileSync(join(work, file), "// nur eine kontrollierte Auswahlmarke\n");
+    }
+    git("add", ".");
+    commit("ausgewaehlte Dateien");
+    return { work, base };
+  }
+
+  const phaseCli = String.raw`
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {readFileSync,existsSync} from 'node:fs';
+import {join} from 'node:path';
+const work=process.argv[2],base=process.argv[3],out=join(work,'out');
+const cli=spawnSync(process.execPath,['--import',join(work,'hook.mjs'),join(work,'tools/pg-auswahl.mjs'),base,out],{cwd:work,env:{...process.env,KLARWERK_PG_PFLICHT:'1'},encoding:'utf8',timeout:20000});
+assert.equal(cli.error,undefined);assert.equal(cli.signal,null);
+const result=JSON.parse(cli.stdout),saved=JSON.parse(readFileSync(join(out,'pg-auswahl.json')));
+assert.deepEqual(saved,result);
+const lines=(name)=>existsSync(join(work,name))?readFileSync(join(work,name),'utf8').trim().split('\n').map(JSON.parse):[];
+const events=lines('events.jsonl'),calls=lines('calls.jsonl');
+for(const call of calls){assert.equal(call.requestedTimeout,240000);assert(call.endedAt>=call.startedAt);assert(call.pid>0);assert.deepEqual(call.args.slice(0,2),['tools/browserdeckel.sh','smoke']);}
+`;
+
+  it("baut einmal fuer zwei FE003-Dateien und wartet jede eigene 240s-Phase ab", () => {
+    const files = [browserFile, previewFile, laterFile];
+    const { work, base } = phaseFixture("fe003-phasen-gruen", files);
+    const run = node(
+      `${phaseCli}
+assert.equal(cli.status,0,cli.stderr);assert.equal(result.success,true,JSON.stringify(result));
+assert.deepEqual(calls.map(c=>c.phase),['build','test','test','test']);
+assert.equal(new Set(calls.map(c=>c.pid)).size,4);
+for(let i=1;i<calls.length;i++)assert(calls[i-1].endedAt<=calls[i].startedAt);
+assert.deepEqual(events.filter(e=>e.phase==='build').map(e=>e.event),['start','end']);
+assert.equal(result.runs.length,3);assert(result.runs.every(r=>r.success&&r.actualWaitCompleted));
+const prep=result.preparation;assert(prep.success&&prep.actualWaitCompleted&&prep.exit===0);
+assert.equal(prep.pid,calls[0].pid);assert.equal(prep.capMs,240000);
+assert.deepEqual(JSON.parse(readFileSync(join(out,'fe003-bau/run.json'))),prep);
+assert(prep.proofSha256);assert(prep.logSha256);assert(existsSync(prep.proofPath));
+for(const part of result.runs.slice(0,2))assert(readFileSync(part.logPath,'utf8').includes('build-beleg-bestaetigt'));
+assert(Date.parse(prep.endedAt)<=Date.parse(result.runs[0].startedAt));
+`,
+      pgUrl,
+      [work, base],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+
+  it("startet ohne ausgewaehlte FE003-Datei keine Bauvorbereitung", () => {
+    const { work, base } = phaseFixture("fe003-nicht-ausgewaehlt", [laterFile]);
+    const run = node(
+      `${phaseCli}
+assert.equal(cli.status,0,cli.stderr);assert.equal(result.success,true);
+assert.equal(result.preparation,undefined);assert.deepEqual(calls.map(c=>c.phase),['test']);
+assert(!events.some(e=>e.phase==='build'));assert(!existsSync(join(out,'fe003-bau')));
+`,
+      pgUrl,
+      [work, base],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+
+  it("eigenstaendiger Bau behaelt den Fassungsinput ohne freie Providerumgebung", () => {
+    const { work, base } = phaseFixture("fe003-eigenstaendig", [browserFile], "fallback-manifest");
+    const run = node(
+      String.raw`
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+const work=process.argv[2];
+const cli=spawnSync(process.execPath,['--input-type=module','-e',"const m=await import('./tests/fe003-tutorial-fragen/kandidat.ts');m.baueKandidat();"],{cwd:work,env:{...process.env,KLARWERK_FASSUNG_MANIFEST:join(work,'fassung-beleg.json'),UNGEWOLLTER_PROVIDER_MARKER:'nicht-weiterreichen'},encoding:'utf8',timeout:20000});
+assert.equal(cli.error,undefined);assert.equal(cli.signal,null);assert.equal(cli.status,0,cli.stderr);
+assert(cli.stderr.includes('build-start'));assert(cli.stderr.includes('build-ende'));
+assert(!cli.stderr.includes('build-beleg-bestaetigt'));
+assert.deepEqual(readFileSync(join(work,'events.jsonl'),'utf8').trim().split('\n').map(JSON.parse).map(e=>e.event),['start','end']);
+`,
+      pgUrl,
+      [work, base],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+
+  it.each(["build-red", "build-timeout", "missing-index", "dirty", "wrong-head"])(
+    "Bauvorbereitung %s macht rot und startet keinen Testprozess",
+    (mode) => {
+      const { work, base } = phaseFixture(`fe003-${mode}`, [browserFile, laterFile], mode);
+      const run = node(
+        `${phaseCli}
+assert.equal(cli.status,1,cli.stderr);assert.equal(result.success,false);assert(result.error);
+assert.equal(result.runs.length,0);assert.equal(result.preparation.success,false);
+assert.equal(result.preparation.actualWaitCompleted,true);assert.equal(calls.length,1);
+assert.equal(calls[0].phase,'build');assert(!events.some(e=>e.phase==='test'));
+assert(!existsSync(join(out,'pg.vitest.json')));
+if(${JSON.stringify(mode)}==='build-timeout')assert.equal(calls[0].error,'ETIMEDOUT');
+if(${JSON.stringify(mode)}==='build-red')assert.equal(calls[0].exit,7);
+`,
+        pgUrl,
+        [work, base],
+      );
+      expect(run.status, run.stderr).toBe(0);
+    },
+  );
+
+  it.each([
+    "missing-proof",
+    "changed-proof",
+    "partial-env",
+    "changed-surface",
+    "wrong-proof-head",
+    "foreign-proof",
+    "unawaited-proof",
+    "no-consumer",
+  ])("weist %s trotz erfolgreichem Bau ab und stoppt die Folgedatei", (mode) => {
+    const { work, base } = phaseFixture(`fe003-${mode}`, [browserFile, laterFile], mode);
+    const run = node(
+      `${phaseCli}
+assert.equal(cli.status,1,cli.stderr);assert.equal(result.success,false);assert(result.error);
+assert.equal(result.preparation.success,true);assert.equal(result.preparation.exit,0);
+assert.equal(result.runs.length,1);assert.equal(result.runs[0].success,false);
+assert.deepEqual(calls.map(c=>c.phase),['build','test']);
+assert(!events.some(e=>e.file===${JSON.stringify(laterFile)}));assert(!existsSync(join(out,'pg.vitest.json')));
+`,
+      pgUrl,
+      [work, base],
+    );
+    expect(run.status, run.stderr).toBe(0);
+  });
+
+  it("fachliches Rot laeuft nach belegtem Bau weiter; fehlendes Raw bleibt fatal", () => {
+    for (const mode of ["fachlich-rot", "browser-fatal"]) {
+      const { work, base } = phaseFixture(`fe003-${mode}`, [browserFile, laterFile], mode);
+      const run = node(
+        `${phaseCli}
+assert.equal(cli.status,1,cli.stderr);assert.equal(result.success,false);
+assert.equal(result.preparation.success,true);
+if(${JSON.stringify(mode)}==='fachlich-rot'){
+  assert.equal(result.runs.length,2);assert.deepEqual(result.runs.map(r=>r.exit),[1,0]);
+  assert.equal(JSON.parse(readFileSync(join(out,'pg.vitest.json'))).numFailedTests,1);
+}else{
+  assert.equal(result.runs.length,1);assert(!existsSync(join(out,'pg.vitest.json')));
+  assert(!events.some(e=>e.file===${JSON.stringify(laterFile)}));
+}
+`,
+        pgUrl,
+        [work, base],
+      );
+      expect(run.status, run.stderr).toBe(0);
+    }
   });
 });

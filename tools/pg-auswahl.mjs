@@ -2,10 +2,25 @@
 // Nur der bestehende CI-Integrationsweg führt diese Auswahl aus; lokal nur Quellenmetadaten.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertTests, environment, git, hash, integrationSelection } from "./release.mjs";
+
+const kandidatPfad = join(
+  dirname(realpathSync(fileURLToPath(import.meta.url))),
+  "../tests/fe003-tutorial-fragen/kandidat.ts",
+);
+const { FE003_DATEIEN, oberflaechenBindung, pruefeBauvorbereitung, saubererBaustand } =
+  await import(pathToFileURL(kandidatPfad).href);
 
 export function pgSelection(paths) {
   return integrationSelection(paths);
@@ -85,6 +100,81 @@ function gesamtbericht(reports) {
   return combined;
 }
 
+function bereiteFe003Vor(root, base, files, output, logPath, commit, tree) {
+  const ordner = join(output, "fe003-bau");
+  mkdirSync(ordner);
+  const part = {
+    command: ["tools/build"],
+    capMs: 240000,
+    startedAt: new Date().toISOString(),
+    actualWaitCompleted: false,
+    success: false,
+    logPath: join(ordner, "build.log"),
+    proofPath: join(ordner, "beleg.json"),
+  };
+  try {
+    const stand = saubererBaustand(root);
+    assert.equal(stand.commit, commit);
+    assert.equal(stand.tree, tree);
+    const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...part.command], {
+      cwd: root,
+      env: environment(),
+      encoding: "utf8",
+      timeout: 240000,
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    Object.assign(part, {
+      pid: run.pid,
+      exit: run.status,
+      signal: run.signal,
+      processError: run.error ? { name: run.error.name, message: run.error.message } : null,
+      actualWaitCompleted: true,
+      endedAt: new Date().toISOString(),
+    });
+    const log = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+    writeFileSync(part.logPath, log, { flag: "wx" });
+    part.logSha256 = hash(log);
+    appendFileSync(
+      logPath,
+      `\n=== FE003 Kandidatenbau ===\n${log}\n=== build exit=${run.status} ===\n`,
+    );
+    if (run.error) throw run.error;
+    assert.equal(run.signal, null);
+    assert.equal(run.status, 0);
+    assert.deepEqual(saubererBaustand(root), stand);
+    const beleg = {
+      version: 1,
+      stand,
+      auswahl: { id: randomUUID(), base: git(root, "rev-parse", base), files },
+      bau: {
+        command: part.command,
+        capMs: part.capMs,
+        pid: part.pid,
+        exit: part.exit,
+        signal: part.signal,
+        processError: part.processError,
+        actualWaitCompleted: part.actualWaitCompleted,
+        startedAt: part.startedAt,
+        endedAt: part.endedAt,
+        logPath: part.logPath,
+        logSha256: part.logSha256,
+      },
+      oberflaeche: oberflaechenBindung(root),
+    };
+    const roh = `${JSON.stringify(beleg, null, 2)}\n`;
+    writeFileSync(part.proofPath, roh, { flag: "wx" });
+    part.proofSha256 = hash(roh);
+    part.selectionId = beleg.auswahl.id;
+    part.success = true;
+  } catch (error) {
+    part.error = error.message;
+  } finally {
+    part.finishedAt = new Date().toISOString();
+    writeFileSync(join(ordner, "run.json"), `${JSON.stringify(part, null, 2)}\n`, { flag: "wx" });
+  }
+  return part;
+}
+
 export function runPgSelection(root, base, output) {
   assert.equal(
     process.env.KLARWERK_PG_PFLICHT,
@@ -123,6 +213,18 @@ export function runPgSelection(root, base, output) {
       logBegonnen = true;
       const reports = [];
       for (const [index, file] of files.entries()) {
+        let bauEnv = {};
+        if (FE003_DATEIEN.includes(file) && existsSync(join(root, file))) {
+          result.preparation ??= bereiteFe003Vor(root, base, files, output, logPath, commit, tree);
+          assert(result.preparation.success, result.preparation.error);
+          bauEnv = {
+            FE003_BAU_BELEG: result.preparation.proofPath,
+            FE003_BAU_SHA256: result.preparation.proofSha256,
+            FE003_BAU_AUSWAHL: result.preparation.selectionId,
+            FE003_BAU_DATEI: file,
+          };
+          pruefeBauvorbereitung(root, bauEnv);
+        }
         const ordner = join(teile, String(index + 1).padStart(4, "0"));
         mkdirSync(ordner);
         const einzelRaw = join(ordner, "pg.vitest.json");
@@ -159,7 +261,7 @@ export function runPgSelection(root, base, output) {
         try {
           const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
             cwd: root,
-            env: { ...environment(), KLARWERK_PG_PFLICHT: "1" },
+            env: { ...environment(), KLARWERK_PG_PFLICHT: "1", ...bauEnv },
             encoding: "utf8",
             timeout: 240000,
             maxBuffer: 32 * 1024 * 1024,
@@ -190,6 +292,14 @@ export function runPgSelection(root, base, output) {
           if (run.error) throw run.error;
           assert.equal(run.signal, null);
           assert(run.status === 0 || run.status === 1);
+          if (bauEnv.FE003_BAU_BELEG) {
+            pruefeBauvorbereitung(root, bauEnv);
+            assert(
+              log.includes('"phase":"build-beleg-bestaetigt"'),
+              "FE003-Baubeleg nicht benutzt",
+            );
+            assert(!log.includes('"phase":"build-beleg-abgelehnt"'), "FE003-Baubeleg abgelehnt");
+          }
           const raw = readFileSync(einzelRaw);
           part.rawSha256 = hash(raw);
           const report = JSON.parse(raw);

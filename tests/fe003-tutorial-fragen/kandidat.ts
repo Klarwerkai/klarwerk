@@ -16,6 +16,10 @@
 //      Er wird genauso hart geprüft; ist er nicht erreichbar, ist der Lauf rot.
 //   3. Sonst (z. B. `npm run test:integration`) baut und startet jede Datei ihren eigenen.
 //
+// Im seriellen CI-Auswahlweg liegt tools/build in einer eigenen 240s-Phase. Der Auswahlbeleg
+// bindet den abgewarteten Bau an sauberen HEAD/Tree und alle erzeugten Web-Dateien; vor der
+// Wiederverwendung wird dieselbe Bindung erneut geprueft. Ohne Beleg bleibt der eigene Bau bestehen.
+//
 // ZUORDNUNG: `/health` muss den erwarteten Commit (`git rev-parse HEAD`, überschreibbar mit
 // `FE003_ERWARTETER_COMMIT` — nur für die Gegenprobe) und die Version aus `package.json` melden. Der
 // selbst gestartete Server bekommt seinen Commit wie im Container über `KLARWERK_BUILD_COMMIT`
@@ -25,14 +29,167 @@
 // KI AUS: der Server startet mit leerer Umgebung plus einer kurzen Liste harmloser Variablen, wie
 // `tools/fe003-vorschau` — Zugangsdaten eines Anbieters aus der Aufrufer-Shell erreichen ihn nicht,
 // kein lokales Modell, kein externer Suchdienst, Schlüsselbund zu. In-Memory, keine Datenbank.
+import assert from "node:assert/strict";
 import { type ChildProcess, execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, writeSync } from "node:fs";
 import { createServer } from "node:net";
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 export const WURZEL = resolve(import.meta.dirname, "../..");
 export const MARKE = "FE-003 Vorschauweg";
 export const DIST_INDEX = join(WURZEL, "apps/web/dist/index.html");
+
+/** Nur diese vorhandenen Kandidatdateien erhalten im seriellen CI-Weg eine Bauvorbereitung. */
+export const FE003_DATEIEN = [
+  "tests/fe003-tutorial-fragen/browser-breiten.integration.test.ts",
+  "tests/fe003-tutorial-fragen/vorschau-weg.integration.test.ts",
+];
+
+function kindUmgebung(): NodeJS.ProcessEnv {
+  const namen = [
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+  ];
+  return {
+    ...Object.fromEntries(namen.filter((n) => process.env[n]).map((n) => [n, process.env[n]])),
+    KLARWERK_SKIP_KEYCHAIN: "1",
+    EXTERNAL_SEARCH: "off",
+    NODE_ENV: "test",
+    KLARWERK_DEV_PERSIST: "0",
+  };
+}
+
+function gitWert(wurzel: string, ...args: string[]): string {
+  return execFileSync("git", ["--no-optional-locks", ...args], {
+    cwd: wurzel,
+    env: kindUmgebung(),
+    encoding: "utf8",
+    timeout: 30_000,
+  }).trim();
+}
+
+export function saubererBaustand(wurzel = WURZEL) {
+  assert.equal(gitWert(wurzel, "status", "--porcelain=v1", "--untracked-files=all"), "");
+  const commit = gitWert(wurzel, "rev-parse", "HEAD");
+  const tree = gitWert(wurzel, "rev-parse", "HEAD^{tree}");
+  assert.match(commit, /^[a-f0-9]{40}$/);
+  assert.match(tree, /^[a-f0-9]{40}$/);
+  return { wurzel: realpathSync(wurzel), commit, tree };
+}
+
+export function oberflaechenBindung(wurzel = WURZEL) {
+  const dist = join(wurzel, "apps/web/dist");
+  const dateien: { pfad: string; bytes: number; sha256: string }[] = [];
+  function lesen(pfad: string): void {
+    const stat = lstatSync(pfad);
+    assert(!stat.isSymbolicLink(), "keine fremden Oberflaechendateien ueber Symlinks");
+    if (stat.isDirectory()) {
+      for (const name of readdirSync(pfad).sort()) lesen(join(pfad, name));
+    } else {
+      assert(stat.isFile());
+      const roh = readFileSync(pfad);
+      dateien.push({
+        pfad: relative(dist, pfad),
+        bytes: roh.length,
+        sha256: createHash("sha256").update(roh).digest("hex"),
+      });
+    }
+  }
+  lesen(dist);
+  const html = readFileSync(join(dist, "index.html"), "utf8");
+  assert(html.includes('<div id="root"'));
+  const skripte = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)];
+  assert(skripte.length > 0, "keine gebaute Oberflaeche");
+  for (const skript of skripte) {
+    const src = skript[1];
+    assert(src?.startsWith("/"));
+    assert(dateien.some((datei) => datei.pfad === src.slice(1) && datei.bytes > 0));
+  }
+  return dateien;
+}
+
+interface Bauvorbereitung {
+  version: number;
+  stand: ReturnType<typeof saubererBaustand>;
+  auswahl: { id: string; base: string; files: string[] };
+  bau: {
+    command: string[];
+    capMs: number;
+    pid: number;
+    exit: number;
+    signal: null;
+    processError: null;
+    actualWaitCompleted: boolean;
+    startedAt: string;
+    endedAt: string;
+    logPath: string;
+    logSha256: string;
+  };
+  oberflaeche: ReturnType<typeof oberflaechenBindung>;
+}
+
+/** Ein Auswahlbeleg ist nur mit Quellstand, echtem Bauabschluss UND unveraendertem Dist nutzbar. */
+export function pruefeBauvorbereitung(wurzel = WURZEL, env: NodeJS.ProcessEnv = process.env): void {
+  const {
+    FE003_BAU_BELEG: pfad,
+    FE003_BAU_SHA256: sha,
+    FE003_BAU_AUSWAHL: id,
+    FE003_BAU_DATEI: datei,
+  } = env;
+  assert(pfad && sha && id && datei, "unvollstaendiger FE003-Baubeleg");
+  assert.match(sha, /^[a-f0-9]{64}$/);
+  assert(lstatSync(pfad).isFile() && !lstatSync(pfad).isSymbolicLink());
+  const roh = readFileSync(pfad);
+  assert.equal(createHash("sha256").update(roh).digest("hex"), sha, "veraenderter FE003-Baubeleg");
+  const beleg = JSON.parse(roh.toString()) as Bauvorbereitung;
+  assert.equal(beleg.version, 1);
+  assert.deepEqual(beleg.stand, saubererBaustand(wurzel));
+  assert.equal(beleg.auswahl.id, id);
+  assert.match(id, /^[a-f0-9-]{36}$/);
+  assert.match(beleg.auswahl.base, /^[a-f0-9]{40}$/);
+  const files = gitWert(
+    wurzel,
+    "diff",
+    "--name-only",
+    "--diff-filter=ACMR",
+    beleg.auswahl.base,
+    beleg.stand.commit,
+  )
+    .split("\n")
+    .filter((file) => file.endsWith(".integration.test.ts"))
+    .sort();
+  assert.deepEqual(beleg.auswahl.files, files);
+  assert(FE003_DATEIEN.includes(datei) && files.includes(datei) && existsSync(join(wurzel, datei)));
+  assert.deepEqual(beleg.bau.command, ["tools/build"]);
+  assert.equal(beleg.bau.capMs, 240_000);
+  assert.equal(beleg.bau.actualWaitCompleted, true);
+  assert.equal(beleg.bau.exit, 0);
+  assert.equal(beleg.bau.signal, null);
+  assert.equal(beleg.bau.processError, null);
+  assert(Number.isSafeInteger(beleg.bau.pid) && beleg.bau.pid > 0);
+  assert(Number.isFinite(Date.parse(beleg.bau.startedAt)));
+  assert(Date.parse(beleg.bau.endedAt) >= Date.parse(beleg.bau.startedAt));
+  assert.equal(beleg.bau.logPath, join(dirname(pfad), "build.log"));
+  assert.equal(
+    createHash("sha256").update(readFileSync(beleg.bau.logPath)).digest("hex"),
+    beleg.bau.logSha256,
+  );
+  assert.deepEqual(beleg.oberflaeche, oberflaechenBindung(wurzel));
+}
+
+function hatBauvorbereitung(): boolean {
+  return ["FE003_BAU_BELEG", "FE003_BAU_SHA256", "FE003_BAU_AUSWAHL", "FE003_BAU_DATEI"].some(
+    (name) => process.env[name] !== undefined,
+  );
+}
 
 const phasenBeginn = process.hrtime.bigint();
 
@@ -68,7 +225,7 @@ export interface Stand {
 }
 
 export function aktuellerCommit(): string {
-  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: WURZEL, encoding: "utf8" }).trim();
+  return gitWert(WURZEL, "rev-parse", "HEAD");
 }
 
 export function paketVersion(): string {
@@ -194,11 +351,26 @@ export interface Kandidat {
 
 /** Baut den Kandidaten mit `tools/build` — derselbe Befehl wie im Tor. */
 export function baueKandidat(): void {
+  if (hatBauvorbereitung()) {
+    try {
+      pruefeBauvorbereitung();
+      meldePhase("build-beleg-bestaetigt");
+      return;
+    } catch (error) {
+      meldePhase("build-beleg-abgelehnt");
+      throw error;
+    }
+  }
   meldePhase("build-start");
+  const manifest = process.env.KLARWERK_FASSUNG_MANIFEST;
   const lauf = spawnSync(join(WURZEL, "tools/build"), [], {
     cwd: WURZEL,
     stdio: "inherit",
-    env: process.env,
+    env: {
+      ...kindUmgebung(),
+      ...(manifest === undefined ? {} : { KLARWERK_FASSUNG_MANIFEST: manifest }),
+    },
+    timeout: 240_000,
   });
   meldePhase("build-ende", { pid: lauf.pid, exit: lauf.status, signal: lauf.signal });
   if (lauf.status !== 0) {
@@ -212,6 +384,7 @@ export function baueKandidat(): void {
 function arbeitsbaumSauber(): void {
   const offen = execFileSync("git", ["status", "--porcelain"], {
     cwd: WURZEL,
+    env: kindUmgebung(),
     encoding: "utf8",
   }).trim();
   if (offen !== "") {
@@ -247,6 +420,8 @@ export async function starteKandidat(fristMs = 120_000): Promise<Kandidat> {
         KLARWERK_LOCAL_LLM_URL: "",
         KLARWERK_LOCAL_LLM_MODEL: "",
         EXTERNAL_SEARCH: "off",
+        NODE_ENV: "test",
+        KLARWERK_DEV_PERSIST: "0",
       },
     },
   );
@@ -324,5 +499,8 @@ export function genannterKandidat(url: string): Kandidat {
  */
 export async function kandidatBereitstellen(gemeinsam: string | undefined): Promise<Kandidat> {
   const genannt = gemeinsam ?? (process.env.FE003_KANDIDAT_URL || undefined);
+  if (genannt && hatBauvorbereitung()) {
+    throw new Error(`${MARKE}: ein Baubeleg erlaubt keinen fremden laufenden Kandidaten.`);
+  }
   return genannt ? genannterKandidat(genannt) : await starteKandidat();
 }
