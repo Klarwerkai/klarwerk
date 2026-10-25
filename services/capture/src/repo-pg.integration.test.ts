@@ -87,7 +87,20 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  await container?.stop();
+  // Die letzte Gegenmutation hinterlässt Duplikate ohne Index. Den gemeinsamen Testbestand
+  // stellen wir vor dem nächsten Verbraucher mit demselben Schemahelper wieder her.
+  try {
+    if (available && verbindung && !container) {
+      const pool = new Pool({ connectionString: verbindung });
+      try {
+        await frischesSchema(pool);
+      } finally {
+        await pool.end();
+      }
+    }
+  } finally {
+    await container?.stop();
+  }
 });
 
 /** Frischer Bestand je Fall — die Stufe ist idempotent, das Aufräumen ist es auch. */
