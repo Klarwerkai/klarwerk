@@ -104,6 +104,7 @@ import {
   feldPfad,
   feldbefund,
   flaecheBereitstellen,
+  fn,
   formularOffen,
   fremdSchreiben,
   instanzStarten,
@@ -1089,11 +1090,14 @@ describe("JOB 4334 · der Einordnungskonflikt gegen echtes PostgreSQL im echten 
         "P5: das erhaltene Kategoriefeld fehlt oder ist mehrfach beschriftet",
       ).toBe(1);
       expect(
-        await lage.seite.evaluate<boolean>((selektor: unknown) => {
-          if (typeof selektor !== "string") return false;
-          const feld = document.querySelector(selektor);
-          return feld instanceof HTMLInputElement && feld.matches(":disabled");
-        }, kategorieFeld.selektor),
+        await lage.seite.evaluate<boolean>(
+          fn(`(selektor) => {
+            if (typeof selektor !== "string") return false;
+            const feld = document.querySelector(selektor);
+            return feld instanceof HTMLInputElement && feld.matches(":disabled");
+          }`),
+          kategorieFeld.selektor,
+        ),
         "P5: das erhaltene Kategorie-Input ist nicht effektiv gesperrt",
       ).toBe(true);
 
