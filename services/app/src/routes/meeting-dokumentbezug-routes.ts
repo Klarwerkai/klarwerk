@@ -90,6 +90,10 @@ function fehlerAntwort(reply: FastifyReply, fehler: unknown): void {
     return;
   }
   if (fehler instanceof FoliensatzFehler) {
+    if (fehler.status === 413) {
+      reply.code(413).send({ error: "PAYLOAD_TOO_LARGE", message: fehler.message });
+      return;
+    }
     ungueltig(reply, fehler.message);
     return;
   }

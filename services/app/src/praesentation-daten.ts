@@ -34,7 +34,10 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { KnowledgeObject } from "../../knowledge-object";
+import { FOLIEN_ABGLEICH_GRENZEN, pruefeAbgleichKoerper } from "./folien-abgleich-grenzen";
 import { BERECHNUNGSARTEN, rechne } from "./office-nachbearbeitung";
+import { MAX_FOLIEN, MAX_FOLIENTEIL_ZEICHEN, type XmlTag, tastAb } from "./praesentation-xml";
+export { MAX_FOLIEN, MAX_FOLIENTEIL_ZEICHEN } from "./praesentation-xml";
 
 export interface BildtextUebernahme {
   readonly rohText: string;
@@ -53,7 +56,7 @@ export interface BildtextUebernahme {
 /** `kein_zugriff` wird an der Route zu 404 (keine Existenzauskunft), `ungueltig` zu 400. */
 export class DatenFehler extends Error {
   constructor(
-    readonly art: "kein_zugriff" | "ungueltig",
+    readonly art: "kein_zugriff" | "ungueltig" | "zu_gross",
     message: string,
   ) {
     super(message);
@@ -148,114 +151,11 @@ function aufloesen(verzeichnis: string, ziel: string): string {
 // Titel aus der ersten Form `<p:sp>` mit Titelplatzhalter (sonst der erste Absatz der Folie),
 // Ausblendung über `show="0|false"`. Belegt in pp02-hostanschluss.test.ts (H8, Vergleich mit W06).
 
-/** Höchstzahl der `p:sldId`-Einträge; mehrfach genannte Folienteile werden nur einmal gelesen. */
-export const MAX_FOLIEN = 2000;
-/** Höchstgröße EINES Folienteils (Zeichen) — ein echter Folienteil liegt weit darunter. */
-export const MAX_FOLIENTEIL_ZEICHEN = 16 * 1024 * 1024;
-
-interface XmlTag {
-  readonly name: string;
-  readonly art: "auf" | "zu" | "leer";
-  /** Der Tag von „<“ bis „>“ — für `attribut`. */
-  readonly roh: string;
-}
-
 /** Hat der Tag Attribute (Leerraum nach dem Namen)? So verlangten es die früheren Muster `<x\s…>`. */
 function mitAttributen(t: XmlTag): boolean {
   return (
     t.art !== "zu" && t.roh.length > t.name.length + 1 && t.roh.charCodeAt(t.name.length + 1) <= 32
   );
-}
-
-/**
- * Geht einen XML-Teil genau einmal durch: `tag` je Start-, End- oder leerem Tag, `text` je Rohtext
- * dazwischen (als Bereich, CDATA als Text). Linear in der Länge; endet am ersten offenen Konstrukt.
- */
-function tastAb(
-  xml: string,
-  tag: (t: XmlTag) => void,
-  text: (von: number, bis: number) => void = () => {},
-): void {
-  const n = xml.length;
-  let pos = 0;
-  while (pos < n) {
-    const lt = xml.indexOf("<", pos);
-    if (lt < 0) {
-      text(pos, n);
-      return;
-    }
-    if (lt > pos) {
-      text(pos, lt);
-    }
-    if (xml.startsWith("<!--", lt)) {
-      const ende = xml.indexOf("-->", lt + 4);
-      if (ende < 0) {
-        return;
-      }
-      pos = ende + 3;
-      continue;
-    }
-    if (xml.startsWith("<![CDATA[", lt)) {
-      const ende = xml.indexOf("]]>", lt + 9);
-      if (ende < 0) {
-        return;
-      }
-      text(lt + 9, ende);
-      pos = ende + 3;
-      continue;
-    }
-    if (xml.startsWith("<?", lt)) {
-      const ende = xml.indexOf("?>", lt + 2);
-      if (ende < 0) {
-        return;
-      }
-      pos = ende + 2;
-      continue;
-    }
-    if (xml.startsWith("<!", lt)) {
-      return; // DOCTYPE u. Ä. — in OOXML nicht vorgesehen; nicht gedeutet, hier endet das Lesen.
-    }
-    let i = lt + 1;
-    const zu = xml.charCodeAt(i) === 47; // „/“
-    if (zu) {
-      i += 1;
-    }
-    const nameStart = i;
-    while (i < n) {
-      const c = xml.charCodeAt(i);
-      if (c === 62 || c === 47 || c <= 32) {
-        break;
-      }
-      i += 1;
-    }
-    const name = xml.slice(nameStart, i);
-    let ende = -1;
-    while (i < n) {
-      const c = xml.charCodeAt(i);
-      if (c === 62) {
-        ende = i;
-        break;
-      }
-      if (c === 34 || c === 39) {
-        const q = xml.indexOf(c === 34 ? '"' : "'", i + 1);
-        if (q < 0) {
-          return;
-        }
-        i = q + 1;
-        continue;
-      }
-      i += 1;
-    }
-    if (ende < 0) {
-      return;
-    }
-    tag({
-      name,
-      art: zu ? "zu" : xml.charCodeAt(ende - 1) === 47 ? "leer" : "auf",
-      roh: xml.slice(lt, ende + 1),
-    });
-    pos = ende + 1;
-  }
 }
 
 /** `Id` → `Target` der Beziehungen eines Teils (spätere gleiche `Id` gewinnt, wie zuvor die Map). */
@@ -443,10 +343,14 @@ function folieAbtasten(xml: string): FolieRoh {
  *
  * Grenzen (B1): höchstens `MAX_FOLIEN` Einträge in der Folienliste, je Folienteil höchstens
  * `MAX_FOLIENTEIL_ZEICHEN`; ein mehrfach genannter Folienteil wird nur EINMAL gelesen und geliefert,
- * ein mehrfach verwendetes Bild nur einmal entpackt. Die Entpackgrenze des ganzen Archivs setzt der
- * Aufrufer, der fremde Bytes annimmt (Route `folien-abgleich`).
+ * ein mehrfach verwendetes Bild nur einmal entpackt. Die Gesamt- und Verhältnisgrenze des Archivs
+ * wird vor dem Lesen als String auch hier geprüft, unabhängig vom Aufrufer.
  */
 export async function leseFolienDaten(bytes: Buffer): Promise<FoliensatzDaten> {
+  const befund = await pruefeAbgleichKoerper(bytes, FOLIEN_ABGLEICH_GRENZEN);
+  if (befund) {
+    throw new DatenFehler(befund.status === 413 ? "zu_gross" : "ungueltig", befund.message);
+  }
   const zip = await JSZip.loadAsync(bytes);
   const praes = await zip.file("ppt/presentation.xml")?.async("string");
   const praesRels = await zip.file("ppt/_rels/presentation.xml.rels")?.async("string");

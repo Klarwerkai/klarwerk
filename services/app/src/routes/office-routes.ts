@@ -722,11 +722,13 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
           }
           if (fehler instanceof DatenFehler) {
             return reply
-              .code(fehler.art === "kein_zugriff" ? 404 : 400)
+              .code(fehler.art === "kein_zugriff" ? 404 : fehler.art === "zu_gross" ? 413 : 400)
               .send({ error: "INVALID", message: fehler.message });
           }
           if (fehler instanceof NachbearbeitungsFehler)
-            return reply.code(400).send({ error: fehler.code, message: fehler.message });
+            return reply
+              .code(fehler.code === "PAYLOAD_TOO_LARGE" ? 413 : 400)
+              .send({ error: fehler.code, message: fehler.message });
           fassungsfehler(fehler, reply);
         }
       });
@@ -873,7 +875,9 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
           auftrag = leseAuftrag(request.body);
         } catch (fehler) {
           if (fehler instanceof NachbearbeitungsFehler) {
-            reply.code(400).send({ error: fehler.code, message: fehler.message });
+            reply
+              .code(fehler.code === "PAYLOAD_TOO_LARGE" ? 413 : 400)
+              .send({ error: fehler.code, message: fehler.message });
             return;
           }
           throw fehler;
@@ -930,7 +934,9 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
           if (eintrag.wirkungen.length === 0) {
             laeufe.delete(schluessel);
             if (fehler instanceof NachbearbeitungsFehler) {
-              reply.code(400).send({ error: fehler.code, message: fehler.message });
+              reply
+                .code(fehler.code === "PAYLOAD_TOO_LARGE" ? 413 : 400)
+                .send({ error: fehler.code, message: fehler.message });
               return;
             }
             throw fehler;

@@ -226,7 +226,10 @@ export function praesentationDatenRoutes(
         reply.code(404).send({ error: "NOT_FOUND", message: f.message });
         return;
       }
-      reply.code(400).send({ error: "INVALID", message: f.message });
+      reply.code(f.art === "zu_gross" ? 413 : 400).send({
+        error: f.art === "zu_gross" ? "PAYLOAD_TOO_LARGE" : "INVALID",
+        message: f.message,
+      });
       return;
     }
     throw f;
@@ -774,6 +777,10 @@ export function praesentationDatenRoutes(
           const geoeffnet = await leseFolienDaten(bytes).catch((f: unknown) =>
             f instanceof DatenFehler ? f : undefined,
           );
+          if (geoeffnet instanceof DatenFehler && geoeffnet.art === "zu_gross") {
+            reply.code(413).send({ error: "PAYLOAD_TOO_LARGE", message: geoeffnet.message });
+            return;
+          }
           if (!geoeffnet || geoeffnet instanceof DatenFehler) {
             reply.code(400).send({
               error: "KEINE_PRAESENTATION",

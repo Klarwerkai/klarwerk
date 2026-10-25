@@ -74,7 +74,11 @@ const folienXml = (baum: string) =>
   `<p:sld ${NS_P}><p:cSld><p:spTree>${baum}</p:spTree></p:cSld></p:sld>`;
 
 /** Eine selbst gebaute „Präsentation“ (wie die Sonden der Prüfung): Folienliste und Teile frei. */
-async function eigenesDeck(sldIds: string, folien: Record<string, string>): Promise<Buffer> {
+async function eigenesDeck(
+  sldIds: string,
+  folien: Record<string, string>,
+  compression: "DEFLATE" | "STORE" = "DEFLATE",
+): Promise<Buffer> {
   const z = new JSZip();
   z.file(
     "ppt/presentation.xml",
@@ -89,7 +93,7 @@ async function eigenesDeck(sldIds: string, folien: Record<string, string>): Prom
   }
   return z.generateAsync({
     type: "nodebuffer",
-    compression: "DEFLATE",
+    compression,
     compressionOptions: { level: 9 },
   });
 }
@@ -424,11 +428,19 @@ describe("PP-02 · Hostanschluss · Grenzen des Abgleichs (Prüfbefund B1)", () 
       datei: b64(offen),
     });
     expect([amVerhaeltnis.status, amVerhaeltnis.body.error]).toEqual([413, "PAYLOAD_TOO_LARGE"]);
-    // Der Leser selbst muss ihn auch ohne diese Grenze linear lesen: Verhältnis hier abgeschaltet.
+    // P4: Der Leser schützt nun auch seine eigene Grenze. Die Parser-Gegenprobe nutzt
+    // dieselben XML-Bytes unkomprimiert; keine Produktionsgrenze wird dafür abgeschaltet.
     const w = await baueWelt({ abgleichGrenzen: { verhaeltnisMax: 1_000_000 } });
     const s = await bestandAnlegen(w);
     const t0 = performance.now();
-    const ra = await rufe(w, "vera", "POST", abgleichPfad(s), { datei: b64(offen) });
+    const ra = await rufe(w, "vera", "POST", abgleichPfad(s), {
+      datei: b64(
+        await (await JSZip.loadAsync(offen)).generateAsync({
+          type: "nodebuffer",
+          compression: "STORE",
+        }),
+      ),
+    });
     const dauer = performance.now() - t0;
     expect(ra.status).toBe(200);
     expect(ra.body.geoeffnet.folien).toEqual([{ sldId: "256", position: 1, elemente: [] }]);
@@ -446,7 +458,9 @@ describe("PP-02 · Hostanschluss · Grenzen des Abgleichs (Prüfbefund B1)", () 
       url: abgleichPfad(s),
       headers: { "x-test-nutzer": "vera" },
       payload: {
-        datei: b64(await eigenesDeck(vierzig, { "slides/slide1.xml": folienXml(textform) })),
+        datei: b64(
+          await eigenesDeck(vierzig, { "slides/slide1.xml": folienXml(textform) }, "STORE"),
+        ),
       },
     });
     expect(rb.statusCode).toBe(200);
@@ -461,7 +475,7 @@ describe("PP-02 · Hostanschluss · Grenzen des Abgleichs (Prüfbefund B1)", () 
       (_, i) => `<p:sldId id="${256 + i}" r:id="rId2"/>`,
     ).join("");
     const rc = await rufe(w, "vera", "POST", abgleichPfad(s), {
-      datei: b64(await eigenesDeck(viele, { "slides/slide1.xml": folienXml("") })),
+      datei: b64(await eigenesDeck(viele, { "slides/slide1.xml": folienXml("") }, "STORE")),
     });
     expect([rc.status, rc.body.error]).toEqual([400, "KEINE_PRAESENTATION"]);
     expect(rc.body.message).toContain(`höchstens ${MAX_FOLIEN}`);

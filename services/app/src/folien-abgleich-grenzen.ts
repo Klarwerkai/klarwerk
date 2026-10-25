@@ -162,12 +162,18 @@ export async function pruefeAbgleichKoerper(
   if (anzahl > g.eintraegeMax) {
     return zuViele(anzahl);
   }
-  const expansion = await zaehleEchteExpansion(archiv, g.entpacktMax);
+  // Beide vorhandenen Grenzen gelten schon während des Entpackens, nicht erst an dessen Ende.
+  const verhaeltnisGrenze = bytes.length * g.verhaeltnisMax;
+  const entpackGrenze = Math.min(g.entpacktMax, verhaeltnisGrenze);
+  const expansion = await zaehleEchteExpansion(archiv, entpackGrenze);
   if (expansion.art === "ueber_grenze") {
     return {
       status: 413,
       error: "PAYLOAD_TOO_LARGE",
-      message: `Die geöffnete Präsentation ist entpackt zu groß für den Abgleich (mehr als ${alsMib(g.entpacktMax)}).`,
+      message:
+        verhaeltnisGrenze < g.entpacktMax
+          ? `Die geöffnete Präsentation ist entpackt zu groß für den Abgleich — mehr als das ${g.verhaeltnisMax}-fache der gepackten Größe.`
+          : `Die geöffnete Präsentation ist entpackt zu groß für den Abgleich (mehr als ${alsMib(g.entpacktMax)}).`,
     };
   }
   if (expansion.art === "strom_kaputt") {

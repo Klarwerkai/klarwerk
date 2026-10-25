@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
+import { FOLIEN_ABGLEICH_GRENZEN, pruefeAbgleichKoerper } from "./folien-abgleich-grenzen";
+import { MAX_FOLIEN, xmlAbschnitte } from "./praesentation-xml";
 
 // ================================================================================================
 // BPA-16 · GESPRÄCHSAUSSAGEN MIT FOLIEN UND DOKUMENTSTELLEN VERBINDEN.
@@ -74,7 +76,14 @@ export interface Foliensatz {
   folien: FolienAnker[];
 }
 
-export class FoliensatzFehler extends Error {}
+export class FoliensatzFehler extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 413 = 400,
+  ) {
+    super(message);
+  }
+}
 
 function sha256(daten: Uint8Array | string): string {
   return createHash("sha256").update(daten).digest("hex");
@@ -99,7 +108,7 @@ function texte(xml: string): string {
 }
 
 function formen(xml: string): string[] {
-  return [...xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)].map((m) => m[0]);
+  return xmlAbschnitte(xml, "p:sp", false).map((s) => xml.slice(s.von, s.bis));
 }
 
 function hatPlatzhalter(sp: string, typen: string[]): boolean {
@@ -240,6 +249,8 @@ export async function foliensatzLesen(
   bytes: Uint8Array,
   quelleId: string = dateiId,
 ): Promise<Foliensatz> {
+  const befund = await pruefeAbgleichKoerper(Buffer.from(bytes), FOLIEN_ABGLEICH_GRENZEN);
+  if (befund) throw new FoliensatzFehler(befund.message, befund.status);
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(bytes);
@@ -255,7 +266,12 @@ export async function foliensatzLesen(
   }
   const rels = beziehungen(praesRels);
   const folien: FolienAnker[] = [];
+  const gelesen = new Set<string>();
+  let genannt = 0;
   for (const m of praesentation.matchAll(/<p:sldId\s[^>]*\/?>/g)) {
+    if (++genannt > MAX_FOLIEN) {
+      throw new FoliensatzFehler(`Die Präsentation nennt mehr als ${MAX_FOLIEN} Folien.`, 413);
+    }
     const tag = m[0];
     const sldId = /\sid="(\d+)"/.exec(tag)?.[1];
     const rId = /\sr:id="([^"]*)"/.exec(tag)?.[1];
@@ -264,6 +280,8 @@ export async function foliensatzLesen(
       throw new FoliensatzFehler("Folie ohne auflösbare Kennung in ppt/presentation.xml.");
     }
     const pfad = teilPfad("ppt/presentation.xml", ziel.ziel);
+    if (gelesen.has(pfad)) continue;
+    gelesen.add(pfad);
     const xml = await lies(pfad);
     if (xml === null) {
       throw new FoliensatzFehler(`Folienteil fehlt: ${pfad}`);

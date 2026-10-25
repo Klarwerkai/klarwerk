@@ -36,16 +36,18 @@ import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { KnowledgeObject } from "../../knowledge-object";
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
+import { FOLIEN_ABGLEICH_GRENZEN, pruefeAbgleichKoerper } from "./folien-abgleich-grenzen";
 import { type AnhangFassung, type OfficeKoDienst, fehlerCode } from "./office-artikel";
+import { MAX_FOLIEN, xmlAbschnitte } from "./praesentation-xml";
 
 // ------------------------------------------------------------------------------------------------
 // FEHLER
 // ------------------------------------------------------------------------------------------------
 
 export class NachbearbeitungsFehler extends Error {
-  readonly code: "INVALID" | "KEINE_PRAESENTATION";
+  readonly code: "INVALID" | "KEINE_PRAESENTATION" | "PAYLOAD_TOO_LARGE";
 
-  constructor(code: "INVALID" | "KEINE_PRAESENTATION", message: string) {
+  constructor(code: "INVALID" | "KEINE_PRAESENTATION" | "PAYLOAD_TOO_LARGE", message: string) {
     super(message);
     this.code = code;
     this.name = "NachbearbeitungsFehler";
@@ -55,13 +57,6 @@ export class NachbearbeitungsFehler extends Error {
 // ------------------------------------------------------------------------------------------------
 // XML
 // ------------------------------------------------------------------------------------------------
-
-/** Ein Textlauf: `<a:t>` mit Inhalt. `<a:tab>`, `<a:tbl>` usw. trifft das Muster nicht. */
-const TEXTLAUF = /<a:t(\s[^>]*)?>([\s\S]*?)<\/a:t>/g;
-/** Ein Absatz `<a:p>…</a:p>`; `<a:pPr>` trifft das Muster nicht. */
-const ABSATZ = /<a:p(?:\s[^>]*)?>([\s\S]*?)<\/a:p>/g;
-/** Eine Form `<p:sp>…</p:sp>`; Formen schachteln keine Formen. */
-const FORM = /<p:sp>([\s\S]*?)<\/p:sp>/g;
 
 function xmlText(roh: string): string {
   return roh
@@ -79,12 +74,12 @@ function xmlEsc(text: string): string {
 }
 
 function laeufe(xml: string): string[] {
-  return [...xml.matchAll(TEXTLAUF)].map((t) => xmlText(t[2] ?? ""));
+  return xmlAbschnitte(xml, "a:t").map((t) => xmlText(xml.slice(t.inhaltVon, t.inhaltBis)));
 }
 
 function absaetze(xml: string): string[] {
-  return [...xml.matchAll(ABSATZ)]
-    .map((p) => laeufe(p[1] ?? "").join(""))
+  return xmlAbschnitte(xml, "a:p")
+    .map((p) => laeufe(xml.slice(p.inhaltVon, p.inhaltBis)).join(""))
     .filter((t) => t.trim().length > 0);
 }
 
@@ -149,8 +144,8 @@ async function teil(zip: JSZip, pfad: string): Promise<string | undefined> {
 }
 
 function folientitel(xml: string, texte: readonly string[]): string {
-  for (const form of xml.matchAll(FORM)) {
-    const inhalt = form[1] ?? "";
+  for (const form of xmlAbschnitte(xml, "p:sp", false)) {
+    const inhalt = xml.slice(form.inhaltVon, form.inhaltBis);
     if (/<p:ph\s[^>]*type="(title|ctrTitle)"/.test(inhalt)) {
       const titel = absaetze(inhalt).join(" ").trim();
       if (titel) {
@@ -162,6 +157,8 @@ function folientitel(xml: string, texte: readonly string[]): string {
 }
 
 export async function lesePraesentation(bytes: Buffer): Promise<Praesentation> {
+  const befund = await pruefeAbgleichKoerper(bytes, FOLIEN_ABGLEICH_GRENZEN);
+  if (befund) throw new NachbearbeitungsFehler(befund.error, befund.message);
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(bytes);
@@ -178,13 +175,23 @@ export async function lesePraesentation(bytes: Buffer): Promise<Praesentation> {
   }
   const ziele = new Map(beziehungen(praesRels).map((b) => [b.id, b.ziel] as const));
   const folien: Folie[] = [];
+  const gelesen = new Set<string>();
+  let genannt = 0;
   for (const eintrag of praes.matchAll(/<p:sldId\s[^>]*>/g)) {
+    if (++genannt > MAX_FOLIEN) {
+      throw new NachbearbeitungsFehler(
+        "PAYLOAD_TOO_LARGE",
+        `Die Präsentation nennt mehr als ${MAX_FOLIEN} Folien.`,
+      );
+    }
     const folieId = Number(attribut(eintrag[0], "id"));
     const ziel = ziele.get(attribut(eintrag[0], "r:id") ?? "");
     if (!Number.isInteger(folieId) || !ziel) {
       continue;
     }
     const pfad = aufloesen("ppt", ziel);
+    if (gelesen.has(pfad)) continue;
+    gelesen.add(pfad);
     const xml = (await teil(zip, pfad)) ?? "";
     const verzeichnis = pfad.slice(0, pfad.lastIndexOf("/"));
     const notiz = beziehungen((await teil(zip, relsPfad(pfad))) ?? "").find((b) =>
@@ -206,8 +213,8 @@ export async function lesePraesentation(bytes: Buffer): Promise<Praesentation> {
 
 /** Die Absätze im Textkörper der Notizseite (Platzhalter `body`). */
 export function notizAbsaetze(notizXml: string): string[] {
-  for (const form of notizXml.matchAll(FORM)) {
-    const inhalt = form[1] ?? "";
+  for (const form of xmlAbschnitte(notizXml, "p:sp", false)) {
+    const inhalt = notizXml.slice(form.inhaltVon, form.inhaltBis);
     if (/<p:ph\s[^>]*type="body"/.test(inhalt)) {
       return absaetze(inhalt);
     }
@@ -220,8 +227,8 @@ export function notizAbsaetze(notizXml: string): string[] {
  * `undefined`, wenn die Notizseite keinen Textkörper hat — dann wird nichts erfunden.
  */
 function fuegeNotizAn(notizXml: string, zeilen: readonly string[]): string | undefined {
-  for (const form of notizXml.matchAll(FORM)) {
-    const inhalt = form[1] ?? "";
+  for (const form of xmlAbschnitte(notizXml, "p:sp", false)) {
+    const inhalt = notizXml.slice(form.inhaltVon, form.inhaltBis);
     const ende = inhalt.lastIndexOf("</p:txBody>");
     if (!/<p:ph\s[^>]*type="body"/.test(inhalt) || ende < 0) {
       continue;
@@ -230,7 +237,7 @@ function fuegeNotizAn(notizXml: string, zeilen: readonly string[]): string | und
       .map((z) => `<a:p><a:r><a:rPr lang="de-DE" dirty="0"/><a:t>${xmlEsc(z)}</a:t></a:r></a:p>`)
       .join("");
     const ersetzt = `${inhalt.slice(0, ende)}${neu}${inhalt.slice(ende)}`;
-    const start = (form.index ?? 0) + "<p:sp>".length;
+    const start = form.inhaltVon;
     return `${notizXml.slice(0, start)}${ersetzt}${notizXml.slice(start + inhalt.length)}`;
   }
   return undefined;
@@ -617,12 +624,22 @@ function pruefeSchritt(s: Schritt, folie: Folie | undefined, folienXml: string):
 }
 
 export function ersetzeImLauf(folienXml: string, alt: string, neu: string): string {
-  return folienXml.replace(TEXTLAUF, (ganz, attr: string | undefined, roh: string) => {
-    const t = xmlText(roh);
-    return vorkommen(t, alt) === 1
-      ? `<a:t${attr ?? ""}>${xmlEsc(t.split(alt).join(neu))}</a:t>`
-      : ganz;
-  });
+  const teile: string[] = [];
+  let bis = 0;
+  for (const lauf of xmlAbschnitte(folienXml, "a:t")) {
+    teile.push(folienXml.slice(bis, lauf.von));
+    const t = xmlText(folienXml.slice(lauf.inhaltVon, lauf.inhaltBis));
+    teile.push(
+      vorkommen(t, alt) === 1
+        ? folienXml.slice(lauf.von, lauf.inhaltVon) +
+            xmlEsc(t.split(alt).join(neu)) +
+            folienXml.slice(lauf.inhaltBis, lauf.bis)
+        : folienXml.slice(lauf.von, lauf.bis),
+    );
+    bis = lauf.bis;
+  }
+  teile.push(folienXml.slice(bis));
+  return teile.join("");
 }
 
 /** Ohne gespeicherte Fassung heißt kein Schritt „eingearbeitet" — er ist nur vorbereitet. */
