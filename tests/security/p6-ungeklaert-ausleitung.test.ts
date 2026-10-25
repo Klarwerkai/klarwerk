@@ -20,7 +20,7 @@ it("P6 · echter Outputweg lässt ausdrücklich intern zu und erfindet für unge
       payload: { email: "admin@p6.test", password: "secret123" },
     });
     expect(login.statusCode).toBe(200);
-    const headers = { authorization: "Bearer " + login.json().token };
+    const headers = { authorization: `Bearer ${login.json().token}` };
     const author = (await app.inject({ url: "/api/auth/me", headers })).json().id as string;
     const basis = { author, type: "best_practice" as const, category: "P6" };
     const intern = await services.ko.create({
