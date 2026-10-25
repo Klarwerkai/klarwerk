@@ -104,4 +104,50 @@ describe("native Datumsabschnitte: reine Auswertung öffentlicher AX-Antworten",
     knoten(fehlendeGrenze, "monat").properties = [];
     expect(() => datumsabschnitte(fehlendeGrenze, 77, "2031-03-14")).toThrow(/valuemin/);
   });
+
+  it("weist fehlerhafte Fokuswerte mit Station, Ziel und Knotendiagnose weiterhin ab", () => {
+    const faelle = [
+      [
+        { type: "kontrolliert-falscher-typ", value: true },
+        {
+          focusedType: "kontrolliert-falscher-typ",
+          valueVorhanden: true,
+          valueType: "boolean",
+          value: true,
+        },
+      ],
+      [
+        { type: "boolean" },
+        { focusedType: "boolean", valueVorhanden: false, valueType: "undefined" },
+      ],
+      [
+        { type: "boolean", value: "true" },
+        { focusedType: "boolean", valueVorhanden: true, valueType: "string", value: "true" },
+      ],
+      [
+        { type: "boolean", value: { privat: "darf nicht in der Diagnose erscheinen" } },
+        { focusedType: "boolean", valueVorhanden: true, valueType: "object" },
+      ],
+    ] as const;
+    for (const [focused, diagnose] of faelle) {
+      const nodes = antwort(["tag", "monat", "jahr"]);
+      const node = knoten(nodes, "tag");
+      node.properties = [
+        ...(node.properties ?? []).filter((wert) => wert.name !== "focused"),
+        { name: "focused", value: focused },
+      ];
+      expect(() => datumsabschnitte(nodes, 77, "2031-03-14", [0], "vor erster Eingabe")).toThrow(
+        new Error(
+          `Native Datumsabschnitte unklar: Fokuswert ${JSON.stringify({
+            station: "vor erster Eingabe",
+            zielBackendId: 77,
+            nodeId: "tag",
+            role: "spinbutton",
+            ignored: false,
+            ...diagnose,
+          })}`,
+        ),
+      );
+    }
+  });
 });

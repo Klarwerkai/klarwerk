@@ -21,10 +21,30 @@ function eigenschaft(knoten: DatumsAXKnoten, name: string) {
   return werte[0]?.value;
 }
 
-function fokussiert(knoten: DatumsAXKnoten): boolean {
+function fokussiert(knoten: DatumsAXKnoten, zielBackendId: number, station: string): boolean {
   const wert = eigenschaft(knoten, "focused");
   if (!wert) return false;
-  if (wert.type !== "boolean" || typeof wert.value !== "boolean") unklar("Fokuswert");
+  if (wert.type !== "boolean" || typeof wert.value !== "boolean") {
+    const fokuswert = wert.value;
+    unklar(
+      `Fokuswert ${JSON.stringify({
+        station,
+        zielBackendId,
+        nodeId: knoten.nodeId,
+        role: typeof knoten.role?.value === "string" ? knoten.role.value : null,
+        ignored: knoten.ignored,
+        focusedType: typeof wert.type === "string" ? wert.type : typeof wert.type,
+        valueVorhanden: Object.prototype.hasOwnProperty.call(wert, "value"),
+        valueType: typeof fokuswert,
+        ...(fokuswert === null ||
+        typeof fokuswert === "boolean" ||
+        typeof fokuswert === "string" ||
+        (typeof fokuswert === "number" && Number.isFinite(fokuswert))
+          ? { value: fokuswert }
+          : {}),
+      })}`,
+    );
+  }
   return wert.value;
 }
 
@@ -47,6 +67,7 @@ export function datumsabschnitte(
   zielBackendId: number,
   iso: string,
   erlaubterFokus: readonly number[] = [0],
+  station = "ohne Stationsangabe",
 ) {
   const datum = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!datum) unklar("Solltag ist nicht JJJJ-MM-TT");
@@ -68,7 +89,7 @@ export function datumsabschnitte(
   function lesen(node: DatumsAXKnoten) {
     if (besucht.has(node.nodeId)) unklar("doppelte oder zyklische childIds");
     besucht.add(node.nodeId);
-    if (fokussiert(node)) fokusKnoten.push(node.nodeId);
+    if (fokussiert(node, zielBackendId, station)) fokusKnoten.push(node.nodeId);
     if (node.role?.value === "spinbutton") {
       if (node.ignored) unklar("ausgeblendeter Datumsabschnitt");
       const min = grenze(node, "valuemin");

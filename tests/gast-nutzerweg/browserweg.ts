@@ -401,11 +401,11 @@ export async function tippeDatumMitTastatur(
     if (node.nodeId !== nodeId || node.nodeName !== "INPUT" || typen.join(",") !== "date") {
       throw new Error(`DOM-Identität des Datumsfelds „${was}“ ist nicht eindeutig.`);
     }
-    const lesen = async (erlaubt: readonly number[] = [0]) => {
+    const lesen = async (station: string, erlaubt: readonly number[] = [0]) => {
       const { nodes } = await cdp.send("Accessibility.getFullAXTree");
-      return datumsabschnitte(nodes, node.backendNodeId, tag, erlaubt);
+      return datumsabschnitte(nodes, node.backendNodeId, tag, erlaubt, station);
     };
-    const plan = await lesen();
+    const plan = await lesen("vor erster Eingabe");
     const folge = plan.abschnitte.map((teil) => teil.art).join(",");
     const gleicheFolge = (stand: ReturnType<typeof datumsabschnitte>) => {
       if (stand.abschnitte.map((teil) => teil.art).join(",") !== folge) {
@@ -415,11 +415,14 @@ export async function tippeDatumMitTastatur(
     for (const [position, abschnitt] of plan.abschnitte.entries()) {
       await seite.keyboard.type(abschnitt.ziffern);
       const letzter = position === plan.abschnitte.length - 1;
-      const stand = await lesen(letzter ? [position] : [position, position + 1]);
+      const stand = await lesen(
+        `nach Komponente ${abschnitt.art}`,
+        letzter ? [position] : [position, position + 1],
+      );
       gleicheFolge(stand);
       if (!letzter && stand.fokus === position) {
         await seite.keyboard.press("ArrowRight");
-        gleicheFolge(await lesen([position + 1]));
+        gleicheFolge(await lesen(`nach ArrowRight von ${abschnitt.art}`, [position + 1]));
       }
     }
     const gesetzt = await seite.evaluate<string>(
