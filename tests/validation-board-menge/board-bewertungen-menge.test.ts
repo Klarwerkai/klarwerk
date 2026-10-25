@@ -55,7 +55,7 @@ describe("Validierungsboard: Bewertungen als Menge", () => {
         staleVotes: 0,
       },
     ] as const;
-    const erwartet: KnowledgeObject[] = [];
+    const erwartet: (KnowledgeObject & { staleVotes: number })[] = [];
     for (let index = 0; index < 10_001; index += 1) {
       const fall = faelle[index % faelle.length];
       if (!fall) {
