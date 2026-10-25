@@ -262,7 +262,16 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                   </ModalRegion>
                 </main>
               </div>
-              <ModalRegion>
+              {/* Die breite Prüffläche braucht neben ihrem Kopf Platz für beide Rollspalten.
+                  Die Hinweise teilen sich dort einen begrenzten Rollbereich; ihre einzelnen
+                  Höhenobergrenzen würden zusammen den Hauptbereich zusammendrücken. */}
+              <ModalRegion
+                className={
+                  location.pathname === "/validierung"
+                    ? "contents lg:block lg:max-h-[20vh] lg:shrink-0 lg:overflow-y-auto"
+                    : "contents"
+                }
+              >
                 <NoticeBanner />
                 <AssistenzProfilLader />
                 <AssistenzEinrichtung />

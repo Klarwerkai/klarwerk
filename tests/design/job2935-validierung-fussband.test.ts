@@ -1974,6 +1974,17 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
             zeigerX = Math.round((k.links + k.rechts) / 2);
             zeigerY = Math.round((sichtbarOben + sichtbarUnten) / 2);
             await s.mouse.move(zeigerX, zeigerY);
+            const trifftListe = await s.evaluate<boolean>(
+              fn(`([x, y, anker]) => {
+                const liste = document.querySelector(anker);
+                const ziel = document.elementFromPoint(x, y);
+                return !!liste && !!ziel && liste.contains(ziel);
+              }`),
+              [zeigerX, zeigerY, SCHLANGE_ANKER],
+            );
+            if (!trifftListe) {
+              throw new Error(`${weg}: der Zeiger trifft keinen sichtbaren Teil der Warteschlange`);
+            }
             await s.mouse.wheel(0, RASTE_PX);
           }
           try {
@@ -2458,6 +2469,10 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
         "die Warteschlange ist kuerzer als bestellt",
       ).toBeGreaterThanOrEqual(LANGE_LISTE);
       expect(lauf?.start.index, "zu Beginn ist der erste Eintrag gewaehlt").toBe(0);
+      expect(
+        (lauf?.start.schlange?.unten ?? 0) - (lauf?.start.schlange?.oben ?? 0),
+        "die Warteschlange braucht einen tatsächlichen sichtbaren Höhenausschnitt",
+      ).toBeGreaterThan(0);
       expect(lauf?.schritte.at(-1)?.index).toBe(SCHRITTE);
       // Die Nutzenkette bis zur Karte: rechts steht wirklich der Artikel, der links gewählt ist.
       expect(lauf?.letzterKartenTitel).toBe(lauf?.letzterAuswahlTitel);
