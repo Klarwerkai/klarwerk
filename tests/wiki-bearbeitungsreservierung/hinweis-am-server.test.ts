@@ -457,3 +457,168 @@ describe("S8 · revise-release übersetzt denselben echten Speicher-CAS", () => 
     }
   });
 });
+
+// S9/S10: Der Fremdwrite trifft erst im echten Update-Port, nach den Dienstwachen.
+async function vorschlagsRace() {
+  await app.close();
+  const repos = inMemoryRepos();
+  const echt = repos.koRepo;
+  let dazwischen = false;
+  let schreibversuche = 0;
+  let gewonnen: KnowledgeObject | undefined;
+  let casFehler: unknown;
+  repos.koRepo = Object.assign(Object.create(Object.getPrototypeOf(echt)), echt, {
+    update: async (ko: KnowledgeObject, tx?: unknown): Promise<void> => {
+      schreibversuche++;
+      const unterbrochen = dazwischen;
+      if (unterbrochen) {
+        dazwischen = false;
+        const fremd = await echt.findById(ko.id);
+        if (!fremd) {
+          throw new Error("Der vorbereitete Eintrag fehlt.");
+        }
+        await echt.update({
+          ...fremd,
+          version: fremd.version + 1,
+          statement: "Fremder Vorschlagsstand bleibt erhalten.",
+        });
+        gewonnen = structuredClone(await echt.findById(ko.id));
+      }
+      try {
+        return await echt.update(ko, tx as never);
+      } catch (error) {
+        if (unterbrochen) {
+          casFehler = error;
+        }
+        throw error;
+      }
+    },
+  }) as typeof echt;
+  const services = assembleServices(repos);
+  app = buildApp(services);
+  await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: { name: "Pedi", email: "pedi@klarwerk.test", password: "secret123" },
+  });
+  adminToken = await token("pedi@klarwerk.test");
+  const id = await eintrag();
+  const anna = await konto("experte", "anna@klarwerk.test", "Anna Beispiel");
+  const basis = ((await auf(adminToken, "GET", `/api/kos/${id}`)).json() as KnowledgeObject)
+    .version;
+  const eingereicht = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${id}`,
+    headers: { authorization: `Bearer ${anna.token}` },
+    payload: {
+      action: "propose",
+      proposal: { statement: "Annas offener Vorschlag.", baseVersion: basis },
+    },
+  });
+  expect(eingereicht.statusCode, eingereicht.body).toBe(200);
+  const stand = eingereicht.json() as KnowledgeObject;
+  const vorschlag = stand.proposals?.[0];
+  if (!vorschlag) {
+    throw new Error("Der echte fremde Vorschlag fehlt.");
+  }
+  expect(vorschlag.author).toBe(anna.id);
+  expect(vorschlag.status).toBe("offen");
+  await services.aiCheckWorker?.idle();
+  return {
+    id,
+    basis,
+    vorschlagId: vorschlag.id,
+    proposals: structuredClone(stand.proposals),
+    echt,
+    starte: () => {
+      dazwischen = true;
+    },
+    versuche: () => schreibversuche,
+    gewonnen: () => gewonnen,
+    casFehler: () => casFehler,
+    dazwischen: () => dazwischen,
+  };
+}
+
+describe("S9/S10 · Vorschlagswege übersetzen den echten Speicher-CAS", () => {
+  it("propose: 409 mit frischer Fassung, Fremdstand und offener Vorschlagsliste bleiben", async () => {
+    try {
+      const v = await vorschlagsRace();
+      const vorher = v.versuche();
+      v.starte();
+      const antwort = await app.inject({
+        method: "PUT",
+        url: `/api/kos/${v.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          action: "propose",
+          proposal: { statement: "Mein neuer Vorschlag.", baseVersion: v.basis },
+        },
+      });
+      expect(antwort.statusCode, antwort.body).toBe(409);
+      const koerper = antwort.json() as {
+        error: string;
+        message: string;
+        currentVersion?: number;
+      };
+      expect(koerper.error).toBe("KO_STALE");
+      expect(koerper.message.trim().length).toBeGreaterThan(0);
+      expect(v.casFehler()).toMatchObject({ code: "STALE_WRITE", message: koerper.message });
+      expect(v.dazwischen()).toBe(false);
+      expect(v.versuche() - vorher).toBe(1);
+      const amServer = await v.echt.findById(v.id);
+      expect(v.gewonnen()).toBeDefined();
+      expect(amServer).toEqual(v.gewonnen());
+      expect(amServer?.version).toBe(v.basis + 1);
+      expect(koerper.currentVersion).toBe(amServer?.version);
+      expect(amServer?.statement).toBe("Fremder Vorschlagsstand bleibt erhalten.");
+      expect(amServer?.proposals).toEqual(v.proposals);
+      expect(amServer?.proposals).toHaveLength(1);
+      expect(amServer?.proposals?.[0]?.status).toBe("offen");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("decide-proposal: fremder Einreicher, echter CAS-Konflikt ohne Entscheidung oder Retry", async () => {
+    try {
+      const v = await vorschlagsRace();
+      const vorher = v.versuche();
+      v.starte();
+      const antwort = await app.inject({
+        method: "PUT",
+        url: `/api/kos/${v.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          action: "decide-proposal",
+          proposalId: v.vorschlagId,
+          decision: "uebernehmen",
+          expectedVersion: v.basis,
+        },
+      });
+      expect(antwort.statusCode, antwort.body).toBe(409);
+      const koerper = antwort.json() as {
+        error: string;
+        message: string;
+        currentVersion?: number;
+      };
+      expect(koerper.error).toBe("KO_STALE");
+      expect(koerper.message.trim().length).toBeGreaterThan(0);
+      expect(v.casFehler()).toMatchObject({ code: "STALE_WRITE", message: koerper.message });
+      expect(v.dazwischen()).toBe(false);
+      expect(v.versuche() - vorher).toBe(1);
+      const amServer = await v.echt.findById(v.id);
+      expect(v.gewonnen()).toBeDefined();
+      expect(amServer).toEqual(v.gewonnen());
+      expect(amServer?.version).toBe(v.basis + 1);
+      expect(koerper.currentVersion).toBe(amServer?.version);
+      expect(amServer?.statement).toBe("Fremder Vorschlagsstand bleibt erhalten.");
+      expect(amServer?.proposals).toEqual(v.proposals);
+      expect(amServer?.proposals?.[0]?.status).toBe("offen");
+      expect(amServer?.proposals?.[0]?.decidedBy).toBeUndefined();
+      expect(amServer?.proposals?.[0]?.resultVersion).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+});

@@ -3153,15 +3153,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // Tatsache („jemand war schneller"), nur eine Ebene tiefer entdeckt. Bis hierher ging sie als
         // 400 hinaus, und die Fläche bot weder Konfliktsatz noch Vergleichs-/Übernahmeweg an.
         //
-        // NUR FÜR DEN DIREKTEN SPEICHERWEG (`revise`, `revise-release`, `tags`, `category`) und NUR DIE ANTWORT ändert
-        // sich: der Schreibvorgang ist abgewiesen und zurückgerollt, nichts wird wiederholt, der
-        // CAS bleibt, wie er ist. Die übrigen Aktionen behalten ihre bisherige Antwort.
-        const direkterSpeicherweg =
+        // NUR FÜR DIE BENANNTEN SCHREIBWEGE (`revise`, `revise-release`, `tags`, `category`,
+        // `propose`, `decide-proposal`) ändert sich die Antwort: Der Schreibvorgang ist abgewiesen,
+        // nichts wird wiederholt, der CAS bleibt unverändert. Andere Aktionen behalten ihre Antwort.
+        const konfliktSpeicherweg =
           body.action === "revise" ||
           body.action === "revise-release" ||
           body.action === "tags" ||
-          body.action === "category";
-        if (code === "KO_STALE" || (code === "STALE_WRITE" && direkterSpeicherweg)) {
+          body.action === "category" ||
+          body.action === "propose" ||
+          body.action === "decide-proposal";
+        if (code === "KO_STALE" || (code === "STALE_WRITE" && konfliktSpeicherweg)) {
           // Die JETZT gespeicherte Version reist mit — ohne sie kann die Oberfläche den Menschen
           // nicht entscheiden lassen, sondern nur „hat nicht geklappt" sagen.
           const stand = await ko.get(id);
