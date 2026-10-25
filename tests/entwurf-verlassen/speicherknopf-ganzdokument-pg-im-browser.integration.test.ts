@@ -383,7 +383,7 @@ async function formularFuellen(
 ): Promise<void> {
   await wegWaehlen(seite, "erfassen.weg.formular");
   for (const [label, wert] of [
-    [satz("capture.fTitle"), titel],
+    [satz("capture.wizard.titleLabel"), titel],
     [satz("capture.fStatement"), aussage],
   ] as const) {
     await aufZustandWarten(
