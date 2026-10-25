@@ -195,11 +195,20 @@ describe("G27 R1 · Single Active Projection gegen echtes PostgreSQL", () => {
       });
       expect((await ko.searchProjectionVersions()).offenV1).toBe(1);
 
-      // 3 — teilweise migriert: der gedeckelte Nachzug erreicht das Ziel nicht, und im Bau
-      //     antwortet die Suche nicht mit einer Teilmenge.
-      await ko.beginSearchProjectionBuild();
-      await ko.backfillSearchProjections({ limit: DECKEL });
       expect((await projections.find(zielId, 1))?.projectionVersion).toBe(1);
+      expect(await projections.missingActive(VORGAENGER + 1)).toHaveLength(VORGAENGER + 1);
+
+      // 3 — echte Teilmigration: Der Deckel garantiert eine Menge, keine SQL-Reihenfolge.
+      //     Im Bau antwortet die Suche nicht mit einer Teilmenge.
+      await ko.beginSearchProjectionBuild();
+      const bilanz = await ko.backfillSearchProjections({ limit: DECKEL });
+      expect(bilanz.geprueft).toBe(DECKEL);
+      expect(bilanz.gescheitert).toBe(0);
+      expect((await ko.searchProjectionVersions()).zeilen).toContainEqual({
+        projectionVersion: SEARCH_PROJECTION_VERSION,
+        count: DECKEL,
+      });
+      expect(await projections.missingActive(VORGAENGER + 1)).toHaveLength(VORGAENGER + 1 - DECKEL);
       await expect(ko.findSearchHits({ terms: [ALT.toLowerCase()] })).rejects.toMatchObject({
         code: "SEARCH_PROJECTION_NOT_READY",
       });
@@ -374,10 +383,17 @@ describe("G27 R1 · Single Active Projection gegen echtes PostgreSQL", () => {
   it("Pflichtfälle 11–13: AltKategorie null Treffer, nur der neue Begriff trifft, V1 bleibt liegen", async () => {
     const { pool, ko, projections, repo, zielId } = await benAufbau();
     try {
-      // Der gedeckelte Nachzug erreicht das Ziel nachweislich nicht.
+      // V1 und die volle Arbeitsliste vor dem Batch belegen; keine Zielposition unterstellen.
+      expect((await projections.find(zielId, 1))?.projectionVersion).toBe(1);
+      expect(await projections.missingActive(VORGAENGER + 1)).toHaveLength(VORGAENGER + 1);
       const bilanz = await ko.backfillSearchProjections({ limit: DECKEL });
       expect(bilanz.geprueft).toBe(DECKEL);
-      expect((await projections.find(zielId, 1))?.projectionVersion).toBe(1);
+      expect(bilanz.gescheitert).toBe(0);
+      expect((await ko.searchProjectionVersions()).zeilen).toContainEqual({
+        projectionVersion: SEARCH_PROJECTION_VERSION,
+        count: DECKEL,
+      });
+      expect(await projections.missingActive(VORGAENGER + 1)).toHaveLength(VORGAENGER + 1 - DECKEL);
 
       await ko.activateSearchProjectionV2();
 
