@@ -96,4 +96,52 @@ describe("Speicherquittung: eigener Toast statt erstem output", () => {
     expect(fremd.textContent).toBe(erwartet);
     expect(ausgang()).toBe("");
   });
+
+  it("wartet auf das laufende Speichern und liest danach die neue Lage", async () => {
+    const speichern = document.createElement("button");
+    speichern.setAttribute("data-testid", "bib-speichern");
+    speichern.setAttribute("aria-busy", "true");
+    speichern.disabled = true;
+    document.body.prepend(speichern);
+    const satz = i18n.t("state.error");
+    await act(async () => einblenden("error", satz));
+    const quittung = document.querySelector(ANKER_SPEICHERQUITTUNG);
+    expect(quittung?.textContent).toBe(satz);
+    expect(ausgang()).toBe("");
+
+    const lage = document.createElement("div");
+    lage.setAttribute("data-testid", "bib-speichern-lage");
+    lage.setAttribute("data-lage", "teil");
+    document.body.prepend(lage);
+    expect(ausgang()).toBe("");
+    lage.remove();
+    expect(ausgang()).toBe("");
+
+    lage.setAttribute("data-lage", "stale");
+    document.body.prepend(lage);
+    speichern.setAttribute("aria-busy", "false");
+    speichern.disabled = false;
+    expect(ausgang()).toBe("lage:stale");
+    lage.setAttribute("data-lage", "teil");
+    expect(ausgang()).toBe("lage:teil");
+    expect(document.querySelector(ANKER_SPEICHERQUITTUNG)).toBe(quittung);
+    expect(quittung?.textContent).toBe(satz);
+  });
+
+  it("liest den falschen finalen Toast auch bei anderweitig gesperrtem Speichern", async () => {
+    const speichern = document.createElement("button");
+    speichern.setAttribute("data-testid", "bib-speichern");
+    speichern.disabled = true;
+    document.body.prepend(speichern);
+    const satz = i18n.t("state.error");
+    await act(async () => einblenden("error", satz));
+    for (const busy of ["false", null]) {
+      if (busy === null) speichern.removeAttribute("aria-busy");
+      else speichern.setAttribute("aria-busy", busy);
+      expect(speichern.disabled).toBe(true);
+      expect(document.querySelector(ANKER_SPEICHERQUITTUNG)?.textContent).toBe(satz);
+      expect(ausgang()).toBe(`quittung: ${satz}`);
+      expect(ausgang()).not.toBe(`quittung: ${i18n.t("ko.revise.saved")}`);
+    }
+  });
 });

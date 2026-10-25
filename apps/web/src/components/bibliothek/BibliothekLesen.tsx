@@ -3569,6 +3569,7 @@ export function BibliothekLesen({
                 <Button
                   variant="primary"
                   data-testid="bib-speichern"
+                  aria-busy={save.isPending}
                   className="min-w-[12rem]"
                   disabled={
                     save.isPending ||
