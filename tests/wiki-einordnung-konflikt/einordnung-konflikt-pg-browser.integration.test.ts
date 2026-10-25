@@ -1070,24 +1070,32 @@ describe("JOB 4334 · der Einordnungskonflikt gegen echtes PostgreSQL im echten 
         await formularOffen(lage.seite, i18n.t("capture.fStatement")),
         "P5: das Formular hat sich geschlossen",
       ).toBe(true);
-      //     WELCHE Eingabe der Einreichweg überhaupt noch trägt, sagt das Produkt selbst: sobald der
-      //     Prüfweg aktiv ist (`pruefwegAktiv`, `BibliothekLesen.tsx:2109-2110`, hier über
-      //     `einreichPflicht` = freigegeben ohne Freigaberecht), zeichnet das Formular Titel,
-      //     Bedingungen, Massnahmen, Schlagworte, Art und Kategorie NICHT mehr — „der Einreich-Aufruf
-      //     trägt sie nicht, die Übernahme schreibt sie nicht" (`:2671-2673`). Gemessen wird deshalb
-      //     beides: das Kategoriefeld ist FORT, und die eine Eingabe, die dieser Weg noch trägt, steht
-      //     sichtbar und lesbar da. Eine Zusage über ein Feld, das es hier nicht gibt, wäre erfunden.
+      // Die nachträgliche Sperre erhält die Felder samt Eingabe; die Aktionsleiste bleibt stehen.
+      // Die Kategorie ist sichtbar und lesbar, ihr Steuerelement aber effektiv gesperrt.
       const aussageFeld: Feldort = {
         name: "Aussage",
         selektor: await feldPfad(lage.seite, i18n.t("capture.fStatement"), "textarea"),
         soll: MEIN_ZWEITER_TEXT,
       };
-      await entwurfErhalten(lage, [aussageFeld], "P5 nach dem Rechteentzug");
+      const kategorieFeld: Feldort = {
+        name: "Kategorie",
+        selektor: await feldPfad(lage.seite, i18n.t("capture.fCategory"), "input"),
+        soll: KATEGORIE_ANNA,
+      };
+      await entwurfErhalten(lage, [aussageFeld, kategorieFeld], "P5 nach dem Rechteentzug");
       await blendenKalibrieren(lage, [aussageFeld], "P5");
       expect(
         await beschriftungenZaehlen(lage.seite, i18n.t("capture.fCategory")),
-        "P5: das Kategoriefeld steht auf dem Einreichweg noch im Formular, obwohl der Einreich-Aufruf es nicht trägt",
-      ).toBe(0);
+        "P5: das erhaltene Kategoriefeld fehlt oder ist mehrfach beschriftet",
+      ).toBe(1);
+      expect(
+        await lage.seite.evaluate<boolean>((selektor: unknown) => {
+          if (typeof selektor !== "string") return false;
+          const feld = document.querySelector(selektor);
+          return feld instanceof HTMLInputElement && feld.matches(":disabled");
+        }, kategorieFeld.selektor),
+        "P5: das erhaltene Kategorie-Input ist nicht effektiv gesperrt",
+      ).toBe(true);
 
       // (c) KEINE STILLE DIREKTFREIGABE UND KEINE STILLE EINREICHUNG.
       expect(lage.instanz.zaehle("propose"), "P5: es wurde still ein Vorschlag eingereicht").toBe(
