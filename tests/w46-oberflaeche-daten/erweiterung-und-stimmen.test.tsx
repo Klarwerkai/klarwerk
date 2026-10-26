@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import Fastify from "fastify";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { pickVoice, sprecheLokal } from "../../apps/web/src/lib/vorlesen";
 import { registerSecurityHeaders } from "../../services/app/src/security-headers";
 import { baueFrischeBuehne, schliesseBuehnen } from "../beta-rollenabnahme/buehne";

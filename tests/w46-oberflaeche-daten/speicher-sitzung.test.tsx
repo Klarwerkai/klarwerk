@@ -5,7 +5,7 @@ import {
   QueryClientProvider,
   onlineManager,
 } from "../../apps/web/node_modules/@tanstack/react-query";
-import React, { act, createElement, useState } from "../../apps/web/node_modules/react";
+import { act, createElement, useState } from "../../apps/web/node_modules/react";
 import { type Root, createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { api } from "../../apps/web/src/api/client";
 import { AuthProvider, useSession } from "../../apps/web/src/app/AuthContext";
@@ -21,7 +21,7 @@ import {
   merkeAntwortRechtewechsel,
 } from "../../apps/web/src/lib/fragenArbeitsstand";
 import { bestaetigeLokalesKonto } from "../../apps/web/src/lib/lokaleSitzung";
-import { offlineVorgangsStand } from "../../apps/web/src/lib/offlineQueue";
+import { type QueuedOp, offlineVorgangsStand } from "../../apps/web/src/lib/offlineQueue";
 import {
   OFFLINE_PHOTO_PREFIX,
   readOfflineQueue,
@@ -194,7 +194,7 @@ describe("W4.6 dauerhafte Offlineannahme und Sitzungsende", () => {
         0,
       );
     const cap = used() + 100;
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (k, v) {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, k, v) {
       const total = used() - (localStorage.getItem(k)?.length ?? 0) + String(v).length;
       if (total > cap) throw new DOMException("Globales Kontingent voll", "QuotaExceededError");
       original.call(this, k, v);
@@ -319,7 +319,7 @@ describe("W4.6 dauerhafte Offlineannahme und Sitzungsende", () => {
     });
     await settle(() => port("a").auth.user === null);
     finish(json({ secret: "SPAETE-ANTWORT" }));
-    expect((await late).status).toBe(401);
+    expect(((await late) as { status: number }).status).toBe(401);
     arbeitsstandSchreiben(localStorage, "konto-a", stand); // stale unmount/effect
     expect(arbeitsstandLesen(localStorage, "konto-a")).toBeNull();
     expect(localStorage.getItem("kw.offlineQueue.v1")).toBeNull();
@@ -363,7 +363,7 @@ describe("W4.6 dauerhafte Offlineannahme und Sitzungsende", () => {
     });
     const native = Storage.prototype.setItem;
     const cap = Object.values(localStorage).join("").length;
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (k, v) {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, k, v) {
       const total =
         Object.values(localStorage).join("").length -
         (localStorage.getItem(k)?.length ?? 0) +
@@ -645,7 +645,7 @@ it("ein angenommenes Ersetzen liefert genau die neue Basis für die nächste eig
       alteBasis,
     );
   });
-  const gespeichert = readOfflineQueue()[0];
+  const gespeichert = readOfflineQueue<QueuedOp>()[0];
   if (!gespeichert) throw new Error("Gespeicherter neuer Stand fehlt");
   expect(neueBasis).toEqual(offlineVorgangsStand(gespeichert));
   if (!neueBasis) throw new Error("Neue Basis fehlt");
@@ -668,5 +668,5 @@ it("ein angenommenes Ersetzen liefert genau die neue Basis für die nächste eig
       ),
     ).toBe(false);
   });
-  expect(readOfflineQueue()[0]?.title).toBe("Eigene zweite Fassung");
+  expect(readOfflineQueue<QueuedOp>()[0]?.title).toBe("Eigene zweite Fassung");
 });
