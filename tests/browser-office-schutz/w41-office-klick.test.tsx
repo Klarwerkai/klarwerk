@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { Blob as NodeBlob, File as NodeFile } from "node:buffer";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QueryClient,
@@ -67,7 +68,7 @@ import { DOCX_MAX_COMPRESSED_BYTES } from "../../apps/web/src/lib/docxArchive";
 import { readDocxFile, readDocxRich, readPptxRich } from "../../apps/web/src/lib/files";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-const bytes = readFileSync(new URL("../fixtures/sample.docx", import.meta.url));
+const bytes = readFileSync(resolve(process.cwd(), "tests/fixtures/sample.docx"));
 const A = { id: "a", objectId: "obj-a", name: "Plan.docx" };
 const ko = (id: string, attachments = [A]) =>
   ({ id, title: id, attachments, sources: [] }) as unknown as KnowledgeObject;

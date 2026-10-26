@@ -129,12 +129,11 @@ describe("W4.1 · DOCX-Grenzen vor jedem Mammoth-Port", () => {
   });
 
   it("gelogene kleine Originalgrößen passieren die tatsächliche Byteprüfung nicht", async () => {
-    const input = alterOriginalSize(
-      await archive({ "word/document.xml": "Hallo ".repeat(1000) }),
-      1,
-    );
+    const input = alterOriginalSize(await archive({ "document.xml": "Hallo ".repeat(1000) }), 1);
     const engine = fakeEngine();
-    await expect(extractDocxRich(input, { engine })).rejects.toBeInstanceOf(DocxImportError);
+    await expect(extractDocxRich(input, { engine })).rejects.toMatchObject({
+      reason: "invalid-archive",
+    });
     expect(engine.convertToHtml).not.toHaveBeenCalled();
   });
 
@@ -171,9 +170,11 @@ describe("W4.1 · DOCX-Grenzen vor jedem Mammoth-Port", () => {
     const failure = new TypeError(
       "Failed to fetch dynamically imported module: /assets/fflate-alt.js",
     );
-    vi.doMock("fflate", () => {
+    const loader = vi.fn(() => {
       throw failure;
     });
+    vi.doMock("../../apps/web/node_modules/fflate/esm/index.mjs", loader);
+    vi.doMock("../../apps/web/node_modules/fflate/esm/browser.js", loader);
     vi.resetModules();
     try {
       const { assertDocxArchive: guard, DocxImportError: CurrentDocxError } = await import(
@@ -181,10 +182,12 @@ describe("W4.1 · DOCX-Grenzen vor jedem Mammoth-Port", () => {
       );
       // Vitest umhüllt einen Fehler seiner Mock-Factory selbst; der Guard darf ihn nicht umklassifizieren.
       await expect(guard(input)).rejects.not.toBeInstanceOf(CurrentDocxError);
+      expect(loader).toHaveBeenCalled();
       expect(isStaleChunkError(failure)).toBe(true);
       expect(docxLesefehlerSatz(failure, "Test.docx", i18n.t)).toBeNull();
     } finally {
-      vi.doUnmock("fflate");
+      vi.doUnmock("../../apps/web/node_modules/fflate/esm/index.mjs");
+      vi.doUnmock("../../apps/web/node_modules/fflate/esm/browser.js");
       vi.resetModules();
     }
   });

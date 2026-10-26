@@ -169,10 +169,11 @@ describe("WP-D9b GELB-Fix 2: bildreine PPTX importierbar", () => {
     const src = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
     // WP-D9c: das Gate traegt jetzt zusaetzlich das Quell-Signal (sourceHadImages).
     const gate = src.indexOf("fileImportHasContent(text, rich.html, sourceHadImages)");
-    const original = src.indexOf("setFileOriginal({");
+    const original = src.indexOf("setFileOriginal(original);", gate);
     expect(gate).toBeGreaterThan(0);
     // Das Original wird NACH dem Gate gesetzt → ein bildreiches Deck erreicht den Original-Anhang.
     expect(original).toBeGreaterThan(gate);
+    expect(src.slice(gate, original)).toContain("const original = {");
     // Nur die KI-Punkte-Extraktion bleibt ohne Text aus (PAKET 1 D-AISTATE: zusätzlich ohne Modell).
     expect(src).toContain("fileText.trim().length === 0");
     expect(src).toContain("!extractAi.available");
