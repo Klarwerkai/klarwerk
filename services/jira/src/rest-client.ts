@@ -134,13 +134,14 @@ export interface JiraIssue {
 interface JiraRollenAkteur {
   type?: string;
   name?: string;
-  actorUser?: { accountId?: string };
+  actorUser?: { accountId?: string; emailAddress?: string };
   actorGroup?: { name?: string; groupId?: string };
 }
 
 /** Die Benutzer- und Gruppenkennungen ALLER Projektrollen, in Quell-Reihenfolge, ohne Doppelte. */
 export interface JiraRollenbesetzung {
   users: string[];
+  emails?: string[];
   groups: string[];
   /** Die gelesenen Rollennamen — nur für die Auskunft, keine Rechteposition. */
   rollen: string[];
@@ -389,6 +390,11 @@ function trageAkteurEin(besetzung: JiraRollenbesetzung, akteur: JiraRollenAkteur
   }
   if (akteur.type === "atlassian-user-role-actor") {
     merke(besetzung.users, akteur.actorUser?.accountId || akteur.name);
+    const email = akteur.actorUser?.emailAddress;
+    if (email && /^[^\s@]+@[^\s@]+$/.test(email)) {
+      besetzung.emails ??= [];
+      merke(besetzung.emails, email);
+    }
   } else if (akteur.type === "atlassian-group-role-actor") {
     merke(besetzung.groups, akteur.actorGroup?.name || akteur.name || akteur.actorGroup?.groupId);
   }

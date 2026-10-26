@@ -22,7 +22,7 @@ export default {
   legacySchluessel: [],
   de: {
     "fragenseite.rechtepruefung":
-      "Deine Zugriffsrechte haben sich geändert. Die bisherige Antwort bleibt verborgen, bis ihre Quellen erneut bestätigt sind.",
+      "Deine Zugriffsrechte haben sich geändert. Die gespeicherte Antwortkopie wurde entfernt. Deine Eingabe und deine Fragen bleiben erhalten. Frage erneut für eine aktuelle Antwort.",
     "fragenseite.wiederaufnahmeBeides":
       "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld, darunter deine zuletzt angezeigte Antwort vom {{zeit}}. Sie wurde nicht neu erzeugt.",
     "fragenseite.fadenTitel":
@@ -34,7 +34,7 @@ export default {
   },
   en: {
     "fragenseite.rechtepruefung":
-      "Your access rights have changed. The previous answer stays hidden until its sources are confirmed again.",
+      "Your access rights have changed. The stored answer copy has been removed. Your input and questions are preserved. Ask again for a current answer.",
     "fragenseite.wiederaufnahmeBeides":
       "Pick up where you left off: your unsent draft is back in the question field, with the answer you last saw, from {{zeit}}, below it. It was not generated again.",
     "fragenseite.fadenTitel":
@@ -46,7 +46,7 @@ export default {
   },
   nl: {
     "fragenseite.rechtepruefung":
-      "Je toegangsrechten zijn gewijzigd. Het vorige antwoord blijft verborgen totdat de bronnen opnieuw zijn bevestigd.",
+      "Je toegangsrechten zijn gewijzigd. De opgeslagen antwoordkopie is verwijderd. Je invoer en vragen blijven behouden. Vraag opnieuw voor een actueel antwoord.",
     "fragenseite.wiederaufnahmeBeides":
       "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld, daaronder het antwoord dat je het laatst zag, van {{zeit}}. Het is niet opnieuw gegenereerd.",
     "fragenseite.fadenTitel":

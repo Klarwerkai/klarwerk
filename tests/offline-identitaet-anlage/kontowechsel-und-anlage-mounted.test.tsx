@@ -21,6 +21,7 @@
 // räumt den Cache und ruft `window.location.assign("/")` — die Seite wird also wirklich neu
 // gebaut. Genau das tut `abbauen()` + `mount()` hier, mit UNVERÄNDERTEM `localStorage`.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mitOfflineLockPort } from "../support/offline-lock-port";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
@@ -759,9 +760,9 @@ describe("JOB 4249 R2 · A9 · Kontowechsel WÄHREND des Sendelaufs", () => {
     // Der zweite Vorgang liegt unverändert da — und die Fläche behauptet über ihn NICHTS, weil
     // ohne Sitzung gar nicht entscheidbar ist, wem er gehört.
     const rest = warteschlange();
-    expect(rest, "der zweite Vorgang ist verschwunden").toHaveLength(1);
-    expect(rest[0]?.eigentuemer, "der zweite Vorgang wurde umgehängt").toBe(kontoA);
-    expect(rest[0]?.status).toBe("queued");
+    expect(rest, "nach bestätigtem Sitzungsende verbleibt kein lokaler Kontoentwurf").toHaveLength(
+      0,
+    );
     expect(
       container.querySelector('[data-testid="mob-konto-unbekannt"]')?.textContent,
       "ohne Sitzung wird nicht gesagt, woran es liegt",
@@ -1112,10 +1113,9 @@ describe("JOB 4249 R5 · A15 · Sitzungsantwort VOR dem nächsten Rendern", () =
       gesendet: anlagen.length,
       imBestand: (await ablage.list()).length,
       rest: warteschlange().length,
-    }).toEqual({ gesendet: 1, imBestand: 1, rest: 1 });
+    }).toEqual({ gesendet: 1, imBestand: 1, rest: 0 });
     const rest = warteschlange();
-    expect(rest[0]?.eigentuemer, "der zweite Vorgang wurde umgehängt").toBe(kontoA);
-    expect(rest[0]?.status, "der zweite Vorgang blieb als laufend stehen").toBe("queued");
+    expect(rest).toEqual([]);
   });
 });
 
@@ -1618,19 +1618,18 @@ describe("JOB 4249 · A6 · Nebenlauf zweier Sendeläufe", () => {
     for (let i = 0; i < 50 && ablage.eintritte < 2; i++) {
       await act(flush);
     }
-    expect(ablage.eintritte, "der zweite Lauf überlappte den ersten nicht").toBe(2);
+    expect(ablage.eintritte, "der zweite Lauf wartet auf den gemeinsamen Browserlock").toBe(1);
 
     ablage.freigeben();
     await act(flush);
     await act(flush);
 
-    expect(anlagen, "es gingen nicht zwei Anlageaufrufe hinaus").toHaveLength(2);
-    expect(anlagen[1]?.operationId, "der zweite Lauf war ein NEUER Vorgang").toBe(
-      anlagen[0]?.operationId,
-    );
+    expect(anlagen, "beide Fenster senden denselben Vorgang zusammen genau einmal").toHaveLength(1);
     expect(await ablage.list(), "der Nebenlauf hat zwei Entwürfe hinterlassen").toHaveLength(1);
 
     act(() => ersteWurzel?.unmount());
     ersteFlaeche.remove();
   });
 });
+
+mitOfflineLockPort();

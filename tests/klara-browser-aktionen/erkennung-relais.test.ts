@@ -352,7 +352,11 @@ describe("BPA-03 · Befehlsrelais: Fristen und Antwortprüfung", () => {
       nr: 1,
       art: "lage",
       tabId: 3,
-      args: { formular: "Angebotsentwurf", liste: LISTE },
+      args: {
+        formular: "Angebotsentwurf",
+        liste: LISTE,
+        lesefreigabe: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      },
       // Ohne Angabe im Profil binden nur Herkunft und Pfad.
       adresse: { parameter: [], anker: false },
       wiederholt: false,
@@ -362,8 +366,16 @@ describe("BPA-03 · Befehlsrelais: Fristen und Antwortprüfung", () => {
     expect(lage).toEqual(lageRoh(3));
     // „Tab nicht mehr da" ist eine eigene, gültige Antwort.
     const weg = relais.lage(3, "Angebotsentwurf", LISTE);
-    relais.antworte((relais.abholen() as BrowserBefehl).nr, null);
+    const folge = relais.abholen() as BrowserBefehl;
+    expect(folge.args.lesefreigabe).toBe(befehl?.args.lesefreigabe);
+    relais.antworte(folge.nr, null);
     expect(await weg).toBeNull();
+    const andererAuftrag = new BrowserBefehlsrelais("test", { abholMs: 500, antwortMs: 500 });
+    const neu = andererAuftrag.lage(3, "Angebotsentwurf", LISTE);
+    const neuBefehl = andererAuftrag.abholen() as BrowserBefehl;
+    expect(neuBefehl.args.lesefreigabe).not.toBe(befehl?.args.lesefreigabe);
+    andererAuftrag.antworte(neuBefehl.nr, null);
+    expect(await neu).toBeNull();
   });
 
   it.each([

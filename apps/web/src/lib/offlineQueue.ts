@@ -166,3 +166,12 @@ export function countByStatus(queue: readonly QueuedOp[]): QueueCounts {
   }
   return counts;
 }
+
+/** Beim Öffnen gesehener lokaler Vorgang; Queueereignisse schreiben ihn nicht fort. */
+export interface OfflineVorgangsStand {
+  readonly id: string;
+  readonly inhalt: string;
+}
+export function offlineVorgangsStand(op: QueuedOp): OfflineVorgangsStand {
+  return { id: op.id, inhalt: JSON.stringify(op) };
+}

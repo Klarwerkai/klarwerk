@@ -2,6 +2,7 @@
 // ASK-AW04-1: echte Ask-/Query-/Rechtekontext-Ausgabe mit fiktivem gespeichertem Arbeitsstand.
 // Nur der HTTP-Transport ist kontrolliert. Kein /api/ask, Modell, Provider oder Browser.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { bestaetigeNeueAntwort } from "../../apps/web/src/lib/fragenArbeitsstand";
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
   useRole: () => ({ role: "experte" }),
   useRoleOptional: () => ({ role: "experte" }),
@@ -102,6 +103,7 @@ beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   rechtekontextZuruecksetzen();
+  bestaetigeNeueAntwort(KONTO);
   stempel = "ask1-rechte-vorher";
   halten = false;
   quelleEntzogen = false;
@@ -226,15 +228,22 @@ it("ASK-AW04-1: stehende Mischantwort ist ab erkanntem Rechtewechsel schon währ
   expect(anfragen.filter((r) => r.url === "/api/ask")).toHaveLength(0);
 });
 
-function eigenerStandBleibt() {
+function eigenerStandBleibt(antwortIstDa = false) {
   const stand = arbeitsstandLesen(localStorage, KONTO);
   expect(stand?.entwurf).toBe(ENTWURF);
   expect(stand?.fragekontext).toEqual(KONTEXT);
   expect(stand?.szenario).toEqual(SZENARIO);
   expect(stand?.startadressen).toEqual(STARTMARKEN);
-  expect(stand?.antwort?.frage).toBe(FRAGE);
-  expect(stand?.antwort?.receipt).toBe("ask1-eigener-alter-receipt");
-  expect(stand?.antwort?.result).toEqual(RESULT);
+  if (antwortIstDa) {
+    expect(stand?.antwort?.frage).toBe(FRAGE);
+    expect(stand?.antwort?.receipt).toBe("ask1-eigener-alter-receipt");
+    expect(stand?.antwort?.result).toEqual(RESULT);
+  } else {
+    expect(stand?.antwort).toBeNull();
+    expect(stand?.fragenFaden).toContain(FRAGE);
+    expect(localStorage.getItem(`kw.fragen.arbeitsstand.v1:${KONTO}`)).not.toContain(MARKE);
+    expect(localStorage.getItem(`kw.fragen.arbeitsstand.v1:${KONTO}`)).not.toContain("Messwert 73");
+  }
   expect(container.querySelector("[data-testid=ask-fragezeile]")?.textContent).toBe(FRAGE);
   expect(anfragen.filter((r) => r.url === "/api/ask")).toHaveLength(0);
 }
@@ -253,23 +262,23 @@ it("ASK-AW04-2: Sperre überlebt Remount mit altem erfolgreichen Cache; eigener 
   await montiere();
   await rechtewechsel();
   eigenerStandBleibt();
-  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend).toBe(true);
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
   await abmontiere();
   // Bereits erfolgreicher Cache ist keine neue Quellenprüfung für den gespeicherten Sperrstand.
   client.setQueryData(["kos", undefined], kos);
   client.setQueryData(["conflicts"], []);
   await montiere(false);
-  await bis(() => gehalten.length >= 4);
+  await tick(); // Ein alter erfolgreicher Querycache enthält keine gelöschte Antwortkopie.
   expect(container.textContent).not.toContain(MARKE);
   expect(container.textContent).not.toContain("Messwert 73");
   eigenerStandBleibt();
   freigeben();
   await bis(() => client.getQueryState(["kos", undefined])?.status === "success");
   expect(container.textContent).not.toContain(MARKE);
-  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend).toBe(true);
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
 });
 
-it("ASK-AW04-3: manuelles/stales isSuccess und erst einer von zwei neuen Abrufen geben nicht frei; zwei echte erlaubte Abrufe schon", async () => {
+it("ASK-AW04-3: weder manuelles isSuccess noch zwei frische erlaubte Quellenreads stellen gelöschten Antwortklartext wieder her", async () => {
   await montiere();
   await rechtewechsel(false);
   await act(async () => {
@@ -277,12 +286,13 @@ it("ASK-AW04-3: manuelles/stales isSuccess und erst einer von zwei neuen Abrufen
     client.setQueryData(["conflicts"], []);
   });
   expect(container.textContent).not.toContain(MARKE);
-  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend).toBe(true);
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
   gibPfad("/api/kos");
   await bis(() => client.getQueryState(["kos", undefined])?.fetchStatus === "idle");
   expect(container.textContent).not.toContain(MARKE);
   gibPfad("/api/conflicts");
-  await bis(() => container.textContent?.includes(MISCHTEXT) === true);
+  await bis(() => client.getQueryState(["conflicts"])?.fetchStatus === "idle");
+  expect(container.textContent).not.toContain(MISCHTEXT);
   expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend).toBeUndefined();
   eigenerStandBleibt();
 });
@@ -299,7 +309,7 @@ it("ASK-AW04-4: vor dem Wechsel gestartete späte Quellenantworten heben die Spe
   await tick();
   expect(client.getQueryData(["kos", undefined])).toBeUndefined();
   expect(container.textContent).not.toContain(MARKE);
-  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend).toBe(true);
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
   freigeben();
   await bis(() => client.getQueryState(["kos", undefined])?.status === "success");
   expect(container.textContent).not.toContain(MARKE);
@@ -315,13 +325,13 @@ it("ASK-AW04-5: gewöhnliches initiales Unknown ohne erkannten Rechtewechsel ble
   expect(container.textContent).toContain(MISCHTEXT);
   expect(container.querySelector("[data-testid=ask-antwort-rechtepruefung]")).toBeNull();
   expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend).toBeUndefined();
-  eigenerStandBleibt();
+  eigenerStandBleibt(true);
   freigeben();
   await bis(() => client.getQueryState(["kos", undefined])?.status === "success");
   expect(container.textContent).toContain(MISCHTEXT);
 });
 
-it("ASK-AW04-6: Quellenfehler nach Rechtewechsel bleibt gesperrt; Kopieren/Datei/Druck verschwinden, erneute erlaubte Leseprüfung stellt wieder her", async () => {
+it("ASK-AW04-6: Quellenfehler sperrt Kopieren/Datei/Druck; erneute erlaubte Leseprüfung erhält Eigenarbeit ohne gelöschte Antwortkopie", async () => {
   const kopieren = vi.fn(async (_text: string) => {});
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -348,16 +358,18 @@ it("ASK-AW04-6: Quellenfehler nach Rechtewechsel bleibt gesperrt; Kopieren/Datei
   freigeben();
   await bis(() => client.getQueryState(["kos", undefined])?.status === "error");
   expect(container.textContent).not.toContain(MARKE);
-  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend).toBe(true);
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
   expect(kopieren).toHaveBeenCalledTimes(1);
   expect(druck).not.toHaveBeenCalled();
   quellfehler = false;
+  expect(container.textContent).not.toContain(MISCHTEXT);
   const erneut = container.querySelector<HTMLButtonElement>(
     "[data-testid=ask-antwort-rechtepruefung] button",
   );
   expect(erneut).not.toBeNull();
   await act(async () => erneut?.click());
-  await bis(() => container.textContent?.includes(MISCHTEXT) === true);
+  await bis(() => client.getQueryState(["conflicts"])?.fetchStatus === "idle");
+  expect(container.textContent).not.toContain(MISCHTEXT);
   eigenerStandBleibt();
   druck.mockRestore();
 });

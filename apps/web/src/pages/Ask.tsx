@@ -126,6 +126,7 @@ import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { anzeigestatusAus } from "../lib/displayStatus";
 // AUFTRAG-mega33 A: die EINE effektive Antwort-Einstufung — Quelle jeder Einstufungs-Anzeige.
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
+import { bestaetigeNeueAntwort } from "../lib/fragenArbeitsstand";
 // Pedi 28.09.2026 · Ergänzung 1: Entwurf und zuletzt angezeigte Antwort bleiben dem Konto erhalten.
 import {
   LEERES_SZENARIO,
@@ -167,6 +168,7 @@ import {
 import { ergebnisStufeFuerAntwort, kiHerkunftAus } from "../lib/kiHerkunft";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
+import { SITZUNGSENDE_EVENT, SITZUNGSENDE_KEY } from "../lib/lokaleSitzung";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
 import { leseObjektbezug, quellenRueckwegHref } from "../lib/objektbezug";
 import {
@@ -814,6 +816,21 @@ export function Ask(): JSX.Element {
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
+  const [rueckmeldungsBezug, setRueckmeldungsBezug] = useState<{
+    quellen: string[];
+    stand: QuellenStand | undefined;
+    beobachtet: QuellenStand | undefined;
+    am: string | null;
+  } | null>(() =>
+    anfang?.antwort
+      ? {
+          quellen: [...(anfang.antwort.result.citedSources ?? [])],
+          stand: anfang.antwort.serverQuellenStand,
+          beobachtet: anfang.antwort.beobachtet,
+          am: anfang.antwort.angezeigtAm,
+        }
+      : null,
+  );
   // R-0293: die Kennung des dauerhaften Antwortbelegs DIESER Antwort — der Schlüssel zur Erklärung
   // „Wie kam diese Antwort zustande?". Sie reist MIT der Antwort im kontogebundenen Arbeitsstand
   // (lib/fragenArbeitsstand.ts), damit der Erklärweg Neuladen und Wiederaufnahme übersteht.
@@ -829,11 +846,11 @@ export function Ask(): JSX.Element {
   // dort bestätigt der Server die Prüfung ohnehin neu.
   const [antwortFingerabdruck, setAntwortFingerabdruck] = useState<string | null>(null);
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
-  const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
+  const [asked, setAsked] = useState(anfang?.antwort?.frage ?? anfang?.fragenFaden?.at(-1) ?? "");
   // R-0348: der Gesprächsfaden — die zuletzt beantworteten Fragen dieser Fragestrecke. Eine
   // wiederaufgenommene Antwort beginnt ihn; „Neues Thema" und ein Kontowechsel leeren ihn.
   const [faden, setFaden] = useState<string[]>(
-    anfang?.antwort?.frage ? [anfang.antwort.frage] : [],
+    anfang?.fragenFaden ?? (anfang?.antwort?.frage ? [anfang.antwort.frage] : []),
   );
   // Die zuletzt gestellte Frage steht schon in der Fragezeile; aufgezählt werden die früheren.
   const fadenFrueher = faden.filter((frage) => frage !== asked);
@@ -1021,8 +1038,20 @@ export function Ask(): JSX.Element {
     return () => clearInterval(timer);
   }, [warteBeginn]);
   useEffect(() => {
-    const abmelden = aufRechtekontextwechsel(() => {
+    const entzieheAntwort = () => {
       askLauf.current?.steuerung.abort();
+      antwortFrage.current = "";
+      setResult(null);
+      setAnswerId(null);
+      setAussagen([]);
+      setAussageTexte(new Map());
+      setFundstellenAuszuege(new Map());
+      setVerschlossen([]);
+      setPruefrahmen(null);
+      setReferenzpruefung(null);
+      setQuellenStand(undefined);
+      setBeobachtet(undefined);
+
       rechtePruefung.current = ausstehendeAntwortpruefung();
       setAntwortRechtePruefen(true);
       vorlesenStoppen();
@@ -1034,7 +1063,18 @@ export function Ask(): JSX.Element {
       if (jetzt.konto !== null && jetzt.konto === jetzt.standFuer) {
         merkeAntwortRechtewechsel(fragenSpeicher(), jetzt.konto);
       }
-    });
+    };
+    const abmelden = aufRechtekontextwechsel(entzieheAntwort);
+    const sitzungsende = () => {
+      entzieheAntwort();
+      setReceipt("");
+      setRueckmeldungsBezug(null);
+    };
+    const sitzungBeendet = (e: StorageEvent) => {
+      if (e.key === SITZUNGSENDE_KEY) sitzungsende();
+    };
+    window.addEventListener(SITZUNGSENDE_EVENT, sitzungsende);
+    window.addEventListener("storage", sitzungBeendet);
     const abfrageAbmelden = qc.getQueryCache().subscribe((ereignis) => {
       const pruefung = rechtePruefung.current;
       if (!pruefung || pruefung.epoche !== anfrageEpoche() || ereignis.type !== "updated") return;
@@ -1085,6 +1125,8 @@ export function Ask(): JSX.Element {
     });
     return () => {
       abmelden();
+      window.removeEventListener(SITZUNGSENDE_EVENT, sitzungsende);
+      window.removeEventListener("storage", sitzungBeendet);
       abfrageAbmelden();
       const lauf = askLauf.current;
       askLauf.current = null;
@@ -1200,7 +1242,14 @@ export function Ask(): JSX.Element {
       const angekommen = leereAntwortAlsLuecke(selectAnswer(r));
       rechtePruefung.current = null;
       setAntwortRechtePruefen(false);
+      bestaetigeNeueAntwort(arbeitskontoJetzt.current.konto);
       setResult(angekommen);
+      setRueckmeldungsBezug({
+        quellen: [...(angekommen.citedSources ?? [])],
+        stand: quellenStandAus(angekommen.sources, r.quellenStand),
+        beobachtet: beobachtungAus(angekommen.sources, kos.data),
+        am: new Date().toISOString(),
+      });
       // R-0338 (Ben, Nacharbeit 3): die Fassung ihrer Quellen, wie der SERVER sie zu dieser Antwort
       // gelesen hat — und daneben, getrennt, was diese Fläche gerade von ihnen kennt (nur Untergrenze
       // für spätere Änderungen, Regel 4 an `antwortFrische`).
@@ -1408,6 +1457,7 @@ export function Ask(): JSX.Element {
             }
           : null,
       startadressen: gemerkteStartadressen,
+      fragenFaden: faden,
       // K2 (Ben Nacharbeit 3): die begonnene Auswahl und das begonnene Szenario — leer wird
       // nichts abgelegt (`arbeitsstandSchreiben`).
       fragekontext,
@@ -1431,6 +1481,7 @@ export function Ask(): JSX.Element {
     aussageTexte,
     fundstellenAuszuege,
     gemerkteStartadressen,
+    faden,
     fragekontext,
     szenario,
   ]);
@@ -1506,6 +1557,16 @@ export function Ask(): JSX.Element {
       antwortFrage.current = antwort?.frage ?? "";
       aufgenommeneAntwort.current = antwort?.result ?? null;
       setResult(antwort?.result ?? null);
+      setRueckmeldungsBezug(
+        antwort
+          ? {
+              quellen: [...(antwort.result.citedSources ?? [])],
+              stand: antwort.serverQuellenStand,
+              beobachtet: antwort.beobachtet,
+              am: antwort.angezeigtAm,
+            }
+          : null,
+      );
       setReceipt(antwort?.receipt ?? "");
       // R-0293: die Kennung gehört zur aufgenommenen Antwort desselben Kontos (Altbestand: undefined).
       setAnswerId(antwort === null ? null : antwort.answerId);
@@ -1521,12 +1582,12 @@ export function Ask(): JSX.Element {
       setBestaetigtFuer(null);
       setReferenzAbgelaufen(false);
       setGapId(antwort?.gapId ?? null);
-      setAsked(antwort?.frage ?? "");
+      setAsked(antwort?.frage ?? gelesen?.fragenFaden?.at(-1) ?? "");
       // R-0305/R-1099 (Ben, Nacharbeit 10): der gespeicherte Kontext DIESER Antwort — fehlt er
       // (Altstand), ist er unbekannt (`undefined`), nicht „ohne Kontext".
       setAntwortKontext(antwort ? antwort.fragekontext : null);
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
-      setFaden(antwort?.frage ? [antwort.frage] : []);
+      setFaden(gelesen?.fragenFaden ?? (antwort?.frage ? [antwort.frage] : []));
       setAntwortAm(antwort?.angezeigtAm ?? null);
       setQuellenStand(antwort?.serverQuellenStand);
       setBeobachtet(antwort?.beobachtet);
@@ -1618,13 +1679,18 @@ export function Ask(): JSX.Element {
   // Die offene Rückmeldung gehört zur selben Antwortfreigabe. Ihr eigener editierter Weg
   // bleibt in der montierten Karte, während Titel und Bestätigung gesperrt sind.
   function rueckmeldungFreigegeben(koId: string): boolean {
+    const eigeneOffeneRueckmeldung =
+      nichtHilfreich?.koId === koId &&
+      rueckmeldungsBezug !== null &&
+      rueckmeldungsBezug.quellen.includes(koId) &&
+      pruefungBelegt &&
+      antwortFrische(rueckmeldungsBezug, kos.data, kos.dataUpdatedAt) !== "ueberholt";
     return (
       rechtePruefung.current === null &&
       konto !== null &&
       konto === standFuer &&
-      karteSichtbar &&
-      result?.answered === true &&
-      (result.citedSources ?? []).includes(koId) &&
+      ((karteSichtbar && result?.answered === true && (result.citedSources ?? []).includes(koId)) ||
+        eigeneOffeneRueckmeldung) &&
       quelleTitel(koId) !== null &&
       belegNochGueltig(receipt, antwortAm, Date.now())
     );
@@ -2711,7 +2777,7 @@ export function Ask(): JSX.Element {
             ) : null}
           </div>
         ) : null}
-        {antwortRechtePruefen && stehendesResult ? (
+        {antwortRechtePruefen ? (
           <output
             data-testid="ask-antwort-rechtepruefung"
             className="mt-5 block text-[13px] text-muted"

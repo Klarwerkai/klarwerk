@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // RC3-P2-S: erkannte Änderung bei weiter lesbarem Altstand und tatsächlich fehlgeschlagenem setItem.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { bestaetigeNeueAntwort } from "../../apps/web/src/lib/fragenArbeitsstand";
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
   useRole: () => ({ role: "experte" }),
   useRoleOptional: () => ({ role: "experte" }),
@@ -113,6 +114,7 @@ beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   rechtekontextZuruecksetzen();
+  bestaetigeNeueAntwort(KONTO);
   stempel = "p2s-vorher";
   halten = false;
   entzogen = false;
@@ -178,7 +180,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-it("RC3-P2-S: fehlgeschlagene Marker-Schreibung öffnet den lesbaren Altstand nach erkanntem Wechsel nicht; zwei neue erlaubte Reads und Eigenarbeit bleiben", async () => {
+it("RC3-P2-S: fehlgeschlagene Bereinigungsschreibung entfernt den alten Klartext trotzdem; zwei neue erlaubte Reads und Eigenarbeit bleiben", async () => {
   await zeige(true);
   await bis(
     () =>
@@ -211,11 +213,11 @@ it("RC3-P2-S: fehlgeschlagene Marker-Schreibung öffnet den lesbaren Altstand na
   });
   await bis(() => client.getQueryData(["kos", undefined]) === undefined);
   expect(quota).toHaveBeenCalled();
-  expect(localStorage.getItem(key)).toBe(rohVorher);
+  expect(localStorage.getItem(key)).toBeNull();
   expect(arbeitsstandLesen(localStorage, ANDERES)).toEqual(fremdVorher);
   expect(arbeitsstandLesen(localStorage, KONTO)).toEqual({
     ...eigenVorher,
-    antwort: { ...eigenVorher.antwort, rechtepruefungAusstehend: true },
+    antwort: null,
   });
   client.setQueryData(["kos", undefined], kos);
   client.setQueryData(["conflicts"], []);
@@ -227,7 +229,7 @@ it("RC3-P2-S: fehlgeschlagene Marker-Schreibung öffnet den lesbaren Altstand na
   );
   expect(container.textContent).not.toContain(MARKE);
   expect(arbeitsstandLesen(localStorage, KONTO)?.entwurf).toBe(ENTWURF);
-  expect(localStorage.getItem(key)).toBe(rohVorher);
+  expect(localStorage.getItem(key)).toBeNull();
   await act(async () => {
     gib("/api/kos");
   });
@@ -237,24 +239,24 @@ it("RC3-P2-S: fehlgeschlagene Marker-Schreibung öffnet den lesbaren Altstand na
     halten = false;
     gib();
   });
-  await bis(() => container.textContent?.includes(MISCHTEXT) === true);
+  await bis(() => client.getQueryState(["conflicts"])?.fetchStatus === "idle");
+  expect(container.textContent).not.toContain(MISCHTEXT);
   // Trotz weiter fehlgeschlagener Speicherung bestätigen erst beide tatsächlichen erlaubten Reads die Anzeige.
-  expect(localStorage.getItem(key)).toBe(rohVorher);
-  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.receipt).toBe(
-    eigenVorher.antwort.receipt,
-  );
+  expect(localStorage.getItem(key)).toBeNull();
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
+  expect(arbeitsstandLesen(localStorage, KONTO)?.fragenFaden).toContain(FRAGE);
   expect(arbeitsstandLesen(localStorage, KONTO)?.entwurf).toBe(eigenVorher.entwurf);
   quota.mockRestore();
   await zeige(false);
   await zeige(true);
   await bis(
     () =>
-      container.textContent?.includes(MISCHTEXT) === true &&
-      arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend === undefined,
+      client.getQueryState(["conflicts"])?.status === "success" &&
+      arbeitsstandLesen(localStorage, KONTO)?.antwort === null,
   );
-  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.result).toEqual(
-    eigenVorher.antwort.result,
-  );
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
+  expect(localStorage.getItem(key)).not.toContain(MARKE);
+  expect(container.textContent).not.toContain(MISCHTEXT);
   expect(arbeitsstandLesen(localStorage, ANDERES)).toEqual(fremdVorher);
   expect(abrufe.some((u) => u === "/api/ask" || !u.startsWith("/api/"))).toBe(false);
 });

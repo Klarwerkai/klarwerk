@@ -7,8 +7,9 @@
 // weil `main.tsx:6` `./i18n` selbst holt; wer aber `App` OHNE `main.tsx` montiert, stand ohne
 // Sprache da. Die Abhängigkeit ist real und gehört an die Wurzel der Anwendung, nicht an eine Seite.
 import "./i18n";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 const Kiosk = lazy(() => import("./kiosk/Kiosk"));
+import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { AuthProvider, useSession } from "./app/AuthContext";
 // R-1029 / R-1674: die geteilten Stände der Hülle im Takt nachladen — nur hinter dem Tor, also nie
@@ -19,7 +20,7 @@ import { GeteilterStandNachlader } from "./app/GeteilterStandNachlader";
 // Rückgaben (/mobile, schmal, breit), das wären drei Montagen und damit wieder drei Wahrheiten.
 // Hier ist es eine, neben den übrigen App-Kontexten, und sie deckt AUCH die shell-lose Route.
 import { ImageDescribeProvider } from "./app/ImageDescribeContext";
-import { NavGuardProvider } from "./app/NavGuardContext";
+import { NavGuardProvider, useNavGuard } from "./app/NavGuardContext";
 // produkt:20261011:peter-p14 (K6/K7): räumt den Zwischenspeicher bei einem Wechsel des Rechtekontexts.
 import { RechtekontextWache } from "./app/RechtekontextWache";
 import { RoleProvider } from "./app/RoleContext";
@@ -90,7 +91,30 @@ function OfflineErfassungsTor({ anwendung }: { anwendung: JSX.Element }): JSX.El
 // Login-Gate: Ersteinrichtung → Login → Shell. Im Dev wird bei nicht
 // erreichbarem Backend die Shell direkt gezeigt (Vorschau ohne Login).
 function Gate(): JSX.Element {
+  const { t } = useTranslation();
   const s = useSession();
+  const { guard } = useNavGuard();
+  const kontoVorher = useRef<string | null>(null);
+  const [zurAnmeldung, setZurAnmeldung] = useState(false);
+  const angefragt = useRef(false);
+  if (s.user) kontoVorher.current = s.user.id;
+  const verloren =
+    kontoVorher.current !== null &&
+    !s.user &&
+    !s.signOutFailed &&
+    s.sitzungslage !== "unbeantwortet";
+  useEffect(() => {
+    if (!verloren) {
+      angefragt.current = false;
+      setZurAnmeldung(false);
+      return;
+    }
+    if (!angefragt.current) {
+      angefragt.current = true;
+      guard(() => setZurAnmeldung(true));
+    }
+  }, [verloren, guard]);
+
   // AUFTRAG-mega61 Block A: der Schalter der Rechtsseiten. Er wird UNBEDINGT gelesen (Regel der
   // Hooks), ausgewertet wird er nur auf den beiden Pfaden unten.
   const rechtsseiten = useRechtsseitenTor();
@@ -104,12 +128,26 @@ function Gate(): JSX.Element {
     <>
       <GeteilterStandNachlader />
       <RechtekontextWache kontoId={s.user?.id ?? null} />
-      <AppShell>
+      <AppShell key={s.user?.id ?? kontoVorher.current ?? "ohne-konto"}>
         <AppRoutes />
       </AppShell>
     </>
   );
 
+  const halten = kontoVorher.current !== null && !s.user && !zurAnmeldung;
+  const geschuetzteAnsicht = (
+    <>
+      <div role="alert" hidden={!halten}>
+        {verloren ? t("erholung.sitzung.beendet") : t("erholung.sitzung.unbestaetigt")}{" "}
+        {t("erholung.sitzung.eingabeBleibt")}{" "}
+        {verloren ? t("erholung.sitzung.gesperrt") : t("erholung.sitzung.verbindung")}{" "}
+        <button type="button" onClick={() => guard(() => setZurAnmeldung(true))}>
+          {t("erholung.sitzung.anmeldung")}
+        </button>
+      </div>
+      <div {...(halten ? { inert: "" } : {})}>{anwendung}</div>
+    </>
+  );
   if (window.location.pathname === "/kiosk") {
     return (
       <Suspense fallback={<Splash />}>
@@ -161,6 +199,7 @@ function Gate(): JSX.Element {
   if (s.signOutFailed) {
     return <SignOutBlocked />;
   }
+  if (kontoVorher.current !== null && !s.user && !zurAnmeldung) return geschuetzteAnsicht;
   if (s.isLoading) {
     return <Splash />;
   }
@@ -203,7 +242,7 @@ function Gate(): JSX.Element {
     }
     return <AuthScreens needsSetup={false} />;
   }
-  return anwendung;
+  return geschuetzteAnsicht;
 }
 
 export default function App(): JSX.Element {

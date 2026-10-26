@@ -18,6 +18,8 @@
   const FASSUNG = "aktion.js@1.0.0";
   const MAX_WERT = 4000;
   const MAX_EINTRAG = 500;
+  const geseheneWerte = new WeakMap();
+  const freigegebeneWerte = new WeakMap();
 
   /** @param {unknown} s */
   const norm = (s) =>
@@ -121,7 +123,12 @@
       el instanceof HTMLInputElement &&
       (el.type === "password" ||
         el.type === "file" ||
-        el.getAttribute("autocomplete") === "one-time-code")
+        /^(?:cc-|current-password|new-password|one-time-code)/i.test(
+          el.getAttribute("autocomplete") ?? "",
+        ) ||
+        /\b(?:kennwort|passwort|password|pin|tan|otp|cvc|cvv|pr[üu]fziffer|kartennummer|card\s*number)\b/i.test(
+          name(el),
+        ))
     );
   }
 
@@ -222,10 +229,11 @@
   const api = {
     fassung: FASSUNG,
 
-    /** @param {{ formular: string, liste: { name: string, kennung: string } | null }} a */
+    /** @param {{ formular: string, liste: { name: string, kennung: string } | null, lesefreigabe?: string }} a */
     lage(a) {
       const treffer = formulare(a.formular);
       const f = treffer.length === 1 ? treffer[0] : null;
+      if (f) for (const el of felder(f)) geseheneWerte.set(el, String(el.value));
       return {
         origin: location.origin,
         pfad: location.pathname,
@@ -238,7 +246,12 @@
               felder: felder(f).map((el) => ({
                 label: name(el),
                 typ: typ(el),
-                wert: gesperrt(el) ? "" : String(el.value).slice(0, MAX_WERT),
+                wert:
+                  typeof a.lesefreigabe === "string" &&
+                  freigegebeneWerte.get(el)?.freigabe === a.lesefreigabe &&
+                  freigegebeneWerte.get(el)?.wert === String(el.value)
+                    ? String(el.value)
+                    : "",
                 gesperrt: gesperrt(el),
               })),
               knoepfe: knoepfe(f).map(name),
@@ -250,7 +263,7 @@
 
     /**
      * `erwartet`: nur eintragen, wenn das Feld jetzt genau diesen Wert zeigt (Rücknahme).
-     * @param {{ formular: string, fingerabdruck: string, label: string, wert: string, erwartet?: string }} a
+     * @param {{ formular: string, fingerabdruck: string, label: string, wert: string, erwartet?: string, lesefreigabe?: string }} a
      */
     fuelle(a) {
       const f = gebunden(a.formular, a.fingerabdruck);
@@ -260,11 +273,15 @@
       if (passend.length > 1) return { ok: false, grund: "feld_mehrdeutig" };
       const el = passend[0];
       if (gesperrt(el) || inaktiv(el)) return { ok: false, grund: "feld_gesperrt" };
-      if (typeof a.erwartet === "string" && String(el.value) !== a.erwartet) {
+      const erwartet = geseheneWerte.has(el) ? geseheneWerte.get(el) : a.erwartet;
+      if (typeof erwartet === "string" && String(el.value) !== erwartet) {
         return { ok: false, grund: "wert_geaendert" };
       }
-      setze(el, String(a.wert).slice(0, MAX_WERT));
-      return { ok: true, wert: { wert: String(el.value) } };
+      const wert = String(a.wert).slice(0, MAX_WERT);
+      setze(el, wert);
+      if (String(el.value) !== wert) return { ok: false, grund: "wert_geaendert" };
+      freigegebeneWerte.set(el, { wert, freigabe: a.lesefreigabe });
+      return { ok: true, wert: { wert } };
     },
 
     /**

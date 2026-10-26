@@ -7,8 +7,10 @@ import type { SessionUser } from "../api/auth";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { DraftPayload } from "../api/types";
+import { lokaleSitzungEpoche, lokalesKontoErlaubt } from "../lib/lokaleSitzung";
 import {
   type NewOp,
+  type OfflineVorgangsStand,
   type QueueCounts,
   type QueuedOp,
   clearSynced,
@@ -18,15 +20,20 @@ import {
   markFailed,
   markPending,
   markSynced,
+  offlineVorgangsStand,
   ohneEigentuemer,
   pendingCount,
   replacePayload,
   reviveInterrupted,
   syncableOps,
 } from "../lib/offlineQueue";
+import {
+  OFFLINE_QUEUE_EVENT,
+  offlineExklusiv,
+  readOfflineQueue,
+  writeOfflineQueue,
+} from "../lib/offlineQueueStorage";
 import { useSession } from "./AuthContext";
-
-const STORAGE_KEY = "kw.offlineQueue.v1";
 
 // ================================================================================================
 // JOB 4249 R4 — DER SCHLÜSSEL, UNTER DEM „WER BIN ICH?" GEFÜHRT WIRD.
@@ -299,13 +306,20 @@ export interface OfflineQueueApi {
    * neuer ungebundener Bestand, und ein stilles Verschlucken wäre Datenverlust. Der Aufrufer
    * behält den Text im Formular und sagt, was los ist (s. `Mobile.tsx`).
    */
-  enqueue: (op: NeuerVorgang) => boolean;
+  enqueue: (op: NeuerVorgang, erwartet?: OfflineVorgangsStand | null) => Promise<boolean>;
+  persistError: string | null;
   /**
    * JOB 4193: die Entscheidung eines Menschen ERSETZT die liegende Nutzlast (samt dem Stand, gegen
    * den sie gelten soll). Sie löscht den Vorgang nie still — `replacePayload` (lib/offlineQueue.ts)
    * greift nur, solange er wartet oder gescheitert ist.
    */
-  replace: (id: string, payload: DraftPayload, title: string, seenUpdatedAt?: string) => void;
+  replace: (
+    id: string,
+    payload: DraftPayload,
+    title: string,
+    erwartet: OfflineVorgangsStand | null,
+    seenUpdatedAt?: string,
+  ) => Promise<OfflineVorgangsStand | false>;
   syncNow: () => Promise<SyncResult>;
 }
 
@@ -355,10 +369,7 @@ function standNachfuehren(queue: readonly QueuedOp[], op: NeuerVorgang): Vorgang
 
 function load(): VorgangMitStand[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    // Was beim letzten Mal mitten im Senden abbrach, liegt hier als `pending`. Beim Neustart läuft
-    // kein Send mehr — der Rest wird wieder aufgenommen, statt für immer liegenzubleiben (F-0027).
-    return raw ? reviveInterrupted(JSON.parse(raw) as VorgangMitStand[]) : [];
+    return reviveInterrupted(readOfflineQueue<VorgangMitStand>()) as VorgangMitStand[];
   } catch {
     return [];
   }
@@ -367,7 +378,7 @@ function load(): VorgangMitStand[] {
 function errMsg(e: unknown): string {
   return e instanceof ApiError
     ? e.message
-    : e instanceof Error
+    : typeof e === "object" && e !== null && "message" in e && typeof e.message === "string"
       ? e.message
       : "Sync fehlgeschlagen.";
 }
@@ -417,7 +428,8 @@ function keinLauf(): SyncResult {
 
 export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueApi {
   const qc = useQueryClient();
-  const [queue, setQueue] = useState<VorgangMitStand[]>(load);
+  const [queue, setQueueState] = useState<VorgangMitStand[]>(load);
+  const [persistError, setPersistError] = useState<string | null>(null);
   // ==============================================================================================
   // JOB 4249 — DAS KONTO WIRD GELESEN, NICHT ÜBERGEBEN.
   // ==============================================================================================
@@ -509,13 +521,39 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
     };
   }, []);
 
+  const commitQueue = useCallback(
+    (fn: (q: VorgangMitStand[]) => VorgangMitStand[], epoche: string | null): boolean => {
+      if (abgehaengtRef.current || lokaleSitzungEpoche() !== epoche) return false;
+      const next = fn(readOfflineQueue<VorgangMitStand>());
+      writeOfflineQueue(next);
+      queueRef.current = next;
+      setQueueState(next);
+      setPersistError(null);
+      window.dispatchEvent(new Event(OFFLINE_QUEUE_EVENT));
+      return true;
+    },
+    [],
+  );
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    } catch {
-      // Persistenz best effort — Verlust nur bei vollem/blockiertem Storage.
-    }
-  }, [queue]);
+    const refresh = () => {
+      try {
+        const next = readOfflineQueue<VorgangMitStand>();
+        queueRef.current = next;
+        setQueueState(next);
+      } catch (e) {
+        setPersistError(errMsg(e));
+      }
+    };
+    const storage = (e: StorageEvent) => {
+      if (e.key === null || e.key === "kw.offlineQueue.v1") refresh();
+    };
+    window.addEventListener("storage", storage);
+    window.addEventListener(OFFLINE_QUEUE_EVENT, refresh);
+    return () => {
+      window.removeEventListener("storage", storage);
+      window.removeEventListener(OFFLINE_QUEUE_EVENT, refresh);
+    };
+  }, []);
 
   /**
    * JOB 4249 R6: Die Anzeige an die Tatsache nachführen — und, wenn eine Bestätigung vorliegt, den
@@ -563,267 +601,347 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
   );
 
   const enqueue = useCallback(
-    (op: NeuerVorgang): boolean => {
-      // JOB 4249: EIN VORGANG OHNE EIGENTÜMER ENTSTEHT HIER NICHT MEHR. Ohne bekanntes Konto wird
-      // abgelehnt statt ungebunden angelegt — der Aufrufer behält den Text und sagt es dem
-      // Menschen.
-      //
-      // JOB 4249 R5 — dieselbe lebende Quelle wie beim Senden, aber eine SCHWÄCHERE Bedingung, und
-      // das ist Absicht: Angenommen wird schon bei bekannter Kennung, auch während einer laufenden
-      // Auffrischung. Wer hier ebenfalls auf die Bestätigung wartete, wiese den getippten Text bei
-      // JEDER periodischen Auffrischung ab — Datenverlust als Preis für eine Zuordnung, die beim
-      // SENDEN ohnehin noch einmal und dann bestätigt geprüft wird. Annehmen ist reversibel,
-      // Senden nicht; deshalb die unterschiedliche Schwelle.
-      //
-      // JOB 4249 R6 macht diese Unterscheidung ZWINGEND, nicht nur angenehm: Seit dieser Runde gilt
-      // eine Auskunft von VOR der letzten Verbindungslücke nicht mehr als bestätigt — und ohne Netz
-      // liegt die Lücke definitionsgemäss immer hinter der letzten Antwort. Wer hier auf
-      // `unbestaetigt` prüfte, nähme am Handy ohne Netz überhaupt nichts mehr an. Das wäre der
-      // Auftrag, in sein Gegenteil gedreht.
-      const stand = sitzungsstandLesen(qc, netzLueckeRef.current);
-      if (stand.konto === null) {
+    async (op: NeuerVorgang, erwartet?: OfflineVorgangsStand | null): Promise<boolean> => {
+      const epoche = lokaleSitzungEpoche();
+      try {
+        return await offlineExklusiv(() => {
+          const stand = sitzungsstandLesen(qc, netzLueckeRef.current);
+          if (stand.konto === null || !lokalesKontoErlaubt(stand.konto)) return false;
+          const bestehend =
+            op.kind === "draft.update" && op.draftId
+              ? readOfflineQueue<VorgangMitStand>().find(
+                  (o) =>
+                    o.draftId === op.draftId &&
+                    o.eigentuemer === stand.konto &&
+                    (o.status === "queued" || o.status === "failed"),
+                )
+              : undefined;
+          if (
+            op.kind === "draft.update" &&
+            (bestehend
+              ? !erwartet ||
+                erwartet.id !== bestehend.id ||
+                erwartet.inhalt !== JSON.stringify(bestehend)
+              : erwartet != null)
+          ) {
+            setPersistError(
+              "Der Offlinevorgang wurde in einem anderen Fenster geändert. Bitte den neuen Stand prüfen; deine Eingabe bleibt erhalten.",
+            );
+            return false;
+          }
+          const mitEigentuemer: NeuerVorgang = { ...op, eigentuemer: stand.konto };
+          return commitQueue(
+            (q) => standNachfuehren(enqueueOp(q, mitEigentuemer), mitEigentuemer),
+            epoche,
+          );
+        });
+      } catch (e) {
+        setPersistError(errMsg(e));
         return false;
       }
-      const mitEigentuemer: NeuerVorgang = { ...op, eigentuemer: stand.konto };
-      setQueue((q) => standNachfuehren(enqueueOp(q, mitEigentuemer), mitEigentuemer));
-      return true;
     },
-    [qc],
+    [qc, commitQueue],
   );
 
   const replace = useCallback(
-    (id: string, payload: DraftPayload, title: string, seenUpdatedAt?: string) => {
-      setQueue((q) =>
-        replacePayload(q, id, payload, title).map((o) =>
-          o.id === id && o.status === "queued" ? mitStand(o, seenUpdatedAt) : o,
-        ),
-      );
+    async (
+      id: string,
+      payload: DraftPayload,
+      title: string,
+      erwartet: OfflineVorgangsStand | null,
+      seenUpdatedAt?: string,
+    ): Promise<OfflineVorgangsStand | false> => {
+      const epoche = lokaleSitzungEpoche();
+      try {
+        return await offlineExklusiv(() => {
+          const stand = sitzungsstandLesen(qc, netzLueckeRef.current);
+          const aktuell = readOfflineQueue<VorgangMitStand>().find((o) => o.id === id);
+          if (
+            !aktuell ||
+            !erwartet ||
+            erwartet.id !== id ||
+            JSON.stringify(aktuell) !== erwartet.inhalt ||
+            (aktuell.status !== "queued" && aktuell.status !== "failed")
+          ) {
+            setPersistError(
+              "Der Offlinevorgang wurde in einem anderen Fenster geändert oder übertragen. Bitte den neuen Stand prüfen; deine Eingabe bleibt erhalten.",
+            );
+            return false;
+          }
+          if (
+            !stand.konto ||
+            !lokalesKontoErlaubt(stand.konto) ||
+            !readOfflineQueue<VorgangMitStand>().some(
+              (o) => o.id === id && gehoertKonto(o, stand.konto ?? ""),
+            )
+          )
+            return false;
+          let neuerStand: OfflineVorgangsStand | false = false;
+          const angenommen = commitQueue((q) => {
+            const neu = replacePayload(q, id, payload, title).map((o) =>
+              o.id === id && o.status === "queued" ? mitStand(o, seenUpdatedAt) : o,
+            );
+            const ersetzt = neu.find((o) => o.id === id);
+            if (ersetzt) neuerStand = offlineVorgangsStand(ersetzt);
+            return neu;
+          }, epoche);
+          return angenommen ? neuerStand : false;
+        });
+      } catch (e) {
+        setPersistError(errMsg(e));
+        return false;
+      }
     },
-    [],
+    [qc, commitQueue],
   );
 
   const syncNow = useCallback(async (): Promise<SyncResult> => {
-    if (syncingRef.current || typeof navigator === "undefined" || !navigator.onLine) {
+    const epoche = lokaleSitzungEpoche();
+    try {
+      return await offlineExklusiv(async () => {
+        const setQueue = (fn: (q: VorgangMitStand[]) => VorgangMitStand[]) => {
+          if (!commitQueue(fn, epoche))
+            throw new Error("Die Sitzung oder Eingabe wurde inzwischen beendet.");
+        };
+        queueRef.current = reviveInterrupted(
+          readOfflineQueue<VorgangMitStand>(),
+        ) as VorgangMitStand[];
+        if (syncingRef.current || typeof navigator === "undefined" || !navigator.onLine) {
+          return keinLauf();
+        }
+        const wartend = syncableOps(queueRef.current) as VorgangMitStand[];
+        if (wartend.length === 0) {
+          return keinLauf();
+        }
+        // ============================================================================================
+        // JOB 4249 — OHNE BESTÄTIGTES KONTO GEHT NICHTS HINAUS.
+        // ============================================================================================
+        //
+        // Die Sitzung lädt noch, oder ihr Abruf ist gescheitert (`AuthContext` behält bei Fehler
+        // KEINEN alten Nutzer, s. `resolveSessionUser`). Beides heisst dasselbe: es ist nicht
+        // erwiesen, wem die wartenden Vorgänge gehören. Wer hier den letzten bekannten Namen
+        // weiterbenutzte, legte im Zweifel fremde Arbeit unter fremdem Namen an — der teuerste
+        // aller Ausgänge. Gemeldet wird das als Lage, nicht als Zahl: ohne Konto ist nicht einmal
+        // entscheidbar, welcher Vorgang eigen wäre.
+        //
+        // JOB 4249 R5: Gelesen wird der LEBENDE Zustand, nicht der gerenderte. Schon der Anfang des
+        // Laufs darf nicht auf einer Momentaufnahme stehen — sonst partitioniert die Zeile darunter
+        // die Warteschlange nach einem Konto von vorhin.
+        const start = sitzungsstandLesen(qc, netzLueckeRef.current);
+        if (start.unbestaetigt) {
+          // Die Auskunft steht aus (der Normalfall bei zurückkehrender Verbindung, Fokus und alle fünf
+          // Minuten) oder stammt von vor der letzten Verbindungslücke. Nichts geht hinaus, nichts wird
+          // angefasst, nichts wird gemeldet — die Bestätigung wird angefordert, und der Lauf wird
+          // nachgeholt, sobald die Antwort da ist.
+          nachAuffrischungRef.current = true;
+          bestaetigungAnfordern(start);
+          return { ...keinLauf(), auffrischungLaeuft: wartend.length };
+        }
+        if (start.konto === null || !lokalesKontoErlaubt(start.konto)) {
+          return { ...keinLauf(), kontoUnbekannt: true };
+        }
+        const konto = start.konto;
+        // ============================================================================================
+        // JOB 4249 — DREI HAUFEN, UND NUR EINER WIRD ANGEFASST.
+        // ============================================================================================
+        //
+        // `eigene`  gehen hinaus.
+        // `fremde`  werden NICHT gesendet, NICHT gelöscht, NICHT umgeschrieben und NICHT umgehängt.
+        //           Sie werden gezählt und sonst in Ruhe gelassen — auch kein `markFailed`: ein
+        //           Fehlervermerk am Vorgang eines anderen wäre eine Änderung an fremder Arbeit, und
+        //           die Meldung dazu läse jemand, den sie nichts angeht.
+        // `ungebundene` sind Reste aus einer Sitzung vor diesem Auftrag. Bauform wie
+        //           `ohneVoraussetzung` (JOB 4193 R5): liegen lassen, vermerken, melden — aber
+        //           niemandem zuschlagen und nie löschen.
+        const eigene = wartend.filter((op) => gehoertKonto(op, konto));
+        const fremd = wartend.filter(
+          (op) => !ohneEigentuemer(op) && !gehoertKonto(op, konto),
+        ).length;
+        const ungebundene = wartend.filter(ohneEigentuemer);
+        syncingRef.current = true;
+        setSyncing(true);
+        let synced = 0;
+        let failed = 0;
+        let stale = 0;
+        let ohneVoraussetzung = 0;
+        let abgebrochen = 0;
+        let auffrischungLaeuft = 0;
+        for (const alt of ungebundene) {
+          setQueue((q) => markFailed(q, alt.id, "Kein Konto hinterlegt — bitte einmal prüfen."));
+        }
+        // ============================================================================================
+        // JOB 4249 R2 (BEN Korrekturpflicht 1) — DIE BINDUNG GILT VOR JEDEM EINZELNEN AUFRUF.
+        // ============================================================================================
+        //
+        // DER BEFUND (BEN R1, an dieser Datei gemessen): Das Konto wurde EINMAL gelesen (`lage`, oben)
+        // und EINMAL gefiltert (`eigene`, oben). Die Schleife darunter hat danach nie wieder gefragt.
+        // Zwischen zwei Durchläufen liegt aber ein `await` — und darin passt ein ganzer Kontowechsel:
+        // A hat zwei Vorgänge offline liegen, der erste ist unterwegs, die Sitzung wechselt auf B, und
+        // der ZWEITE ging als B hinaus. BENs Messung: `{ bListe: 1, gesendet: 2 }` statt
+        // `{ bListe: 0, gesendet: 1 }`.
+        //
+        // DIE LEHRE IST DIE VON JOB 4193 R6, nur eine Ebene tiefer: eine Bedingung, die VOR der
+        // Schleife steht, deckt den Zustand von vorhin ab, nicht den von jetzt. Sie gehört an den
+        // Engpass — und der Engpass ist der einzelne Aufruf, nicht der Lauf.
+        //
+        // WAS DER ABBRUCH NICHT TUT: Er holt nichts zurück. Ein Aufruf, der bereits unterwegs ist,
+        // trägt die Anmeldedaten seines Absendezeitpunkts und gehört dem, der ihn losgeschickt hat —
+        // daran kann der Client nichts mehr ändern, und er behauptet es auch nicht. Er sorgt nur
+        // dafür, dass KEIN WEITERER dazukommt. Die übrigen Vorgänge bleiben unverändert liegen, mit
+        // ihrem Eigentümer, und werden gezählt.
+        // ============================================================================================
+        // JOB 4249 R5 (BEN Korrekturpflicht 1) — DIE VIER AUSGÄNGE, AUS EINEM EINZIGEN BLICK.
+        // ============================================================================================
+        //
+        // Hier standen bis R4 ZWEI Bedingungen: `bindungGiltNoch()` (Kennung, aus dem Rendern) und
+        // `kontoWirdGeprueft()` (Abrufzustand, aus dem Speicher). Beide sind WEG — nicht ergänzt,
+        // ersetzt. Zwei Auskünfte aus zwei Quellen können einander widersprechen, und genau in ihrem
+        // Widerspruch lag BENs drittes Fenster: die Antwort war schon da (Speicher sagt „nichts
+        // unterwegs", Kennung im Speicher: B), aber der gerenderte Wert sagte noch A. Beide Prüfungen
+        // gaben grün, und der nächste Vorgang ging als B hinaus.
+        //
+        // Jetzt gibt es einen Blick und vier Ausgänge, in dieser Reihenfolge:
+        //   1. Die Fläche ist weg          → abbrechen (der nächste Aufbau nimmt den Rest auf).
+        //   2. Es ist erwiesen JEMAND ANDERES → abbrechen; das ist die endgültige Auskunft, auch wenn
+        //      gleichzeitig noch ein Abruf läuft — wer schon weiss, dass es ein anderer ist, muss nicht
+        //      erst abwarten.
+        //   3. Die Auskunft wird GERADE GEPRÜFT → anhalten und nachholen lassen; das ist der
+        //      Normalfall (alle fünf Minuten, bei Fokus, bei zurückkehrender Verbindung) und deshalb
+        //      ausdrücklich KEIN Abbruch.
+        //   4. Bestätigt beantwortet, aber NIEMAND angemeldet → abbrechen.
+        //
+        // WAS DER ABBRUCH NICHT TUT: Er holt nichts zurück. Ein Aufruf, der bereits unterwegs ist,
+        // trägt die Anmeldedaten seines Absendezeitpunkts und gehört dem, der ihn losgeschickt hat —
+        // daran kann der Client nichts mehr ändern, und er behauptet es auch nicht. Er sorgt nur
+        // dafür, dass KEIN WEITERER dazukommt. Die übrigen Vorgänge bleiben unverändert liegen, mit
+        // ihrem Eigentümer, und werden gezählt.
+        for (let i = 0; i < eigene.length; i += 1) {
+          const op = eigene[i];
+          if (!op) {
+            continue;
+          }
+          const offen = eigene.length - i;
+          const stand = sitzungsstandLesen(qc, netzLueckeRef.current);
+          if (
+            abgehaengtRef.current ||
+            lokaleSitzungEpoche() !== epoche ||
+            !lokalesKontoErlaubt(konto)
+          ) {
+            abgebrochen = offen;
+            break;
+          }
+          if (stand.konto !== null && stand.konto !== konto) {
+            abgebrochen = offen;
+            break;
+          }
+          if (stand.unbestaetigt) {
+            auffrischungLaeuft = offen;
+            nachAuffrischungRef.current = true;
+            bestaetigungAnfordern(stand);
+            break;
+          }
+          if (stand.konto === null) {
+            abgebrochen = offen;
+            break;
+          }
+          // ==========================================================================================
+          // JOB 4193 R5 (BEN Korrekturpflicht 2/7) — KEIN AKTUALISIEREN OHNE VORAUSSETZUNG.
+          // ==========================================================================================
+          //
+          // Bis hierher stand hier: „ohne Stand bleibt es beim alten Weg". Genau das war der letzte
+          // ungeschützte Schreibweg — ein Vorgang ohne Voraussetzung überschrieb beim Nachsenden jede
+          // fremde Änderung still. Seit R5 trägt JEDER am Handy angelegte Aktualisierungsvorgang seinen
+          // Stand (er reist aus dem Formular, s. `Mobile.tsx` `neuerVorgang`/`resume`); ohne Stand kann
+          // nur noch ein Rest aus einer Sitzung VOR diesem Auftrag liegen.
+          //
+          // Der wird NICHT blind gesendet und auch NICHT gelöscht: er bleibt liegen und wird gemeldet.
+          // Aufgelöst wird er dort, wo ein Mensch ist — beim Öffnen des Entwurfs, wo der Vergleich
+          // stattfindet und die Voraussetzung nachgetragen wird. Ein Anlegen (`draft.create`) hat
+          // naturgemäss keine Voraussetzung und bleibt unberührt.
+          if (op.kind === "draft.update" && op.draftId && !op.seenUpdatedAt) {
+            setQueue((q) =>
+              markFailed(q, op.id, "Kein gesehener Stand — Entwurf öffnen und prüfen."),
+            );
+            ohneVoraussetzung += 1;
+            continue;
+          }
+          setQueue((q) => markPending(q, op.id));
+          try {
+            if (op.kind === "draft.create") {
+              // ======================================================================================
+              // JOB 4249 — DIE ANLAGE AUS DER WARTESCHLANGE TRÄGT IHRE VORGANGSKENNUNG.
+              // ======================================================================================
+              //
+              // Hier stand `endpoints.drafts.create(op.payload)` — der letzte Anlegeweg des Hauses
+              // OHNE Wiederholschlüssel. Folge: legte der Server an und ging die Antwort verloren,
+              // erzeugte die Wiederholung einen ZWEITEN Entwurf. Der Vertrag dafür besteht seit
+              // JOB 2697 D7 vollständig (Route `POST /api/drafts` trennt die Kennung ab, der Dienst
+              // geht über `insertIfOperationAbsent`, die Ablage serialisiert); benutzt hat ihn dieser
+              // Weg als einziger nicht.
+              //
+              // `op.id` IST DIE KENNUNG, und sie ist dafür genau richtig: sie entsteht einmal beim
+              // Anlegen des Vorgangs (`crypto.randomUUID`), wird persistiert und übersteht damit auch
+              // ein Neuladen mitten im Flug. Derselbe ungelöste Vorgang wird also beliebig oft mit
+              // DERSELBEN Kennung wiederholt; nach der bestätigten Antwort verschwindet er
+              // (`markSynced` → `clearSynced`), und der nächste fachliche Vorgang bekommt eine neue.
+              // Das ist wörtlich die Regel der Vordertür (`job2697-client-vorgangskennung-mounted`).
+              // ======================================================================================
+              // JOB 4249 R6 — UND SIE TRÄGT IHREN EIGENTÜMER ALS VORAUSSETZUNG MIT.
+              // ======================================================================================
+              //
+              // Fünf Runden lang wurde die Kontobindung im Client geprüft, und fünfmal fand BEN das
+              // nächste Zeitfenster zwischen Prüfung und Absenden. Der Grund ist grundsätzlich: welches
+              // Cookie der Browser anhängt, entscheidet sich ERST beim Absenden, und darauf hat kein
+              // Client Zugriff. Die Prüfungen oben bleiben (sie verhindern, dass der Aufruf überhaupt
+              // losgeht) — aber die ZUSAGE hängt ab hier am Server: `expectedOwner` ist die
+              // Voraussetzung des Aufrufs, wie `expectedUpdatedAt` beim Aktualisieren darunter. Kommt
+              // er mit einem anderen Konto an, legt der Server nichts an und antwortet 409; der Vorgang
+              // bleibt liegen und gehört weiter dem, der ihn erfasst hat.
+              //
+              // `op.eigentuemer` ist hier nie leer: Vorgänge ohne Eigentümer erreichen diese Zeile gar
+              // nicht (`eigene` ist auf `gehoertKonto` gefiltert, Altbestand liegt in `ungebundene`).
+              await endpoints.drafts.create(op.payload, op.id, op.eigentuemer);
+            } else if (op.draftId) {
+              await endpoints.drafts.update(op.draftId, op.payload, {
+                expectedUpdatedAt: op.seenUpdatedAt as string,
+              });
+            }
+            setQueue((q) => markSynced(q, op.id));
+            synced += 1;
+          } catch (e) {
+            setQueue((q) => markFailed(q, op.id, errMsg(e)));
+            if (e instanceof ApiError && e.status === 409 && e.code === "DRAFT_STALE") {
+              stale += 1;
+            } else {
+              failed += 1;
+            }
+          }
+        }
+        if (synced > 0) {
+          setQueue((q) => clearSynced(q));
+          void qc.invalidateQueries({ queryKey: ["drafts"] });
+        }
+        syncingRef.current = false;
+        setSyncing(false);
+        return {
+          synced,
+          failed,
+          stale,
+          ohneVoraussetzung,
+          fremd,
+          ohneBindung: ungebundene.length,
+          kontoUnbekannt: false,
+          abgebrochen,
+          auffrischungLaeuft,
+        };
+      });
+    } catch (e) {
+      setPersistError(errMsg(e));
+      syncingRef.current = false;
+      setSyncing(false);
       return keinLauf();
     }
-    const wartend = syncableOps(queueRef.current) as VorgangMitStand[];
-    if (wartend.length === 0) {
-      return keinLauf();
-    }
-    // ============================================================================================
-    // JOB 4249 — OHNE BESTÄTIGTES KONTO GEHT NICHTS HINAUS.
-    // ============================================================================================
-    //
-    // Die Sitzung lädt noch, oder ihr Abruf ist gescheitert (`AuthContext` behält bei Fehler
-    // KEINEN alten Nutzer, s. `resolveSessionUser`). Beides heisst dasselbe: es ist nicht
-    // erwiesen, wem die wartenden Vorgänge gehören. Wer hier den letzten bekannten Namen
-    // weiterbenutzte, legte im Zweifel fremde Arbeit unter fremdem Namen an — der teuerste
-    // aller Ausgänge. Gemeldet wird das als Lage, nicht als Zahl: ohne Konto ist nicht einmal
-    // entscheidbar, welcher Vorgang eigen wäre.
-    //
-    // JOB 4249 R5: Gelesen wird der LEBENDE Zustand, nicht der gerenderte. Schon der Anfang des
-    // Laufs darf nicht auf einer Momentaufnahme stehen — sonst partitioniert die Zeile darunter
-    // die Warteschlange nach einem Konto von vorhin.
-    const start = sitzungsstandLesen(qc, netzLueckeRef.current);
-    if (start.unbestaetigt) {
-      // Die Auskunft steht aus (der Normalfall bei zurückkehrender Verbindung, Fokus und alle fünf
-      // Minuten) oder stammt von vor der letzten Verbindungslücke. Nichts geht hinaus, nichts wird
-      // angefasst, nichts wird gemeldet — die Bestätigung wird angefordert, und der Lauf wird
-      // nachgeholt, sobald die Antwort da ist.
-      nachAuffrischungRef.current = true;
-      bestaetigungAnfordern(start);
-      return { ...keinLauf(), auffrischungLaeuft: wartend.length };
-    }
-    if (start.konto === null) {
-      return { ...keinLauf(), kontoUnbekannt: true };
-    }
-    const konto = start.konto;
-    // ============================================================================================
-    // JOB 4249 — DREI HAUFEN, UND NUR EINER WIRD ANGEFASST.
-    // ============================================================================================
-    //
-    // `eigene`  gehen hinaus.
-    // `fremde`  werden NICHT gesendet, NICHT gelöscht, NICHT umgeschrieben und NICHT umgehängt.
-    //           Sie werden gezählt und sonst in Ruhe gelassen — auch kein `markFailed`: ein
-    //           Fehlervermerk am Vorgang eines anderen wäre eine Änderung an fremder Arbeit, und
-    //           die Meldung dazu läse jemand, den sie nichts angeht.
-    // `ungebundene` sind Reste aus einer Sitzung vor diesem Auftrag. Bauform wie
-    //           `ohneVoraussetzung` (JOB 4193 R5): liegen lassen, vermerken, melden — aber
-    //           niemandem zuschlagen und nie löschen.
-    const eigene = wartend.filter((op) => gehoertKonto(op, konto));
-    const fremd = wartend.filter((op) => !ohneEigentuemer(op) && !gehoertKonto(op, konto)).length;
-    const ungebundene = wartend.filter(ohneEigentuemer);
-    syncingRef.current = true;
-    setSyncing(true);
-    let synced = 0;
-    let failed = 0;
-    let stale = 0;
-    let ohneVoraussetzung = 0;
-    let abgebrochen = 0;
-    let auffrischungLaeuft = 0;
-    for (const alt of ungebundene) {
-      setQueue((q) => markFailed(q, alt.id, "Kein Konto hinterlegt — bitte einmal prüfen."));
-    }
-    // ============================================================================================
-    // JOB 4249 R2 (BEN Korrekturpflicht 1) — DIE BINDUNG GILT VOR JEDEM EINZELNEN AUFRUF.
-    // ============================================================================================
-    //
-    // DER BEFUND (BEN R1, an dieser Datei gemessen): Das Konto wurde EINMAL gelesen (`lage`, oben)
-    // und EINMAL gefiltert (`eigene`, oben). Die Schleife darunter hat danach nie wieder gefragt.
-    // Zwischen zwei Durchläufen liegt aber ein `await` — und darin passt ein ganzer Kontowechsel:
-    // A hat zwei Vorgänge offline liegen, der erste ist unterwegs, die Sitzung wechselt auf B, und
-    // der ZWEITE ging als B hinaus. BENs Messung: `{ bListe: 1, gesendet: 2 }` statt
-    // `{ bListe: 0, gesendet: 1 }`.
-    //
-    // DIE LEHRE IST DIE VON JOB 4193 R6, nur eine Ebene tiefer: eine Bedingung, die VOR der
-    // Schleife steht, deckt den Zustand von vorhin ab, nicht den von jetzt. Sie gehört an den
-    // Engpass — und der Engpass ist der einzelne Aufruf, nicht der Lauf.
-    //
-    // WAS DER ABBRUCH NICHT TUT: Er holt nichts zurück. Ein Aufruf, der bereits unterwegs ist,
-    // trägt die Anmeldedaten seines Absendezeitpunkts und gehört dem, der ihn losgeschickt hat —
-    // daran kann der Client nichts mehr ändern, und er behauptet es auch nicht. Er sorgt nur
-    // dafür, dass KEIN WEITERER dazukommt. Die übrigen Vorgänge bleiben unverändert liegen, mit
-    // ihrem Eigentümer, und werden gezählt.
-    // ============================================================================================
-    // JOB 4249 R5 (BEN Korrekturpflicht 1) — DIE VIER AUSGÄNGE, AUS EINEM EINZIGEN BLICK.
-    // ============================================================================================
-    //
-    // Hier standen bis R4 ZWEI Bedingungen: `bindungGiltNoch()` (Kennung, aus dem Rendern) und
-    // `kontoWirdGeprueft()` (Abrufzustand, aus dem Speicher). Beide sind WEG — nicht ergänzt,
-    // ersetzt. Zwei Auskünfte aus zwei Quellen können einander widersprechen, und genau in ihrem
-    // Widerspruch lag BENs drittes Fenster: die Antwort war schon da (Speicher sagt „nichts
-    // unterwegs", Kennung im Speicher: B), aber der gerenderte Wert sagte noch A. Beide Prüfungen
-    // gaben grün, und der nächste Vorgang ging als B hinaus.
-    //
-    // Jetzt gibt es einen Blick und vier Ausgänge, in dieser Reihenfolge:
-    //   1. Die Fläche ist weg          → abbrechen (der nächste Aufbau nimmt den Rest auf).
-    //   2. Es ist erwiesen JEMAND ANDERES → abbrechen; das ist die endgültige Auskunft, auch wenn
-    //      gleichzeitig noch ein Abruf läuft — wer schon weiss, dass es ein anderer ist, muss nicht
-    //      erst abwarten.
-    //   3. Die Auskunft wird GERADE GEPRÜFT → anhalten und nachholen lassen; das ist der
-    //      Normalfall (alle fünf Minuten, bei Fokus, bei zurückkehrender Verbindung) und deshalb
-    //      ausdrücklich KEIN Abbruch.
-    //   4. Bestätigt beantwortet, aber NIEMAND angemeldet → abbrechen.
-    //
-    // WAS DER ABBRUCH NICHT TUT: Er holt nichts zurück. Ein Aufruf, der bereits unterwegs ist,
-    // trägt die Anmeldedaten seines Absendezeitpunkts und gehört dem, der ihn losgeschickt hat —
-    // daran kann der Client nichts mehr ändern, und er behauptet es auch nicht. Er sorgt nur
-    // dafür, dass KEIN WEITERER dazukommt. Die übrigen Vorgänge bleiben unverändert liegen, mit
-    // ihrem Eigentümer, und werden gezählt.
-    for (let i = 0; i < eigene.length; i += 1) {
-      const op = eigene[i];
-      if (!op) {
-        continue;
-      }
-      const offen = eigene.length - i;
-      const stand = sitzungsstandLesen(qc, netzLueckeRef.current);
-      if (abgehaengtRef.current) {
-        abgebrochen = offen;
-        break;
-      }
-      if (stand.konto !== null && stand.konto !== konto) {
-        abgebrochen = offen;
-        break;
-      }
-      if (stand.unbestaetigt) {
-        auffrischungLaeuft = offen;
-        nachAuffrischungRef.current = true;
-        bestaetigungAnfordern(stand);
-        break;
-      }
-      if (stand.konto === null) {
-        abgebrochen = offen;
-        break;
-      }
-      // ==========================================================================================
-      // JOB 4193 R5 (BEN Korrekturpflicht 2/7) — KEIN AKTUALISIEREN OHNE VORAUSSETZUNG.
-      // ==========================================================================================
-      //
-      // Bis hierher stand hier: „ohne Stand bleibt es beim alten Weg". Genau das war der letzte
-      // ungeschützte Schreibweg — ein Vorgang ohne Voraussetzung überschrieb beim Nachsenden jede
-      // fremde Änderung still. Seit R5 trägt JEDER am Handy angelegte Aktualisierungsvorgang seinen
-      // Stand (er reist aus dem Formular, s. `Mobile.tsx` `neuerVorgang`/`resume`); ohne Stand kann
-      // nur noch ein Rest aus einer Sitzung VOR diesem Auftrag liegen.
-      //
-      // Der wird NICHT blind gesendet und auch NICHT gelöscht: er bleibt liegen und wird gemeldet.
-      // Aufgelöst wird er dort, wo ein Mensch ist — beim Öffnen des Entwurfs, wo der Vergleich
-      // stattfindet und die Voraussetzung nachgetragen wird. Ein Anlegen (`draft.create`) hat
-      // naturgemäss keine Voraussetzung und bleibt unberührt.
-      if (op.kind === "draft.update" && op.draftId && !op.seenUpdatedAt) {
-        setQueue((q) => markFailed(q, op.id, "Kein gesehener Stand — Entwurf öffnen und prüfen."));
-        ohneVoraussetzung += 1;
-        continue;
-      }
-      setQueue((q) => markPending(q, op.id));
-      try {
-        if (op.kind === "draft.create") {
-          // ======================================================================================
-          // JOB 4249 — DIE ANLAGE AUS DER WARTESCHLANGE TRÄGT IHRE VORGANGSKENNUNG.
-          // ======================================================================================
-          //
-          // Hier stand `endpoints.drafts.create(op.payload)` — der letzte Anlegeweg des Hauses
-          // OHNE Wiederholschlüssel. Folge: legte der Server an und ging die Antwort verloren,
-          // erzeugte die Wiederholung einen ZWEITEN Entwurf. Der Vertrag dafür besteht seit
-          // JOB 2697 D7 vollständig (Route `POST /api/drafts` trennt die Kennung ab, der Dienst
-          // geht über `insertIfOperationAbsent`, die Ablage serialisiert); benutzt hat ihn dieser
-          // Weg als einziger nicht.
-          //
-          // `op.id` IST DIE KENNUNG, und sie ist dafür genau richtig: sie entsteht einmal beim
-          // Anlegen des Vorgangs (`crypto.randomUUID`), wird persistiert und übersteht damit auch
-          // ein Neuladen mitten im Flug. Derselbe ungelöste Vorgang wird also beliebig oft mit
-          // DERSELBEN Kennung wiederholt; nach der bestätigten Antwort verschwindet er
-          // (`markSynced` → `clearSynced`), und der nächste fachliche Vorgang bekommt eine neue.
-          // Das ist wörtlich die Regel der Vordertür (`job2697-client-vorgangskennung-mounted`).
-          // ======================================================================================
-          // JOB 4249 R6 — UND SIE TRÄGT IHREN EIGENTÜMER ALS VORAUSSETZUNG MIT.
-          // ======================================================================================
-          //
-          // Fünf Runden lang wurde die Kontobindung im Client geprüft, und fünfmal fand BEN das
-          // nächste Zeitfenster zwischen Prüfung und Absenden. Der Grund ist grundsätzlich: welches
-          // Cookie der Browser anhängt, entscheidet sich ERST beim Absenden, und darauf hat kein
-          // Client Zugriff. Die Prüfungen oben bleiben (sie verhindern, dass der Aufruf überhaupt
-          // losgeht) — aber die ZUSAGE hängt ab hier am Server: `expectedOwner` ist die
-          // Voraussetzung des Aufrufs, wie `expectedUpdatedAt` beim Aktualisieren darunter. Kommt
-          // er mit einem anderen Konto an, legt der Server nichts an und antwortet 409; der Vorgang
-          // bleibt liegen und gehört weiter dem, der ihn erfasst hat.
-          //
-          // `op.eigentuemer` ist hier nie leer: Vorgänge ohne Eigentümer erreichen diese Zeile gar
-          // nicht (`eigene` ist auf `gehoertKonto` gefiltert, Altbestand liegt in `ungebundene`).
-          await endpoints.drafts.create(op.payload, op.id, op.eigentuemer);
-        } else if (op.draftId) {
-          await endpoints.drafts.update(op.draftId, op.payload, {
-            expectedUpdatedAt: op.seenUpdatedAt as string,
-          });
-        }
-        setQueue((q) => markSynced(q, op.id));
-        synced += 1;
-      } catch (e) {
-        setQueue((q) => markFailed(q, op.id, errMsg(e)));
-        if (e instanceof ApiError && e.status === 409 && e.code === "DRAFT_STALE") {
-          stale += 1;
-        } else {
-          failed += 1;
-        }
-      }
-    }
-    if (synced > 0) {
-      setQueue((q) => clearSynced(q));
-      void qc.invalidateQueries({ queryKey: ["drafts"] });
-    }
-    syncingRef.current = false;
-    setSyncing(false);
-    return {
-      synced,
-      failed,
-      stale,
-      ohneVoraussetzung,
-      fremd,
-      ohneBindung: ungebundene.length,
-      kontoUnbekannt: false,
-      abgebrochen,
-      auffrischungLaeuft,
-    };
-  }, [qc, bestaetigungAnfordern]);
+  }, [qc, bestaetigungAnfordern, commitQueue]);
 
   // F-0027 (JOB 2951 D2): EIN Anlauf beim Aufbau.
   //
@@ -1000,6 +1118,7 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
   const wartend = syncableOps(queue) as VorgangMitStand[];
   return {
     online,
+    persistError,
     queue: eigene,
     counts: countByStatus(eigene),
     pending: pendingCount(eigene),

@@ -47,8 +47,18 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   auditRepo: ["append", "appendOnce"],
   // WP-SUBMIT-ASYNC: der Prüf-Status (aiCheck) ist eine Mutation am KO-JSONB → journalieren,
   // sonst wäre er nach einem Dev-Neustart weg (pending-Erkennung/Badges würden lügen).
-  koRepo: ["insert", "update", "delete", "setAiCheck", "resolveAiCheck"],
-  koVersions: ["append"],
+  koRepo: [
+    "insert",
+    "update",
+    "delete",
+    "setAiCheck",
+    "resolveAiCheck",
+    "bumpTrust",
+    "setImageNames",
+    "setCaptionTexts",
+    "setBildInhalte",
+  ],
+  koVersions: ["append", "remove"],
   // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
   // Halbwertszeiten überlebt den Dev-Neustart. `ergaenze` legt nur neue Schlüssel an → Replay exakt.
   halbwertszeitVerlauf: ["ergaenze"],
@@ -77,7 +87,17 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // Dokumentfassung, `CaptureService.dokumentHerkunftBinden`) sind Mutationen. Ohne sie verlor ein
   // Dev-Neustart den Entwurf bzw. seinen Fassungsbezug. Das Replay ist deterministisch: beide tragen
   // ihre Bedingung in den Argumenten, und in derselben Reihenfolge trifft sie denselben Stand.
-  drafts: ["insert", "update", "delete", "insertIfOperationAbsent", "updateWennStand"],
+  drafts: [
+    "insert",
+    "update",
+    "delete",
+    "insertIfOperationAbsent",
+    "updateWennStand",
+    "deleteWennStand",
+    "restore",
+    "purge",
+    "setzeEntwurfsIndex",
+  ],
   // produkt:20261010:wissenskreislauf-schliessen: `insertOrIncrement` (Hochzählen samt weiterer
   // Fragender) und `ersetzeWenn` (jeder Vorgangsschritt, auch der Abschluss) sind Mutationen. Beide
   // tragen ihre Bedingung in den Argumenten — das Replay trifft in derselben Reihenfolge denselben
@@ -85,8 +105,8 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   gaps: ["insert", "update", "delete", "insertOrIncrement", "ersetzeWenn"],
   // SCRUM-507 R2: die Bewertung (inkl. koVersion) wird per upsert journaled; die Invalidierung ist
   // versionsgebunden (keine separate Löschung), daher kein weiterer Mutator nötig.
-  ratings: ["upsert"],
-  assignments: ["create", "update"],
+  ratings: ["upsert", "remove"],
+  assignments: ["create", "update", "remove", "createIfAbsent", "replaceIf"],
   // ==============================================================================================
   // JOB 3066 — `closeOpenForKo` IST EINE MUTATION UND MUSS INS JOURNAL.
   // ==============================================================================================
@@ -105,7 +125,13 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // angewandt trifft dasselbe Prädikat dieselben Einträge; eine doppelte Journalzeile ist harmlos
   // (der zweite Lauf findet nichts Offenes mehr). Beweis der Wirkung nach dem Wiederaufbau:
   // tests/aufraeumen-atomar/geschlossen-bleibt-geschlossen-im-dev-journal.test.ts.
-  conflictsRepo: ["insert", "update", "closeOpenForKo"],
+  conflictsRepo: [
+    "insert",
+    "update",
+    "closeOpenForKo",
+    "insertIfVersionsCurrent",
+    "supersedeIfOpen",
+  ],
   // Aufnahme 20260922 · Prüfung-Gedächtnis: `put` ersetzt je Paar (letzter Stand gewinnt) — das
   // Replay ist deterministisch. Ohne den Eintrag ginge nach einem Neustart erneut alles an die KI.
   conflictMemory: ["put"],
@@ -114,7 +140,7 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // in derselben Reihenfolge denselben Stand. Ohne den Eintrag verlöre ein Dev-Neustart die Läufe.
   paarpflichten: ["planen", "beanspruchen", "abschliessen"],
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge überleben den Neustart.
-  overlapRepo: ["insert", "update", "closeOpenForKo"],
+  overlapRepo: ["insert", "update", "closeOpenForKo", "insertIfVersionsCurrent", "supersedeIfOpen"],
   // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).
   overlapSettings: ["set"],
   // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
@@ -140,7 +166,7 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
     "savePath",
     "setProgress",
   ],
-  objects: ["insert"],
+  objects: ["insert", "delete"],
   // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
   // sonst überleben so eingereihte Import-Kandidaten den Dev-Neustart nicht.
   // WP-D-CLEAN: removeAll (Testdaten-Aufräumen) ebenfalls — sonst wären die Kandidaten nach einem
@@ -486,7 +512,13 @@ function journaled<T extends object>(
         // offenen Rücknahme-Vorgang ohne Datenbank (speicher-vorgang.ts), wird die Zeile
         // zurückgehalten und beim Abschluss mit allen anderen des Vorgangs geschrieben (Vorgangszeile
         // und Bestätigung). Scheitert das, stellt die Klammer den Speicher zurück.
-        const zeile: JournalEntry = { repo: name, method: prop, args: ohneVorgang(args) };
+        // Der bedingte Insert trägt einen flüchtigen Prüffunktions-Port. Nur sein tatsächlicher
+        // Erfolg materialisiert einen Datensatz; das Journal hält genau diesen Insert fest.
+        if (prop === "insertIfVersionsCurrent" && result !== true) return result;
+        const zeile: JournalEntry =
+          prop === "insertIfVersionsCurrent"
+            ? { repo: name, method: "insert", args: ohneVorgang([args[0]]) }
+            : { repo: name, method: prop, args: ohneVorgang(args) };
         if (!journalZeileFuer(args, zeile, vorgangAbschluss)) {
           write(zeile);
         }

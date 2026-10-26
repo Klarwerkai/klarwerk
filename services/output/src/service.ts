@@ -1,3 +1,4 @@
+import { darfInFreieAusgabe } from "../../knowledge-object";
 // FR-EXT-03 / SCRUM-117: Output-Service. Stateless — keine Persistenz, keine KO-Mutation.
 // Quelle sind ausschließlich validierte KnowledgeObjects; nicht-validierte werden abgelehnt.
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
@@ -75,7 +76,13 @@ export class OutputService {
     const kos = await this.koService.list({ status: "validiert" });
     const tauglich = typeof sichtbar === "function";
     return kos
-      .filter((ko) => tauglich && sichtbar(ko) === true && !isConfidential(ko.confidentiality))
+      .filter(
+        (ko) =>
+          tauglich &&
+          sichtbar(ko) === true &&
+          darfInFreieAusgabe(ko) &&
+          !isConfidential(ko.confidentiality),
+      )
       .map(toSource);
   }
 
@@ -110,7 +117,13 @@ export class OutputService {
       // aufnahme:20260922:gesamt-leserechte / R-1175: ein Objekt, das der Betrachter nicht sehen
       // darf, gibt es für ihn nicht — dieselbe Antwort wie für eine unbekannte Kennung, damit weder
       // Status noch Stufe seine Existenz verraten.
-      if (!ko || ko.mergedInto || typeof sichtbar !== "function" || sichtbar(ko) !== true) {
+      if (
+        !ko ||
+        ko.mergedInto ||
+        !darfInFreieAusgabe(ko) ||
+        typeof sichtbar !== "function" ||
+        sichtbar(ko) !== true
+      ) {
         throw new OutputError("UNKNOWN_KO", `Wissensobjekt nicht gefunden: ${id}.`);
       }
       if (ko.status !== "validiert") {
