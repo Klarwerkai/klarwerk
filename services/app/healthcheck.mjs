@@ -1,4 +1,4 @@
-// Container-Selbsttest (Dockerfile HEALTHCHECK): /health muss 200 liefern, sonst gilt der Container
+// Container-Selbsttest (Dockerfile HEALTHCHECK): /ready muss 200 liefern, sonst gilt der Container
 // als krank. R-2057: Ist am App-Port TLS eingeschaltet (KLARWERK_TLS_CERT_FILE, s.
 // services/app/src/transport-tls.ts), fragt der Test über HTTPS MIT Zertifikatsprüfung — gegen
 // KLARWERK_TLS_CA_FILE (sonst das Zertifikat selbst) und, falls gesetzt, KLARWERK_TLS_SERVERNAME.
@@ -14,7 +14,7 @@ function ende(ok) {
 }
 
 if (!cert) {
-  fetch(`http://127.0.0.1:${port}/health`)
+  fetch(`http://127.0.0.1:${port}/ready`)
     .then((antwort) => ende(antwort.ok))
     .catch(() => ende(false));
 } else {
@@ -23,7 +23,7 @@ if (!cert) {
     {
       host: "127.0.0.1",
       port,
-      path: "/health",
+      path: "/ready",
       ca: readFileSync(process.env.KLARWERK_TLS_CA_FILE?.trim() || cert),
       ...(servername ? { servername } : {}),
       timeout: 3000,

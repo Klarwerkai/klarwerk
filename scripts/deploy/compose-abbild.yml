@@ -12,5 +12,10 @@
 # Ohne `KLARWERK_ABBILD` bricht `docker compose` ab und nennt den Namen.
 services:
   app:
+    build: !reset null
+    image: ${KLARWERK_ABBILD:?KLARWERK_ABBILD setzen - Abbildname aus abbild-bauen.mjs}
+    pull_policy: never
+  protokollpflege:
+    build: !reset null
     image: ${KLARWERK_ABBILD:?KLARWERK_ABBILD setzen - Abbildname aus abbild-bauen.mjs}
     pull_policy: never

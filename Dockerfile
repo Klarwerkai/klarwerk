@@ -31,7 +31,7 @@ RUN echo "Abhängigkeitsprüfung für Commit ${SOURCE_COMMIT:-unbekannt}" && \
     node tools/abhaengigkeiten-audit.ts --ausgabe /pruef/abhaengigkeiten-audit.txt
 
 # ---- Stufe 1: Oberfläche bauen -------------------------------------------------------------
-FROM node:20-bookworm-slim AS webbuild
+FROM node:24-bookworm-slim AS webbuild
 WORKDIR /build
 COPY apps/web/package.json apps/web/package-lock.json apps/web/
 RUN cd apps/web && npm ci
@@ -40,7 +40,7 @@ COPY services/app/src/klara-erinnerung-zeit.ts services/app/src/
 RUN cd apps/web && npx vite build
 
 # ---- Stufe 2: Laufzeit ---------------------------------------------------------------------
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production
 ENV PORT=3001
 # WP-D11 (Folien als Bilder): LibreOffice Impress headless (pptx→pdf) + poppler (pdf→png je Seite)
@@ -48,8 +48,19 @@ ENV PORT=3001
 # Komponente (keine GUI-/Java-/Writer-/Calc-Pakete) — das Delta bleibt so bei grob ~400 MB statt
 # >1 GB für ein volles LibreOffice. Ohne diese Pakete (z. B. lokales Dev) antwortet die
 # Folien-Route ehrlich mit 503, der übrige Betrieb ist unberührt.
+# PostgreSQL 16 passend zur Datenbank; offizielle PGDG-Pakete samt Laufzeitabhaengigkeiten.
+# https://www.postgresql.org/download/linux/debian/
 RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    install -d /usr/share/postgresql-common/pgdg && \
+    curl --fail --show-error --silent --location \
+      https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc && \
+    printf '%s\n' 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' \
+      > /etc/apt/sources.list.d/pgdg.list && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
+      postgresql-client-16 \
       libreoffice-impress \
       poppler-utils \
       fonts-liberation && \
@@ -60,6 +71,8 @@ RUN npm ci --omit=dev
 # Server-Code + gebaute Oberfläche an exakt dem Pfad, den server.ts erwartet
 # (services/app/src → ../../../apps/web/dist).
 COPY services services
+COPY --chown=node:node --chmod=0755 scripts/backup/backup.sh scripts/backup/backup.sh
+RUN install -d -o node -g node -m 0700 /app/backups
 COPY --from=webbuild /build/apps/web/dist apps/web/dist
 # SANIERUNG 28.08.: capture-routes importiert apps/web/src/lib/docx (Station 1);
 # ohne diesen Ordner stirbt der Container beim Start (ERR_MODULE_NOT_FOUND,
@@ -94,7 +107,12 @@ LABEL de.klarwerk.protokollpflege=app
 # Im Coolify-Betrieb hält der externe Host-Connector (10m/3) Impuls und Pflege; seine Schutzprüfung
 # bricht ab, wenn die App einen eigenen Impuls oder eine Dateiprotokollierung mitbringt.
 USER node
-# Ehrlicher Selbsttest: /health muss {"status":"ok"} liefern, sonst gilt der Container als krank.
+# Offline-Bauprobe als derselbe Nutzer: keine Datenbankverbindung und kein Backupstart.
+RUN test -x /app/scripts/backup/backup.sh && \
+    bash -n /app/scripts/backup/backup.sh && \
+    pg_dump --version | grep -E '^pg_dump [(]PostgreSQL[)] 16[.]' && \
+    pg_restore --version | grep -E '^pg_restore [(]PostgreSQL[)] 16[.]'
+# Readiness prueft den bestehenden Datenbankpool; /health bleibt Liveness und Lieferauskunft.
 # R-2057: mit KLARWERK_TLS_CERT_FILE fragt er über HTTPS mit Zertifikatsprüfung
 # (services/app/healthcheck.mjs, Anleitung docs/operations/tls-bis-zur-anwendung.md).
 HEALTHCHECK --interval=30s --timeout=4s --start-period=15s \

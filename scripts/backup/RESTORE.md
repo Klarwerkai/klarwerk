@@ -43,8 +43,9 @@ stärkere aus.**
 dasselbe Paket liefert auch `pg_dump`):
 
 ```bash
-# Debian/Ubuntu (auch im Coolify-Container)
-apt-get update && apt-get install -y postgresql-client
+# Eigenstaendige Debian/Ubuntu-Installation nach Einrichtung der offiziellen PGDG-Quelle:
+# https://www.postgresql.org/download/linux/debian/
+apt-get update && apt-get install -y postgresql-client-16
 # Alpine
 apk add --no-cache postgresql-client
 # macOS
@@ -219,7 +220,16 @@ nichts mitnehmen, was ihm nicht gehört. Ein `rm -rf` auf einen Pfad im Sicherun
 der gefährlichste Handgriff dieser Anleitung; er steht hier bewusst nicht.
 
 ### Coolify / Cron
-Als Scheduled-Task (z. B. täglich) hinterlegen:
+Das Produktabbild enthaelt `/app/scripts/backup/backup.sh` ausfuehrbar fuer den
+Benutzer `node` sowie `pg_dump` und `pg_restore` aus PostgreSQL 16. Im laufenden
+Container ist dafuer keine Paketinstallation erforderlich. `/app/backups` ist das
+beschreibbare Standardziel; ohne dauerhaft eingebundenes Volume ist dieses Ziel
+nicht vor dem Verlust des Containers geschuetzt. Ein eigenes persistentes Ziel
+(z. B. `/data/backups`) muss fuer den Containerbenutzer `node` (UID 1000)
+beschreibbar eingebunden werden. Diese Lieferung richtet keinen Zeitplan und
+keinen Host-Sicherungsdienst ein.
+
+Als explizit eingerichteten Scheduled-Task (z. B. täglich) hinterlegen:
 ```
 DATABASE_URL="$KLARWERK_DATABASE_URL" BACKUP_DIR=/data/backups BACKUP_KEEP=14 \
   /app/scripts/backup/backup.sh

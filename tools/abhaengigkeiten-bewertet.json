@@ -290,22 +290,22 @@
     "kennung": "GHSA-337j-9hxr-rhxg",
     "paket": "react-router",
     "ort": "node_modules/react-router",
-    "version": "6.30.4",
+    "version": "6.30.6",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: deserializeErrors() bei der SSR-Hydration. Die Oberflaeche ist eine reine Client-SPA (vite build); ausser in einem Komponententest nutzt kein Produktcode hydrateRoot, StaticRouter, createStaticHandler oder createStaticRouter.",
-    "beleg": "Waechter exposition-20261008.test.ts, R1",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Am authentischen npm-Audit fuer react-router 6.30.6 erneut gemeldet. Primaerquelle GHSA-337j-9hxr-rhxg: nur Framework/Data Mode mit manueller SSR/Hydration und fremd uebersteuerter Fehlerform; Declarative Mode ist ausdruecklich nicht betroffen. Die bestehende Client-SPA verwendet BrowserRouter/createRoot und keine SSR-Hydration. Betroffene Router-Expositionspruefungen R1-R4 werden am finalen Stand passend ausgefuehrt. Kompatibler6.30.6-Stand behaelt diese Major7-Meldung; kein beauftragter Majorwechsel.",
+    "beleg": "https://github.com/remix-run/react-router/security/advisories/GHSA-337j-9hxr-rhxg; authentischer npm audit --omit=dev vom26.10.2026, W4-7-BETRIEB-ABBILD-BEREITSCHAFT/P/AUDIT-WEB.json; tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts R1-R4; apps/web/src/main.tsx; apps/web/src/lib/internerPfad.ts",
+    "bewertet_am": "2026-10-26"
   },
   {
     "bestand": "web",
     "kennung": "GHSA-wrjc-x8rr-h8h6",
     "paket": "react-router",
     "ort": "node_modules/react-router",
-    "version": "6.30.4",
+    "version": "6.30.6",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: ein Navigationsziel fuer <Link>/useNavigate, das mit // oder /\\ beginnt. Vollstaendig erhoben am 08.10.2026: 155 Navigationsstellen in 69 Dateien unter apps/web/src (navigate, <Navigate>, to=, location.assign). Jedes Ziel ist eine Konstante, ein Eintrag fester Konfigurationslisten oder eine Vorlage mit festem Anfang (/wissen/, /spaces/, /duplikate/, adminHref, koDetailPath, captureGapHref usw.), auch Meldungsziele (notificationTarget) und Schnellwahl. Nur zwei Ziele uebernahmen einen frueher gelesenen location.pathname: Mobile.tsx backTo (History-State aus KontoMenue) und KlaraVorschau herkunftZiel. Beide laufen seit diesem Stand durch internerPfad() (apps/web/src/lib/internerPfad.ts), das //, Backslash und Steuerzeichen abweist. Behebung erst ab 7.18.0 (Hauptwechsel).",
-    "beleg": "Waechter exposition-20261008.test.ts, R2-R4",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Am authentischen npm-Audit fuer react-router 6.30.6 erneut gemeldet. Primaerquelle GHSA-wrjc-x8rr-h8h6: fremdgesteuerte Pfade an Navigationsmechanismen koennen extern navigieren; behoben erst ab7.18.0. Die bestehende SPA nutzt feste interne Ziele; die zwei location.pathname-Uebernahmen laufen durch internerPfad(), das protokollrelative Ziele, Backslash und Steuerzeichen abweist. Die bestehenden Router-Expositionspruefungen R2-R4 werden am finalen Stand passend ausgefuehrt. Keine unbelegte Behauptung,6.30.6 behebe diese verbleibende Major7-Meldung.",
+    "beleg": "https://github.com/remix-run/react-router/security/advisories/GHSA-wrjc-x8rr-h8h6; authentischer npm audit --omit=dev vom26.10.2026, W4-7-BETRIEB-ABBILD-BEREITSCHAFT/P/AUDIT-WEB.json; tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts R1-R4; apps/web/src/main.tsx; apps/web/src/lib/internerPfad.ts",
+    "bewertet_am": "2026-10-26"
   },
   {
     "bestand": "web",

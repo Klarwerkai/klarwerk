@@ -548,6 +548,7 @@ import {
   type QuellabgleichRepo,
 } from "./quellabgleich-ablage";
 import { quellenNeubewertung } from "./quellen-neubewertung";
+import { datenbankBereitschaft } from "./readiness";
 import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
@@ -804,6 +805,8 @@ import { Wissensuebergabe } from "./wissensuebergabe";
 // Composition-Root des modularen Monolithen: verdrahtet ALLE Module zu EINER App.
 // Jeder Import läuft über die öffentliche index.ts des jeweiligen Moduls.
 export interface AppServices {
+  /** Bestehender Pg-Pool, eine Readiness-Abfrage im Flug; im Speicherbetrieb ohne DB-Abhaengigkeit. */
+  readiness?: () => Promise<boolean>;
   auth: AuthService;
   ko: KoService;
   reasoner: Reasoner;
@@ -2565,7 +2568,7 @@ export function buildServices(): AppServices {
 // Adapter mehr einen Weg an der Hülle vorbei.
 export function buildPgServices(rohPool: Pool): AppServices {
   const pool = gatedPool(rohPool);
-  return assembleServices(
+  const services = assembleServices(
     {
       auditRepo: new PgAuditRepo(pool),
       koRepo: new PgKoRepo(pool),
@@ -2763,6 +2766,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       bestandsreset: pgBestandsresetDienst(rohPool),
     },
   );
+  services.readiness = datenbankBereitschaft(pool);
+  return services;
 }
 
 // Weg 3: baut den semantischen Vorfilter NUR, wenn KLARWERK_DUP_PREFILTER=1|true gesetzt ist —
@@ -4192,6 +4197,15 @@ export function buildApp(
   // Ben B9: EINE Auskunft je App-Instanz — sie hält höchstens eine Laufprotokoll-Abfrage im Flug,
   // damit wiederholte Healthchecks bei hängender Datenbank nicht den gemeinsamen Pool belegen.
   const kiLaeufe = kiLaeufeAuskunft(services.modelRuns);
+  app.get("/ready", async (_request, reply) => {
+    let bereit = false;
+    try {
+      bereit = services.readiness ? await services.readiness() : true;
+    } catch {
+      // Oeffentlich nur die Verfuegbarkeit, niemals Datenbank- oder Verbindungsdetails.
+    }
+    return reply.code(bereit ? 200 : 503).send({ status: bereit ? "ok" : "unavailable" });
+  });
   app.get("/health", async () => ({
     status: "ok",
     version: buildVersion(),
