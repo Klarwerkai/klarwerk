@@ -97,15 +97,12 @@ function lesen() {
 }
 async function fertig() {
   try {
-    await vi.waitFor(
-      async () => {
-        await act(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 5));
-        });
-        expect(control.auswerten).toHaveBeenCalled();
-      },
-      { timeout: 3000, interval: 10 },
-    );
+    await act(async () => {
+      await vi.waitFor(() => expect(control.auswerten).toHaveBeenCalled(), {
+        timeout: 3000,
+        interval: 10,
+      });
+    });
   } catch (error) {
     const results = await Promise.all(
       vi.mocked(readDocxRich).mock.results.map((result) =>
@@ -255,6 +252,7 @@ describe("W4.1 · Office-Anhang nur nach bewusster Aktion", () => {
     await anzeigen();
     lesen();
     await fertig();
+    expect(container.querySelector('[data-befund-status="vollstaendig"]')).not.toBeNull();
     control.analyse = neueAnalyse();
     control.auswerten.mockClear();
     await anzeigen();
