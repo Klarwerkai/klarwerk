@@ -46,7 +46,8 @@
 // „Streng vertraulich" öffnet sie NIE — dafür braucht es immer ein ausdrücklich gesetztes Niveau.
 // Diese Übergangsregel ist eine Festlegung dieser Umsetzung, keine der Entscheidungen; sie steht
 // in docs/entscheidungen/gesamt-leserechte.md zur Bestätigung.
-import { type Confidentiality, isConfidential, sqlDeletedAtLeer } from "../../knowledge-object";
+import type { Confidentiality } from "../../knowledge-object";
+import { isConfidential, sqlDeletedAtLeer } from "../../knowledge-object/public";
 import { can } from "../../rbac";
 import type { SessionUser } from "./http";
 

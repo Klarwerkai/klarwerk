@@ -4,15 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { finished } from "node:stream/promises";
-import {
-  type Confidentiality,
-  type KnowledgeObject,
-  type KoAttachment,
-  type KoVersionSnapshot,
-  type KuratierteKanten,
-  isConfidential,
+import type {
+  Confidentiality,
+  KnowledgeObject,
+  KoAttachment,
+  KoVersionSnapshot,
+  KuratierteKanten,
 } from "../../knowledge-object";
-import { type StoredObject, decodeDataUrl } from "../../object-store";
+import { isConfidential } from "../../knowledge-object/public";
+import type { StoredObject } from "../../object-store";
+import { decodeDataUrl } from "../../object-store/public";
 import type { SessionUser } from "./http";
 import type { Produktfassung } from "./sicherungsumfang";
 import { type Sichtbarkeitsfilter, darfSehen } from "./sichtbarkeit";
@@ -463,7 +464,16 @@ interface VorbereitetesWissenspaket {
 
 class AnhangDeckel extends Error {}
 
-/** Vorhandene Daten-URL-Semantik, höchstens64KiB Base64 und48KiB Bytes je Schreibschritt. */
+const BASE64_WERTE = new Int16Array(256).fill(-1);
+for (let i = 0; i < 26; i += 1) {
+  BASE64_WERTE[65 + i] = i;
+  BASE64_WERTE[97 + i] = 26 + i;
+}
+for (let i = 0; i < 10; i += 1) BASE64_WERTE[48 + i] = 52 + i;
+BASE64_WERTE[43] = BASE64_WERTE[45] = 62;
+BASE64_WERTE[47] = BASE64_WERTE[95] = 63;
+
+/** Vorhandene Daten-URL-Semantik, höchstens64KiB Bytes je Schreibschritt. */
 async function legeAnhang(
   zip: WissenspaketZip,
   name: string,
@@ -474,38 +484,35 @@ async function legeAnhang(
   const komma = eingang.daten.indexOf(",");
   if (komma < 0 || !decodeDataUrl(eingang.daten.slice(0, komma + 1))) return null;
   const quelle = async (senden: (teil: Buffer) => Promise<void>): Promise<void> => {
+    const puffer = Buffer.allocUnsafe(64 * 1024);
+    let belegt = 0;
     let bytes = 0;
-    let rest = "";
-    const puffer = Buffer.allocUnsafe(49_155);
-    for (
-      let offset = komma + 1;
-      offset < eingang.daten.length || rest.length > 0;
-      offset += 65_536
-    ) {
-      signal?.throwIfAborted();
-      let teil = eingang.daten.slice(offset, offset + 65_536);
-      // Der normale Einbytefall braucht keine zweite vollständige Daten-URL-Kopie.
-      // Breite UTF16-Codeeinheiten werden nur blockweise wie Buffer.from auf Lowbytes abgebildet.
-      if (/[\u0100-\uffff]/.test(teil)) {
-        const einbyte = Buffer.allocUnsafe(teil.length);
-        einbyte.write(teil, 0, einbyte.length, "latin1");
-        teil = einbyte.toString("latin1");
-      }
-      teil = teil.replace(/[^A-Za-z0-9+/_=-]/g, "");
-      const padding = teil.indexOf("=");
-      const ende = padding >= 0 || offset + 65_536 >= eingang.daten.length;
-      let basis = rest + (padding >= 0 ? teil.slice(0, padding) : teil);
-      const laenge = ende ? basis.length : basis.length - (basis.length % 4);
-      const laengeBytes = puffer.write(basis.slice(0, laenge), 0, puffer.length, "base64");
-      const roh = puffer.subarray(0, laengeBytes);
-      rest = basis.slice(laenge);
-      teil = "";
-      basis = "";
-      bytes += roh.length;
+    let wert = 0;
+    let bits = 0;
+    for (let i = komma + 1; i < eingang.daten.length; i += 1) {
+      // Wie der bisherige Buffer.from-Decoder: UTF16-Lowbyte, URL-Base64, Fremdzeichen ignorieren,
+      // am ersten Paddingzeichen enden und unvollständige einzelne Sextette nicht als Byte ausgeben.
+      const zeichen = eingang.daten.charCodeAt(i) & 0xff;
+      if (zeichen === 61) break;
+      const sextett = BASE64_WERTE[zeichen] ?? -1;
+      if (sextett < 0) continue;
+      wert = ((wert << 6) | sextett) & 0xffff;
+      bits += 6;
+      if (bits < 8) continue;
+      bits -= 8;
+      puffer[belegt++] = (wert >>> bits) & 0xff;
+      bytes += 1;
       if (bytes > restBytes) throw new AnhangDeckel();
-      if (ende) eingang.daten = "";
-      await senden(roh);
-      if (ende) break;
+      if (belegt === puffer.length) {
+        signal?.throwIfAborted();
+        await senden(puffer);
+        belegt = 0;
+      }
+    }
+    eingang.daten = "";
+    if (belegt > 0) {
+      signal?.throwIfAborted();
+      await senden(puffer.subarray(0, belegt));
     }
   };
   try {

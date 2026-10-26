@@ -1,7 +1,7 @@
 /**
  * Architekturregeln (NDepend-Pendant). Verstöße brechen den Build.
  * Kernregel: Module dürfen nicht in die Interna anderer Module greifen —
- * nur deren öffentliche index.ts ist erlaubt.
+ * nur deren öffentliche index.ts oder schmale public.ts ist erlaubt.
  */
 module.exports = {
   forbidden: [
@@ -15,13 +15,14 @@ module.exports = {
     {
       name: "module-boundaries",
       severity: "error",
-      comment: "Cross-Modul-Imports nur über die öffentliche index.ts des Zielmoduls.",
+      comment:
+        "Cross-Modul-Imports über die öffentliche index.ts oder schmale public.ts des Zielmoduls.",
       from: { path: "^services/([^/]+)/.+" },
       to: {
         path: "^services/([^/]+)/.+",
         pathNot: [
           "^services/$1/.+", // gleicher Modulpfad erlaubt
-          "^services/[^/]+/index\\.ts$", // öffentliche API erlaubt
+          "^services/[^/]+/(?:index|public)\\.ts$", // öffentliche API erlaubt
         ],
       },
     },

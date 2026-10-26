@@ -243,9 +243,7 @@ CREATE INDEX IF NOT EXISTS idx_kos_sichtbarkeit
 // Dieser Ausdruck nennt die JSON-Werte, die JavaScript als falsch wertet (null, "", false, 0);
 // jsonb vergleicht Zahlen numerisch, `0.0` fällt also mit darunter. Er ERGÄNZT die bestehende
 // Prüfung per `OR` und ersetzt sie nicht — ein ISO-Zeitpunkt bleibt im Papierkorb.
-export function sqlDeletedAtLeer(traeger: string): string {
-  return `${traeger}.data->'deletedAt' IN ('null'::jsonb, '""'::jsonb, 'false'::jsonb, '0'::jsonb)`;
-}
+export { sqlDeletedAtLeer } from "./sql-deleted-at";
 
 // SCRUM-159: unveränderliche KO-Version-Snapshots. PK (ko_id, version) + ON CONFLICT DO NOTHING
 // garantieren, dass eine einmal geschriebene Version nie überschrieben wird.
