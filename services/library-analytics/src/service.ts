@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
-import { darfInFreieAusgabe } from "../../knowledge-object";
 import {
   type Confidentiality,
   // NACHARBEIT 5 (R-0169): die interne Dokumentakte für Einträge ohne externalId.
@@ -4107,9 +4106,7 @@ export class LibraryService {
   // Textformate reichen `opts` unverändert hierher durch; der Beleg entsteht damit an EINER Stelle.
   async exportJson(opts: ExportOptionen = {}): Promise<KnowledgeObject[]> {
     const list = await this.koService.list({ status: "validiert" });
-    const scoped = (opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list).filter(
-      darfInFreieAusgabe,
-    );
+    const scoped = opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list;
     const gestuft = opts.includeConfidential
       ? scoped
       : scoped.filter((ko) => !isConfidential(ko.confidentiality));

@@ -147,11 +147,7 @@ function klartextAlsHtml(text: string): string {
 export function mapJiraIssueToImportItem(
   issue: JiraIssue,
   opts: JiraMapOptions,
-):
-  | (ImportItem & {
-      quellrechte: { stufe: Confidentiality; emails: string[]; leserUnvollstaendig?: true };
-    })
-  | undefined {
+): ImportItem | undefined {
   const key = issue.key?.trim();
   const titel = issue.fields?.summary?.trim();
   if (!key || !titel) {
@@ -181,20 +177,6 @@ export function mapJiraIssueToImportItem(
     ...(autor ? { author: autor } : {}),
     ...(tags.length > 0 ? { tags } : {}),
     confidentiality: vertraulichkeit(issue),
-    quellrechte: {
-      stufe: vertraulichkeit(issue),
-      emails: [
-        ...new Set([
-          ...(opts.rollen?.emails ?? []),
-          ...(opts.rollen?.users ?? []).filter((u) => /^[^\s@]+@[^\s@]+$/.test(u)),
-        ]),
-      ],
-      ...(!opts.rollen ||
-      opts.rollen.groups.length > 0 ||
-      opts.rollen.users.some((u) => !u.includes("@"))
-        ? { leserUnvollstaendig: true as const }
-        : {}),
-    },
     externalId: key,
     sourceScope: opts.projectKey,
     // Die EINE Ebene, die Jira am Vorgang mitliefert (Cloud: das Epic einer Story, der Vorgang

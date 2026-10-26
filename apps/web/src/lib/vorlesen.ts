@@ -16,17 +16,20 @@ export function vorlesenMoeglich(): boolean {
   );
 }
 
-// Ausschließlich ausdrücklich lokale Stimmen; keine Browser-Vorgabe und kein Netzfallback.
+// Pedi 05.07. („die Voice ist furchtbar"): Die Browser-Standardstimme ist oft die schlechteste.
+// Wir wählen die beste installierte Stimme je Sprache: Premium/Enhanced/Neural-Stimmen zuerst,
+// dann Google-/Netzwerkstimmen, dann der Rest. Gibt es nur die Standardstimme, bleibt sie ehrlich
+// die Grenze des Browsers — natürliche Stimmen kommen mit einem lokalen TTS-Server (Folge-Slice).
 export function pickVoice(langPrefix: string): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
-  const matching = voices.filter(
-    (v) => v.localService === true && v.lang.toLowerCase().startsWith(langPrefix),
-  );
+  const matching = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
   if (matching.length === 0) {
     return null;
   }
   const score = (v: SpeechSynthesisVoice): number =>
-    /premium|enhanced|natural|neural/i.test(v.name) ? 4 : 0;
+    (/premium|enhanced|natural|neural/i.test(v.name) ? 4 : 0) +
+    (/google/i.test(v.name) ? 2 : 0) +
+    (v.localService ? 0 : 1);
   return [...matching].sort((a, b) => score(b) - score(a))[0] ?? null;
 }
 
@@ -39,16 +42,4 @@ export function cleanForSpeech(text: string): string {
     .replace(/\s*→\s*/g, ", ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/** Jede tatsächliche Ausgabe muss eine ausdrücklich lokale Stimme tragen. */
-export function sprecheLokal(u: SpeechSynthesisUtterance): boolean {
-  const voice = pickVoice(u.lang.slice(0, 2).toLowerCase());
-  if (!voice) {
-    window.alert("Keine lokale Stimme verfügbar. Der Text bleibt zum Lesen verfügbar.");
-    return false;
-  }
-  u.voice = voice;
-  window.speechSynthesis.speak(u);
-  return true;
 }

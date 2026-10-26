@@ -3098,7 +3098,7 @@
       var controller = new AbortController();
       var frist = setTimeout(function () {
         try { controller.abort(); } catch (e) { /* bereits beendet */ }
-      }, /\/zuruf(?:\?|$)/.test(pfad) ? 15000 : WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS);
+      }, WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS);
       var init = {
         method: methode,
         credentials: "include",

@@ -21,7 +21,6 @@
 // GEGENPROBE im selben Lauf: sind die offline liegende und die Server-Fassung GLEICH, erscheint
 // keine Rückfrage. Ein Standvergleich, der nichts findet, schweigt.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mitOfflineLockPort } from "../support/offline-lock-port";
 
 const box = vi.hoisted(() => ({
   reset: (): void => {},
@@ -367,5 +366,3 @@ describe("JOB 4193 · offline gespeichert, Serverstand geändert, wieder geöffn
     expect((await box.lies(id)).statement).toBe("Ursprung");
   });
 });
-
-mitOfflineLockPort();

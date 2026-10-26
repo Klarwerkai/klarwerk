@@ -523,5 +523,3 @@ export type {
   // Antwort 19 (gesamt-peer-validierung): die Sichtung einer unmittelbar gültigen Weisung.
   WeisungsSichtung,
 } from "./src/types";
-
-export { darfInFreieAusgabe } from "./src/ausgabe-schutz";

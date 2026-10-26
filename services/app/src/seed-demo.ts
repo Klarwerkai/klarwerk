@@ -1119,7 +1119,9 @@ export async function purgeDemoSeed(
   actor: string,
 ): Promise<PurgeResult> {
   const { ko, conflicts, overlaps, ask, auth } = services;
-  const demoKos = (await ko.list({})).filter((k) => k.demoSeed === true);
+  const demoKos = (await ko.list({})).filter(
+    (k) => k.demoSeed === true || (k.tags ?? []).includes(DEMO_TAG),
+  );
   const demoIds = new Set(demoKos.map((k) => k.id));
   // JOB 1052 D3: Vorzähler und Fehlerliste stehen neben den Erfolgszählern. Ohne sie liesse sich
   // „nichts entfernt" nicht von „nichts vorgefunden" unterscheiden — und genau diese Verwechslung
@@ -1170,7 +1172,7 @@ export async function purgeDemoSeed(
   let removedKos = 0;
   for (const k of demoKos) {
     // SCRUM-422: Demo-Daten IMMER endgültig löschen — nie in den Papierkorb
-    // Nur der Systemmerker weist Demodaten aus; Tags und Titel gehören dem Nutzer.
+    // (gilt auch für nur per Tag markierte Alt-Demo-KOs ohne demoSeed-Flag).
     //
     // JOB 1052 D3: Der Abbruch bei einem Fehler BLEIBT. Ein scheiternder Objektlöschweg ist der
     // Fall, in dem ein Reset laut sein muss — ihn hier zu sammeln und weiterzulaufen wäre eine

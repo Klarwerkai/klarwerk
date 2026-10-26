@@ -35,7 +35,6 @@ import { type ReasonerLocale, toReasonerLocale } from "../lib/reasonerLocale";
 import { type Objektstatus, objektstatusAus } from "../lib/statusFreigabe";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { useGelesenerStand } from "../lib/useGelesenerStand";
-import { sprecheLokal } from "../lib/vorlesen";
 import { cleanForSpeech, pickVoice } from "../lib/vorlesen";
 import { AiModelInfo } from "./AiModelInfo";
 import { AiUnavailableHint } from "./AiUnavailableHint";
@@ -191,7 +190,7 @@ export function KlaraAssistant(): JSX.Element {
     u.onend = () => setSpeakingId(null);
     u.onerror = () => setSpeakingId(null);
     window.speechSynthesis.cancel();
-    if (!sprecheLokal(u)) return;
+    window.speechSynthesis.speak(u);
     setSpeakingId(id);
   };
 

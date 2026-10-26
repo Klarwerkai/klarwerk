@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 // ================================================================================================
 // produkt:20261011:assistenz-browser-aktionen (BPA-03) — DER WEG VOM AKTIONSKERN ZUR SEITE.
 // ================================================================================================
@@ -187,7 +186,6 @@ const istAusfall = (w: unknown): w is Ausfall =>
  * arbeitet seine Schritte nacheinander ab.
  */
 export class BrowserBefehlsrelais implements BrowserSeitenadapter {
-  private readonly lesefreigabe = randomUUID();
   private nr = 0;
   private offen: Offen | null = null;
   private wecker: (() => void)[] = [];
@@ -220,11 +218,7 @@ export class BrowserBefehlsrelais implements BrowserSeitenadapter {
     formular: string,
     liste: BrowserEntwurfsliste | null,
   ): Promise<SeitenLage | null> {
-    const roh = await this.stelle("lage", tabId, {
-      formular,
-      liste,
-      lesefreigabe: this.lesefreigabe,
-    });
+    const roh = await this.stelle("lage", tabId, { formular, liste });
     if (istAusfall(roh)) throw new BrowserSeiteStumm(roh.ausfall);
     const a = roh as Record<string, unknown> | null;
     if (a && typeof a === "object" && a.fehler === "nicht_ausgefuehrt") {
@@ -239,7 +233,7 @@ export class BrowserBefehlsrelais implements BrowserSeitenadapter {
     tabId: number,
     a: { formular: string; fingerabdruck: string; label: string; wert: string; erwartet?: string },
   ): Promise<SeitenAntwort<{ wert: string }>> {
-    const roh = await this.stelle("fuelle", tabId, { ...a, lesefreigabe: this.lesefreigabe });
+    const roh = await this.stelle("fuelle", tabId, { ...a });
     if (istAusfall(roh)) return { ok: false, grund: roh.ausfall };
     return antwortAus(roh, (w) => {
       const x = w as Record<string, unknown> | undefined;

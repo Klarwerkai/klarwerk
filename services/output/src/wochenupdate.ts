@@ -1,4 +1,3 @@
-import { darfInFreieAusgabe } from "../../knowledge-object";
 // ================================================================================================
 // RECHERCHE:pmo-fea-0004 (aufnahme:20260922:gesamt-wochenupdate) — DAS WISSENSUPDATE FÜRS
 // TEAMGESPRÄCH.
@@ -240,7 +239,7 @@ export class WochenupdateService {
     const generatedAt = new Date(jetzt).toISOString();
     const grundmenge = await this.koService.list({ status: "validiert" });
     const auswahl = waehleWochenupdate(
-      grundmenge.filter((ko) => sichtbar(ko) && darfInFreieAusgabe(ko)),
+      grundmenge.filter((ko) => sichtbar(ko)),
       von,
       bis,
     );

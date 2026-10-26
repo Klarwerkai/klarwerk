@@ -28,26 +28,14 @@ import type {
   ReferenzPruefung,
   VerschlossenHinweis,
 } from "../api/types";
-import { SITZUNGSENDE_EVENT, lokaleEreignisse, lokalesKontoErlaubt } from "./lokaleSitzung";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const PRAEFIX = "kw.fragen.arbeitsstand.v1:";
 
-// Ein erkannter Rechtewechsel entfernt Antwortkopien; nur eine neue Antwort darf sie ersetzen.
-// Eigene Fragen und Eingaben werden getrennt erhalten.
+// Nur tatsächlich erkannte, noch nicht haltbar markierte Wechsel dieses laufenden Arbeitsstands.
+// Die Inhalte bleiben allein im bestehenden Kontoeintrag; ein Schreibfehler hebt die Sperre nicht auf.
 const ungespeicherteAntwortSperren = new Set<string>();
-// Nur eigene Eingaben puffern, falls ein volles/gestörtes Kontingent die bereinigte Fassung ablehnt.
-const antwortfreieStaende = new Map<string, FragenArbeitsstand>();
-lokaleEreignisse.addEventListener?.(SITZUNGSENDE_EVENT, (e: Event) => {
-  const konto = (e as CustomEvent<unknown>).detail;
-  if (typeof konto === "string") antwortfreieStaende.delete(konto);
-});
-lokaleEreignisse.addEventListener?.("storage", (e: Event) => {
-  const key = (e as Event & { key?: string | null }).key;
-  const praefix = "kw.konto-abgemeldet.v1:";
-  if (key?.startsWith(praefix)) antwortfreieStaende.delete(key.slice(praefix.length));
-});
 
 /** Die zuletzt angezeigte Antwort — genau das, was die Fläche zum Zeichnen braucht. */
 export interface GespeicherteAntwort {
@@ -168,7 +156,6 @@ function fragekontextAus(roh: unknown): Fragekontext | null | undefined {
 export interface FragenArbeitsstand {
   /** Der Text im Fragefeld, wie er zuletzt stand. Leer = kein Entwurf. */
   entwurf: string;
-  fragenFaden?: string[];
   antwort: GespeicherteAntwort | null;
   /**
    * Die Startadressen (`?q=`/`?ask=1` samt Navigationskennung), die dieser Stand schon übernommen
@@ -501,11 +488,9 @@ export function arbeitsstandLesen(
   storage: StorageLike | undefined,
   konto: string | null,
 ): FragenArbeitsstand | null {
-  if (!storage || !konto || !lokalesKontoErlaubt(konto)) {
+  if (!storage || !konto) {
     return null;
   }
-  const bereinigt = antwortfreieStaende.get(konto);
-  if (bereinigt) return bereinigt;
   try {
     const roh = storage.getItem(arbeitsstandSchluessel(konto));
     if (roh === null) {
@@ -516,47 +501,34 @@ export function arbeitsstandLesen(
       return null;
     }
     const gelesen = antwortAus(wert.antwort);
-    const legacyEntzug = gelesen?.rechtepruefungAusstehend === true;
     const antwort: GespeicherteAntwort | null =
-      legacyEntzug || ungespeicherteAntwortSperren.has(konto) ? null : gelesen;
+      gelesen && ungespeicherteAntwortSperren.has(konto)
+        ? { ...gelesen, rechtepruefungAusstehend: true }
+        : gelesen;
     // Runde-2-Einträge trugen EINE Marke unter `startfrage` — sie wird übernommen, nicht verloren.
     const startadressen = Array.isArray(wert.startadressen)
       ? wert.startadressen.filter((m): m is string => typeof m === "string")
       : typeof wert.startfrage === "string"
         ? [wert.startfrage]
         : [];
-    const fragenFaden = Array.isArray(wert.fragenFaden)
-      ? wert.fragenFaden.filter((f): f is string => typeof f === "string").slice(-3)
-      : [];
     const fragekontext = kontextAuswahlAus(wert.fragekontext);
     const szenario = szenarioAus(wert.szenario);
     if (
       wert.entwurf.trim() === "" &&
       antwort === null &&
       startadressen.length === 0 &&
-      fragenFaden.length === 0 &&
-      !legacyEntzug &&
       !fragekontext &&
       !szenario
     ) {
       return null;
     }
-    const stand: FragenArbeitsstand = {
+    return {
       entwurf: wert.entwurf,
       antwort,
       startadressen,
-      ...(fragenFaden.length ? { fragenFaden } : {}),
       ...(fragekontext ? { fragekontext } : {}),
       ...(szenario ? { szenario } : {}),
     };
-    if (legacyEntzug) {
-      ungespeicherteAntwortSperren.add(konto);
-      const fragen = stand.fragenFaden ?? (gelesen?.frage ? [gelesen.frage] : []);
-      const sauber = { ...stand, ...(fragen.length ? { fragenFaden: fragen } : {}) };
-      arbeitsstandSchreiben(storage, konto, sauber);
-      return sauber;
-    }
-    return stand;
   } catch {
     return null;
   }
@@ -569,12 +541,11 @@ export function merkeAntwortRechtewechsel(
 ): void {
   if (konto === null) return;
   const stand = arbeitsstandLesen(storage, konto);
+  if (!stand?.antwort || stand.antwort.rechtepruefungAusstehend) return;
   ungespeicherteAntwortSperren.add(konto);
-  if (!stand) return;
   arbeitsstandSchreiben(storage, konto, {
     ...stand,
-    antwort: null,
-    fragenFaden: stand.fragenFaden ?? (stand.antwort?.frage ? [stand.antwort.frage] : []),
+    antwort: { ...stand.antwort, rechtepruefungAusstehend: true },
   });
 }
 
@@ -589,17 +560,8 @@ export function arbeitsstandSchreiben(
   konto: string | null,
   stand: FragenArbeitsstand,
 ): void {
-  if (konto === null || !lokalesKontoErlaubt(konto)) return;
-  const gesperrt = ungespeicherteAntwortSperren.has(konto);
-  const fragenFaden = stand.fragenFaden ?? (stand.antwort?.frage ? [stand.antwort.frage] : []);
-  const sauber = gesperrt
-    ? { ...stand, antwort: null, ...(fragenFaden.length ? { fragenFaden } : {}) }
-    : stand;
-  if (gesperrt) antwortfreieStaende.set(konto, sauber);
-  if (!schreibversuch(storage, konto, sauber) && gesperrt) {
-    // Ein alter Klartext darf nach dem Entzug auch bei einem Schreibfehler nicht liegen bleiben.
-    storage?.removeItem(arbeitsstandSchluessel(konto));
-  }
+  if (schreibversuch(storage, konto, stand) && konto !== null)
+    ungespeicherteAntwortSperren.delete(konto);
 }
 
 function schreibversuch(
@@ -619,7 +581,6 @@ function schreibversuch(
       rest.entwurf.trim() === "" &&
       rest.antwort === null &&
       rest.startadressen.length === 0 &&
-      (rest.fragenFaden?.length ?? 0) === 0 &&
       !mitKontext &&
       !mitSzenario
     ) {
@@ -741,11 +702,4 @@ export function belegNochGueltig(
   }
   const am = Date.parse(antwortAm);
   return !Number.isNaN(am) && jetztMs - am < BELEG_GUELTIG_MS;
-}
-
-export function bestaetigeNeueAntwort(konto: string | null): void {
-  if (konto !== null && lokalesKontoErlaubt(konto)) {
-    ungespeicherteAntwortSperren.delete(konto);
-    antwortfreieStaende.delete(konto);
-  }
 }

@@ -35,7 +35,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ZIEL_ATTRIBUT } from "../components/fragen/ziele";
-import { sprecheLokal } from "../lib/vorlesen";
 import { cleanForSpeech, pickVoice, vorlesenMoeglich } from "../lib/vorlesen";
 import { useMediaQuery } from "../shell/useMediaQuery";
 import { type TutorialFernLage, TutorialMeldungCtx } from "./fernsteuerung";
@@ -193,7 +192,7 @@ export function TutorialBereich({
     u.onend = () => setLiest(false);
     u.onerror = () => setLiest(false);
     window.speechSynthesis.cancel();
-    if (!sprecheLokal(u)) return;
+    window.speechSynthesis.speak(u);
     setLiest(true);
   };
 

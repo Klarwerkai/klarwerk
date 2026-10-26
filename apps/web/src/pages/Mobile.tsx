@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -95,7 +96,7 @@ import {
   interviewBegonnen,
   interviewZuForm,
 } from "../lib/mobileInterview";
-import { type QueueStatus, offlineVorgangsStand } from "../lib/offlineQueue";
+import type { QueueStatus } from "../lib/offlineQueue";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 // JOB 4333: die Zahl der noch nicht übertragenen Vorgänge auf DIESEM Gerät — kontounabhängig und
 // nur lesend. Gebraucht ausschliesslich in der Lage „Sitzungsfrage unbeantwortet", in der
@@ -665,9 +666,7 @@ export function Mobile(): JSX.Element {
     quelle: StandKonflikt["quelle"],
     op: VorgangMitStand | null,
   ): Promise<void> => {
-    const offline = op
-      ? { ...draftToForm({ payload: op.payload }), gesehenerOfflineStand: offlineVorgangsStand(op) }
-      : null;
+    const offline = op ? draftToForm({ payload: op.payload }) : null;
     const rumpf = { entwurfId: id, quelle, opId: op?.id ?? null, offline };
     setKonflikt({ ...rumpf, lage: { art: "laedt" } });
     let frisch: Awaited<ReturnType<typeof endpoints.drafts.get>>;
@@ -691,29 +690,13 @@ export function Mobile(): JSX.Element {
     // KEIN sichtbarer Unterschied. Beim Wiederöffnen heisst das: schweigen und weiterschreiben.
     setKonflikt(null);
     const neu: DraftFormState = { ...meins, gesehenerStand: frisch.updatedAt };
+    setForm(neu);
+    setBaseline(neu);
+    setEditingId(id);
     if (op) {
-      const ersetzt = await queue.replace(
-        op.id,
-        formToPayload(neu),
-        titelVon(neu),
-        offline?.gesehenerOfflineStand ?? null,
-        frisch.updatedAt,
-      );
-      if (ersetzt) {
-        neu.gesehenerOfflineStand = ersetzt;
-        setForm(neu);
-        setEditingId(id);
-        setBaseline(neu);
-      } else
-        push(
-          "error",
-          "Die Änderung konnte lokal nicht sicher gespeichert werden. Bitte den neuesten Stand prüfen; die Eingabe bleibt erhalten.",
-        );
+      queue.replace(op.id, formToPayload(neu), titelVon(neu), frisch.updatedAt);
       return;
     }
-    setForm(neu);
-    setEditingId(id);
-    setBaseline(neu);
     // Beim SPEICHERN heisst es: der fremde Schreiber hat etwas geändert, das dieses Formular gar
     // nicht führt (z. B. Schlagworte). Der partielle Merge lässt das stehen — also noch einmal
     // gegen den frischen Stand senden, statt den Menschen mit einer leeren Frage aufzuhalten.
@@ -787,11 +770,8 @@ export function Mobile(): JSX.Element {
       // als ungebundener Rest da, den niemand mehr senden darf. Steht das Konto nicht fest, wird
       // NICHT angenommen; der getippte Text bleibt im Feld stehen (kein `resetForm`), und der
       // Mensch erfährt den Grund. Nichts wird still weggeworfen.
-      if (!(await queue.enqueue(neuerVorgang(f), f.gesehenerOfflineStand ?? null))) {
-        push(
-          "error",
-          "Die Eingabe konnte lokal nicht sicher gespeichert werden. Sie bleibt im Formular. Bitte Speicher und Konto prüfen.",
-        );
+      if (!queue.enqueue(neuerVorgang(f))) {
+        push("error", t("mob.konto.speichernWartet"));
         return;
       }
       push("info", t("mob.queued"));
@@ -846,11 +826,12 @@ export function Mobile(): JSX.Element {
           // JOB 4249: dieselbe Bedingung wie am Knopf, und sie wirkt hier STRENGER — wird der
           // Vorgang nicht angenommen, darf auch nicht gewechselt werden, sonst wäre der Text nach
           // dem Seitenwechsel weg. Der Grund reist im `NavGuardSaveError` mit (JOB 3572 R2).
-          const angenommen = await queue.enqueue(neuerVorgang(f), f.gesehenerOfflineStand ?? null);
+          let angenommen = false;
+          flushSync(() => {
+            angenommen = queue.enqueue(neuerVorgang(f));
+          });
           if (!angenommen) {
-            throw new NavGuardSaveError(
-              "Die Eingabe konnte lokal nicht sicher gespeichert werden. Sie bleibt im Formular. Bitte Speicher und Konto prüfen.",
-            );
+            throw new NavGuardSaveError(t("mob.konto.speichernWartet"));
           }
           push("info", t("mob.queued"));
           setBeiseite(null);
@@ -940,7 +921,6 @@ export function Mobile(): JSX.Element {
       // dem Vorgang ins Formular und von dort in jeden weiteren Speicherweg (`formToUpdate`).
       const offline: DraftFormState = {
         ...draftToForm({ payload: op.payload }),
-        gesehenerOfflineStand: offlineVorgangsStand(op),
         ...(op.seenUpdatedAt ? { gesehenerStand: op.seenUpdatedAt } : {}),
       };
       // BEN (Nacharbeit 2): ein anderer Entwurf übernimmt das Formular — eine noch laufende
@@ -961,7 +941,7 @@ export function Mobile(): JSX.Element {
     }
     const d = serverEntwuerfe.find((x) => x.id === id);
     if (d) {
-      const resumed: DraftFormState = { ...draftToForm(d), gesehenerOfflineStand: null };
+      const resumed = draftToForm(d);
       formAbloesen();
       setForm(resumed);
       setBaseline(resumed);
@@ -974,7 +954,7 @@ export function Mobile(): JSX.Element {
   };
 
   /** „Neuen Stand holen": der Serverstand kommt ins Feld — und die eigene Fassung bleibt sichtbar. */
-  const neuenStandHolen = async (): Promise<void> => {
+  const neuenStandHolen = (): void => {
     if (konflikt?.lage.art !== "unterschied") {
       return;
     }
@@ -982,31 +962,17 @@ export function Mobile(): JSX.Element {
     const meins = konflikt.offline ?? form;
     setBeiseite({ titel: meins.title, text: formText(meins) });
     const neu: DraftFormState = { ...server, gesehenerStand: serverStand };
-    const ersetzt = konflikt.opId
-      ? await queue.replace(
-          konflikt.opId,
-          formToPayload(neu),
-          titelVon(neu),
-          konflikt.offline?.gesehenerOfflineStand ?? null,
-          serverStand,
-        )
-      : null;
-    if (konflikt.opId && !ersetzt) {
-      push(
-        "error",
-        "Die Änderung konnte lokal nicht sicher gespeichert werden. Bitte den neuesten Stand prüfen; die Eingabe bleibt erhalten.",
-      );
-      return;
-    }
-    neu.gesehenerOfflineStand = ersetzt || null;
     setForm(neu);
     setBaseline(neu);
     setEditingId(konflikt.entwurfId);
+    if (konflikt.opId) {
+      queue.replace(konflikt.opId, formToPayload(neu), titelVon(neu), serverStand);
+    }
     setKonflikt(null);
   };
 
   /** „Meine Fassung behalten": erneut speichern — diesmal gegen den frisch geholten Stand. */
-  const meineFassungBehalten = async (): Promise<void> => {
+  const meineFassungBehalten = (): void => {
     if (konflikt?.lage.art !== "unterschied") {
       return;
     }
@@ -1015,29 +981,13 @@ export function Mobile(): JSX.Element {
       ...(konflikt.offline ?? form),
       gesehenerStand: serverStand,
     };
-    const ersetzt = konflikt.opId
-      ? await queue.replace(
-          konflikt.opId,
-          formToPayload(neu),
-          titelVon(neu),
-          konflikt.offline?.gesehenerOfflineStand ?? null,
-          serverStand,
-        )
-      : null;
-    if (konflikt.opId && !ersetzt) {
-      push(
-        "error",
-        "Die Änderung konnte lokal nicht sicher gespeichert werden. Bitte den neuesten Stand prüfen; die Eingabe bleibt erhalten.",
-      );
-      return;
-    }
-    neu.gesehenerOfflineStand = ersetzt || null;
     setForm(neu);
     setKonflikt(null);
     if (konflikt.opId) {
       // Die Wahl ERSETZT den Vorgang in der Warteschlange (und seine Voraussetzung); gelöscht
       // wird er nie — nachgesendet wird er wie bisher, sobald Verbindung besteht.
       setBaseline(neu);
+      queue.replace(konflikt.opId, formToPayload(neu), titelVon(neu), serverStand);
       return;
     }
     save.mutate(neu);
@@ -1553,7 +1503,7 @@ export function Mobile(): JSX.Element {
                 abrufbar, steht der ehrliche Fehler da — und ausdrücklich keine negative Aussage
                 („keine fremden Vorgänge"), denn dafür fehlt die Grundlage. Gesendet wird in
                 beiden Lagen nichts; der Knopf ist dann auch gesperrt. */}
-            {queue.hatBestand || queue.queue.length > 0 || queue.kontolage.art === "unbekannt" ? (
+            {queue.hatBestand || queue.queue.length > 0 ? (
               <div
                 data-testid="mob-warteschlange"
                 className="mt-4 rounded-card border border-hairline p-2.5"

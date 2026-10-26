@@ -1148,12 +1148,11 @@
       return "";
     }
   }
-  /** @param {"login" | "redeem" | "logout" | "save" | "read" | "update"} kind @param {import("./types").Auth | null} auth @param {object | null} [body] @param {string} [id] @returns {Promise<import("./types").Wire | null>} */
+  /** @param {"login" | "logout" | "save" | "read" | "update"} kind @param {import("./types").Auth | null} auth @param {object | null} [body] @param {string} [id] @returns {Promise<import("./types").Wire | null>} */
   async function api(kind, auth, body, id) {
     // Fixed operation table. No URL/method/headers from messages or page data.
     const paths = {
       login: "/api/auth/login",
-      redeem: "/api/auth/office-handover/redeem",
       logout: "/api/auth/logout",
       save: "/api/drafts",
       read: `/api/drafts/${encodeURIComponent(id ?? "")}`,
@@ -1162,14 +1161,7 @@
       update: `/api/drafts/${encodeURIComponent(id ?? "")}`,
     };
     /** @type {Record<string, string>} */
-    const methods = {
-      login: "POST",
-      redeem: "POST",
-      logout: "POST",
-      save: "POST",
-      read: "GET",
-      update: "PUT",
-    };
+    const methods = { login: "POST", logout: "POST", save: "POST", read: "GET", update: "PUT" };
     if (
       !Object.hasOwn(paths, kind) ||
       ((kind === "read" || kind === "update") && !DRAFT_ID.test(id ?? ""))
@@ -1342,7 +1334,6 @@
       ![
         "state",
         "login",
-        "browserLogin",
         "logout",
         "edit",
         "mode",
@@ -1481,21 +1472,19 @@
         }
         return { status: "logged_out" };
       }
-      if (message.type === "login" || message.type === "browserLogin") {
+      if (message.type === "login") {
         if (state.auth) return view(state, "logout_first");
         if (
-          message.type === "browserLogin"
-            ? typeof message.code !== "string" || !message.code || message.code.length > 256
-            : typeof message.email !== "string" ||
-              typeof message.password !== "string" ||
-              message.email.length > 320 ||
-              message.password.length > 1024
+          typeof message.email !== "string" ||
+          typeof message.password !== "string" ||
+          message.email.length > 320 ||
+          message.password.length > 1024
         )
           return view(state, "invalid_form");
-        const result =
-          message.type === "browserLogin"
-            ? await api("redeem", null, { code: message.code })
-            : await api("login", null, { email: message.email.trim(), password: message.password });
+        const result = await api("login", null, {
+          email: message.email.trim(),
+          password: message.password,
+        });
         if (
           typeof result?.token !== "string" ||
           !result.token ||

@@ -10,7 +10,6 @@ import {
   draftBodyText,
   splitDraftBody,
 } from "./draftBody";
-import type { OfflineVorgangsStand } from "./offlineQueue";
 
 /** Ein am Handy aufgenommenes oder aus der Mediathek gewähltes Foto (FR-CAP-04). */
 export interface DraftFormFoto extends DraftBodyFoto {
@@ -64,8 +63,6 @@ export interface DraftFormState {
    * `tests/app/job2684-draft-stale-route.test.ts`: `payload.expectedUpdatedAt` bleibt `undefined`.
    */
   gesehenerStand?: string;
-  /** Lokaler Queue-Ausgangsstand beim Öffnen; null bedeutet: dabei lag kein lokaler Vorgang vor. */
-  gesehenerOfflineStand?: OfflineVorgangsStand | null;
   /**
    * FR-MOB-02 — die Felder, die das Handy-Interview zusätzlich zur Kernaussage füllt. Nur an einem
    * NEUEN Entwurf ohne Body; fehlt das Feld, bleibt jeder Weg wörtlich wie bisher.

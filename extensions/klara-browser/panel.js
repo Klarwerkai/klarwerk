@@ -335,7 +335,6 @@
     $("skipped-count").textContent = uebergangen > 0 ? String(uebergangen) : "";
     $("account").textContent = next.user?.email ?? t("signedOut");
     $("login-form").hidden = Boolean(next.user);
-    $("browser-login").hidden = Boolean(next.user);
     $("logout").hidden = !next.user;
     $("preview").hidden = !next.selection;
     if (next.selection) {
@@ -796,12 +795,6 @@
     $("password").value = "";
     $("confirm").checked = false;
     void send({ type: "login", email: $("email").value, password });
-  });
-  $("browser-redeem").addEventListener("click", () => {
-    if (busy) return;
-    const code = $("browser-code").value;
-    $("browser-code").value = "";
-    void send({ type: "browserLogin", code });
   });
   $("refresh").addEventListener("click", () => {
     if (!busy) void send({ type: "state" });

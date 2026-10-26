@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 // RC3-P2: Ask verlässt die Fläche VOR dem erkannten Wechsel; die echte globale Wache bleibt.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { bestaetigeNeueAntwort } from "../../apps/web/src/lib/fragenArbeitsstand";
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
   useRole: () => ({ role: "experte" }),
   useRoleOptional: () => ({ role: "experte" }),
@@ -114,7 +113,6 @@ beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   rechtekontextZuruecksetzen();
-  bestaetigeNeueAntwort(KONTO);
   stempel = "p2-vorher";
   halten = false;
   entzogen = false;
@@ -180,7 +178,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-it("RC3-P2: erkannter Wechsel ohne montierte Ask-Seite sperrt gespeicherte Mischantwort bei Rückkehr; auch zwei neue erlaubte Lesungen stellen keine gelöschte Kopie her", async () => {
+it("RC3-P2: erkannter Wechsel ohne montierte Ask-Seite sperrt gespeicherte Mischantwort bei Rückkehr; nur zwei neue echte erlaubte Lesungen öffnen", async () => {
   await zeige(true);
   await bis(
     () =>
@@ -207,7 +205,7 @@ it("RC3-P2: erkannter Wechsel ohne montierte Ask-Seite sperrt gespeicherte Misch
   const markiert = arbeitsstandLesen(localStorage, KONTO);
   expect(markiert).toEqual({
     ...eigenerStand,
-    antwort: null,
+    antwort: { ...eigenerStand.antwort, rechtepruefungAusstehend: true },
   });
   // Alte erfolgreiche Cachewerte allein sind keine aktuelle Freigabe für den markierten Stand.
   client.setQueryData(["kos", undefined], kos);
@@ -231,7 +229,7 @@ it("RC3-P2: erkannter Wechsel ohne montierte Ask-Seite sperrt gespeicherte Misch
   });
   await bis(() => client.getQueryState(["conflicts"])?.status === "success");
   expect(container.textContent).not.toContain(MARKE);
-  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort?.rechtepruefungAusstehend).toBe(true);
   stempel = "p2-wieder-erlaubt";
   halten = true;
   entzogen = false;
@@ -257,12 +255,11 @@ it("RC3-P2: erkannter Wechsel ohne montierte Ask-Seite sperrt gespeicherte Misch
     halten = false;
     gib();
   });
-  await bis(() => client.getQueryState(["conflicts"])?.fetchStatus === "idle");
-  expect(container.textContent).not.toContain(MISCHTEXT);
+  await bis(() => container.textContent?.includes(MISCHTEXT) === true);
   const wieder = arbeitsstandLesen(localStorage, KONTO);
   expect(wieder?.entwurf).toBe(eigenerStand?.entwurf);
-  expect(wieder?.antwort).toBeNull();
-  expect(wieder?.fragenFaden).toContain(FRAGE);
-  expect(localStorage.getItem(`kw.fragen.arbeitsstand.v1:${KONTO}`)).not.toContain(MARKE);
+  expect(wieder?.antwort?.receipt).toBe(eigenerStand?.antwort?.receipt);
+  expect(wieder?.antwort?.result).toEqual(eigenerStand?.antwort?.result);
+  expect(wieder?.antwort?.rechtepruefungAusstehend).toBeUndefined();
   expect(abrufe.some((u) => u === "/api/ask" || !u.startsWith("/api/"))).toBe(false);
 });

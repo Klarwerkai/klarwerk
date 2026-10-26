@@ -44,7 +44,6 @@
 // (dieselbe Bauform und dieselbe Begründung wie
 // `tests/app/mobile-drawer-keyboard-reach-mounted.test.tsx`).
 import { afterEach, describe, expect, it } from "vitest";
-import { mitOfflineLockPort } from "../support/offline-lock-port";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
@@ -862,5 +861,3 @@ describe("JOB 4354 · Gegenproben zur Sichtbarkeit", () => {
     ).toBe(0);
   });
 });
-
-mitOfflineLockPort();

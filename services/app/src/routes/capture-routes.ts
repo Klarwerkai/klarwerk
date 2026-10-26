@@ -18,7 +18,6 @@ import {
 // den `services/app/src/http.ts:2` schon nimmt (der RBAC-Wächter ist seit R-1349 entfernt).
 // Kein zweiter Katalog und keine eigene Sprachermittlung in diesem Modul.
 import { meldung, sprache } from "../../../auth";
-import { CaptureError } from "../../../capture";
 import {
   type CaptureService,
   type Draft,
@@ -1080,29 +1079,6 @@ function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean
   return true;
 }
 
-/** Normalize embedded raster images before storing a draft; failures never retain the source. */
-async function sichereDraftBilder(payload: DraftPayload): Promise<DraftPayload> {
-  if (typeof payload.bodyHtml !== "string") return payload;
-  const bodyHtml = sanitizeHtml(payload.bodyHtml);
-  if (!/data:image\//i.test(bodyHtml)) return { ...payload, bodyHtml };
-  const bilder = bildVerkleinerung();
-  const muster = /\bsrc=(["'])(data:image\/[^"']*)\1/gi;
-  let html = "";
-  let ende = 0;
-  for (const m of bodyHtml.matchAll(muster)) {
-    const src = await bilder.mapImage(m[2] ?? "");
-    html += `${bodyHtml.slice(ende, m.index)}src=${m[1]}${src}${m[1]}`;
-    ende = (m.index ?? 0) + m[0].length;
-  }
-  if (bilder.bericht.ausfaelle.length > 0) {
-    throw new CaptureError(
-      "INCOMPLETE",
-      "Mindestens ein Bild ist beschädigt oder überschreitet die sicheren Bildmaße. Bitte entfernen oder verkleinern.",
-    );
-  }
-  return { ...payload, bodyHtml: html + bodyHtml.slice(ende) };
-}
-
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
   const entwuerfeAusgabe = async <T extends Draft>(drafts: T[], user: SessionUser): Promise<T[]> =>
     deps.chatEntwurfAusgabe ? deps.chatEntwurfAusgabe.sicht(drafts, user) : drafts;
@@ -1377,7 +1353,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // antworten. Nur ein ausdrückliches `true` zählt; alles andere ist der Bestandsweg.
           const { draft, angelegt, fortgeschrieben } = await capture.createDraftVorgang(
             // JOB 2703 D2: die Aussage geht kanonisch gekuerzt in die Ablage — eine Regel, ein Ort.
-            mitKanonischerAussage(await sichereDraftBilder(neuerEntwurf)),
+            mitKanonischerAussage(neuerEntwurf),
             user.id,
             vorgangsId,
             { fortschreiben: rohFortschreiben === true },
@@ -1839,7 +1815,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
                 request.params.id,
                 // JOB 2703 D2: auch beim Speichern — sonst holte der Speicherweg die ungekuerzte
                 // Rohaussage des Clients an der Anlage vorbei in die Ablage.
-                mitKanonischerAussage(await sichereDraftBilder(payload as DraftPayload)),
+                mitKanonischerAussage(payload as DraftPayload),
                 user.id,
                 {
                   expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),

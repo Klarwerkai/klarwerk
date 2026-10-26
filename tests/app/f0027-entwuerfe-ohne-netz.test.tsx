@@ -21,7 +21,6 @@
 // Fall B ist der Waechter gegen den naheliegenden Fehler beim Schliessen von A: ein Start-Sync, der
 // zusaetzlich zum `online`-Ereignis feuert, wuerde denselben Entwurf zweimal senden.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mitOfflineLockPort } from "../support/offline-lock-port";
 
 const draftsApi = vi.hoisted(() => ({
   create: vi.fn(),
@@ -227,5 +226,3 @@ describe("F-0027 · JOB 2951 D2 — Entwuerfe ohne Netz werden wirklich nachsync
     expect(sicht.pending, "danach ist nichts mehr offen").toBe(0);
   });
 });
-
-mitOfflineLockPort();
