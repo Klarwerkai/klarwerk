@@ -9,6 +9,7 @@
 import "./i18n";
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 const Kiosk = lazy(() => import("./kiosk/Kiosk"));
+import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { AuthProvider, useSession } from "./app/AuthContext";
 // R-1029 / R-1674: die geteilten Stände der Hülle im Takt nachladen — nur hinter dem Tor, also nie
@@ -90,6 +91,7 @@ function OfflineErfassungsTor({ anwendung }: { anwendung: JSX.Element }): JSX.El
 // Login-Gate: Ersteinrichtung → Login → Shell. Im Dev wird bei nicht
 // erreichbarem Backend die Shell direkt gezeigt (Vorschau ohne Login).
 function Gate(): JSX.Element {
+  const { t } = useTranslation();
   const s = useSession();
   const { guard } = useNavGuard();
   const kontoVorher = useRef<string | null>(null);
@@ -136,11 +138,11 @@ function Gate(): JSX.Element {
   const geschuetzteAnsicht = (
     <>
       <div role="alert" hidden={!halten}>
-        {verloren ? "Die Sitzung ist beendet." : "Die Sitzung kann gerade nicht bestätigt werden."}
-        {" Die Eingabe bleibt hier. "}
-        {verloren ? "Geschützte Anfragen sind gesperrt. " : "Bitte die Verbindung prüfen. "}
+        {verloren ? t("erholung.sitzung.beendet") : t("erholung.sitzung.unbestaetigt")}{" "}
+        {t("erholung.sitzung.eingabeBleibt")}{" "}
+        {verloren ? t("erholung.sitzung.gesperrt") : t("erholung.sitzung.verbindung")}{" "}
         <button type="button" onClick={() => guard(() => setZurAnmeldung(true))}>
-          Zur Anmeldung
+          {t("erholung.sitzung.anmeldung")}
         </button>
       </div>
       <div {...(halten ? { inert: "" } : {})}>{anwendung}</div>

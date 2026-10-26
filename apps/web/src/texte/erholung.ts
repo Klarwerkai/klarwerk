@@ -16,6 +16,12 @@ export default {
   praefix: "erholung.",
   legacySchluessel: [],
   de: {
+    "erholung.sitzung.beendet": "Die Sitzung ist beendet.",
+    "erholung.sitzung.unbestaetigt": "Die Sitzung kann gerade nicht bestätigt werden.",
+    "erholung.sitzung.eingabeBleibt": "Die Eingabe bleibt hier.",
+    "erholung.sitzung.gesperrt": "Geschützte Anfragen sind gesperrt.",
+    "erholung.sitzung.verbindung": "Bitte die Verbindung prüfen.",
+    "erholung.sitzung.anmeldung": "Zur Anmeldung",
     "erholung.speichern.laeuft": "Wird gespeichert …",
     "erholung.speichern.wartet": "Wartet auf Verbindung – noch nicht gespeichert",
     "erholung.speichern.wartetHinweis":
@@ -28,6 +34,12 @@ export default {
     "erholung.filter.zuruecksetzen": "Filter zurücksetzen – Suchtext bleibt",
   },
   en: {
+    "erholung.sitzung.beendet": "The session has ended.",
+    "erholung.sitzung.unbestaetigt": "The session cannot be confirmed right now.",
+    "erholung.sitzung.eingabeBleibt": "Your input stays here.",
+    "erholung.sitzung.gesperrt": "Protected requests are blocked.",
+    "erholung.sitzung.verbindung": "Please check the connection.",
+    "erholung.sitzung.anmeldung": "Go to sign-in",
     "erholung.speichern.laeuft": "Saving …",
     "erholung.speichern.wartet": "Waiting for connection – not saved yet",
     "erholung.speichern.wartetHinweis":
@@ -40,6 +52,12 @@ export default {
     "erholung.filter.zuruecksetzen": "Reset filters – search text stays",
   },
   nl: {
+    "erholung.sitzung.beendet": "De sessie is beëindigd.",
+    "erholung.sitzung.unbestaetigt": "De sessie kan momenteel niet worden bevestigd.",
+    "erholung.sitzung.eingabeBleibt": "Je invoer blijft hier staan.",
+    "erholung.sitzung.gesperrt": "Beveiligde aanvragen zijn geblokkeerd.",
+    "erholung.sitzung.verbindung": "Controleer de verbinding.",
+    "erholung.sitzung.anmeldung": "Naar aanmelden",
     "erholung.speichern.laeuft": "Wordt opgeslagen …",
     "erholung.speichern.wartet": "Wacht op verbinding – nog niet opgeslagen",
     "erholung.speichern.wartetHinweis":
