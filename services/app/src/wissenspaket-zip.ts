@@ -10,59 +10,19 @@ const CRC_TABELLE = Uint32Array.from({ length: 256 }, (_, n) => {
   return crc >>> 0;
 });
 
-interface GroessenvariablerPuffer extends ArrayBuffer {
-  readonly maxByteLength: number;
-  resize(byteLength: number): void;
-}
-const VariablerPuffer = ArrayBuffer as unknown as {
-  new (byteLength: number, options: { maxByteLength: number }): GroessenvariablerPuffer;
-};
-
 /** Serieller ZIP32-Sink mit DEFLATE/Datenbeschreibungen. Nur das kleine Zentralverzeichnis bleibt. */
 export class WissenspaketZip {
   private offset = 0;
   private readonly verzeichnis: Buffer[] = [];
   private geschlossen = false;
   private constructor(
-    private readonly datei: FileHandle | undefined,
+    private readonly datei: FileHandle,
     private readonly datum: Date,
     private readonly signal: AbortSignal | undefined,
-    private puffer?: GroessenvariablerPuffer | Buffer,
   ) {}
 
   static async oeffne(pfad: string, datum: Date, signal?: AbortSignal): Promise<WissenspaketZip> {
     return new WissenspaketZip(await open(pfad, "wx", 0o600), datum, signal);
-  }
-
-  static puffer(groesse: number, datum: Date, signal?: AbortSignal): WissenspaketZip {
-    if (typeof (ArrayBuffer.prototype as Partial<GroessenvariablerPuffer>).resize !== "function") {
-      return WissenspaketZip.festerPuffer(groesse, datum, signal);
-    }
-    return new WissenspaketZip(
-      undefined,
-      datum,
-      signal,
-      new VariablerPuffer(0, { maxByteLength: groesse }),
-    );
-  }
-
-  /** Normaler Buffer-Pfad für Laufzeiten ohne größenveränderliche ArrayBuffer. */
-  static festerPuffer(groesse: number, datum: Date, signal?: AbortSignal): WissenspaketZip {
-    return new WissenspaketZip(undefined, datum, signal, Buffer.allocUnsafeSlow(groesse));
-  }
-
-  alsBuffer(): Buffer {
-    if (!this.puffer) throw new Error("Wissenspaket ist keine Buffer-Ausgabe.");
-    if (Buffer.isBuffer(this.puffer)) {
-      if (this.offset < this.puffer.length / 2) {
-        const passend = Buffer.allocUnsafeSlow(this.offset);
-        this.puffer.copy(passend, 0, 0, this.offset);
-        this.puffer = passend;
-      }
-      return this.puffer.subarray(0, this.offset);
-    }
-    this.puffer.resize(this.offset);
-    return Buffer.from(this.puffer, 0, this.offset);
   }
 
   private zeit(header: Buffer, offset: number): void {
@@ -82,36 +42,6 @@ export class WissenspaketZip {
 
   private async schreiben(bytes: Buffer): Promise<void> {
     this.signal?.throwIfAborted();
-    if (this.puffer) {
-      const ende = this.offset + bytes.length;
-      if (Buffer.isBuffer(this.puffer)) {
-        if (ende > this.puffer.length) {
-          const erweitert = Buffer.allocUnsafeSlow(Math.max(ende, this.puffer.length * 2));
-          this.puffer.copy(erweitert, 0, 0, this.offset);
-          this.puffer = erweitert;
-        }
-        bytes.copy(this.puffer, this.offset);
-        this.offset = ende;
-        return;
-      }
-      if (ende > this.puffer.maxByteLength) {
-        const erweitert = new VariablerPuffer(ende, {
-          maxByteLength: Math.max(ende, this.puffer.maxByteLength * 2),
-        });
-        Buffer.from(this.puffer).copy(Buffer.from(erweitert), 0, 0, this.offset);
-        this.puffer.resize(0);
-        this.puffer = erweitert;
-      }
-      if (ende > this.puffer.byteLength) {
-        this.puffer.resize(
-          Math.min(this.puffer.maxByteLength, Math.ceil(ende / (1024 * 1024)) * 1024 * 1024),
-        );
-      }
-      bytes.copy(Buffer.from(this.puffer), this.offset);
-      this.offset = ende;
-      return;
-    }
-    if (!this.datei) throw new Error("Wissenspaket-Ausgabe fehlt.");
     let position = 0;
     while (position < bytes.length) {
       this.signal?.throwIfAborted();
@@ -217,7 +147,7 @@ export class WissenspaketZip {
     } catch (error) {
       kompressor.destroy(error instanceof Error ? error : new Error("Wissenspaket abgebrochen."));
       await lauf.catch(() => {});
-      await this.datei?.truncate(beginn);
+      await this.datei.truncate(beginn);
       this.offset = beginn;
       throw error;
     } finally {
@@ -241,7 +171,7 @@ export class WissenspaketZip {
   async schliessen(): Promise<void> {
     if (!this.geschlossen) {
       this.geschlossen = true;
-      await this.datei?.close();
+      await this.datei.close();
     }
   }
 }

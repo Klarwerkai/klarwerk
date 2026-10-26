@@ -32,24 +32,21 @@ describe("P8 · serieller ZIP-Sink", () => {
     }
   });
 
-  it.each(["variabel", "klassisch"] as const)(
-    "kleine %s Buffer-Ausgabe hält keine große Backing-Allocation",
-    async (art) => {
-      const zip =
-        art === "variabel"
-          ? WissenspaketZip.puffer(202 * 1024 * 1024, jetzt)
-          : WissenspaketZip.festerPuffer(202 * 1024 * 1024, jetzt);
-      try {
-        await zip.lege("klein.txt", [Buffer.from("Klein")]);
-        await zip.abschliessen();
-        const bytes = zip.alsBuffer();
-        expect(Buffer.isBuffer(bytes)).toBe(true);
-        expect(bytes.buffer.byteLength).toBe(bytes.length);
-        const gelesen = await JSZip.loadAsync(bytes, { checkCRC32: true });
-        expect(await gelesen.file("klein.txt")?.async("string")).toBe("Klein");
-      } finally {
-        await zip.schliessen();
-      }
-    },
-  );
+  it("eine kleine ZIP-Datei liefert einen passenden Buffer ohne große Backing-Reserve", async () => {
+    const ordner = await mkdtemp(join(tmpdir(), "klarwerk-p8-zip-klein-"));
+    const pfad = join(ordner, "paket.zip");
+    const zip = await WissenspaketZip.oeffne(pfad, jetzt);
+    try {
+      await zip.lege("klein.txt", [Buffer.from("Klein")]);
+      await zip.abschliessen();
+      const bytes = await readFile(pfad);
+      expect(Buffer.isBuffer(bytes)).toBe(true);
+      expect(bytes.buffer.byteLength).toBeLessThan(64 * 1024);
+      const gelesen = await JSZip.loadAsync(bytes, { checkCRC32: true });
+      expect(await gelesen.file("klein.txt")?.async("string")).toBe("Klein");
+    } finally {
+      await zip.schliessen();
+      await rm(ordner, { recursive: true, force: true });
+    }
+  });
 });

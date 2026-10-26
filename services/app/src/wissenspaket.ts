@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
@@ -457,7 +457,6 @@ export interface Wissenspaket {
 
 interface VorbereitetesWissenspaket {
   datei: string;
-  zip?: Buffer;
   manifest: WissenspaketManifest;
   aufraeumen(): Promise<void>;
 }
@@ -549,7 +548,6 @@ async function bereiteWissenspaket(
   auftrag: WissenspaketAuftrag,
   quellen: WissenspaketQuellen,
   signal?: AbortSignal,
-  pufferAusgabe = false,
 ): Promise<VorbereitetesWissenspaket> {
   signal?.throwIfAborted();
   const verzeichnis = await mkdtemp(join(tmpdir(), "klarwerk-wissenspaket-"));
@@ -569,9 +567,7 @@ async function bereiteWissenspaket(
       darfSehen(betrachter, f) && (vertraulichErlaubt || !isConfidential(f.confidentiality));
 
     const datei = join(verzeichnis, "paket.zip");
-    zip = pufferAusgabe
-      ? WissenspaketZip.puffer(PAKET_ANHANG_DECKEL_BYTES + 2 * 1024 * 1024, auftrag.jetzt, signal)
-      : await WissenspaketZip.oeffne(datei, auftrag.jetzt, signal);
+    zip = await WissenspaketZip.oeffne(datei, auftrag.jetzt, signal);
     const ziel = zip;
     const dateien: { datei: string; bytes: number; sha256: string }[] = [];
     const lege = async (datei: string, inhalt: Buffer | string): Promise<void> => {
@@ -807,7 +803,7 @@ async function bereiteWissenspaket(
     await ziel.abschliessen();
     signal?.throwIfAborted();
     vorbereitet = true;
-    return { datei, manifest, aufraeumen, ...(pufferAusgabe ? { zip: ziel.alsBuffer() } : {}) };
+    return { datei, manifest, aufraeumen };
   } finally {
     await zip?.schliessen();
     if (!vorbereitet) await aufraeumen();
@@ -819,10 +815,9 @@ export async function baueWissenspaket(
   auftrag: WissenspaketAuftrag,
   quellen: WissenspaketQuellen,
 ): Promise<Wissenspaket> {
-  const paket = await bereiteWissenspaket(auftrag, quellen, undefined, true);
+  const paket = await bereiteWissenspaket(auftrag, quellen);
   try {
-    if (!paket.zip) throw new Error("Wissenspaket-Ausgabe fehlt.");
-    return { zip: paket.zip, manifest: paket.manifest };
+    return { zip: await readFile(paket.datei), manifest: paket.manifest };
   } finally {
     await paket.aufraeumen();
   }
