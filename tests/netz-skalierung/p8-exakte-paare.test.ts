@@ -80,6 +80,20 @@ describe("P8 · eindeutige Graphpaare ohne Paarmaterialisierung", () => {
     expect(await graph([...bestand].reverse(), sichtbar)).toEqual(erwartet);
   });
 
+  it("viele seltene Mehrfachthemen und dichte Gruppen bleiben exakt und stabil", async () => {
+    const bestand = Array.from({ length: 257 }, (_, i) =>
+      ko(i, [
+        ...Array.from({ length: 80 }, (_, t) => `aa-paar-${Math.floor(i / 2)}-${t}`),
+        ...(i % 7 === 0 ? ["mittel", "z-mittel"] : []),
+        `einzeln-${i}`,
+      ]),
+    );
+    const sichtbar = (k: KnowledgeObject) => Number(k.id.slice(3)) % 13 !== 0;
+    const erwartet = exakt(bestand.filter(sichtbar));
+    expect(await graph(bestand, sichtbar)).toEqual(erwartet);
+    expect(await graph([...bestand].reverse(), sichtbar)).toEqual(erwartet);
+  });
+
   it("12000 Knoten, zwei überlappende breite Themen: exakt zählen und nur5000 geordnete Kanten bilden", async () => {
     const bestand: KnowledgeObject[] = [];
     const inThema = new Map<number, number>();

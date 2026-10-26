@@ -4797,15 +4797,24 @@ export class LibraryService {
 
     const position = new Map(nodes.map((node, i) => [node.id, i]));
     const woerter = Math.ceil(nodes.length / 32);
-    const traegerBits = new Map<string, Uint32Array>();
+    // Eine volle Bitmenge nur, wenn sie nicht mehr Einträge braucht als die Trägerliste.
+    // So bleibt der Index auch bei sehr vielen seltenen Themen linear in den Themenzuordnungen.
+    const traegerIndex = new Map<string, Uint32Array | number[]>();
     for (const [tag, gruppe] of carriers) {
       if (excluded.has(tag) || gruppe.length < 2) continue;
+      if (gruppe.length < woerter) {
+        traegerIndex.set(
+          tag,
+          gruppe.map((ko) => position.get(ko.id) as number),
+        );
+        continue;
+      }
       const bits = new Uint32Array(woerter);
       for (const ko of gruppe) {
         const i = position.get(ko.id) as number;
         bits[i >>> 5] = (bits[i >>> 5] ?? 0) | (1 << (i & 31));
       }
-      traegerBits.set(tag, bits);
+      traegerIndex.set(tag, bits);
     }
 
     const edges: GraphEdge[] = [];
@@ -4813,13 +4822,20 @@ export class LibraryService {
     const nachbarn = new Uint32Array(woerter);
     for (const [i, node] of nodes.entries()) {
       // themenVon liefert bereits die bestehende localeCompare-Ordnung für das kleinste via.
-      const tags = (themenJeKo.get(node.id) ?? []).filter((tag) => traegerBits.has(tag));
+      const tags = (themenJeKo.get(node.id) ?? []).filter((tag) => traegerIndex.has(tag));
       const start = i >>> 5;
       nachbarn.fill(0, start);
       for (const tag of tags) {
-        const bits = traegerBits.get(tag);
-        if (!bits) continue;
-        for (let w = start; w < woerter; w += 1) nachbarn[w] = (nachbarn[w] ?? 0) | (bits[w] ?? 0);
+        const index = traegerIndex.get(tag);
+        if (index instanceof Uint32Array) {
+          for (let w = start; w < woerter; w += 1) {
+            nachbarn[w] = (nachbarn[w] ?? 0) | (index[w] ?? 0);
+          }
+        } else if (index) {
+          for (const j of index) {
+            if (j > i) nachbarn[j >>> 5] = (nachbarn[j >>> 5] ?? 0) | (1 << (j & 31));
+          }
+        }
       }
       // Nur größere Endpunkte zählen: kein Selbstpaar, kein zweites (b,a).
       nachbarn[start] = (nachbarn[start] ?? 0) & (0xffff_fffe << (i & 31));
@@ -4832,7 +4848,12 @@ export class LibraryService {
         while (wort !== 0 && edges.length < GRAPH_EDGE_LIMIT) {
           const bit = 31 - Math.clz32(wort & -wort);
           const j = w * 32 + bit;
-          const via = tags.find((tag) => ((traegerBits.get(tag)?.[w] ?? 0) & (1 << bit)) !== 0);
+          const via = tags.find((tag) => {
+            const index = traegerIndex.get(tag);
+            return index instanceof Uint32Array
+              ? ((index[w] ?? 0) & (1 << bit)) !== 0
+              : index?.includes(j);
+          });
           const ziel = nodes[j];
           if (ziel && via !== undefined) edges.push({ a: node.id, b: ziel.id, via });
           wort &= wort - 1;
