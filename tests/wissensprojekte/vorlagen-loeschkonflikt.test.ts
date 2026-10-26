@@ -8,7 +8,7 @@
 // Nichtmitglied las Artikel und Nutzungsbeleg, und der Artikel stand im Firmenkontext.
 //
 // Der Fall K ist Bens Reproduktion (`HILFE/d104b3c78bf2877d9131a861/vorlagen-loeschkonflikt.test.ts`)
-// mit unveränderten Sollwerten — nur ohne absolute Pfade und Dateiausgabe. Er hält `KoService.create`
+// mit unveränderten Sollwerten — nur ohne absolute Pfade und Dateiausgabe. Er hält `KoService.createWithResult`
 // NACH der Vorlagenprüfung an, startet die echte Löschung und lässt die Anlage dann weiterlaufen.
 // Dazu die beiden Ausgänge, die die Korrektur jetzt hat:
 //   V · die Löschung gewinnt VOR der Prüfung → 409 `SPACE_GELOESCHT`, nichts entsteht;
@@ -171,7 +171,7 @@ it("Kontrolle: Partnerinhalt bleibt ohne Löschung für Nichtmitglieder verborge
 
 it("K · Löschkonflikt: kein Firmenkontext-Rückfall und kein fremder Lesezugriff", async () => {
   const b = await buehne();
-  const original = b.services.ko.create.bind(b.services.ko);
+  const original = b.services.ko.createWithResult.bind(b.services.ko);
   let weiter = () => {};
   try {
     let erreicht = () => {};
@@ -181,7 +181,7 @@ it("K · Löschkonflikt: kein Firmenkontext-Rückfall und kein fremder Lesezugri
     const tor = new Promise<void>((r) => {
       weiter = r;
     });
-    b.services.ko.create = async (...args: Parameters<typeof original>) => {
+    b.services.ko.createWithResult = async (...args: Parameters<typeof original>) => {
       erreicht();
       await tor;
       return original(...args);
@@ -220,7 +220,7 @@ it("K · Löschkonflikt: kein Firmenkontext-Rückfall und kein fremder Lesezugri
     expect((await b.services.spaces.aktuelle()).some((s) => s.id === b.sid)).toBe(true);
   } finally {
     weiter();
-    b.services.ko.create = original;
+    b.services.ko.createWithResult = original;
     await b.app.close();
   }
 });
