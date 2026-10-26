@@ -165,16 +165,15 @@ describe("W4.1 · DOCX-Grenzen vor jedem Mammoth-Port", () => {
     },
   );
 
-  it("fehlender fflate-Chunk bleibt unverfälscht für den Neu-laden-Weg", async () => {
+  it("fehlender ZIP-Chunk bleibt unverfälscht für den Neu-laden-Weg", async () => {
     const input = await archive({ "word/document.xml": "Hallo" });
     const failure = new TypeError(
-      "Failed to fetch dynamically imported module: /assets/fflate-alt.js",
+      "Failed to fetch dynamically imported module: /assets/office-zip-alt.js",
     );
     const loader = vi.fn(() => {
       throw failure;
     });
-    vi.doMock("../../apps/web/node_modules/fflate/esm/index.mjs", loader);
-    vi.doMock("../../apps/web/node_modules/fflate/esm/browser.js", loader);
+    vi.doMock("../../apps/web/node_modules/jszip/lib/index.js", loader);
     vi.resetModules();
     try {
       const { assertDocxArchive: guard, DocxImportError: CurrentDocxError } = await import(
@@ -186,8 +185,7 @@ describe("W4.1 · DOCX-Grenzen vor jedem Mammoth-Port", () => {
       expect(isStaleChunkError(failure)).toBe(true);
       expect(docxLesefehlerSatz(failure, "Test.docx", i18n.t)).toBeNull();
     } finally {
-      vi.doUnmock("../../apps/web/node_modules/fflate/esm/index.mjs");
-      vi.doUnmock("../../apps/web/node_modules/fflate/esm/browser.js");
+      vi.doUnmock("../../apps/web/node_modules/jszip/lib/index.js");
       vi.resetModules();
     }
   });

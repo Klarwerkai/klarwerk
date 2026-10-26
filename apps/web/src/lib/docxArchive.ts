@@ -1,5 +1,3 @@
-import { type FflateStreaming, PptxTooLargeError, budgetedPptxUnzip } from "./zipBudget";
-
 export const DOCX_MAX_COMPRESSED_BYTES = 50 * 1024 * 1024;
 export const DOCX_MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
 export const DOCX_MAX_ENTRIES = 4000;
@@ -132,7 +130,16 @@ function centralEntries(data: Uint8Array): Entry[] {
   return entries;
 }
 
-/** Vor Mammoth: Verzeichnisgrenzen UND tatsächlich gestreamte Bytes, keine reine Metadatenzusage. */
+/** Der browserfähige, pausierbare JSZip-Port fehlt lediglich in dessen älterer Typdeklaration. */
+interface ZipContentStream {
+  on(event: "data", listener: (chunk: Uint8Array) => void): ZipContentStream;
+  on(event: "end", listener: () => void): ZipContentStream;
+  on(event: "error", listener: (error: unknown) => void): ZipContentStream;
+  pause(): ZipContentStream;
+  resume(): ZipContentStream;
+}
+
+/** Vor Mammoth: Verzeichnisgrenzen UND tatsächliche Bytes, ohne den Inhalt aufzusammeln. */
 export async function assertDocxArchive(buffer: ArrayBuffer): Promise<void> {
   assertDocxFileSize(buffer.byteLength);
   const data = new Uint8Array(buffer);
@@ -143,34 +150,55 @@ export async function assertDocxArchive(buffer: ArrayBuffer): Promise<void> {
     if (error instanceof DocxImportError) throw error;
     throw new DocxImportError("invalid-archive");
   }
-  // Ein fehlendes Bundle bleibt ein Ladefehler für den vorhandenen Neu-laden-Weg.
-  const mod = await import("fflate");
+  // JSZip ist bereits Browser- UND Server-Abhängigkeit; kein zusätzlicher fflate-Laufzeitbedarf.
+  // Ein gescheiterter Bundle-Import bleibt für den vorhandenen Neu-laden-Weg unverändert.
+  const mod = await import("jszip");
+  const JSZip = mod.default ?? mod;
+  let archive: Awaited<ReturnType<typeof JSZip.loadAsync>>;
   try {
-    const files = budgetedPptxUnzip(mod as unknown as FflateStreaming, {
-      neededEntry: /^/,
-      countedEntry: /^$/,
-      maxArchiveEntries: DOCX_MAX_ENTRIES,
-      maxTotalDecompressedBytes: DOCX_MAX_UNCOMPRESSED_BYTES,
-      maxEntryExpansionRatio: DOCX_MAX_EXPANSION_RATIO,
-    })(data);
-    if (Object.keys(files).length !== entries.length) throw new DocxImportError("invalid-archive");
-    for (const entry of entries) {
-      const bytes = Object.hasOwn(files, entry.name) ? files[entry.name]?.byteLength : undefined;
-      if (bytes !== entry.original) throw new DocxImportError("invalid-archive");
-      if (
-        bytes > 0 &&
-        (entry.compressed === 0 || bytes / entry.compressed > DOCX_MAX_EXPANSION_RATIO)
-      ) {
-        throw new DocxImportError("expansion-ratio");
-      }
-    }
-  } catch (error) {
-    if (error instanceof DocxImportError) throw error;
-    if (error instanceof PptxTooLargeError && error.reason !== "too-many-namespaces") {
-      throw new DocxImportError(
-        error.reason === "file-too-large" ? "file-too-large" : error.reason,
-      );
-    }
+    archive = await JSZip.loadAsync(buffer, { createFolders: false });
+  } catch {
     throw new DocxImportError("invalid-archive");
+  }
+  if (Object.keys(archive.files).length > entries.length)
+    throw new DocxImportError("invalid-archive");
+  let total = 0;
+  for (const file of Object.values(archive.files)) {
+    if (file.dir) continue;
+    // internalStream ist der öffentliche, auch im Browser vorhandene StreamHelper-Port.
+    const stream = (
+      file as unknown as {
+        internalStream(type: "uint8array"): ZipContentStream;
+      }
+    ).internalStream("uint8array");
+    await new Promise<void>((resolve, reject) => {
+      let done = false;
+      let entryBytes = 0;
+      const stop = (reason: DocxImportErrorReason) => {
+        if (done) return;
+        done = true;
+        stream.pause();
+        reject(new DocxImportError(reason));
+      };
+      stream.on("data", (chunk) => {
+        if (done) return;
+        entryBytes += chunk.byteLength;
+        total += chunk.byteLength;
+        if (entryBytes > DOCX_MAX_UNCOMPRESSED_BYTES || total > DOCX_MAX_UNCOMPRESSED_BYTES) {
+          stop("archive-too-large");
+        } else if (total > buffer.byteLength * DOCX_MAX_EXPANSION_RATIO) {
+          stop("expansion-ratio");
+        }
+      });
+      // JSZip prüft außerdem seine deklarierte Eintragslänge gegen die tatsächlichen Bytes.
+      stream.on("error", () => stop("invalid-archive"));
+      stream.on("end", () => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+      });
+      stream.resume();
+    });
   }
 }
