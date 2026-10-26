@@ -96,15 +96,35 @@ function lesen() {
   act(() => button?.click());
 }
 async function fertig() {
-  await vi.waitFor(
-    async () => {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      });
-      expect(control.auswerten).toHaveBeenCalled();
-    },
-    { timeout: 3000, interval: 10 },
-  );
+  try {
+    await vi.waitFor(
+      async () => {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        });
+        expect(control.auswerten).toHaveBeenCalled();
+      },
+      { timeout: 3000, interval: 10 },
+    );
+  } catch (error) {
+    const results = await Promise.all(
+      vi.mocked(readDocxRich).mock.results.map((result) =>
+        Promise.race([
+          Promise.resolve(result.value).then(
+            () => "fulfilled",
+            (reason: unknown) =>
+              reason instanceof Error ? `${reason.name}:${reason.message}` : String(reason),
+          ),
+          new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 5)),
+        ]),
+      ),
+    );
+    console.error(
+      "W4_KLICK_DIAGNOSE",
+      JSON.stringify({ parser: results, html: container.innerHTML }),
+    );
+    throw error;
+  }
 }
 
 beforeEach(async () => {

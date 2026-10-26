@@ -156,11 +156,11 @@ export async function assertDocxArchive(buffer: ArrayBuffer): Promise<void> {
   const JSZip = mod.default ?? mod;
   let archive: Awaited<ReturnType<typeof JSZip.loadAsync>>;
   try {
-    archive = await JSZip.loadAsync(buffer, { createFolders: false });
+    archive = await JSZip.loadAsync(data, { createFolders: false });
   } catch {
     throw new DocxImportError("invalid-archive");
   }
-  if (Object.keys(archive.files).length > entries.length)
+  if (Object.keys(archive.files).length !== entries.length)
     throw new DocxImportError("invalid-archive");
   let total = 0;
   for (const file of Object.values(archive.files)) {

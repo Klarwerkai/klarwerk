@@ -145,6 +145,23 @@ describe("W4.1 · DOCX-Grenzen vor jedem Mammoth-Port", () => {
     expect(engine.convertToHtml).not.toHaveBeenCalled();
   });
 
+  it.each(["word/./document.xml", "word//document.xml"])(
+    "Namensalias%s wird vor Mammoth kontrolliert abgewiesen",
+    async (alias) => {
+      const zip = new JSZip();
+      zip.file("word/document.xml", "Erster Inhalt", { createFolders: false });
+      zip.file(alias, "Zweiter Inhalt", { createFolders: false });
+      const input = await zip.generateAsync({ type: "arraybuffer", compression: "STORE" });
+      const collapsed = await JSZip.loadAsync(input, { createFolders: false });
+      expect(Object.keys(collapsed.files)).toHaveLength(1);
+      const engine = fakeEngine();
+      await expect(extractDocxRich(input, { engine })).rejects.toMatchObject({
+        reason: "invalid-archive",
+      });
+      expect(engine.convertToHtml).not.toHaveBeenCalled();
+    },
+  );
+
   it("abgeschnittenes Archiv ist ein kontrollierter Formatfehler", async () => {
     const input = (await archive({ "word/document.xml": "Hallo" })).slice(0, -4);
     await expect(assertDocxArchive(input)).rejects.toMatchObject({ reason: "invalid-archive" });
