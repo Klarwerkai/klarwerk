@@ -5,7 +5,7 @@ import {
   QueryClientProvider,
   onlineManager,
 } from "../../apps/web/node_modules/@tanstack/react-query";
-import { act, createElement, useState } from "../../apps/web/node_modules/react";
+import React, { act, createElement, useState } from "../../apps/web/node_modules/react";
 import { type Root, createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { api } from "../../apps/web/src/api/client";
 import { AuthProvider, useSession } from "../../apps/web/src/app/AuthContext";
@@ -110,7 +110,7 @@ async function mount(name: string, form = false) {
   mounted.push({ root, qc });
   await act(async () =>
     root.render(
-      createElement(
+      React.createElement(
         QueryClientProvider,
         { client: qc },
         createElement(
