@@ -502,3 +502,45 @@ it("ein alter Rechtewechselmarker wird beim Lesen in eine gelöschte Kopie mit e
   expect(localStorage.getItem(key)).not.toContain("ALTER-ENTZOGENER-KLARTEXT");
   expect(localStorage.getItem(key)).not.toContain("legacy-quelle");
 });
+
+it("zwei gleichzeitige Änderungen desselben lokalen Vorgangs werden verglichen; der veraltete Schreiber wird ehrlich abgewiesen", async () => {
+  await mount("edit-a");
+  await mount("edit-b");
+  await act(async () => {
+    expect(await port("edit-a").queue.enqueue(op("Ausgang"))).toBe(true);
+  });
+  const id = port("edit-a").queue.queue[0]?.id;
+  if (!id) throw new Error("Lokaler Ausgang fehlt");
+  let result: unknown;
+  await act(async () => {
+    result = await Promise.all([
+      port("edit-a").queue.replace(id, { title: "Erste Änderung" }, "Erste Änderung"),
+      port("edit-b").queue.replace(id, { title: "Zweite Änderung" }, "Zweite Änderung"),
+    ]);
+  });
+  expect(result).toEqual([true, false]);
+  expect(readOfflineQueue<{ title: string }>().map((o) => o.title)).toEqual(["Erste Änderung"]);
+  expect(port("edit-b").queue.persistError).toContain("anderen Fenster");
+});
+it("gleichzeitige Offlineupdates desselben Serverentwurfs überschreiben keinen neu angenommenen lokalen Stand", async () => {
+  await mount("update-a");
+  await mount("update-b");
+  const update = (title: string): NeuerVorgang => ({
+    ...op(title),
+    kind: "draft.update",
+    draftId: "server-entwurf",
+    seenUpdatedAt: "2026-10-26T10:00:00.000Z",
+  });
+  let result: unknown;
+  await act(async () => {
+    result = await Promise.all([
+      port("update-a").queue.enqueue(update("Erste lokale Fassung")),
+      port("update-b").queue.enqueue(update("Zweite lokale Fassung")),
+    ]);
+  });
+  expect(result).toEqual([true, false]);
+  expect(readOfflineQueue<{ title: string }>().map((o) => o.title)).toEqual([
+    "Erste lokale Fassung",
+  ]);
+  expect(port("update-b").queue.persistError).toContain("anderen Fenster");
+});

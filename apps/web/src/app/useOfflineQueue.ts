@@ -599,11 +599,27 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
 
   const enqueue = useCallback(
     async (op: NeuerVorgang): Promise<boolean> => {
+      const vorher = new Map(queueRef.current.map((o) => [o.id, JSON.stringify(o)]));
       const epoche = lokaleSitzungEpoche();
       try {
         return await offlineExklusiv(() => {
           const stand = sitzungsstandLesen(qc, netzLueckeRef.current);
           if (stand.konto === null || !lokalesKontoErlaubt(stand.konto)) return false;
+          const bestehend =
+            op.kind === "draft.update" && op.draftId
+              ? readOfflineQueue<VorgangMitStand>().find(
+                  (o) =>
+                    o.draftId === op.draftId &&
+                    o.eigentuemer === stand.konto &&
+                    (o.status === "queued" || o.status === "failed"),
+                )
+              : undefined;
+          if (bestehend && vorher.get(bestehend.id) !== JSON.stringify(bestehend)) {
+            setPersistError(
+              "Der Offlinevorgang wurde in einem anderen Fenster geändert. Bitte den neuen Stand prüfen; deine Eingabe bleibt erhalten.",
+            );
+            return false;
+          }
           const mitEigentuemer: NeuerVorgang = { ...op, eigentuemer: stand.konto };
           return commitQueue(
             (q) => standNachfuehren(enqueueOp(q, mitEigentuemer), mitEigentuemer),
@@ -625,10 +641,24 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
       title: string,
       seenUpdatedAt?: string,
     ): Promise<boolean> => {
+      const vorher = queueRef.current.find((o) => o.id === id);
+      const erwarteterStand = vorher ? JSON.stringify(vorher) : null;
       const epoche = lokaleSitzungEpoche();
       try {
         return await offlineExklusiv(() => {
           const stand = sitzungsstandLesen(qc, netzLueckeRef.current);
+          const aktuell = readOfflineQueue<VorgangMitStand>().find((o) => o.id === id);
+          if (
+            !aktuell ||
+            erwarteterStand === null ||
+            JSON.stringify(aktuell) !== erwarteterStand ||
+            (aktuell.status !== "queued" && aktuell.status !== "failed")
+          ) {
+            setPersistError(
+              "Der Offlinevorgang wurde in einem anderen Fenster geändert oder übertragen. Bitte den neuen Stand prüfen; deine Eingabe bleibt erhalten.",
+            );
+            return false;
+          }
           if (
             !stand.konto ||
             !lokalesKontoErlaubt(stand.konto) ||
