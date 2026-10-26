@@ -4723,17 +4723,9 @@ export class LibraryService {
   // jetzt stabil. Ebenso deterministisch: Knoten nach Id, Kanten nach (a, b), `a` ist die kleinere
   // der beiden Ids — ohne feste Reihenfolge wäre der Deckel unten eine Zufallsauswahl.
   //
-  // DIE EHRLICHE RESTGRENZE, und WORAUF SICH DAS LEISTUNGSVERSPRECHEN BEZIEHT (JOB 3022 R3):
-  // quadratisch bleibt es INNERHALB einer Gruppe. Ein Schlagwort knapp unter der Ubiquitätsschwelle
-  // (bis zur Hälfte des Bestands) erzeugt weiter sehr viele Paare, und `totalEdges` zählt sie exakt,
-  // also müssen sie auch entstehen. Gemessen: 999 Träger EINES Schlagworts ergeben 498.501 Kanten
-  // (tests/netz-skalierung/graph-deckel-und-gruppengrenze.test.ts, Fall 2) — die Kantenzahl wächst
-  // mit dem QUADRAT der Gruppengröße, nicht mit dem Bestand. Die Zusage „12.000 Objekte unter
-  // 5 Sekunden" gilt deshalb ausdrücklich für die dort dokumentierte realistische Verteilung
-  // (wenige Schlagwörter je Objekt, Gruppen von einigen Dutzend Trägern) und NICHT für einen
-  // Bestand, in dem ein einzelnes Schlagwort knapp unter der Hälfte aller Objekte trägt. Der
-  // nächste Schritt wäre derselbe wie bei `neighbors`: ein persistenter Index — heute neue
-  // Infrastruktur ohne Not.
+  // P8: Träger-Bitmengen zählen die Vereinigung gemeinsamer Nachbarn je sichtbarem Knoten.
+  // Mehrere gemeinsame Themen zählen ein Paar genau einmal, ohne alle Paare anzulegen. Nur die
+  // ersten GRAPH_EDGE_LIMIT Paare in (a,b)-Ordnung werden materialisiert, also auch je Thema endlich.
   //
   // ----------------------------------------------------------------------------------------------
   // JOB 3075 · P12 — DIE ABLÖSUNG: EINE THEMENACHSE, IMPORTIERT STATT ZWEIMAL NACHGEBAUT.
@@ -4803,54 +4795,56 @@ export class LibraryService {
       .sort((a, b) => a.localeCompare(b));
     const excluded = new Set(excludedTags);
 
-    // Je Objekt einmal: die kantenfähigen Schlagwörter aufsteigend sortiert (für „das kleinste
-    // geteilte") und als Menge (für den Test „teilt b dieses Schlagwort?"). Die Reihenfolge kommt
-    // aus `themenVon` und ist dieselbe `localeCompare`-Ordnung wie zuvor; `filter` erhält sie.
-    const kantenTags = new Map<string, { sortiert: string[]; menge: Set<string> }>();
-    for (const ko of list) {
-      const sortiert = (themenJeKo.get(ko.id) ?? []).filter((tag) => !excluded.has(tag));
-      kantenTags.set(ko.id, { sortiert, menge: new Set(sortiert) });
+    const position = new Map(nodes.map((node, i) => [node.id, i]));
+    const woerter = Math.ceil(nodes.length / 32);
+    const traegerBits = new Map<string, Uint32Array>();
+    for (const [tag, gruppe] of carriers) {
+      if (excluded.has(tag) || gruppe.length < 2) continue;
+      const bits = new Uint32Array(woerter);
+      for (const ko of gruppe) {
+        const i = position.get(ko.id) as number;
+        bits[i >>> 5] = (bits[i >>> 5] ?? 0) | (1 << (i & 31));
+      }
+      traegerBits.set(tag, bits);
     }
 
-    // Die Gruppen durchgehen und ein Paar GENAU DANN an diesem Schlagwort ausgeben, wenn es das
-    // kleinste ist, das beide teilen. Das ist die Entdopplung und die `via`-Regel in einem Schritt:
-    // ein Paar, das zwei Schlagwörter teilt, wird zweimal besucht und nur einmal ausgegeben — ohne
-    // Merkliste gesehener Paare. Die ausgegebenen Kanten stehen bis zur Sortierung vollständig im
-    // Speicher, denn `totalEdges` ist eine EXAKTE Zahl und der Deckel greift erst NACH der
-    // deterministischen Reihenfolge; eine früher abbrechende Auswahl wäre eine zufällige.
-    const kantenTagsSortiert = [...carriers.keys()]
-      .filter((tag) => !excluded.has(tag))
-      .sort((a, b) => a.localeCompare(b));
     const edges: GraphEdge[] = [];
-    for (const tag of kantenTagsSortiert) {
-      const gruppe = carriers.get(tag) ?? [];
-      for (let i = 0; i < gruppe.length; i += 1) {
-        for (let j = i + 1; j < gruppe.length; j += 1) {
-          const links = gruppe[i];
-          const rechts = gruppe[j];
-          if (!links || !rechts) {
-            continue;
-          }
-          const vorne = links.id.localeCompare(rechts.id) <= 0;
-          const a = vorne ? links : rechts;
-          const b = vorne ? rechts : links;
-          const bTags = kantenTags.get(b.id);
-          const kleinstes = kantenTags
-            .get(a.id)
-            ?.sortiert.find((kandidat) => bTags?.menge.has(kandidat));
-          if (kleinstes === tag) {
-            edges.push({ a: a.id, b: b.id, via: tag });
-          }
+    let totalEdges = 0;
+    const nachbarn = new Uint32Array(woerter);
+    for (const [i, node] of nodes.entries()) {
+      // themenVon liefert bereits die bestehende localeCompare-Ordnung für das kleinste via.
+      const tags = (themenJeKo.get(node.id) ?? []).filter((tag) => traegerBits.has(tag));
+      const start = i >>> 5;
+      nachbarn.fill(0, start);
+      for (const tag of tags) {
+        const bits = traegerBits.get(tag);
+        if (!bits) continue;
+        for (let w = start; w < woerter; w += 1) nachbarn[w] = (nachbarn[w] ?? 0) | (bits[w] ?? 0);
+      }
+      // Nur größere Endpunkte zählen: kein Selbstpaar, kein zweites (b,a).
+      nachbarn[start] = (nachbarn[start] ?? 0) & (0xffff_fffe << (i & 31));
+      for (let w = start; w < woerter; w += 1) {
+        let wort = nachbarn[w] ?? 0;
+        let zahl = wort;
+        zahl -= (zahl >>> 1) & 0x5555_5555;
+        zahl = (zahl & 0x3333_3333) + ((zahl >>> 2) & 0x3333_3333);
+        totalEdges += (((zahl + (zahl >>> 4)) & 0x0f0f_0f0f) * 0x0101_0101) >>> 24;
+        while (wort !== 0 && edges.length < GRAPH_EDGE_LIMIT) {
+          const bit = 31 - Math.clz32(wort & -wort);
+          const j = w * 32 + bit;
+          const via = tags.find((tag) => ((traegerBits.get(tag)?.[w] ?? 0) & (1 << bit)) !== 0);
+          const ziel = nodes[j];
+          if (ziel && via !== undefined) edges.push({ a: node.id, b: ziel.id, via });
+          wort &= wort - 1;
         }
       }
     }
-    edges.sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
 
     return {
       nodes,
-      edges: edges.slice(0, GRAPH_EDGE_LIMIT),
-      totalEdges: edges.length,
-      truncated: edges.length > GRAPH_EDGE_LIMIT,
+      edges,
+      totalEdges,
+      truncated: totalEdges > GRAPH_EDGE_LIMIT,
       edgeLimit: GRAPH_EDGE_LIMIT,
       excludedTags,
       // JOB 4155: die gesetzten Beziehungen derselben Antwort. Schlüssel WEG, wenn kein Bestand

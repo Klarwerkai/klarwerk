@@ -68,7 +68,7 @@ import {
   sichtbarkeitsfilterFuer,
   sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
-import { type WissenspaketQuellen, baueWissenspaket } from "../wissenspaket";
+import { type WissenspaketQuellen, baueWissenspaketStream } from "../wissenspaket";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
@@ -804,6 +804,7 @@ export function libraryRoutes(
   // P14 · Existenzrecht: optional — ohne Quelle hat niemand ein Existenzrecht (Antwort leer).
   existenzbereiche?: ExistenzbereichQuelle,
 ): FastifyPluginAsync {
+  const aktivePakete = new Set<string>();
   /**
    * P14: der Firmenfilter einer Anfrage samt den aktuellen Bereichsmarken — oder `null`, wenn die
    * Angabe ungültig war (dann ist die 400 bereits gesendet, bevor irgendetwas gelesen wurde).
@@ -1111,9 +1112,33 @@ export function libraryRoutes(
           reply.code(404).send({ error: "NOT_FOUND", message: "Format nicht verfügbar." });
           return;
         }
+        if (aktivePakete.has(user.id)) {
+          reply.header("Retry-After", "1").code(429).send({
+            error: "RATE_LIMITED",
+            message:
+              "Ein Wissenspaket für dieses Konto wird bereits heruntergeladen. Bitte warten.",
+          });
+          return;
+        }
+        aktivePakete.add(user.id);
+        const controller = new AbortController();
+        let ende!: () => void;
+        const beendet = new Promise<void>((resolve) => {
+          ende = resolve;
+        });
+        const fertig = () => {
+          ende();
+        };
+        const abbruch = () => {
+          controller.abort();
+          ende();
+        };
+        reply.raw.once("finish", fertig);
+        reply.raw.once("close", abbruch);
+        let gebaut: Awaited<ReturnType<typeof baueWissenspaketStream>> | undefined;
         try {
           const jetzt = new Date();
-          const { zip } = await baueWissenspaket(
+          gebaut = await baueWissenspaketStream(
             {
               betrachter: user,
               betrachterName: (await paket.personen()).get(user.id) ?? null,
@@ -1123,6 +1148,7 @@ export function libraryRoutes(
               jetzt,
             },
             paket,
+            controller.signal,
           );
           const stempel = jetzt.toISOString().slice(0, 19).replace(/[-:]/g, "");
           reply
@@ -1133,9 +1159,20 @@ export function libraryRoutes(
               `attachment; filename="klarwerk-wissenspaket-${stempel}Z.zip"`,
             )
             .code(200)
-            .send(zip);
+            .send(gebaut.strom);
+          await beendet;
+          await gebaut.abgeschlossen;
         } catch (error) {
-          sendError(reply, error);
+          if (!controller.signal.aborted) {
+            if (!reply.sent) sendError(reply, error);
+            else reply.log.error({ err: error }, "Wissenspaket-Stream abgebrochen.");
+          }
+        } finally {
+          gebaut?.strom.destroy();
+          await gebaut?.abgeschlossen.catch(() => {});
+          reply.raw.off("finish", fertig);
+          reply.raw.off("close", abbruch);
+          aktivePakete.delete(user.id);
         }
         return;
       }

@@ -1,5 +1,9 @@
-import { createHash } from "node:crypto";
-import JSZip from "jszip";
+import { createReadStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
 import {
   type Confidentiality,
   type KnowledgeObject,
@@ -12,6 +16,7 @@ import { type StoredObject, decodeDataUrl } from "../../object-store";
 import type { SessionUser } from "./http";
 import type { Produktfassung } from "./sicherungsumfang";
 import { type Sichtbarkeitsfilter, darfSehen } from "./sichtbarkeit";
+import { WissenspaketZip } from "./wissenspaket-zip";
 
 // ================================================================================================
 // produkt:20261010:poc-wiederherstellung-export (PV-01-04, PV-01-05) — DAS WISSENSPAKET.
@@ -117,10 +122,6 @@ export const PAKET_NICHT_ENTHALTEN: readonly { bereich: string; grund: string }[
 // ------------------------------------------------------------------------------------------------
 // Hilfen
 // ------------------------------------------------------------------------------------------------
-
-function sha256(daten: Buffer | string): string {
-  return createHash("sha256").update(daten).digest("hex");
-}
 
 /** Ein Ordner- oder Dateiname, der auf jedem System geöffnet werden kann. */
 export function sichererName(roh: string, ersatz: string): string {
@@ -454,256 +455,403 @@ export interface Wissenspaket {
   manifest: WissenspaketManifest;
 }
 
+interface VorbereitetesWissenspaket {
+  datei: string;
+  zip?: Buffer;
+  manifest: WissenspaketManifest;
+  aufraeumen(): Promise<void>;
+}
+
+class AnhangDeckel extends Error {}
+
+/** Vorhandene Daten-URL-Semantik, höchstens64KiB Base64 und48KiB Bytes je Schreibschritt. */
+async function legeAnhang(
+  zip: WissenspaketZip,
+  name: string,
+  eingang: { daten: string },
+  restBytes: number,
+  signal: AbortSignal | undefined,
+): Promise<{ bytes: number; sha256: string } | "deckel" | null> {
+  const komma = eingang.daten.indexOf(",");
+  if (komma < 0 || !decodeDataUrl(eingang.daten.slice(0, komma + 1))) return null;
+  // Buffer.from(..., "base64") verarbeitet UTF16-Codeeinheiten als Einbytewerte.
+  // Erst danach ungültige Zeichen verwerfen: vorzeitiges Unicode-Filtern änderte die Originalbytes.
+  const daten = Buffer.allocUnsafe(eingang.daten.length);
+  daten.write(eingang.daten, 0, daten.length, "latin1");
+  eingang.daten = "";
+  const quelle = async (senden: (teil: Buffer) => Promise<void>): Promise<void> => {
+    let bytes = 0;
+    let rest = "";
+    const puffer = Buffer.allocUnsafe(49_155);
+    for (let offset = komma + 1; offset < daten.length || rest.length > 0; offset += 65_536) {
+      signal?.throwIfAborted();
+      let teil = daten
+        .toString("latin1", offset, Math.min(daten.length, offset + 65_536))
+        .replace(/[^A-Za-z0-9+/_=-]/g, "");
+      const padding = teil.indexOf("=");
+      const ende = padding >= 0 || offset + 65_536 >= daten.length;
+      let basis = rest + (padding >= 0 ? teil.slice(0, padding) : teil);
+      const laenge = ende ? basis.length : basis.length - (basis.length % 4);
+      const laengeBytes = puffer.write(basis.slice(0, laenge), 0, puffer.length, "base64");
+      const roh = puffer.subarray(0, laengeBytes);
+      rest = basis.slice(laenge);
+      teil = "";
+      basis = "";
+      bytes += roh.length;
+      if (bytes > restBytes) throw new AnhangDeckel();
+      await senden(roh);
+      if (ende) break;
+    }
+  };
+  try {
+    return await zip.lege(name, quelle);
+  } catch (error) {
+    if (error instanceof AnhangDeckel) return "deckel";
+    throw error;
+  } finally {
+    eingang.daten = "";
+  }
+}
+
+/** Große Objekt-/Daten-URL-Werte verlassen diesen kurzen Frame nie als Rückgabewert. */
+async function packeAnhang(
+  zip: WissenspaketZip,
+  datei: string,
+  ko: KnowledgeObject,
+  anhang: KoAttachment,
+  quellen: WissenspaketQuellen,
+  darf: (f: Fakten) => boolean,
+  restBytes: number,
+  signal: AbortSignal | undefined,
+): Promise<{ bytes: number; sha256: string } | { grund: string }> {
+  let objekt = anhang.objectId ? await quellen.objekt(anhang.objectId) : undefined;
+  const stufe = isConfidential(ko.confidentiality) ? "vertraulich" : dateiStufe(objekt, anhang);
+  if (!darf(faktenVon(ko, stufe))) return { grund: GRUND_STUFE_ANHANG };
+  let daten = objekt?.data ?? anhang.dataUrl;
+  if (daten === undefined) return { grund: GRUND_FEHLT };
+  const verarbeitung = legeAnhang(zip, datei, { daten }, restBytes, signal);
+  objekt = undefined;
+  daten = undefined;
+  const roh = await verarbeitung;
+  if (roh === null) return { grund: GRUND_UNLESBAR };
+  if (roh === "deckel") return { grund: GRUND_DECKEL };
+  return roh;
+}
+
+/** Ein Paketkern für den Buffer-Vertrag und den HTTP-Stream. Nur eigene private temporäre Pfade. */
+async function bereiteWissenspaket(
+  auftrag: WissenspaketAuftrag,
+  quellen: WissenspaketQuellen,
+  signal?: AbortSignal,
+  pufferAusgabe = false,
+): Promise<VorbereitetesWissenspaket> {
+  signal?.throwIfAborted();
+  const verzeichnis = await mkdtemp(join(tmpdir(), "klarwerk-wissenspaket-"));
+  let zip: WissenspaketZip | undefined;
+  const aufraeumen = () => rm(verzeichnis, { recursive: true, force: true });
+  let vorbereitet = false;
+  try {
+    const { betrachter, vertraulichErlaubt } = auftrag;
+    const sichtbar: Sichtbarkeitsfilter = (ko) => darfSehen(betrachter, ko);
+    const [namen, spaceNamen] = await Promise.all([quellen.personen(), quellen.spaces()]);
+    const person = (kennung: string): PersonAngabe => ({
+      kennung,
+      name: namen.get(kennung) ?? null,
+    });
+    /** Die Stufe, wie der Betrachter sie exportieren darf — Grundmenge UND Sichtregel. */
+    const darf = (f: Fakten): boolean =>
+      darfSehen(betrachter, f) && (vertraulichErlaubt || !isConfidential(f.confidentiality));
+
+    const datei = join(verzeichnis, "paket.zip");
+    zip = pufferAusgabe
+      ? WissenspaketZip.puffer(PAKET_ANHANG_DECKEL_BYTES + 2 * 1024 * 1024, auftrag.jetzt, signal)
+      : await WissenspaketZip.oeffne(datei, auftrag.jetzt, signal);
+    const ziel = zip;
+    const dateien: { datei: string; bytes: number; sha256: string }[] = [];
+    const lege = async (datei: string, inhalt: Buffer | string): Promise<void> => {
+      const bytes = typeof inhalt === "string" ? Buffer.from(inhalt, "utf8") : inhalt;
+      const ergebnis = await ziel.lege(datei, [bytes]);
+      dateien.push({ datei, ...ergebnis });
+    };
+
+    // Erst die Ordner aller Beiträge, damit eine Beziehung auf einen Beitrag weiter hinten schon
+    // ihren Pfad kennt.
+    const voll: KnowledgeObject[] = [];
+    for (const gelistet of auftrag.beitraege) {
+      signal?.throwIfAborted();
+      const ko = (await quellen.beitrag(gelistet.id)) ?? gelistet;
+      // Die Grundmenge wird NIE erweitert: was der volle Abruf anders einstuft, fällt hier heraus.
+      if (darf(faktenVon(ko)) && ko.status === "validiert") {
+        voll.push(ko);
+      }
+    }
+    // Feste Reihenfolge (Anlage, dann Kennung): dieselbe Menge ergibt dieselben Ordnernummern — vor
+    // und nach einer Wiederherstellung, gleich in welcher Reihenfolge die Ablage liefert.
+    voll.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    const ordner = new Map<string, string>();
+    for (const [i, ko] of voll.entries()) {
+      const nummer = String(i + 1).padStart(3, "0");
+      ordner.set(ko.id, `beitraege/${nummer}-${sichererName(ko.title, "beitrag")}`);
+    }
+
+    const csv: string[] = ["datei;art;beitrag;beitrag_kennung;fassung;quelle"];
+    const beitraege: ManifestBeitrag[] = [];
+    let anhangBytes = 0;
+    let fassungenGesamt = 0;
+    let anhaengeGesamt = 0;
+
+    for (const ko of voll) {
+      signal?.throwIfAborted();
+      const pfad = ordner.get(ko.id) as string;
+      // --- Fassungen -----------------------------------------------------------------------------
+      const gespeichert = [...(await quellen.fassungen(ko.id))];
+      gespeichert.sort((a, b) => a.version - b.version);
+      const neueste = ko.version;
+      const fassungen: ManifestFassung[] = [];
+      const fassungenAusgelassen: { fassung: number; grund: string }[] = [];
+      for (const f of gespeichert) {
+        const stand = f.snapshot;
+        if (!darf(faktenVon(ko, stand.confidentiality ?? "intern"))) {
+          fassungenAusgelassen.push({ fassung: f.version, grund: GRUND_STUFE_FASSUNG });
+          continue;
+        }
+        const aktuell = f.version === neueste;
+        const art = aktuell ? "fassung_aktuell" : "fassung_historisch";
+        const datei = `${pfad}/fassungen/v${f.version}.md`;
+        await lege(
+          datei,
+          fassungMarkdown(
+            stand,
+            { fassung: f.version, aktuell, gesamt: gespeichert.length, neueste, am: f.at },
+            person(f.author),
+            f.note,
+          ),
+        );
+        csv.push(csvZeile(datei, art, ko.title, ko.id, f.version, ""));
+        fassungen.push({
+          fassung: f.version,
+          aktuell,
+          am: f.at,
+          von: person(f.author),
+          vermerk: f.note,
+          titel: stand.title,
+          vertraulichkeit: stand.confidentiality ?? "intern",
+          datei,
+        });
+      }
+      fassungenGesamt += fassungen.length;
+
+      // --- Anhänge -------------------------------------------------------------------------------
+      const anhaenge: ManifestAnhang[] = [];
+      const anhaengeAusgelassen: { name: string; grund: string }[] = [];
+      const vergeben = new Set<string>();
+      const dateiFuerObjekt = new Map<string, string>();
+      for (const a of ko.attachments) {
+        signal?.throwIfAborted();
+        let name = sichererName(a.name, "anhang");
+        for (let n = 2; vergeben.has(name); n++) {
+          name = `${n}-${sichererName(a.name, "anhang")}`;
+        }
+        const datei = `${pfad}/anhaenge/${name}`;
+        const roh = await packeAnhang(
+          ziel,
+          datei,
+          ko,
+          a,
+          quellen,
+          darf,
+          PAKET_ANHANG_DECKEL_BYTES - anhangBytes,
+          signal,
+        );
+        if ("grund" in roh) {
+          anhaengeAusgelassen.push({ name: a.name, grund: roh.grund });
+          continue;
+        }
+        anhangBytes += roh.bytes;
+        vergeben.add(name);
+        dateien.push({ datei, ...roh });
+        if (a.objectId) {
+          dateiFuerObjekt.set(a.objectId, datei);
+        }
+        csv.push(csvZeile(datei, "anhang", ko.title, ko.id, ko.version, a.name));
+        anhaenge.push({
+          name: a.name,
+          mime: a.mime,
+          bytes: roh.bytes,
+          sha256: roh.sha256,
+          datei,
+          objektKennung: a.objectId ?? null,
+          hochgeladenVon: person(a.author),
+        });
+      }
+      anhaengeGesamt += anhaenge.length;
+
+      // --- Quellen, Beziehungen, Verantwortung ------------------------------------------------------
+      const quellenListe = ko.sources.map((q) => ({
+        bezeichnung: q.label,
+        adresse: q.url,
+        auszug: q.excerpt,
+        art: q.kind,
+        anbieter: q.provider ?? null,
+        // JOB 4077: der Anker ist die Objektkennung eines Anhangs dieses Beitrags — im Paket die Datei.
+        belegtDurchAnhang: q.objectId ? (dateiFuerObjekt.get(q.objectId) ?? null) : null,
+      }));
+      const kanten = await quellen.beziehungen(ko.id, sichtbar);
+      const beziehungen = [...kanten.kanten].sort(kantenOrdnung).map((k) => ({
+        art: k.art,
+        richtung: k.richtung,
+        rolle: k.rolle ?? null,
+        gegenstueck: {
+          kennung: k.gegenstueck.id,
+          titel: k.gegenstueck.title,
+          ordner: ordner.get(k.gegenstueck.id) ?? null,
+        },
+        gesetztVon: person(k.urheber),
+        gesetztAm: k.gesetztAm,
+      }));
+      const own = ko.ownership;
+      const spaceId = typeof ko.spaceId === "string" ? ko.spaceId : null;
+      const eintrag: ManifestBeitrag = {
+        ordner: pfad,
+        kennung: ko.id,
+        titel: ko.title,
+        aussage: ko.statement,
+        art: ko.type,
+        kategorie: ko.category,
+        aktuelleFassung: ko.version,
+        freigabe: {
+          status: ko.status,
+          benoetigtePruefungen: ko.neededValidations,
+          entscheidungImAudit: ko.validationDecisionRef?.auditSeq ?? null,
+        },
+        rechte: {
+          vertraulichkeit: ko.confidentiality ?? "intern",
+          space: spaceId ? { kennung: spaceId, name: spaceNamen.get(spaceId) ?? null } : null,
+          quellLeserBeschraenkt: Array.isArray(ko.quellrechte?.leser),
+        },
+        autor: person(ko.author),
+        ursprungsautor: person(ko.originalAuthor),
+        verantwortung: {
+          verantwortlich: own?.owner ? person(own.owner) : null,
+          verantwortlicheRolle: own?.ownerRole ?? null,
+          pruefer: (own?.reviewers ?? []).map(person),
+          validierer: (own?.validators ?? []).map(person),
+        },
+        fassungen,
+        fassungenAusgelassen,
+        anhaenge,
+        anhaengeAusgelassen,
+        quellen: quellenListe,
+        beziehungen,
+      };
+      beitraege.push(eintrag);
+
+      const aktuellDatei = `${pfad}/aktuell.md`;
+      await lege(aktuellDatei, aktuellMarkdown(eintrag));
+      csv.push(csvZeile(aktuellDatei, "beitrag_aktuell", ko.title, ko.id, ko.version, ""));
+      const struktur = {
+        ...eintrag,
+        wannEsGilt: ko.conditions,
+        vorgehen: ko.measures,
+        schlagwoerter: ko.tags,
+        inhaltHtml: ko.bodyHtml ?? null,
+        angelegtAm: ko.createdAt,
+        verlauf: ko.history.map((h) => ({
+          fassung: h.version,
+          am: h.at,
+          von: person(h.author),
+          vermerk: h.note,
+        })),
+      };
+      const jsonDatei = `${pfad}/beitrag.json`;
+      await lege(jsonDatei, `${JSON.stringify(struktur, null, 2)}\n`);
+      csv.push(csvZeile(jsonDatei, "beitrag_struktur", ko.title, ko.id, ko.version, ""));
+    }
+
+    await lege("zuordnungen.csv", `${csv.join("\n")}\n`);
+
+    const manifest: WissenspaketManifest = {
+      format: "klarwerk-wissenspaket",
+      formatVersion: 1,
+      erstelltAm: auftrag.jetzt.toISOString(),
+      produkt: quellen.produkt,
+      exportiertVon: {
+        kennung: betrachter.id,
+        name: auftrag.betrachterName,
+        rolle: betrachter.role,
+      },
+      umfang: {
+        regel: vertraulichErlaubt
+          ? "Validierte Beiträge, die du sehen darfst, einschließlich vertraulicher (Prüfrecht)."
+          : "Validierte, nicht vertrauliche Beiträge, die du sehen darfst.",
+        vertraulichEnthalten: vertraulichErlaubt,
+        auswahl: auftrag.auswahl ? [...auftrag.auswahl] : null,
+        beitraege: beitraege.length,
+        fassungen: fassungenGesamt,
+        anhaenge: anhaengeGesamt,
+      },
+      beitraege,
+      nichtEnthalten: [...PAKET_NICHT_ENTHALTEN],
+      dateien: [],
+    };
+    // LIESMICH zählt zu den geprüften Dateien; das Manifest beschreibt alle außer sich selbst.
+    await lege("LIESMICH.md", liesmich(manifest));
+    manifest.dateien = [...dateien];
+    await lege("MANIFEST.json", `${JSON.stringify(manifest, null, 2)}\n`);
+    await ziel.abschliessen();
+    signal?.throwIfAborted();
+    vorbereitet = true;
+    return { datei, manifest, aufraeumen, ...(pufferAusgabe ? { zip: ziel.alsBuffer() } : {}) };
+  } finally {
+    await zip?.schliessen();
+    if (!vorbereitet) await aufraeumen();
+  }
+}
+
+/** Bestehender Buffer-Vertrag, derselbe serielle Paketkern wie für HTTP. */
 export async function baueWissenspaket(
   auftrag: WissenspaketAuftrag,
   quellen: WissenspaketQuellen,
 ): Promise<Wissenspaket> {
-  const { betrachter, vertraulichErlaubt } = auftrag;
-  const sichtbar: Sichtbarkeitsfilter = (ko) => darfSehen(betrachter, ko);
-  const [namen, spaceNamen] = await Promise.all([quellen.personen(), quellen.spaces()]);
-  const person = (kennung: string): PersonAngabe => ({
-    kennung,
-    name: namen.get(kennung) ?? null,
-  });
-  /** Die Stufe, wie der Betrachter sie exportieren darf — Grundmenge UND Sichtregel. */
-  const darf = (f: Fakten): boolean =>
-    darfSehen(betrachter, f) && (vertraulichErlaubt || !isConfidential(f.confidentiality));
-
-  const zip = new JSZip();
-  const dateien: { datei: string; bytes: number; sha256: string }[] = [];
-  const lege = (datei: string, inhalt: Buffer | string): void => {
-    const bytes = typeof inhalt === "string" ? Buffer.from(inhalt, "utf8") : inhalt;
-    zip.file(datei, bytes, { date: auftrag.jetzt });
-    dateien.push({ datei, bytes: bytes.length, sha256: sha256(bytes) });
-  };
-
-  // Erst die Ordner aller Beiträge, damit eine Beziehung auf einen Beitrag weiter hinten schon
-  // ihren Pfad kennt.
-  const voll: KnowledgeObject[] = [];
-  for (const gelistet of auftrag.beitraege) {
-    const ko = (await quellen.beitrag(gelistet.id)) ?? gelistet;
-    // Die Grundmenge wird NIE erweitert: was der volle Abruf anders einstuft, fällt hier heraus.
-    if (darf(faktenVon(ko)) && ko.status === "validiert") {
-      voll.push(ko);
-    }
+  const paket = await bereiteWissenspaket(auftrag, quellen, undefined, true);
+  try {
+    if (!paket.zip) throw new Error("Wissenspaket-Ausgabe fehlt.");
+    return { zip: paket.zip, manifest: paket.manifest };
+  } finally {
+    await paket.aufraeumen();
   }
-  // Feste Reihenfolge (Anlage, dann Kennung): dieselbe Menge ergibt dieselben Ordnernummern — vor
-  // und nach einer Wiederherstellung, gleich in welcher Reihenfolge die Ablage liefert.
-  voll.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-  const ordner = new Map<string, string>();
-  for (const [i, ko] of voll.entries()) {
-    const nummer = String(i + 1).padStart(3, "0");
-    ordner.set(ko.id, `beitraege/${nummer}-${sichererName(ko.title, "beitrag")}`);
-  }
+}
 
-  const csv: string[] = ["datei;art;beitrag;beitrag_kennung;fassung;quelle"];
-  const beitraege: ManifestBeitrag[] = [];
-  let anhangBytes = 0;
-  let fassungenGesamt = 0;
-  let anhaengeGesamt = 0;
+export interface WissenspaketStream {
+  strom: Readable;
+  manifest: WissenspaketManifest;
+  /** Erfüllt/verwirft erst nach Streamende und tatsächlichem Aufräumen der eigenen Dateien. */
+  abgeschlossen: Promise<void>;
+}
 
-  for (const ko of voll) {
-    const pfad = ordner.get(ko.id) as string;
-    // --- Fassungen -----------------------------------------------------------------------------
-    const gespeichert = [...(await quellen.fassungen(ko.id))];
-    gespeichert.sort((a, b) => a.version - b.version);
-    const neueste = ko.version;
-    const fassungen: ManifestFassung[] = [];
-    const fassungenAusgelassen: { fassung: number; grund: string }[] = [];
-    for (const f of gespeichert) {
-      const stand = f.snapshot;
-      if (!darf(faktenVon(ko, stand.confidentiality ?? "intern"))) {
-        fassungenAusgelassen.push({ fassung: f.version, grund: GRUND_STUFE_FASSUNG });
-        continue;
-      }
-      const aktuell = f.version === neueste;
-      const art = aktuell ? "fassung_aktuell" : "fassung_historisch";
-      const datei = `${pfad}/fassungen/v${f.version}.md`;
-      lege(
-        datei,
-        fassungMarkdown(
-          stand,
-          { fassung: f.version, aktuell, gesamt: gespeichert.length, neueste, am: f.at },
-          person(f.author),
-          f.note,
-        ),
-      );
-      csv.push(csvZeile(datei, art, ko.title, ko.id, f.version, ""));
-      fassungen.push({
-        fassung: f.version,
-        aktuell,
-        am: f.at,
-        von: person(f.author),
-        vermerk: f.note,
-        titel: stand.title,
-        vertraulichkeit: stand.confidentiality ?? "intern",
-        datei,
-      });
-    }
-    fassungenGesamt += fassungen.length;
-
-    // --- Anhänge -------------------------------------------------------------------------------
-    const anhaenge: ManifestAnhang[] = [];
-    const anhaengeAusgelassen: { name: string; grund: string }[] = [];
-    const vergeben = new Set<string>();
-    const dateiFuerObjekt = new Map<string, string>();
-    for (const a of ko.attachments) {
-      const objekt = a.objectId ? await quellen.objekt(a.objectId) : undefined;
-      const stufe = isConfidential(ko.confidentiality) ? "vertraulich" : dateiStufe(objekt, a);
-      if (!darf(faktenVon(ko, stufe))) {
-        anhaengeAusgelassen.push({ name: a.name, grund: GRUND_STUFE_ANHANG });
-        continue;
-      }
-      const daten = objekt?.data ?? a.dataUrl;
-      const roh = daten === undefined ? null : decodeDataUrl(daten);
-      if (!roh) {
-        anhaengeAusgelassen.push({
-          name: a.name,
-          grund: daten === undefined ? GRUND_FEHLT : GRUND_UNLESBAR,
-        });
-        continue;
-      }
-      if (anhangBytes + roh.bytes.length > PAKET_ANHANG_DECKEL_BYTES) {
-        anhaengeAusgelassen.push({ name: a.name, grund: GRUND_DECKEL });
-        continue;
-      }
-      anhangBytes += roh.bytes.length;
-      let name = sichererName(a.name, "anhang");
-      for (let n = 2; vergeben.has(name); n++) {
-        name = `${n}-${sichererName(a.name, "anhang")}`;
-      }
-      vergeben.add(name);
-      const datei = `${pfad}/anhaenge/${name}`;
-      lege(datei, roh.bytes);
-      if (a.objectId) {
-        dateiFuerObjekt.set(a.objectId, datei);
-      }
-      csv.push(csvZeile(datei, "anhang", ko.title, ko.id, ko.version, a.name));
-      anhaenge.push({
-        name: a.name,
-        mime: a.mime,
-        bytes: roh.bytes.length,
-        sha256: sha256(roh.bytes),
-        datei,
-        objektKennung: a.objectId ?? null,
-        hochgeladenVon: person(a.author),
-      });
-    }
-    anhaengeGesamt += anhaenge.length;
-
-    // --- Quellen, Beziehungen, Verantwortung ------------------------------------------------------
-    const quellenListe = ko.sources.map((q) => ({
-      bezeichnung: q.label,
-      adresse: q.url,
-      auszug: q.excerpt,
-      art: q.kind,
-      anbieter: q.provider ?? null,
-      // JOB 4077: der Anker ist die Objektkennung eines Anhangs dieses Beitrags — im Paket die Datei.
-      belegtDurchAnhang: q.objectId ? (dateiFuerObjekt.get(q.objectId) ?? null) : null,
-    }));
-    const kanten = await quellen.beziehungen(ko.id, sichtbar);
-    const beziehungen = [...kanten.kanten].sort(kantenOrdnung).map((k) => ({
-      art: k.art,
-      richtung: k.richtung,
-      rolle: k.rolle ?? null,
-      gegenstueck: {
-        kennung: k.gegenstueck.id,
-        titel: k.gegenstueck.title,
-        ordner: ordner.get(k.gegenstueck.id) ?? null,
-      },
-      gesetztVon: person(k.urheber),
-      gesetztAm: k.gesetztAm,
-    }));
-    const own = ko.ownership;
-    const spaceId = typeof ko.spaceId === "string" ? ko.spaceId : null;
-    const eintrag: ManifestBeitrag = {
-      ordner: pfad,
-      kennung: ko.id,
-      titel: ko.title,
-      aussage: ko.statement,
-      art: ko.type,
-      kategorie: ko.category,
-      aktuelleFassung: ko.version,
-      freigabe: {
-        status: ko.status,
-        benoetigtePruefungen: ko.neededValidations,
-        entscheidungImAudit: ko.validationDecisionRef?.auditSeq ?? null,
-      },
-      rechte: {
-        vertraulichkeit: ko.confidentiality ?? "intern",
-        space: spaceId ? { kennung: spaceId, name: spaceNamen.get(spaceId) ?? null } : null,
-        quellLeserBeschraenkt: Array.isArray(ko.quellrechte?.leser),
-      },
-      autor: person(ko.author),
-      ursprungsautor: person(ko.originalAuthor),
-      verantwortung: {
-        verantwortlich: own?.owner ? person(own.owner) : null,
-        verantwortlicheRolle: own?.ownerRole ?? null,
-        pruefer: (own?.reviewers ?? []).map(person),
-        validierer: (own?.validators ?? []).map(person),
-      },
-      fassungen,
-      fassungenAusgelassen,
-      anhaenge,
-      anhaengeAusgelassen,
-      quellen: quellenListe,
-      beziehungen,
+/** Backpressure kommt vom HTTP-Abnehmer; Ende, Fehler und Abbruch räumen dieselbe Ablage auf. */
+export async function baueWissenspaketStream(
+  auftrag: WissenspaketAuftrag,
+  quellen: WissenspaketQuellen,
+  signal?: AbortSignal,
+): Promise<WissenspaketStream> {
+  const paket = await bereiteWissenspaket(auftrag, quellen, signal);
+  try {
+    signal?.throwIfAborted();
+    const strom = createReadStream(paket.datei);
+    const abbrechen = () => {
+      strom.destroy();
     };
-    beitraege.push(eintrag);
-
-    const aktuellDatei = `${pfad}/aktuell.md`;
-    lege(aktuellDatei, aktuellMarkdown(eintrag));
-    csv.push(csvZeile(aktuellDatei, "beitrag_aktuell", ko.title, ko.id, ko.version, ""));
-    const struktur = {
-      ...eintrag,
-      wannEsGilt: ko.conditions,
-      vorgehen: ko.measures,
-      schlagwoerter: ko.tags,
-      inhaltHtml: ko.bodyHtml ?? null,
-      angelegtAm: ko.createdAt,
-      verlauf: ko.history.map((h) => ({
-        fassung: h.version,
-        am: h.at,
-        von: person(h.author),
-        vermerk: h.note,
-      })),
-    };
-    const jsonDatei = `${pfad}/beitrag.json`;
-    lege(jsonDatei, `${JSON.stringify(struktur, null, 2)}\n`);
-    csv.push(csvZeile(jsonDatei, "beitrag_struktur", ko.title, ko.id, ko.version, ""));
+    signal?.addEventListener("abort", abbrechen, { once: true });
+    const abgeschlossen = finished(strom, { cleanup: true }).finally(async () => {
+      signal?.removeEventListener("abort", abbrechen);
+      await paket.aufraeumen();
+    });
+    // Der Eigentümer wartet auf abgeschlossen; ein früher Abbruch bleibt bis dahin behandelt.
+    void abgeschlossen.catch(() => {});
+    return { strom, manifest: paket.manifest, abgeschlossen };
+  } catch (error) {
+    await paket.aufraeumen();
+    throw error;
   }
-
-  lege("zuordnungen.csv", `${csv.join("\n")}\n`);
-
-  const manifest: WissenspaketManifest = {
-    format: "klarwerk-wissenspaket",
-    formatVersion: 1,
-    erstelltAm: auftrag.jetzt.toISOString(),
-    produkt: quellen.produkt,
-    exportiertVon: {
-      kennung: betrachter.id,
-      name: auftrag.betrachterName,
-      rolle: betrachter.role,
-    },
-    umfang: {
-      regel: vertraulichErlaubt
-        ? "Validierte Beiträge, die du sehen darfst, einschließlich vertraulicher (Prüfrecht)."
-        : "Validierte, nicht vertrauliche Beiträge, die du sehen darfst.",
-      vertraulichEnthalten: vertraulichErlaubt,
-      auswahl: auftrag.auswahl ? [...auftrag.auswahl] : null,
-      beitraege: beitraege.length,
-      fassungen: fassungenGesamt,
-      anhaenge: anhaengeGesamt,
-    },
-    beitraege,
-    nichtEnthalten: [...PAKET_NICHT_ENTHALTEN],
-    dateien: [],
-  };
-  // LIESMICH zählt zu den geprüften Dateien; das Manifest beschreibt alle außer sich selbst.
-  lege("LIESMICH.md", liesmich(manifest));
-  manifest.dateien = [...dateien];
-  zip.file("MANIFEST.json", `${JSON.stringify(manifest, null, 2)}\n`, { date: auftrag.jetzt });
-
-  const puffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-  return { zip: puffer, manifest };
 }
