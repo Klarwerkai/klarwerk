@@ -462,7 +462,18 @@ interface VorbereitetesWissenspaket {
   aufraeumen(): Promise<void>;
 }
 
-/** Jeweils genau ein Anhang mit dem bestehenden Decoder; ZIP-Eingang seriell in64KiB-Stücken. */
+class AnhangDeckel extends Error {}
+
+const BASE64_WERTE = new Int16Array(256).fill(-1);
+for (let i = 0; i < 26; i += 1) {
+  BASE64_WERTE[65 + i] = i;
+  BASE64_WERTE[97 + i] = 26 + i;
+}
+for (let i = 0; i < 10; i += 1) BASE64_WERTE[48 + i] = 52 + i;
+BASE64_WERTE[43] = BASE64_WERTE[45] = 62;
+BASE64_WERTE[47] = BASE64_WERTE[95] = 63;
+
+/** Vorhandene Daten-URL-Semantik, höchstens64KiB Bytes je Schreibschritt. */
 async function legeAnhang(
   zip: WissenspaketZip,
   name: string,
@@ -470,17 +481,52 @@ async function legeAnhang(
   restBytes: number,
   signal: AbortSignal | undefined,
 ): Promise<{ bytes: number; sha256: string } | "deckel" | null> {
-  signal?.throwIfAborted();
-  const roh = decodeDataUrl(eingang.daten);
-  eingang.daten = "";
-  if (!roh) return null;
-  if (roh.bytes.length > restBytes) return "deckel";
-  return zip.lege(name, async (senden) => {
-    for (let offset = 0; offset < roh.bytes.length; offset += 64 * 1024) {
-      signal?.throwIfAborted();
-      await senden(roh.bytes.subarray(offset, offset + 64 * 1024));
+  const komma = eingang.daten.indexOf(",");
+  if (komma < 0) return null;
+  // RegExp hält seinen letzten Eingang fest. Ein SlicedString als kleiner Kopf könnte dabei die
+  // gesamte Daten-URL weiter binden; die eigene Kopfkopie bewahrt alle UTF16-Codeeinheiten.
+  const kopf = Buffer.from(eingang.daten.slice(0, komma + 1), "utf16le").toString("utf16le");
+  if (!decodeDataUrl(kopf)) return null;
+  const quelle = async (senden: (teil: Buffer) => Promise<void>): Promise<void> => {
+    const puffer = Buffer.allocUnsafe(64 * 1024);
+    let belegt = 0;
+    let bytes = 0;
+    let wert = 0;
+    let bits = 0;
+    for (let i = komma + 1; i < eingang.daten.length; i += 1) {
+      // Wie der bisherige Buffer.from-Decoder: UTF16-Lowbyte, URL-Base64, Fremdzeichen ignorieren,
+      // am ersten Paddingzeichen enden und unvollständige einzelne Sextette nicht als Byte ausgeben.
+      const zeichen = eingang.daten.charCodeAt(i) & 0xff;
+      if (zeichen === 61) break;
+      const sextett = BASE64_WERTE[zeichen] ?? -1;
+      if (sextett < 0) continue;
+      wert = ((wert << 6) | sextett) & 0xffff;
+      bits += 6;
+      if (bits < 8) continue;
+      bits -= 8;
+      puffer[belegt++] = (wert >>> bits) & 0xff;
+      bytes += 1;
+      if (bytes > restBytes) throw new AnhangDeckel();
+      if (belegt === puffer.length) {
+        signal?.throwIfAborted();
+        await senden(puffer);
+        belegt = 0;
+      }
     }
-  });
+    eingang.daten = "";
+    if (belegt > 0) {
+      signal?.throwIfAborted();
+      await senden(puffer.subarray(0, belegt));
+    }
+  };
+  try {
+    return await zip.lege(name, quelle);
+  } catch (error) {
+    if (error instanceof AnhangDeckel) return "deckel";
+    throw error;
+  } finally {
+    eingang.daten = "";
+  }
 }
 
 /** Große Objekt-/Daten-URL-Werte verlassen diesen kurzen Frame nie als Rückgabewert. */
