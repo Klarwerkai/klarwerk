@@ -474,22 +474,27 @@ async function legeAnhang(
 ): Promise<{ bytes: number; sha256: string } | "deckel" | null> {
   const komma = eingang.daten.indexOf(",");
   if (komma < 0 || !decodeDataUrl(eingang.daten.slice(0, komma + 1))) return null;
-  // Buffer.from(..., "base64") verarbeitet UTF16-Codeeinheiten als Einbytewerte.
-  // Erst danach ungültige Zeichen verwerfen: vorzeitiges Unicode-Filtern änderte die Originalbytes.
-  const daten = Buffer.allocUnsafe(eingang.daten.length);
-  daten.write(eingang.daten, 0, daten.length, "latin1");
-  eingang.daten = "";
   const quelle = async (senden: (teil: Buffer) => Promise<void>): Promise<void> => {
     let bytes = 0;
     let rest = "";
     const puffer = Buffer.allocUnsafe(49_155);
-    for (let offset = komma + 1; offset < daten.length || rest.length > 0; offset += 65_536) {
+    for (
+      let offset = komma + 1;
+      offset < eingang.daten.length || rest.length > 0;
+      offset += 65_536
+    ) {
       signal?.throwIfAborted();
-      let teil = daten
-        .toString("latin1", offset, Math.min(daten.length, offset + 65_536))
-        .replace(/[^A-Za-z0-9+/_=-]/g, "");
+      let teil = eingang.daten.slice(offset, offset + 65_536);
+      // Der normale Einbytefall braucht keine zweite vollständige Daten-URL-Kopie.
+      // Breite UTF16-Codeeinheiten werden nur blockweise wie Buffer.from auf Lowbytes abgebildet.
+      if (/[\u0100-\uffff]/.test(teil)) {
+        const einbyte = Buffer.allocUnsafe(teil.length);
+        einbyte.write(teil, 0, einbyte.length, "latin1");
+        teil = einbyte.toString("latin1");
+      }
+      teil = teil.replace(/[^A-Za-z0-9+/_=-]/g, "");
       const padding = teil.indexOf("=");
-      const ende = padding >= 0 || offset + 65_536 >= daten.length;
+      const ende = padding >= 0 || offset + 65_536 >= eingang.daten.length;
       let basis = rest + (padding >= 0 ? teil.slice(0, padding) : teil);
       const laenge = ende ? basis.length : basis.length - (basis.length % 4);
       const laengeBytes = puffer.write(basis.slice(0, laenge), 0, puffer.length, "base64");
@@ -499,6 +504,7 @@ async function legeAnhang(
       basis = "";
       bytes += roh.length;
       if (bytes > restBytes) throw new AnhangDeckel();
+      if (ende) eingang.daten = "";
       await senden(roh);
       if (ende) break;
     }
