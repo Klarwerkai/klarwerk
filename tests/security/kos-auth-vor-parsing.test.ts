@@ -188,9 +188,9 @@ describe("JOB 4115: PUT /api/kos/:id weist ab, BEVOR der Körper gelesen wird", 
     const aktionen = Object.keys(KO_AKTIONEN_MIT_TORURTEIL);
     expect(aktionen.length).toBeGreaterThan(15);
 
-    // Die beiden Aktionen, die am Sichtbarkeitstor vorbeilaufen — benannt, nicht gezählt.
+    // P1: Auch Konfliktaktionen passieren das Zielobjekttor.
     const ohneTor = aktionen.filter((a) => KO_AKTIONEN_MIT_TORURTEIL[a] !== "tor");
-    expect(ohneTor.sort()).toEqual(["conflict", "resolve-conflict"]);
+    expect(ohneTor).toEqual([]);
 
     // Jeder `case` verlangt in seinen ersten Zeilen eine Wache. Gemessen am Quelltext des Zweigs
     // bis zum nächsten `case` — nicht am ganzen Handler, sonst bürgte ein fremder Zweig mit.

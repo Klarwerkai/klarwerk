@@ -32,10 +32,8 @@
 //   Torurteil-Tabelle des Produktivcodes stehen; jede Tabellenaktion MUSS im Switch vorkommen.
 //   Beide Richtungen, sonst deckt eine Lücke die andere zu.
 //
-//   BINDET AUSNAHMEN AUF DERSELBEN GRANULARITÄT AN IHREN BELEG. Die zwei `kein-zielobjekt`-Aktionen
-//   werden nicht einfach übersprungen. Für jede wird NACHGEWIESEN, dass ihre eigene Rechteschwelle
-//   die Sichtbarkeit bereits abdeckt — der Beleg steht als ausgeführte Prüfung da, nicht als
-//   Kommentar.
+//   P1: Konfliktanlage und Entscheidung passieren ebenfalls das Zielobjekttor. Ihre
+//   fachlichen Rollenrechte bleiben geprüft; die Paarsicht wird zusätzlich am HTTP-Weg gemessen.
 //
 //   PINNT DAS GESCHÜTZTE ANTWORTVERHALTEN STATT BLOSS NAMEN. Es wird kein Aufruf von
 //   `sichtbaresKoOder404` gezählt und kein Bezeichner gesucht. Es wird GEFEUERT und der
@@ -181,6 +179,8 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       };
     case "remove-source":
       return { action, sourceId: "src-mega80" };
+    case "konflikt-neubewertung":
+      return { action, neubewertung: { art: "quelle_hinzugefuegt", sourceIds: ["src-mega80"] } };
     case "category":
       return { action, category: "Allgemein" };
     case "tags":
@@ -719,39 +719,14 @@ describe("mega80 A — eine Kennung ist kein Leserecht", () => {
     expect(kommentiert.statusCode).toBe(200);
   });
 
-  // DIE BENANNTE AUSNAHME, an ihren Beleg gebunden — auf derselben Granularität wie die Regel.
-  it("belegt für JEDE kein-zielobjekt-Aktion, dass ihre Rechteschwelle die Sichtbarkeit deckt", async () => {
+  // P1: Konfliktaktionen haben ein echtes Pfadobjekt und behalten ihre fachlichen Rechte.
+  it("bindet auch Konfliktanlage und Entscheidung ans Zielobjekt, ohne die Rollenrechte zu erweitern", async () => {
     const { can } = await import("../../services/rbac");
-    const ausgenommen = Object.keys(KO_AKTIONEN_MIT_TORURTEIL).filter(
-      (a) => KO_AKTIONEN_MIT_TORURTEIL[a] === "kein-zielobjekt",
-    );
-    expect(ausgenommen.sort()).toEqual(["conflict", "resolve-conflict"]);
-
-    // AUFTRAG-mega82 Block C: ZUERST die Rechteschwelle aus dem AUSGEFÜHRTEN Aufruf holen. Erst
-    // dadurch hängt alles Folgende an der Route und nicht an einer Behauptung dieses Tests. Wird
-    // ein Zweig später abgesenkt, wird HIER rot — nicht irgendwann im Betrieb.
-    const rechte = Object.fromEntries(ausgenommen.map((a) => [a, rechtDerAktion(a)]));
-    expect(rechte).toEqual({ conflict: "ko.validate", "resolve-conflict": "conflict.resolve" });
-
-    // Der Beleg: JEDE Rolle, die eine dieser Aktionen überhaupt ausführen darf, hält `ko.validate`
-    // — und für die liefert `darfSehen` unbedingt `true`. Das Tor wäre auf diesen zwei Aktionen ein
-    // No-op auf der Sichtbarkeit. Kippt die Rechtematrix ODER die Schwelle im Zweig, kippt dieser
-    // Test. Geprüft wird gegen das eben ausgelesene Recht, nicht gegen eine hier notierte Kopie.
-    const rollen = ["viewer", "experte", "controller", "admin"] as const;
-    for (const aktion of ausgenommen) {
-      const schwelle = rechte[aktion] as Parameters<typeof can>[1];
-      for (const rolle of rollen) {
-        if (can(rolle, schwelle)) {
-          expect(
-            can(rolle, "ko.validate"),
-            `Rolle "${rolle}" darf "${aktion}" ausführen (${schwelle}), sieht aber nicht`,
-          ).toBe(true);
-        }
-      }
-    }
-
-    // Und der Nachweis, dass die Schleife oben überhaupt etwas trennt: `ko.validate` ist kein
-    // Jedermannsrecht. Ohne diese zwei Zeilen wäre sie auch bei einer allmächtigen Matrix grün.
+    expect(Object.values(KO_AKTIONEN_MIT_TORURTEIL).every((urteil) => urteil === "tor")).toBe(true);
+    expect({
+      conflict: rechtDerAktion("conflict"),
+      "resolve-conflict": rechtDerAktion("resolve-conflict"),
+    }).toEqual({ conflict: "ko.validate", "resolve-conflict": "conflict.resolve" });
     expect(can("experte", "ko.validate")).toBe(false);
     expect(can("controller", "ko.validate")).toBe(true);
   });

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
 import {
   DEFAULT_OVERLAP_SETTINGS,
+  type OverlapEntry,
   OverlapError,
   type OverlapService,
   type OverlapSettingsRepo,
@@ -66,6 +67,13 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
     if (entry && !(await paarSichtbar(user, entry.koA, entry.koB, kos))) {
       throw new OverlapError("NOT_FOUND", "Überschneidung nicht gefunden.");
     }
+  }
+
+  async function antwortFuer(user: SessionUser, eintrag: OverlapEntry) {
+    return redigiereUeberschneidung(
+      eintrag,
+      await feldFreigabe(user, eintrag.koA, eintrag.koB, kos),
+    );
   }
 
   return async (app) => {
@@ -205,7 +213,12 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
-            .send(await overlaps.dismiss(request.params.id, user.id, request.body?.note));
+            .send(
+              await antwortFuer(
+                user,
+                await overlaps.dismiss(request.params.id, user.id, request.body?.note),
+              ),
+            );
         } catch (error) {
           sendError(reply, error);
         }
@@ -224,7 +237,12 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
-            .send(await overlaps.keepSeparate(request.params.id, user.id, request.body?.note));
+            .send(
+              await antwortFuer(
+                user,
+                await overlaps.keepSeparate(request.params.id, user.id, request.body?.note),
+              ),
+            );
         } catch (error) {
           sendError(reply, error);
         }
@@ -274,7 +292,14 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
         // der aus einem versehentlich fokussierten Feld stammt.
         const vermerk = typeof note === "string" && note.trim() !== "" ? note.trim() : undefined;
         if (status === "in_bearbeitung") {
-          reply.code(200).send(await overlaps.takeInProgress(request.params.id, user.id, vermerk));
+          reply
+            .code(200)
+            .send(
+              await antwortFuer(
+                user,
+                await overlaps.takeInProgress(request.params.id, user.id, vermerk),
+              ),
+            );
           return;
         }
         if (status === "geschlossen") {
@@ -286,7 +311,12 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           }
           reply
             .code(200)
-            .send(await overlaps.closeWithReason(request.params.id, user.id, reason, vermerk));
+            .send(
+              await antwortFuer(
+                user,
+                await overlaps.closeWithReason(request.params.id, user.id, reason, vermerk),
+              ),
+            );
           return;
         }
         throw new OverlapError("INVALID_STATUS", "Zielzustand nicht setzbar.");
@@ -343,7 +373,12 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
-            .send(await overlaps.linkRelated(request.params.id, user.id, request.body?.note));
+            .send(
+              await antwortFuer(
+                user,
+                await overlaps.linkRelated(request.params.id, user.id, request.body?.note),
+              ),
+            );
         } catch (error) {
           sendError(reply, error);
         }

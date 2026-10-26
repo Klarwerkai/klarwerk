@@ -24,6 +24,9 @@ import {
 } from "../notification-feed";
 import {
   type KoSichtbarkeitsZugang,
+  feldFreigabe,
+  redigiereKonflikt,
+  redigiereUeberschneidung,
   sichtbareEintraege,
   sichtbarePaare,
   sichtbarkeitsfilterFuer,
@@ -176,6 +179,21 @@ async function loadFeed(
   // alte Ergebnis zurückgibt.
   const sichtbareKonflikte = await sichtbarePaare(user, conflicts, deps.kos);
   const sichtbareUeberschneidungen = await sichtbarePaare(user, overlaps, deps.kos);
+  const konfliktSichten = [];
+  for (const konflikt of sichtbareKonflikte) {
+    konfliktSichten.push(
+      redigiereKonflikt(konflikt, await feldFreigabe(user, konflikt.koA, konflikt.koB, deps.kos)),
+    );
+  }
+  const ueberschneidungsSichten = [];
+  for (const eintrag of sichtbareUeberschneidungen) {
+    ueberschneidungsSichten.push(
+      redigiereUeberschneidung(
+        eintrag,
+        await feldFreigabe(user, eintrag.koA, eintrag.koB, deps.kos),
+      ),
+    );
+  }
   // Eine Zuweisung nennt den Titel ihres Wissensobjekts. Sie ist bereits auf den Betrachter
   // beschränkt (openAssignmentsFor), aber ein Prüfer ohne `ko.validate` kann auf ein vertrauliches
   // Objekt angesetzt sein, das er nicht öffnen darf — dann darf auch der Titel nicht erscheinen.
@@ -232,8 +250,8 @@ async function loadFeed(
   const gesamt = buildNotifications({
     erinnerungen,
     luecken: lueckenMeldungen,
-    conflicts: sichtbareKonflikte,
-    overlaps: sichtbareUeberschneidungen,
+    conflicts: konfliktSichten,
+    overlaps: ueberschneidungsSichten,
     gaps: gapViews,
     assignments: sichtbareZuweisungen,
     impacts,

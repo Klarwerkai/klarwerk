@@ -348,7 +348,20 @@ export function conflictRoutes(
         return;
       }
       try {
-        reply.code(200).send(await conflicts.escalate(request.params.id, user.id));
+        const conflict = await conflicts.get(request.params.id);
+        if (!conflict || !(await paarSichtbar(user, conflict.koA, conflict.koB, kos))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
+          return;
+        }
+        const geaendert = await conflicts.escalate(conflict.id, user.id);
+        reply
+          .code(200)
+          .send(
+            redigiereKonflikt(
+              geaendert,
+              await feldFreigabe(user, geaendert.koA, geaendert.koB, kos),
+            ),
+          );
       } catch (error) {
         sendError(reply, error);
       }
@@ -404,9 +417,20 @@ export function conflictRoutes(
           return;
         }
         try {
+          const conflict = await conflicts.get(request.params.id);
+          if (!conflict || !(await paarSichtbar(user, conflict.koA, conflict.koB, kos))) {
+            reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
+            return;
+          }
+          const geaendert = await conflicts.dismiss(conflict.id, user.id, request.body?.note);
           reply
             .code(200)
-            .send(await conflicts.dismiss(request.params.id, user.id, request.body?.note));
+            .send(
+              redigiereKonflikt(
+                geaendert,
+                await feldFreigabe(user, geaendert.koA, geaendert.koB, kos),
+              ),
+            );
         } catch (error) {
           sendError(reply, error);
         }
@@ -421,9 +445,24 @@ export function conflictRoutes(
           return;
         }
         try {
+          const conflict = await conflicts.get(request.params.id);
+          if (!conflict || !(await paarSichtbar(user, conflict.koA, conflict.koB, kos))) {
+            reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
+            return;
+          }
+          const geaendert = await conflicts.secondOpinion(
+            conflict.id,
+            request.body.opinion,
+            user.id,
+          );
           reply
             .code(200)
-            .send(await conflicts.secondOpinion(request.params.id, request.body.opinion, user.id));
+            .send(
+              redigiereKonflikt(
+                geaendert,
+                await feldFreigabe(user, geaendert.koA, geaendert.koB, kos),
+              ),
+            );
         } catch (error) {
           sendError(reply, error);
         }

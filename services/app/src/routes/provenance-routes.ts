@@ -53,7 +53,7 @@ import {
 } from "../../../provenance";
 import { schalterAn } from "../feature-flags";
 import { type Guards, sendError } from "../http";
-import { darfSehen } from "../sichtbarkeit";
+import { darfSehen, feldFreigabe, paarSichtbar, redigiereKonflikt } from "../sichtbarkeit";
 
 /**
  * BLOCK D — DER SCHALTER. Vorgabe AUS.
@@ -122,7 +122,14 @@ export function provenanceRoutes(deps: ProvenanceDeps, guards: Guards): FastifyP
         // --- Die Gegenseiten aufloesen — VOR der Projektion, serverseitig ------------------------
         const eigene = konflikteAlle.filter((c) => c.koA === ko.id || c.koB === ko.id);
         const konflikte: ProvenanceKonfliktIn[] = [];
-        for (const c of eigene) {
+        for (const eintrag of eigene) {
+          if (!(await paarSichtbar(user, eintrag.koA, eintrag.koB, deps.ko))) {
+            continue;
+          }
+          const c = redigiereKonflikt(
+            eintrag,
+            await feldFreigabe(user, eintrag.koA, eintrag.koB, deps.ko),
+          );
           const gegenId = c.koA === ko.id ? c.koB : c.koA;
           const gegenKo = await deps.ko.get(gegenId);
           // FAIL-CLOSED: ein nicht auffindbares Gegenstueck (geloescht, im Papierkorb, nicht

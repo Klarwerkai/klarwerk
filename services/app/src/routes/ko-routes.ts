@@ -94,7 +94,15 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { type QuellenAenderung, quellenNeubewertung } from "../quellen-neubewertung";
-import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import {
+  darfSehen,
+  feldFreigabe,
+  paarSichtbar,
+  redigiereKonflikt,
+  sichtbareFuer,
+  sichtbarePaare,
+  sqlSichtbarkeitFuer,
+} from "../sichtbarkeit";
 import type { Quellenlage } from "../technische-daten-quellen";
 import { verifizierungFuer } from "../verifizierungsmarke";
 import {
@@ -663,24 +671,9 @@ type KoAktion =
 /**
  * `tor` — die Aktion arbeitet AM Objekt unter `:id`. Sie passiert das Sichtbarkeitstor.
  *
- * `kein-zielobjekt` — die Aktion liest `:id` strukturell NICHT; ihr Gegenstand steht im Rumpf.
- * Das ist eine BENANNTE Ausnahme mit Beleg, keine stillschweigende. Sie gilt genau für die zwei
- * Konflikt-Aktionen, und zwar aus zwei unabhängigen Gründen zugleich:
- *
- *   1. Gegenstand. `conflict` legt einen Konflikt aus `body.conflict` an (koA/koB), und
- *      `resolve-conflict` entscheidet über `body.conflictId`. Beide fassen das Objekt unter `:id`
- *      nirgends an — die Kennung im Pfad ist bei ihnen reine Adressierungskosmetik des einen
- *      Mutations-Endpunkts. Ein Tor darauf prüfte eine Kennung, die die Aktion nie liest, und
- *      bräche den Betrieb an einem Aufrufer, der dort etwas anderes als ein Wissensobjekt sendet.
- *   2. Rechte. `conflict` verlangt `ko.validate`; `conflict.resolve` haben laut Rechtematrix nur
- *      `controller` und `admin` (rbac/src/policy.ts:16-17) — und beide halten `ko.validate`.
- *      Für genau diese Rollen liefert `darfSehen` unbedingt `true` (sichtbarkeit.ts). Das Tor wäre
- *      auf diesen zwei Aktionen also ein No-op auf der Sichtbarkeit und ALLEIN eine zusätzliche
- *      Existenzforderung an eine ungelesene Kennung.
- *
- * Der Inhalt, den diese beiden ausgeben (Konflikt mit `description`/`detector.quotes`), ist damit
- * durch `ko.validate` gedeckt — dieselbe Schwelle, die auch das Tor zöge. Der KO-ÜBERGREIFENDE
- * Leseweg auf dieselben Zitate ist getrennt geschlossen (mega74 Block D, conflicts-routes.ts).
+ * P1: auch Konfliktanlage und Entscheidung gehören zum Objekt unter `:id`.
+ * Rollenrechte ersetzen weder die Existenz dieses Objekts noch die Sicht auf beide Paarseiten.
+ * Die Konfliktzweige prüfen zusätzlich koA=Pfad bzw. die Beteiligung des Pfadobjekts.
  */
 type Torurteil = "tor" | "kein-zielobjekt";
 
@@ -732,8 +725,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   // Antworten 18/19: beide arbeiten AM Objekt unter `:id` — wie `owner-validate`.
   "weisung-validate": "tor",
   "weisung-sichten": "tor",
-  conflict: "kein-zielobjekt",
-  "resolve-conflict": "kein-zielobjekt",
+  conflict: "tor",
+  "resolve-conflict": "tor",
   "transfer-author": "tor",
   // R-0961: der Antrag arbeitet AM Objekt unter `:id` — er passiert das Sichtbarkeitstor.
   "request-author-transfer": "tor",
@@ -1204,14 +1197,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // JOB 4115 · DER RIEGEL VOR DEM PARSEN — UND DIE ERHEBUNG, DIE IHN ERST ERLAUBT.
   // ============================================================================================
   //
-  // ERHOBEN, NICHT ANGENOMMEN: `PUT /api/kos/:id` verzweigt per `{action}`. Das Tor oben im Handler
-  // ruft `guards.requireUser` nur für Aktionen mit Torurteil `"tor"`. Zwei Aktionen tragen
-  // `"kein-zielobjekt"` (ZIELOBJEKT_TOR, s. dort): `conflict` und `resolve-conflict`. Sie laufen am
-  // Tor vorbei — aber NICHT an der Anmeldung: ihr eigener `case` verlangt
-  // `requirePermission("ko.validate")` bzw. `requirePermission("conflict.resolve")`, und jede
-  // andere der 20 Aktionen verlangt ebenfalls ein Recht (gemessen an allen `case`-Zweigen).
-  // Es gibt also KEINE Aktion dieser Route, die ohne angemeldeten Absender durchkommt. Damit nimmt
-  // dieser Hook niemandem ein fachliches Recht — er verschiebt nur den Zeitpunkt der Absage.
+  // Jede bekannte PUT-Aktion prüft Anmeldung und Zielobjekt, bevor ihre fachliche Wache greift.
+  // P1 schließt die früheren Ausnahmen für conflict/resolve-conflict; deren Paarprüfung bleibt
+  // zusätzlich in den jeweiligen Zweigen. Der frühe Hook schützt weiterhin vor anonymem Parsen.
   //
   // WAS SICH SICHTBAR ÄNDERT, und es steht hier statt in einer Fussnote: ein ANONYMER Aufruf mit
   // unbekannter Aktion oder kaputtem JSON bekommt jetzt 401 statt 400. Das ist die richtige
@@ -5156,7 +5144,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return badRequest("conflict.arbeitsart muss eines von regel, sache, version sein.");
             }
-            reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
+            if (
+              body.conflict.koA !== id ||
+              !(await paarSichtbar(user, id, body.conflict.koB, dublettenTorDeps.kos))
+            ) {
+              reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
+              return;
+            }
+            const angelegt = await konfliktAnlegen(body.conflict, user.id);
+            reply.code(201).send(
+              redigiereKonflikt(
+                angelegt,
+                await feldFreigabe(user, angelegt.koA, angelegt.koB, dublettenTorDeps.kos),
+              ),
+            );
             return;
           }
           case "resolve-conflict": {
@@ -5176,9 +5177,22 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 "vorrang muss { art: ueberstimmt|schraenkt_ein, gilt, geltungsbereich? } sein.",
               );
             }
-            const konfliktId = body.conflictId;
-            const text = body.decision;
-            reply.code(200).send(await conflicts.resolve(konfliktId, user.id, text, vorrang));
+            const konflikt = await conflicts.get(body.conflictId);
+            if (
+              !konflikt ||
+              (konflikt.koA !== id && konflikt.koB !== id) ||
+              !(await paarSichtbar(user, konflikt.koA, konflikt.koB, dublettenTorDeps.kos))
+            ) {
+              reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
+              return;
+            }
+            const entschieden = await conflicts.resolve(konflikt.id, user.id, body.decision, vorrang);
+            reply.code(200).send(
+              redigiereKonflikt(
+                entschieden,
+                await feldFreigabe(user, entschieden.koA, entschieden.koB, dublettenTorDeps.kos),
+              ),
+            );
             return;
           }
           case "transfer-author": {
