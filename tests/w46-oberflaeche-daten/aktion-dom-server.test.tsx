@@ -163,3 +163,27 @@ it("lokaler DOM-CAS und gesperrte Textkennwörter bleiben trotz redigierter Lage
     adapter.fuelle?.({ ...a, label: "Kennwort", fingerabdruck: neu.formular.fingerabdruck }),
   ).toEqual({ ok: false, grund: "feld_gesperrt" });
 });
+
+it("eine neue Serverfreigabe erhält auch vom vorherigen Auftrag keine Werte und fremde DOM-Änderungen werden nie als freigegeben gespiegelt", () => {
+  const adapter = lade();
+  const initial = adapter.lage?.({ formular: "Angebotsentwurf", lesefreigabe: "auftrag-a" }) as {
+    formular: { fingerabdruck: string; felder: { label: string; wert: string }[] };
+  };
+  const args = {
+    formular: "Angebotsentwurf",
+    fingerabdruck: initial.formular.fingerabdruck,
+    label: "Betreff",
+    wert: BETREFF,
+    erwartet: "",
+    lesefreigabe: "auftrag-a",
+  };
+  expect(adapter.fuelle?.(args)).toMatchObject({ ok: true });
+  const read = (freigabe: string) =>
+    adapter.lage?.({ formular: "Angebotsentwurf", lesefreigabe: freigabe }) as typeof initial;
+  expect(read("auftrag-a").formular.felder.find((f) => f.label === "Betreff")?.wert).toBe(BETREFF);
+  expect(read("auftrag-b").formular.felder.every((f) => f.wert === "")).toBe(true);
+  const field = document.querySelector<HTMLInputElement>("#a-betreff");
+  if (!field) throw new Error("Feld fehlt");
+  field.value = "NEUER-PRIVATER-TEXT";
+  expect(JSON.stringify(read("auftrag-a"))).not.toContain("NEUER-PRIVATER-TEXT");
+});

@@ -98,7 +98,7 @@ describe("W4.6 ausgelieferte Browser-/Officewege ohne echten Host", () => {
       ).statusCode,
     ).toBe(401);
     expect(read("extensions/klara-browser/panel.html")).toContain(
-      "https://app.klarwerk.ai/profile",
+      "https://app.klarwerk.ai/profil?bereich=assistenz",
     );
   });
   it.each([false, undefined])(

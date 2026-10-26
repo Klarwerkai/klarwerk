@@ -28,25 +28,25 @@ import type {
   ReferenzPruefung,
   VerschlossenHinweis,
 } from "../api/types";
-import {
-  SITZUNGSENDE_EVENT,
-  SITZUNGSENDE_KEY,
-  lokaleEreignisse,
-  lokalesKontoErlaubt,
-} from "./lokaleSitzung";
+import { SITZUNGSENDE_EVENT, lokaleEreignisse, lokalesKontoErlaubt } from "./lokaleSitzung";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const PRAEFIX = "kw.fragen.arbeitsstand.v1:";
 
-// Nur tatsächlich erkannte, noch nicht haltbar markierte Wechsel dieses laufenden Arbeitsstands.
-// Die Inhalte bleiben allein im bestehenden Kontoeintrag; ein Schreibfehler hebt die Sperre nicht auf.
+// Ein erkannter Rechtewechsel entfernt Antwortkopien; nur eine neue Antwort darf sie ersetzen.
+// Eigene Fragen und Eingaben werden getrennt erhalten.
 const ungespeicherteAntwortSperren = new Set<string>();
 // Nur eigene Eingaben puffern, falls ein volles/gestörtes Kontingent die bereinigte Fassung ablehnt.
 const antwortfreieStaende = new Map<string, FragenArbeitsstand>();
-lokaleEreignisse.addEventListener?.(SITZUNGSENDE_EVENT, () => antwortfreieStaende.clear());
+lokaleEreignisse.addEventListener?.(SITZUNGSENDE_EVENT, (e: Event) => {
+  const konto = (e as CustomEvent<unknown>).detail;
+  if (typeof konto === "string") antwortfreieStaende.delete(konto);
+});
 lokaleEreignisse.addEventListener?.("storage", (e: Event) => {
-  if ((e as Event & { key?: string | null }).key === SITZUNGSENDE_KEY) antwortfreieStaende.clear();
+  const key = (e as Event & { key?: string | null }).key;
+  const praefix = "kw.konto-abgemeldet.v1:";
+  if (key?.startsWith(praefix)) antwortfreieStaende.delete(key.slice(praefix.length));
 });
 
 /** Die zuletzt angezeigte Antwort — genau das, was die Fläche zum Zeichnen braucht. */
@@ -516,9 +516,9 @@ export function arbeitsstandLesen(
       return null;
     }
     const gelesen = antwortAus(wert.antwort);
-    const antwort: GespeicherteAntwort | null = ungespeicherteAntwortSperren.has(konto)
-      ? null
-      : gelesen;
+    const legacyEntzug = gelesen?.rechtepruefungAusstehend === true;
+    const antwort: GespeicherteAntwort | null =
+      legacyEntzug || ungespeicherteAntwortSperren.has(konto) ? null : gelesen;
     // Runde-2-Einträge trugen EINE Marke unter `startfrage` — sie wird übernommen, nicht verloren.
     const startadressen = Array.isArray(wert.startadressen)
       ? wert.startadressen.filter((m): m is string => typeof m === "string")
@@ -540,7 +540,7 @@ export function arbeitsstandLesen(
     ) {
       return null;
     }
-    return {
+    const stand: FragenArbeitsstand = {
       entwurf: wert.entwurf,
       antwort,
       startadressen,
@@ -548,6 +548,14 @@ export function arbeitsstandLesen(
       ...(fragekontext ? { fragekontext } : {}),
       ...(szenario ? { szenario } : {}),
     };
+    if (legacyEntzug) {
+      ungespeicherteAntwortSperren.add(konto);
+      const fragen = stand.fragenFaden ?? (gelesen?.frage ? [gelesen.frage] : []);
+      const sauber = { ...stand, ...(fragen.length ? { fragenFaden: fragen } : {}) };
+      arbeitsstandSchreiben(storage, konto, sauber);
+      return sauber;
+    }
+    return stand;
   } catch {
     return null;
   }
