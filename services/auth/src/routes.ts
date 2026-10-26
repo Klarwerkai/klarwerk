@@ -371,6 +371,26 @@ const OFFICE_HANDOVER_TTL_MS = 120_000;
  * Der Vergleich läuft über den Ablageschlüssel und nicht über einen Zeichenvergleich: eine
  * Map-Suche über dem Hash gibt keine Laufzeitauskunft über die Zahl übereinstimmender Zeichen.
  */
+function gueltigerRumpf(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  textfelder: readonly string[] = [],
+): boolean {
+  const body = request.body;
+  if (
+    body === null ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    textfelder.some((feld) => typeof (body as Record<string, unknown>)[feld] !== "string")
+  ) {
+    reply
+      .code(400)
+      .send({ error: "BAD_REQUEST", message: meldung("INVALID_REQUEST_BODY", sprache(request)) });
+    return false;
+  }
+  return true;
+}
+
 function officeHandoverSchluessel(code: string): string {
   return createHash("sha256").update(code).digest("hex");
 }
@@ -602,6 +622,7 @@ export function authRoutes(
     app.post<{ Body: { email: string; password: string } }>(
       "/api/auth/login",
       async (request, reply) => {
+        if (!gueltigerRumpf(request, reply, ["email", "password"])) return;
         if (passwortwegZu(request, reply)) {
           return;
         }
@@ -1026,6 +1047,7 @@ export function authRoutes(
         if (!user) {
           return;
         }
+        if (!gueltigerRumpf(request, reply, ["oldPassword", "newPassword"])) return;
         try {
           await service.changePassword(user.id, request.body.oldPassword, request.body.newPassword);
           reply.header("set-cookie", clearSessionCookie());
@@ -1038,6 +1060,7 @@ export function authRoutes(
 
     // FR-AUTH-08: Reset anfordern. Antwort immer 204 — die Existenz der E-Mail wird nicht verraten.
     app.post<{ Body: { email: string } }>("/api/auth/forgot", async (request, reply) => {
+      if (!gueltigerRumpf(request, reply, ["email"])) return;
       // R-0541: der Schalter ist über `GET /api/auth/status` ohnehin öffentlich lesbar; die 403
       // verrät deshalb nichts über Konten.
       if (passwortwegZu(request, reply)) {
@@ -1076,6 +1099,7 @@ export function authRoutes(
     app.post<{ Body: { token: string; newPassword: string } }>(
       "/api/auth/reset",
       async (request, reply) => {
+        if (!gueltigerRumpf(request, reply, ["token", "newPassword"])) return;
         if (passwortwegZu(request, reply)) {
           return;
         }
@@ -1137,6 +1161,7 @@ export function authRoutes(
     app.post<{ Body: { code: string; state: string } }>(
       "/api/auth/oidc",
       async (request, reply) => {
+        if (!gueltigerRumpf(request, reply, ["code", "state"])) return;
         if (!options.oidc) {
           reply
             .code(501)
@@ -1443,6 +1468,7 @@ export function authRoutes(
         if (!admin) {
           return;
         }
+        if (!gueltigerRumpf(request, reply, ["password"])) return;
         try {
           await service.resetPassword(request.params.id, request.body.password, admin.id);
           reply.code(204).send();
@@ -1494,6 +1520,7 @@ export function authRoutes(
     app.post<{ Body: { name: string; email: string; password: string } }>(
       "/api/auth/setup",
       async (request, reply) => {
+        if (!gueltigerRumpf(request, reply, ["name", "email", "password"])) return;
         if (!(await service.needsSetup())) {
           reply
             .code(409)
@@ -1847,6 +1874,7 @@ export function authRoutes(
       if (!admin) {
         return;
       }
+      if (!gueltigerRumpf(request, reply, [])) return;
       const { id } = request.params;
       const { role, approve, password, accessExpiresAt, freigabe, weisungsbefugnis } = request.body;
       // R-0582: auch die Kontodaten gehören zur Formwache VOR jedem Schreiben.
@@ -1924,6 +1952,12 @@ export function authRoutes(
           )
         ) {
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
+        if (
+          password !== undefined &&
+          (await service.listUsers()).some((u) => u.id === id && u.oidcSubject)
+        ) {
+          throw new AuthError("FORBIDDEN", "PASSWORD_MANAGED_BY_SSO" satisfies Meldungsschluessel);
         }
         let user: PublicUser | undefined;
         // R-0582: die Berichtigung ZUERST — ihre einzige inhaltliche Ablehnung (Adresse vergeben,

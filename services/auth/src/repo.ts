@@ -110,6 +110,7 @@ export interface PasswordResetRepo {
   create(entry: ResetToken): Promise<void>;
   find(token: string): Promise<ResetToken | undefined>;
   delete(token: string): Promise<void>;
+  deleteByUser(userId: string): Promise<void>;
 }
 
 // R-0562: der eingerichtete zweite Faktor eines Kontos (TOTP-Geheimnis der Authenticator-App).
@@ -343,5 +344,12 @@ export class InMemoryPasswordResetRepo implements PasswordResetRepo {
     if (!entry || entry.userId !== userId) return Promise.resolve(undefined);
     this.emailChanges.delete(token);
     return Promise.resolve(entry.expiresAt > now ? entry : undefined);
+  }
+
+  deleteByUser(userId: string): Promise<void> {
+    for (const [token, entry] of this.tokens) {
+      if (entry.userId === userId) this.tokens.delete(token);
+    }
+    return Promise.resolve();
   }
 }

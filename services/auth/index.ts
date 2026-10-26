@@ -1,5 +1,5 @@
 // Öffentliche API des Moduls auth. Andere Module/der Composition-Root importieren NUR von hier.
-export { AuthService } from "./src/service";
+export { AuthService, istKontozugangAbgelaufen } from "./src/service";
 export type { AuthServiceDeps, RegisterInput, LoginInput, LoginResult } from "./src/service";
 // WP-VIP2-GATE (bens P1, Token-at-Rest): Hash-Format + Einmal-Migration des Klartext-Bestands.
 export { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./src/service";

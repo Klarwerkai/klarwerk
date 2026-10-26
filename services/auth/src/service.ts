@@ -4,6 +4,7 @@ import type { TxContext } from "../../db-tx";
 import type { Meldungsschluessel } from "./meldungen";
 import type { OidcClaims } from "./oidc";
 import { hashPassword, verifyPassword } from "./password";
+import { AccountLoginDelay } from "./rate-limit";
 import {
   InMemoryPasswordResetRepo,
   InMemorySecondFactorRepo,
@@ -181,6 +182,7 @@ const defaultCanChangeRole: RoleChangePolicy = (actor, targetUserId, newRole) =>
 export type WithTx = <T>(fn: (tx: TxContext) => Promise<T>) => Promise<T>;
 
 export interface AuthServiceDeps {
+  loginDelay?: AccountLoginDelay;
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens?: PasswordResetRepo;
@@ -217,7 +219,18 @@ function toPublic(user: User): PublicUser {
   return rest;
 }
 
+/** Dasselbe Ablaufurteil für Sitzung und die sitzungslose WOPI-Marke. */
+export function istKontozugangAbgelaufen(
+  user: { accessExpiresAt?: string | undefined },
+  jetzt: number,
+): boolean {
+  const ende =
+    user.accessExpiresAt === undefined ? undefined : ablaufZeitpunkt(user.accessExpiresAt);
+  return ende !== undefined && ende <= jetzt;
+}
+
 export class AuthService {
+  private readonly loginDelay: AccountLoginDelay;
   private readonly users: UserRepo;
   private readonly sessions: SessionRepo;
   private readonly audit: AuditService | undefined;
@@ -244,6 +257,7 @@ export class AuthService {
     this.sessions = deps.sessions;
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
+    this.loginDelay = deps.loginDelay ?? new AccountLoginDelay({ now: this.now });
     this.genId = deps.genId ?? (() => randomUUID());
     this.genToken = deps.genToken ?? (() => randomBytes(32).toString("hex"));
     this.resetTokens = deps.resetTokens ?? new InMemoryPasswordResetRepo();
@@ -609,13 +623,16 @@ export class AuthService {
 
   // Passwort, Freigabe und Befristung — der gemeinsame erste Teil beider Anmeldewege.
   private async pruefePasswortanmeldung(input: LoginInput): Promise<User> {
+    await this.loginDelay.beforeAttempt(input.email);
     const user = await this.users.findByEmail(input.email);
     if (!user || !(await verifyPassword(input.password, user.passwordSalt, user.passwordHash))) {
+      this.loginDelay.registerFailure(input.email);
       throw new AuthError(
         "INVALID_CREDENTIALS",
         "INVALID_CREDENTIALS" satisfies Meldungsschluessel,
       );
     }
+    this.loginDelay.reset(input.email);
     if (!user.approved) {
       throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
     }
@@ -726,8 +743,7 @@ export class AuthService {
    * dort gestellt werden kann, wo eine Nebenwirkung falsch wäre.
    */
   private istAbgelaufen(user: User): boolean {
-    const ende = this.ablaufDesZugangs(user);
-    return ende !== undefined && ende <= this.now();
+    return istKontozugangAbgelaufen(user, this.now());
   }
 
   /**
@@ -1013,15 +1029,19 @@ export class AuthService {
    * aus der Admin-Gruppe flog, blieb hier Admin. Beides zusammen geht — die Richtung ist der
    * ganze Unterschied.
    *
-   * NUR SSO-KONTEN (`passwordHash === ""`). Ein vom Admin von Hand angelegtes Passwortkonto folgt
-   * keinem Anbieter; dort wäre eine Herabstufung durch fremde Claims selbst der Angriff.
+   * Nur die tatsächlich mit diesem Aussteller und Subjekt verknüpfte Identität folgt dessen
+   * Rollenentzug. Ein Passwort-Hash ist keine Aussage über die Identitätsbindung.
    */
   private async gleicheRolleAb(
     account: User,
     claims: OidcClaims,
     mappedRole?: Role,
   ): Promise<User> {
-    if (account.passwordHash !== "") {
+    if (
+      !account.oidcSubject ||
+      account.oidcSubject !== claims.sub ||
+      account.oidcIssuer !== claims.iss
+    ) {
       return account;
     }
     // Fehlt der Rollen-Claim GANZ, ist das keine Aussage über die Gruppen des Menschen, sondern
@@ -1631,11 +1651,15 @@ export class AuthService {
       throw new AuthError("WEAK_PASSWORD", "WEAK_PASSWORD" satisfies Meldungsschluessel);
     }
     const user = await this.requireUser(userId);
+    if (user.oidcSubject) {
+      throw new AuthError("FORBIDDEN", "PASSWORD_MANAGED_BY_SSO" satisfies Meldungsschluessel);
+    }
     const { salt, hash } = await hashPassword(newPassword);
     user.passwordSalt = salt;
     user.passwordHash = hash;
     await this.users.update(user);
     await this.sessions.deleteByUser(userId);
+    await this.resetTokens.deleteByUser(userId);
     await this.record(actorId, "user.password-reset", userId);
   }
 
@@ -1646,6 +1670,9 @@ export class AuthService {
       throw new AuthError("WEAK_PASSWORD", "WEAK_PASSWORD" satisfies Meldungsschluessel);
     }
     const user = await this.requireUser(userId);
+    if (user.oidcSubject) {
+      throw new AuthError("FORBIDDEN", "PASSWORD_MANAGED_BY_SSO" satisfies Meldungsschluessel);
+    }
     if (!(await verifyPassword(oldPassword, user.passwordSalt, user.passwordHash))) {
       throw new AuthError(
         "INVALID_CREDENTIALS",
@@ -1657,6 +1684,7 @@ export class AuthService {
     user.passwordHash = hash;
     await this.users.update(user);
     await this.sessions.deleteByUser(userId);
+    await this.resetTokens.deleteByUser(userId);
     await this.record(userId, "user.password-changed", userId);
   }
 
@@ -1760,7 +1788,7 @@ export class AuthService {
     email: string,
   ): Promise<{ token: string; user: PublicUser } | undefined> {
     const user = await this.users.findByEmail(email);
-    if (!user) {
+    if (!user || user.oidcSubject) {
       return undefined;
     }
     const token = this.genToken();
@@ -1794,7 +1822,7 @@ export class AuthService {
     }
     if (!entry || entry.expiresAt <= this.now()) {
       if (entry) {
-        await this.resetTokens.delete(stored); // abgelaufen → beim Zugriff aufraeumen
+        await this.resetTokens.delete(stored); // abgelaufen → nur diesen alten Link aufraeumen
       }
       throw new AuthError(
         "INVALID_CREDENTIALS",
@@ -1802,12 +1830,15 @@ export class AuthService {
       );
     }
     const user = await this.requireUser(entry.userId);
+    if (user.oidcSubject) {
+      throw new AuthError("FORBIDDEN", "PASSWORD_MANAGED_BY_SSO" satisfies Meldungsschluessel);
+    }
     const { salt, hash } = await hashPassword(newPassword);
     user.passwordSalt = salt;
     user.passwordHash = hash;
     await this.users.update(user);
     await this.sessions.deleteByUser(user.id);
-    await this.resetTokens.delete(stored);
+    await this.resetTokens.deleteByUser(user.id);
     await this.record(user.id, "user.password-reset-email", user.id);
   }
 

@@ -68,7 +68,7 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // Erfolg gerufen; Replay auf die leere Instanz beansprucht den Slot identisch.
   users: ["insert", "update", "delete", "tryClaimBootstrapAdmin"],
   sessions: ["create", "delete", "deleteByUser"],
-  resetTokens: ["create", "delete", "createEmailChange", "takeEmailChange"],
+  resetTokens: ["create", "delete", "deleteByUser", "createEmailChange", "takeEmailChange"],
   // R-0562: der zweite Faktor überlebt den Dev-Neustart — sonst wäre er nach jedem Start still weg.
   // `claimStep` trägt den Schritt in den Argumenten; das Replay ist damit deterministisch.
   secondFactors: ["set", "delete", "claimStep"],

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 // SCRUM-356 / AG-06 / NFR-SEC-04: kleiner, abhängigkeitsfreier In-Memory-Rate-Limiter gegen
 // Login-Brute-Force. Bewusst minimal: ein fixes Zeitfenster je Schlüssel (z. B. IP + normalisierte
 // Login-ID). KEIN Redis/DB, kein externes Framework — passend zum modularen Monolithen für die Beta.
@@ -171,5 +173,68 @@ export class LoginRateLimiter {
         this.entries.delete(key);
       }
     }
+  }
+}
+
+/** Ergänzt das Quellenlimit um höchstens eine Sekunde je Versuch, auch bei IP-Wechsel. */
+export class AccountLoginDelay {
+  private readonly entries = new Map<string, { failures: number; until: number }>();
+  private scheduled = false;
+  private readonly now: () => number;
+  private readonly wait: (ms: number) => Promise<void>;
+  private readonly planen: (fn: () => void, ms: number) => void;
+  constructor(
+    options: {
+      now?: () => number;
+      wait?: (ms: number) => Promise<void>;
+      planen?: (fn: () => void, ms: number) => void;
+    } = {},
+  ) {
+    this.now = options.now ?? Date.now;
+    this.wait = options.wait ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.planen = options.planen ?? planeAbgekoppelt;
+  }
+  private key(loginId: string): string {
+    return createHash("sha256").update(loginId.trim().toLowerCase()).digest("hex");
+  }
+  get size(): number {
+    return this.entries.size;
+  }
+  async beforeAttempt(loginId: string): Promise<void> {
+    const key = this.key(loginId);
+    const entry = this.entries.get(key);
+    if (!entry) return;
+    if (entry.until <= this.now()) {
+      this.entries.delete(key);
+      return;
+    }
+    const ms = entry.failures < 3 ? 0 : Math.min(1000, 250 * 2 ** Math.min(entry.failures - 3, 2));
+    if (ms) await this.wait(ms);
+  }
+  registerFailure(loginId: string): void {
+    const key = this.key(loginId);
+    const now = this.now();
+    const previous = this.entries.get(key);
+    const failures = previous && previous.until > now ? Math.min(previous.failures + 1, 5) : 1;
+    this.entries.delete(key);
+    this.entries.set(key, { failures, until: now + 15 * 60 * 1000 });
+    if (this.entries.size > 10_000) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest !== undefined) this.entries.delete(oldest);
+    }
+    this.schedule();
+  }
+  reset(loginId: string): void {
+    this.entries.delete(this.key(loginId));
+  }
+  private schedule(): void {
+    if (this.scheduled || !this.entries.size) return;
+    this.scheduled = true;
+    this.planen(() => {
+      this.scheduled = false;
+      const now = this.now();
+      for (const [key, entry] of this.entries) if (entry.until <= now) this.entries.delete(key);
+      this.schedule();
+    }, 60_000);
   }
 }

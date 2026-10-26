@@ -65,6 +65,8 @@ services:
       # Browser verwirft es stillschweigend, die Anmeldung „funktioniert" und haelt trotzdem nicht.
       # Die Diagnose dazu steht in docs/operations/kundeninstanz-neuinstallation.md.
       COOKIE_SECURE: "true"
+      # Nur bestätigte tatsächliche Proxy-IP/CIDR-Werte; keine Vorgabe, Hopzahl oder Wildcard.
+      KLARWERK_TRUST_PROXY: ${KLARWERK_TRUST_PROXY:?KLARWERK_TRUST_PROXY setzen — bestaetigte Proxy-IP oder CIDR-Liste}
       # ==========================================================================================
       # JOB 4201 · PFLICHTANGABE. KEIN VORGABEWERT — UND DAS IST DER KERN DIESES DURCHGANGS.
       # ==========================================================================================

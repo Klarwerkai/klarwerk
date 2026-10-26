@@ -568,6 +568,10 @@ export class PgPasswordResetRepo implements PasswordResetRepo {
         }
       : undefined;
   }
+
+  async deleteByUser(userId: string): Promise<void> {
+    await this.pool.query("DELETE FROM password_resets WHERE user_id=$1", [userId]);
+  }
 }
 
 interface SecondFactorRow {

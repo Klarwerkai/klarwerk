@@ -24,7 +24,8 @@ function vollstaendigeProduktion(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = { NODE_ENV: "production" };
   for (const wert of STARTVERTRAG) {
     if (wert.pflicht.art === "produktion") {
-      env[wert.name] = `wert-fuer-${wert.name}`;
+      env[wert.name] =
+        wert.name === "KLARWERK_TRUST_PROXY" ? "192.0.2.10" : `wert-fuer-${wert.name}`;
     }
   }
   return env;

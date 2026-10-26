@@ -193,6 +193,15 @@ export function resolveTrustProxy(
   return list.length > 0 ? list : false;
 }
 
+/** In Produktion muss JEDER Eintrag eine konkrete gültige IP oder ein begrenztes CIDR sein. */
+export function hasExplicitTrustProxy(env: Record<string, string | undefined>): boolean {
+  const raw = env.KLARWERK_TRUST_PROXY?.trim();
+  if (!raw) return false;
+  return raw
+    .split(",")
+    .every((entry) => isValidTrustEntry(entry.trim()) && !isCatchAllTrustEntry(entry.trim()));
+}
+
 // GHSA-3m5p-2c4r-xxw2: erkennt eine als Hop-Anzahl gemeinte Einstellung (positive ganze Zahl), damit
 // der Aufbau sie verwerfen UND im Log benennen kann, statt sie still zu ignorieren.
 export function isHopCountTrustProxy(

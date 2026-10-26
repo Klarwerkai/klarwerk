@@ -708,12 +708,13 @@ describe("JOB 4201 F · der Startvertrag verweigert genau die Lage, die dieser A
     ).toContain("APP_BASE_URL");
   });
 
-  it("F2 · mit beiden Werten fehlt nichts — die Anleitung ist erfuellbar, nicht bloss streng", () => {
+  it("F2 · mit Datenbank, Adresse und ausdrücklichem Proxy fehlt nichts — die Anleitung ist erfuellbar, nicht bloss streng", () => {
     expect(
       fehlendePflichtwerte({
         NODE_ENV: "production",
         DATABASE_URL: "postgresql://x@y:5432/z",
         APP_BASE_URL: "https://wissen.kunde.test",
+        KLARWERK_TRUST_PROXY: "192.0.2.10",
       }),
     ).toEqual([]);
   });

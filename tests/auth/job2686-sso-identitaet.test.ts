@@ -307,9 +307,8 @@ describe("JOB 2686 · R2-8 — ein Claim darf Rechte nehmen, nie geben", () => {
     expect(await a.audit.list({ action: "user.role-synced" })).toHaveLength(0);
   });
 
-  it("ein Passwortkonto wird vom Claim NICHT angetastet", async () => {
-    // Nur SSO-Konten (passwordHash === "") folgen dem Anbieter. Ein vom Admin von Hand
-    // vergebenes Passwortkonto behaelt seine Rolle.
+  it("ein an Aussteller/Subjekt gebundenes Konto folgt dem Rollenentzug auch mit Passwort-Hash", async () => {
+    // Die Identitätsbindung bleibt maßgeblich, auch wenn früher ein Reset einen Hash gesetzt hat.
     const a = await baueApp();
     await a.users.insert(kontoAus({ id: "u-erst", email: "erst@firma.de" }));
     await a.users.insert(
@@ -321,7 +320,7 @@ describe("JOB 2686 · R2-8 — ein Claim darf Rechte nehmen, nie geben", () => {
     );
 
     expect(antwort.status).toBe(200);
-    expect((antwort.body.user as { role: string }).role).toBe("admin");
+    expect((antwort.body.user as { role: string }).role).toBe("viewer");
   });
 
   it("die Sitzungsdauer bleibt in der Vorgabe unveraendert bei 14 Tagen", async () => {

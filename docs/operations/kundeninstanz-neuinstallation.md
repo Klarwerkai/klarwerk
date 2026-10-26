@@ -74,9 +74,10 @@ Wirkung (siehe §2.4).
 
 <!-- env-beispiel -->
 ```dotenv
-# Pflicht — ohne diese beiden bricht `docker compose` ab und nennt den fehlenden Namen.
+# Pflicht — ohne diese Angaben bricht `docker compose` ab und nennt den fehlenden Namen.
 POSTGRES_PASSWORD=
 APP_BASE_URL=
+KLARWERK_TRUST_PROXY=
 
 # Optional. Auskommentiert lassen heißt: es gilt die Vorgabe.
 # CANONICAL_HOST=
@@ -129,6 +130,9 @@ APP_BASE_URL=
 |---|---|---|
 | `POSTGRES_PASSWORD` | Das Kennwort der mitgelieferten Datenbank. Frei wählbar, aber **nicht leer**. | `docker compose` bricht ab und nennt den Namen. Die Anwendung selbst liest diesen Wert nie — er wird nur benutzt, um die Verbindungszeichenkette zusammenzusetzen. |
 | `APP_BASE_URL` | Die **öffentliche Adresse dieser Instanz**, z. B. `https://wissen.kunde.de`. | `docker compose` bricht ab und nennt den Namen. Ohne ihn verschickte der Kennwort-Zurücksetzen-Weg später eine Mail **ohne Link** — ein Fehler, den man erst beim Klicken merkt. |
+| `KLARWERK_TRUST_PROXY` | Bestätigte tatsächliche Proxy-IP oder kommagetrennte CIDR-Liste. | Pflicht in Produktion. Keine Hopzahl, Namen, Wildcard oder /0-Netze. Jeder Eintrag muss gültig sein. Vor einem Update anhand der tatsächlichen Proxy-Zuleitung bestätigen und setzen; hier ist kein Produktionsnetz vorgegeben. |
+
+Für die bestehende Coolify-Instanz wurden am 26.10.2026 die tatsächlichen Endpunkte des gemeinsamen `coolify`-Netzes bestätigt und als `KLARWERK_TRUST_PROXY=10.0.1.2/32,fdf7:560b:cd7a::2/128` gespeichert. Das ist eine konkrete Betriebszuordnung dieser Instanz. Nach Neuerstellung des Proxys müssen die Adressen erneut geprüft und bei Änderung vor dem Rollout angepasst werden; weder ein ganzes Subnetz noch eine Hopzahl ersetzt diese Prüfung.
 
 > **Die Falle, die dieser Durchgang geschlossen hat.** Bis zum 16.09.2026 trug die Compose-Datei
 > für `APP_BASE_URL` einen Vorgabewert auf die öffentliche Vorführ-Domain. Der Start **gelang**

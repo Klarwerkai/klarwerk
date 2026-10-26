@@ -182,11 +182,12 @@ describe("GHSA-3m5p-2c4r-xxw2 · K2/K3: Konfiguration, direkter Zugriff am Proxy
     );
   });
 
-  it("docker-compose.prod.yml reicht KLARWERK_TRUST_PROXY nicht durch und lädt kein env_file", () => {
+  it("docker-compose.prod.yml verlangt die ausdrückliche Proxy-Liste ohne Vorgabe und lädt kein env_file", () => {
     const compose = readFileSync(join(WURZEL, "docker-compose.prod.yml"), "utf8");
     const app = /^ {2}app:\n([\s\S]*?)^ {4}ports:/m.exec(compose)?.[1] ?? "";
     expect(app, "Dienst app ohne environment-Block gefunden").toContain("environment:");
-    expect(app).not.toMatch(/^\s+KLARWERK_TRUST_PROXY:/m);
+    expect(app).toMatch(/^\s+KLARWERK_TRUST_PROXY:\s*\$\{KLARWERK_TRUST_PROXY:\?/m);
+    expect(app).not.toMatch(/KLARWERK_TRUST_PROXY:\s*\$\{KLARWERK_TRUST_PROXY:-/);
     expect(compose).not.toMatch(/^\s*env_file:/m);
   });
 });

@@ -1,4 +1,4 @@
-import type { Role } from "../../../auth";
+import type { PublicUser, Role } from "../../../auth";
 import type { EvidenceRecord, KoVersionSnapshot } from "../../../knowledge-object";
 import type { ObjectStore } from "../../../object-store";
 import type { OfficeAblage } from "../office-ablage";
@@ -10,6 +10,8 @@ export interface OfficeKonto {
   readonly name: string;
   readonly role: Role;
   readonly approved: boolean;
+  readonly accessExpiresAt?: PublicUser["accessExpiresAt"];
+  readonly freigabe?: PublicUser["freigabe"];
 }
 
 export interface OfficeRoutesDeps {

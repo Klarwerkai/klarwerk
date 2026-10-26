@@ -20,11 +20,10 @@
 // DREI ENTSCHEIDUNGEN, DIE HIER GETROFFEN SIND (und in der Rückgabe begründet stehen)
 // ------------------------------------------------------------------------------------------------
 //
-// 1. PFLICHT IST SCHMAL UND ABSICHTLICH SCHMAL. Nur zwei Werte lassen den Start scheitern, und
-//    beide nur in Produktion: `DATABASE_URL` (ohne sie liefe Produktion auf nicht-dauerhaftem
-//    Speicher — das bricht heute schon ab, s. `storage-guard.ts`) und `APP_BASE_URL` (ohne sie
-//    verschickt der Kennwort-Zurücksetzen-Weg eine Mail OHNE Link, s. `build-app.ts`, wo
-//    `resetBaseUrl` sonst `undefined` bleibt — ein Fehler, den man erst beim Klicken merkt).
+// 1. In Produktion sind DATABASE_URL, APP_BASE_URL und KLARWERK_TRUST_PROXY Pflicht.
+//    Die Proxy-Liste muss vollständig aus gültigen konkreten IP/CIDR-Werten bestehen. Fehlende
+//    oder pauschale Werte brechen den Start ab. Vor einem Update muss die tatsächliche Zuleitung
+//    bestätigt und konfiguriert sein; ein erfundener Vorgabewert würde die IP-Drosseln entwerten.
 //
 //    WARUM NICHT MEHR. Ein Wert, dessen Fehlen die Anwendung heute EHRLICH meldet, gehört nicht in
 //    die Pflicht. Der Confluence-Zugang ist der ausdrückliche Präzedenzfall: Pedis Entscheidung vom
@@ -88,6 +87,7 @@ import {
 } from "../../confluence";
 import { JIRA_AUTH_VAR, JIRA_CREDENTIAL_VARS } from "../../jira";
 import { SHAREPOINT_CREDENTIAL_VARS } from "../../sharepoint";
+import { hasExplicitTrustProxy } from "./addon-auth-throttle";
 import { SCHALTER_REGISTRY, type SchalterName, schalterAn } from "./feature-flags";
 
 // ================================================================================================
@@ -487,9 +487,9 @@ const GRUNDWERTE: readonly Startwert[] = [
   {
     name: "KLARWERK_TRUST_PROXY",
     bereich: "Betrieb",
-    pflicht: { art: "nie" },
+    pflicht: { art: "produktion" },
     geheim: false,
-    vorgabe: "aus = die IP des Sockets gilt als Client-IP",
+    vorgabe: "außerhalb Produktion aus; in Produktion konkrete Proxy-IP/CIDR-Liste erforderlich",
     wofuer: "Der bekannte Proxy-Sprung, hinter dem die echte Client-IP steht.",
     ohneIhn:
       "Alle Drosseln zählen gegen die Proxy-IP statt gegen den Anfragenden — hinter einem Proxy teilen sich damit alle Nutzer ein Kontingent.",
@@ -1585,7 +1585,10 @@ export function fehlendePflichtwerte(env: Record<string, string | undefined>): s
     if (ausnahme && (env[ausnahme.name] ?? "").trim() === ausnahme.wert) {
       continue;
     }
-    if (!gesetzt(env[wert.name])) {
+    if (
+      !gesetzt(env[wert.name]) ||
+      (wert.name === "KLARWERK_TRUST_PROXY" && !hasExplicitTrustProxy(env))
+    ) {
       fehlend.push(wert.name);
     }
   }

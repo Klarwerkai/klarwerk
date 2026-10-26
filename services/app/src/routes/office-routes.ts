@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import { istKontozugangAbgelaufen } from "../../../auth";
 import type { KnowledgeObject } from "../../../knowledge-object";
 import { can } from "../../../rbac";
 import type { Guards, SessionUser } from "../http";
@@ -190,12 +191,13 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
   /** Das Konto hinter einer Marke, frisch gelesen; gesperrt oder gelöscht heißt: keine Rechte. */
   async function sitzungsnutzerFuer(nutzerId: string): Promise<SessionUser | undefined> {
     const konto = (await deps.konten()).find((k) => k.id === nutzerId);
-    if (!konto?.approved) {
+    if (!konto?.approved || istKontozugangAbgelaufen(konto, jetzt())) {
       return undefined;
     }
     return {
       id: konto.id,
       role: konto.role,
+      ...(konto.freigabe ? { freigabe: konto.freigabe } : {}),
       spaceLesbar: await deps.spaceLesbar({ id: konto.id, role: konto.role }),
     };
   }

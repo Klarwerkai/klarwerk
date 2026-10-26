@@ -2112,6 +2112,41 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // menschlichen Annahme eines Importkandidaten. Die Destrukturierung darunter verwirft
         // `origin` VOLLSTÄNDIG — damit auch jedes `import` (am Draht gemessen: W6 in
         // `tests/import-kandidaten-echt/annahme-in-validierung.test.ts`).
+        const rumpf = request.body as unknown;
+        if (rumpf === null || typeof rumpf !== "object" || Array.isArray(rumpf)) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "Ungültiger Eingaberumpf." });
+          return;
+        }
+        const felder = rumpf as Record<string, unknown>;
+        const falscherText = ["title", "statement", "type", "category"].some(
+          (k) => typeof felder[k] !== "string",
+        );
+        const falscherOptionalerText = [
+          "bodyHtml",
+          "asset",
+          "domain",
+          "revalidierungAm",
+          "originalAuthor",
+        ].some(
+          (k) => felder[k] !== undefined && felder[k] !== null && typeof felder[k] !== "string",
+        );
+        const falscheListe = ["conditions", "measures", "tags", "assets", "reviewerIds"].some(
+          (k) =>
+            felder[k] !== undefined &&
+            felder[k] !== null &&
+            (!Array.isArray(felder[k]) ||
+              !(felder[k] as unknown[]).every((v) => typeof v === "string")),
+        );
+        const falscheZahl = ["confidence", "neededValidations"].some(
+          (k) =>
+            felder[k] !== undefined &&
+            felder[k] !== null &&
+            (typeof felder[k] !== "number" || !Number.isFinite(felder[k])),
+        );
+        if (falscherText || falscherOptionalerText || falscheListe || falscheZahl) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "Ungültiger Eingaberumpf." });
+          return;
+        }
         const {
           reviewerIds,
           operationId,

@@ -26,6 +26,16 @@ export const MELDUNGEN = {
     nl: "Bevestig je nieuwe e-mailadres via deze link (15 minuten geldig). Meld je aan met je bestaande account:",
   },
 
+  INVALID_REQUEST_BODY: {
+    de: "Die Eingabe ist unvollständig oder hat ein ungültiges Format.",
+    en: "The input is incomplete or has an invalid format.",
+    nl: "De invoer is onvolledig of heeft een ongeldig formaat.",
+  },
+  PASSWORD_MANAGED_BY_SSO: {
+    de: "Das Passwort dieses Kontos wird über die Firmenanmeldung verwaltet.",
+    en: "This account’s password is managed through company sign-in.",
+    nl: "Het wachtwoord van dit account wordt via de bedrijfsaanmelding beheerd.",
+  },
   INVALID_CREDENTIALS: {
     de: "E-Mail oder Passwort falsch.",
     en: "Email or password is incorrect.",
