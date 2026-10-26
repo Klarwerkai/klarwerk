@@ -366,13 +366,7 @@ import {
 } from "./gemeinsamer-entwurf";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
-import {
-  type SessionUser,
-  isInternalOnlyError,
-  makeGuards,
-  sendError,
-  tokenFromRequest,
-} from "./http";
+import { type SessionUser, makeGuards, sendError, tokenFromRequest } from "./http";
 import { impactReport } from "./impact";
 // ADMIN-02: die auflistbaren Laufablagen für die Importliste (neben dem eingefrorenen Vertrag).
 import { InMemoryAuflistbareImportRunRepo, PgAuflistbareImportRunRepo } from "./import-lauf-liste";
@@ -2808,21 +2802,9 @@ function createSemanticPrefilterFromEnv(
   };
 }
 
-// SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-/Embed-Cap-Überlauf (ModelCapacityError)
-// wird von der Reasoner-Kette bzw. dem Prefilter bis hierher durchgereicht → 503 + Retry-After (kein
-// 500/Crash). Jeder andere Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht
-// (Validierungs-400 etc. unverändert). Als benannte Funktion exportiert, damit Tests denselben Handler
-// verdrahten wie die App (kein duplizierter Handler, keine Drift).
-// G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07 §1, KW-G27-R1-KOPF-AUSWERTUNG-07 §3): DER ZWEITE ÄUSSERE
-// WEG. `sendError` ist der Standardausgang der Routen, die abfangen — aber GENAU DIE SUCHROUTEN
-// fangen nicht ab: `GET /api/library/search`, `POST /api/ask` und `POST /api/reasoner` (task `ask`)
-// lassen den Fehler durch und landen hier. Fastifys Standardweg serialisiert dann `error.code` und
-// `error.message`, also den technischen Code UND die Control-State-Meldung („Zustand V2_BUILDING").
-// Der Status war zufällig schon 500; alles andere verletzte §4 der Entscheidung.
-//
-// KEINE ZWEITE WAHRHEIT. Geprüft wird das aus `http.ts` exportierte Prädikat und geantwortet über
-// dieselbe `sendError`-Funktion — die Codekenntnis und die generische Antwort stehen genau einmal
-// im Repository. Eine eigene Codeliste hier wäre die Duplikation, die morgen auseinanderläuft.
+// Gemeinsamer globaler Fehlerweg: bekannte Modellkapazität und Klara-Zustimmung behalten
+// ihren festen Vertrag; unerwartete Fehler gehen durch dieselbe Maskierung wie sendError.
+// Fastifys eigene Validierungs-4xx bleiben erhalten.
 export function modelBusyErrorHandler(
   error: FastifyError,
   _request: FastifyRequest,
@@ -2847,11 +2829,18 @@ export function modelBusyErrorHandler(
     });
     return;
   }
-  if (isInternalOnlyError(error)) {
-    sendError(reply, error);
+  // Fastifys eigene Eingabevalidierung behält ihren 4xx-Vertrag. Alle unerwarteten Fehler
+  // laufen durch dieselbe Maskierung wie abgefangene Routenfehler, auch technische Großcodes.
+  if (
+    error.statusCode !== undefined &&
+    error.statusCode >= 400 &&
+    error.statusCode < 500 &&
+    error.code?.startsWith("FST_ERR_")
+  ) {
+    reply.send(error);
     return;
   }
-  reply.send(error);
+  sendError(reply, error);
 }
 
 // ================================================================================================

@@ -42,6 +42,7 @@ import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reaso
 import { type AbsatzBeleg, absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
+import { KI_ABGESCHALTET_MELDUNG } from "../betriebsantworten";
 import { schalterAn } from "../feature-flags";
 import {
   type BereichsmarkenQuelle,
@@ -816,11 +817,6 @@ export async function dokumenttextFreigabe(
 //
 // Exportiert, weil `POST /api/reasoner` (Aufgabe `ask`) denselben Dienst ruft und dieselbe
 // Auskunft geben muss — ein zweiter Wortlaut dort wäre ein zweiter Vertrag.
-const KI_ABGESCHALTET_MELDUNG: Record<"de" | "en" | "nl", string> = {
-  de: "Der Administrator hat die KI abgeschaltet. Fragen an Klara werden derzeit nicht beantwortet, und es werden dafür keine Inhalte gelesen. Die Bibliothek und die Originale bleiben nach Ihren Leserechten nutzbar.",
-  en: "The administrator has switched AI off. Questions to Klara are currently not answered, and no content is read for them. The library and the originals remain available according to your read permissions.",
-  nl: "De beheerder heeft AI uitgeschakeld. Vragen aan Klara worden momenteel niet beantwoord, en er wordt daarvoor geen inhoud gelezen. De bibliotheek en de originelen blijven beschikbaar volgens uw leesrechten.",
-};
 
 export function kiAbgeschaltetSenden(
   reply: { code(status: number): { send(body: unknown): unknown } },

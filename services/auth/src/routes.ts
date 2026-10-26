@@ -248,6 +248,11 @@ export function sprache(request: FastifyRequest): Sprache {
   return gewaehlt;
 }
 
+/** Gemeinsame maskierte Antwort für unerwartete Fehler, in der Sprache dieser Anfrage. */
+export function sendInternalError(reply: FastifyReply): void {
+  reply.code(500).send({ error: "INTERNAL", message: meldung("INTERNAL", sprache(reply.request)) });
+}
+
 function sendError(reply: FastifyReply, error: unknown, sprache: Sprache): void {
   if (error instanceof AuthError) {
     const schluessel = error instanceof OidcUnreachableError ? "OIDC_UNREACHABLE" : error.message;
@@ -259,7 +264,8 @@ function sendError(reply: FastifyReply, error: unknown, sprache: Sprache): void 
     });
     return;
   }
-  reply.code(500).send({ error: "INTERNAL", message: meldung("INTERNAL", sprache) });
+  reply.log.error({ err: error }, "Unerwarteter Authentifizierungsfehler maskiert.");
+  sendInternalError(reply);
 }
 
 /**
@@ -649,8 +655,8 @@ export function authRoutes(
     );
 
     // R-0562: der zweite Anmeldeschritt — Anmeldeanfrage + Code vom zweiten Gerät ⇒ Sitzung.
-    // Gedrosselt je IP (zusätzlich zur Grenze von fünf Versuchen je Anfrage im Dienst); nur falsche
-    // Codes zählen, wie beim Passwort.
+    // Gedrosselt je konkreter Anmeldeanfrage, unabhängig von der IP. Der Dienst beendet dieselbe
+    // Anfrage weiterhin nach fünf falschen Codes; andere Anfragen teilen ihren Zähler nicht.
     app.post<{ Body: { challenge?: unknown; code?: unknown } }>(
       "/api/auth/login/second-factor",
       async (request, reply) => {
@@ -659,7 +665,10 @@ export function authRoutes(
         if (passwortwegZu(request, reply)) {
           return;
         }
-        const limiterKey = secondFactorLimiter.keyFor(request.ip, "second-factor");
+        const body = (request.body ?? {}) as { challenge?: unknown; code?: unknown };
+        const challenge = typeof body.challenge === "string" ? body.challenge : "";
+        // Exakte, opaque Anfragebindung; weder Klartext-Geheimnis noch IP im Drosselschlüssel.
+        const limiterKey = createHash("sha256").update(challenge).digest("hex");
         const limit = secondFactorLimiter.check(limiterKey);
         if (limit.limited) {
           reply.header("Retry-After", String(limit.retryAfterSeconds));
@@ -669,10 +678,9 @@ export function authRoutes(
           });
           return;
         }
-        const body = (request.body ?? {}) as { challenge?: unknown; code?: unknown };
         try {
           const { token, user } = await service.anmeldenMitZweitemFaktor(
-            typeof body.challenge === "string" ? body.challenge : "",
+            challenge,
             typeof body.code === "string" ? body.code : "",
           );
           secondFactorLimiter.reset(limiterKey);

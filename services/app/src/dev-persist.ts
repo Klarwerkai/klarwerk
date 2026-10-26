@@ -20,6 +20,7 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { FIRMENRESET_MELDUNG, JOURNAL_UNGEWISS_MELDUNG } from "./betriebsantworten";
 import { type AppRepos, type AppServices, assembleServices, inMemoryRepos } from "./build-app";
 import { type BegriffFassung, type BegriffeRepo, InMemoryBegriffeRepo } from "./firmenwoerterbuch";
 import {
@@ -578,10 +579,7 @@ export class JournalAusgangUngewiss extends Error {
     // Die Meldung geht über `sendError` nach aussen (http.ts: 503) und ist deshalb ein fester Satz:
     // Ursache (Datenträgermeldung, ggf. mit Pfad) und Vorgangskennung stehen nur in `cause` bzw.
     // `vorgang` (Lauf 5, Runde 3, BEN-R5-3).
-    super(
-      "Der Ausgang ist ungewiss: der Speicher ist gerade weder lesbar noch beschreibbar. Bitte später neu laden, bevor Sie es erneut versuchen.",
-      { cause },
-    );
+    super(JOURNAL_UNGEWISS_MELDUNG, { cause });
     this.name = "JournalAusgangUngewiss";
     this.vorgang = vorgang;
   }
@@ -814,9 +812,7 @@ export class FirmenresetSchreibsperre extends Error {
   readonly code = "FIRMENRESET_LAEUFT";
 
   constructor() {
-    super(
-      "Der Firmenreset läuft — dieser Schreibvorgang wurde nicht gespeichert. Bitte nach dem Neustart erneut versuchen.",
-    );
+    super(FIRMENRESET_MELDUNG);
     this.name = "FirmenresetSchreibsperre";
   }
 }

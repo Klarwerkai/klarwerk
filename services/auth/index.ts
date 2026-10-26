@@ -72,7 +72,7 @@ export {
 // nachgebaut. Die Modulkante ist nicht neu: beide Dateien importieren schon heute `Role` von hier.
 export { MELDUNGEN, meldung } from "./src/meldungen";
 export type { Meldungsschluessel, Sprache } from "./src/meldungen";
-export { sprache } from "./src/routes";
+export { sprache, sendInternalError } from "./src/routes";
 export { AuthError, istFreigabestufe } from "./src/types";
 // Aufnahme gesamt-peer-validierung (Antwort 18): die kontogebundene fachliche Weisungsbefugnis.
 // Seit der Integration (gesamt-wissen-herkunft, Nacharbeit 12) die EINE Befugnisregel auch für die

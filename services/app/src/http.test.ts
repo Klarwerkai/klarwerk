@@ -218,8 +218,8 @@ describe("G27 R1 — isInternalOnlyError ist der gemeinsame Prädikatbaustein", 
   });
 });
 
-describe("G27 R1 — der heutige Fehlervertrag bleibt unberührt", () => {
-  it("Pflicht 3: alle zwölf STATUS_BY_CODE-Einträge antworten unverändert", async () => {
+describe("P7 — sichere Fachverträge bleiben erhalten, interne Fehler werden maskiert", () => {
+  it("Pflicht 3: fachliche 4xx bleiben erhalten; der bisher rohe 500 wird maskiert", async () => {
     const eintraege = Object.entries(STATUS_ERWARTUNG);
     // Genau zwölf — kein Eintrag hinzugekommen, keiner verschwunden.
     expect(eintraege).toHaveLength(12);
@@ -229,34 +229,36 @@ describe("G27 R1 — der heutige Fehlervertrag bleibt unberührt", () => {
       const res = await probe({ code, message: meldung });
       expect(res.status).toBe(status);
       // Code UND Meldung gehen weiterhin nach außen — das ist der Fachvertrag, nicht das Leck.
-      expect(JSON.parse(res.payload)).toEqual({ error: code, message: meldung });
+      expect(JSON.parse(res.payload)).toEqual(
+        status >= 500 ? GENERISCHE_ANTWORT : { error: code, message: meldung },
+      );
     }
   });
 
-  it("Pflicht 3b: CREATE_ROLLBACK_FAILED ist 500, wird aber nicht maskiert", async () => {
+  it("P7: CREATE_ROLLBACK_FAILED bleibt 500, gibt aber keine Objektdetails mehr aus", async () => {
     const meldung = "Anlage und Rücknahme sind gescheitert (Objekt ko-42).";
     const res = await probe({ code: "CREATE_ROLLBACK_FAILED", message: meldung });
-
-    // Der schärfste Fall der Abgrenzung: gleicher Statuscode wie die Maskierung, aber eigener Code
-    // und eigene Meldung. Er belegt, dass die Maskierung am CODE hängt und nicht am Status.
     expect(res.status).toBe(500);
-    expect(JSON.parse(res.payload)).toEqual({ error: "CREATE_ROLLBACK_FAILED", message: meldung });
-    expect(res.payload).not.toBe(JSON.stringify(GENERISCHE_ANTWORT));
+    expect(JSON.parse(res.payload)).toEqual(GENERISCHE_ANTWORT);
+    expect(res.payload).not.toContain(meldung);
+    expect(res.payload).not.toContain("ko-42");
+    expect(res.logzeilen.filter((z) => z.level === 50)).toHaveLength(1);
   });
 
-  it("Pflicht 4: unbekannter Großbuchstabencode bleibt beim heutigen 400-Vertrag", async () => {
-    const res = await probe({ code: "SOMETHING_ELSE", message: "Eingabe unbrauchbar." });
-    expect(res.status).toBe(400);
-    expect(JSON.parse(res.payload)).toEqual({
-      error: "SOMETHING_ELSE",
-      message: "Eingabe unbrauchbar.",
-    });
+  it("P7: unbekannte Großbuchstabencodes erlauben keine rohen Infrastrukturmeldungen", async () => {
+    for (const code of ["SOMETHING_ELSE", "ECONNREFUSED", "EACCES"]) {
+      const res = await probe({ code, message: "connect 10.0.0.5:5432 (user beleg_db)" });
+      expect(res.status).toBe(500);
+      expect(JSON.parse(res.payload)).toEqual(GENERISCHE_ANTWORT);
+      expect(res.payload).not.toContain(code);
+      expect(res.payload).not.toContain("beleg_db");
+    }
   });
 
-  it("Pflicht 4b: fehlende Meldung fällt weiterhin auf den Code zurück", async () => {
-    const res = await probe({ code: "SOMETHING_ELSE" });
+  it("Pflicht 4b: ein bekannter Eingabefehler ohne Meldung fällt weiterhin auf den Code zurück", async () => {
+    const res = await probe({ code: "BAD_REQUEST" });
     expect(res.status).toBe(400);
-    expect(JSON.parse(res.payload)).toEqual({ error: "SOMETHING_ELSE", message: "SOMETHING_ELSE" });
+    expect(JSON.parse(res.payload)).toEqual({ error: "BAD_REQUEST", message: "BAD_REQUEST" });
   });
 
   it("Pflicht 5: SQLSTATE 42P01/42601 bleiben generischer 500 ohne rohe DB-Meldung", async () => {

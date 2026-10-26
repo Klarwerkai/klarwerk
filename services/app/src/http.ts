@@ -1,6 +1,14 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { type AuthService, type Role, type SessionUser, meldung, sprache } from "../../auth";
+import {
+  type AuthService,
+  type Role,
+  type SessionUser,
+  meldung,
+  sendInternalError,
+  sprache,
+} from "../../auth";
 import { type Permission, can } from "../../rbac";
+import { sichereBetriebsantwort } from "./betriebsantworten";
 import { dienstSitzungsnutzer } from "./dienst-schluessel";
 import { stapelRahmen } from "./log-positivliste";
 import { RECHTEKONTEXT_KOPF, rechtekontextStempel } from "./rechtekontext";
@@ -135,23 +143,58 @@ const STATUS_BY_CODE: Record<string, number> = {
 // geschlossen wird.
 const INTERNAL_ONLY_CODES: ReadonlySet<string> = new Set(["SEARCH_PROJECTION_NOT_READY"]);
 
-// Die EINE generische interne Antwort. Maskierungszweig und Auffangzweig senden bytegleich dieselbe
-// Gestalt — zwei getrennte Literale könnten auseinanderlaufen und den maskierten Fall von außen
-// wieder unterscheidbar machen. Ein Orakel „dieser Fehler ist der Projektionsfehler" wäre nur eine
-// leisere Form desselben Lecks. Der Meldungstext bleibt inhaltlich derselbe (§1: „bestehende
-// generische interne Fehlermeldung") — ohne Sprachkopf und mit `de` steht wörtlich der frühere Satz
-// „Unerwarteter Fehler." da; er kommt nur nicht mehr aus einem Literal, sondern aus dem Katalog.
-//
-// JOB 3568 (Q9-FREMDE-FLÄCHEN): aus der KONSTANTE ist eine FUNKTION geworden, weil der Text jetzt
-// vom `Accept-Language`-Kopf der konkreten Anfrage abhängt und deshalb erst beim Senden feststeht.
-// Die Zusicherung von G27 verschiebt sich damit von „dasselbe Objekt" auf „derselbe Aufruf mit
-// derselben Anfrage" — sie ist nicht mehr von der Sprache trennbar und wird deshalb je Sprache
-// geprüft (`tests/q9-fremde-flaechen/interne-antwort.test.ts`, R4). Zwei getrennte AUFRUFE sind
-// erlaubt, zwei getrennte Literale nach wie vor nicht.
-const INTERNAL_ERROR_STATUS = 500;
-function internalErrorBody(request: FastifyRequest): { error: string; message: string } {
-  return { error: "INTERNAL", message: meldung("INTERNAL", sprache(request)) };
-}
+// Öffentliche Eingabefehler der bestehenden Dienstverträge. Eine Code-Schreibweise allein
+// erteilt keine Freigabe: z. B. ECONNREFUSED ist Infrastruktur, obwohl es nur Buchstaben trägt.
+const PUBLIC_INPUT_CODES: ReadonlySet<string> = new Set([
+  "ALREADY_CLOSED",
+  "ALREADY_RESOLVED",
+  "ALREADY_REVIEWED",
+  "ANWEISUNG_ABLAGE_FLUECHTIG",
+  "BAD_REQUEST",
+  "COMMENT_NOT_FOUND",
+  "CONFIDENTIAL",
+  "CONFIDENTIALITY_DOWNGRADE",
+  "CONFIRM_REQUIRED",
+  "CONSENT_MISSING",
+  "DOKUMENT_UNBEKANNT",
+  "DRAFT_STALE",
+  "DRAFT_WRITE_CONTENDED",
+  "EMPTY_DRAFT",
+  "FREIGABEREGEL_UNGUELTIG",
+  "IMPORT_ANCHOR_TAKEN",
+  "INCOMPLETE",
+  "INVALID",
+  "INVALID_CONFIDENTIALITY",
+  "INVALID_DEFAULT",
+  "INVALID_MANAGEMENT_PROFILE",
+  "INVALID_NEEDED",
+  "INVALID_OPERATION_ID",
+  "INVALID_OWNERSHIP",
+  "INVALID_SETTINGS",
+  "INVALID_SOURCE",
+  "INVALID_STATUS",
+  "INVALID_TYPE",
+  "INVALID_UPLOAD_LIMITS",
+  "KO_STALE",
+  "MISSING_CONFIDENTIALITY",
+  "MISSING_DOCUMENT_ANCHOR",
+  "MISSING_DRAFT_ANCHOR",
+  "NOT_ESCALATABLE",
+  "NOT_VALIDATED",
+  "NO_BASIS",
+  "NO_FORMULIERER",
+  "NO_INPUT",
+  "NO_SOURCES",
+  "PROPOSAL_DECIDED",
+  "PROPOSAL_NOT_FOUND",
+  "PROPOSAL_OWN",
+  "SPACE_STAND_VERALTET",
+  "STALE_WRITE",
+  "UNKNOWN_KIND",
+  "UNKNOWN_KO",
+  "VALIDATION",
+  "WEAK_PASSWORD",
+]);
 
 /**
  * G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07): wahr genau dann, wenn `error` einen rein internen
@@ -218,19 +261,28 @@ export function sendError(reply: FastifyReply, error: unknown): void {
         { err: error, code },
         "Interner Betriebsfehler maskiert (HTTP 500 INTERNAL).",
       );
-      reply.code(INTERNAL_ERROR_STATUS).send(internalErrorBody(reply.request));
+      sendInternalError(reply);
       return;
     }
-    // SCRUM-496: NUR Domänen-Fehlercodes (KoError/LibraryError/… — GROSSBUCHSTABEN_MIT_UNTERSTRICH,
-    // keine Ziffern) tragen ihre nutzerlesbare Meldung nach außen. Infrastruktur-Fehler — insbesondere
-    // Postgres-SQLSTATE (z. B. "42P01" relation-not-exists, "42601" syntax-error, enthalten Ziffern) —
-    // dürfen ihre ROHE Meldung NIE lecken. Sonst zeigte das Board eine nackte DB-Fehlermeldung.
-    if (/^[A-Z_]+$/.test(code)) {
+    const betriebsantwort = sichereBetriebsantwort(code, sprache(reply.request));
+    if (betriebsantwort) {
+      reply.code(503).send(betriebsantwort);
+      return;
+    }
+    const status = STATUS_BY_CODE[code] ?? (PUBLIC_INPUT_CODES.has(code) ? 400 : undefined);
+    const explicitStatus =
+      "statusCode" in error ? error.statusCode : "status" in error ? error.status : undefined;
+    if (
+      status !== undefined &&
+      status < 500 &&
+      !(typeof explicitStatus === "number" && explicitStatus >= 500)
+    ) {
       const message = "message" in error ? String((error as { message: unknown }).message) : code;
-      reply.code(STATUS_BY_CODE[code] ?? 400).send({ error: code, message });
+      reply.code(status).send({ error: code, message });
       return;
     }
   }
+
   // arbeit:kos-anlage-500-pg — DER AUFFANGZWEIG WAR SPURLOS. Ein 500 aus `POST /api/kos` unter
   // PostgreSQL (Prüfauftrag pa-1790659426-c146cfc5) liess sich im Betrieb nicht nachlesen: nur der
   // Maskierungszweig oben schrieb eine Zeile. Jetzt genau EINE Zeile je Vorfall, request-gebunden
@@ -254,7 +306,7 @@ export function sendError(reply: FastifyReply, error: unknown): void {
   );
   // Derselbe Aufruf mit derselben Anfrage wie im Maskierungszweig oben — nicht ein zweiter Text,
   // der auseinanderlaufen könnte. Genau das prüft R4 je Sprache bytegleich nach.
-  reply.code(INTERNAL_ERROR_STATUS).send(internalErrorBody(reply.request));
+  sendInternalError(reply);
 }
 
 export function makeGuards(
