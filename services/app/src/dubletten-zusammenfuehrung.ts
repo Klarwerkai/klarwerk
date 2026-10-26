@@ -285,7 +285,13 @@ export async function fuehreZusammen(
                 ? aufgehend
                 : undefined,
         };
-        const befund = await deps.overlaps.getImVorgang(overlapId, tx);
+        const befund = await deps.overlaps.getImVorgang(overlapId, tx, (id) =>
+          id === fuehrend?.id
+            ? fuehrend.version
+            : id === aufgehend?.id
+              ? aufgehend.version
+              : undefined,
+        );
         if (!befund || !(await paarSichtbar(user, befund.koA, befund.koB, kos))) {
           throw new ZusammenfuehrungsFehler("NOT_FOUND", "Überschneidung nicht gefunden.");
         }

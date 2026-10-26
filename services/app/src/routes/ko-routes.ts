@@ -2220,7 +2220,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           if (operationId !== undefined && typeof operationId !== "string") {
             throw new KoError("INVALID_OPERATION_ID", "operationId muss Text sein.");
           }
-          let neu = await ko.create(
+          const erzeugt = await ko.createWithResult(
             { ...input, author: user.id },
             operationId === undefined
               ? undefined
@@ -2236,6 +2236,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                   }),
                 },
           );
+          let neu = erzeugt.ko;
+          if (!erzeugt.created) {
+            return { created: neu, replayed: true } as const;
+          }
           // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das
           // gesagt (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben — AUSSER die
           // Space-Zuordnung scheitert: dann ist die Anlage zurückgenommen.
@@ -2254,7 +2258,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               vermerk = "fehlgeschlagen";
             }
           }
-          return { created: neu, vorlagenVermerk: vermerk } as const;
+          return { created: neu, vorlagenVermerk: vermerk, replayed: false } as const;
         };
         const ergebnis = deps.vorlagen
           ? await deps.vorlagen.sperre(vorlagenBezug, anlage)
@@ -2268,6 +2272,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           return;
         }
         const created = ergebnis.created;
+        // Die bestätigte Wiederholung verändert weder Prüfer noch Fach-/Prüfstatus und startet
+        // keinen zweiten Job. Die Eingangs- und Space-Prüfung oben gilt weiterhin.
+        if (ergebnis.replayed) {
+          reply.code(201).send(created);
+          return;
+        }
         const vorlagenVermerk = ergebnis.vorlagenVermerk;
         // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
         // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).

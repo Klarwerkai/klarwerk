@@ -1145,9 +1145,16 @@ export class OverlapService {
   // bindung wird nicht mehr roh durchgereicht (Route ⇒ ehrliches 404), ein SICHER stale offener
   // Eintrag zusätzlich per Lese-GC geschlossen. GESCHLOSSENE Einträge bleiben abrufbar
   // (ehrlicher Grabstein — nie ein offener stale Eintrag).
-  /** Frische Befundlesung auf dem Client des gemeinsamen Paarvorgangs. */
-  async getImVorgang(id: string, tx: TxContext): Promise<OverlapEntry | undefined> {
-    return this.repo.findById(id, tx);
+  /** Befund und Versionsbindung aus demselben gesperrten Paarvorgang, ohne fremden Lese-GC. */
+  async getImVorgang(
+    id: string,
+    tx: TxContext,
+    currentVersion: CurrentVersionLookup,
+  ): Promise<OverlapEntry | undefined> {
+    const entry = await this.repo.findById(id, tx);
+    if (!entry || entry.status === "geschlossen") return entry;
+    const verdict = await isBoundToCurrentVersions(entry, cachedCurrentVersions(currentVersion));
+    return verdict.visible ? entry : undefined;
   }
 
   async get(id: string): Promise<OverlapEntry | undefined> {

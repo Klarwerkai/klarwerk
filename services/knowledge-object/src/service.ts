@@ -2842,6 +2842,16 @@ export class KoService {
     // Kein Feld in CreateKoInput; öffentliche Rümpfe können diese Bindung nicht setzen.
     initialSpaceId?: string,
   ): Promise<KnowledgeObject> {
+    return (await this.createWithResult(input, operation, quellrechte, initialSpaceId)).ko;
+  }
+
+  /** Anlageergebnis unter derselben Vorgangssperre; Wiederholungen brauchen keine Erstanlagenacharbeit. */
+  async createWithResult(
+    input: CreateKoInput,
+    operation?: { id: string; actor: string; fingerprint: string },
+    quellrechte?: KoQuellrechte,
+    initialSpaceId?: string,
+  ): Promise<{ ko: KnowledgeObject; created: boolean }> {
     const rechte = quellrechte === undefined ? undefined : normalizeQuellrechte(quellrechte);
     if (quellrechte !== undefined && rechte === undefined) {
       throw new KoError("INVALID_CONFIDENTIALITY", "Ungültige Quellrechte.");
@@ -2855,23 +2865,22 @@ export class KoService {
           "Vorgang ohne Eigentümer — die Erstanlage braucht den authentifizierten Anfragenden.",
         );
       }
-      // Eine Wiederholung liefert das BESTEHENDE Objekt — samt Lesefassung seines Nachweises.
-      return this.lesefassung(
-        await this.withKoLock(`create-op:${createOperationId}`, () =>
-          this.createLocked(
-            input,
-            createOperationId,
-            {
-              actor,
-              fingerprint: operation.fingerprint,
-            },
-            rechte,
-            initialSpaceId,
-          ),
+      // Kennung, Eigentümer und Inhalt werden gemeinsam unter dem bestehenden Lock entschieden.
+      const result = await this.withKoLock(`create-op:${createOperationId}`, () =>
+        this.createLocked(
+          input,
+          createOperationId,
+          {
+            actor,
+            fingerprint: operation.fingerprint,
+          },
+          rechte,
+          initialSpaceId,
         ),
       );
+      return { ...result, ko: await this.lesefassung(result.ko) };
     }
-    return this.createPlain(input, rechte, initialSpaceId);
+    return { ko: await this.createPlain(input, rechte, initialSpaceId), created: true };
   }
 
   /**
@@ -2884,12 +2893,12 @@ export class KoService {
     requester: CreateOperationRequester,
     quellrechte?: KoQuellrechte,
     initialSpaceId?: string,
-  ): Promise<KnowledgeObject> {
+  ): Promise<{ ko: KnowledgeObject; created: boolean }> {
     // DER NACHSCHLAG VOR ALLEM VERÄNDERLICHEN — er SCHREIBT NICHTS. Eine unbekannte Kennung liefert
     // `undefined`, und der volle, ungekürzte Weg läuft weiter.
     const adopted = await this.adoptCreatedKo(createOperationId, requester);
     if (adopted) {
-      return adopted;
+      return { ko: adopted, created: false };
     }
     const ko = await this.buildCreatedKo(input, {
       createOperationId,
@@ -2914,12 +2923,12 @@ export class KoService {
       if (err instanceof KoError && err.code === "CREATE_ANCHOR_TAKEN") {
         const raced = await this.adoptCreatedKo(createOperationId, requester);
         if (raced) {
-          return raced;
+          return { ko: raced, created: false };
         }
       }
       throw err;
     }
-    return ko;
+    return { ko, created: true };
   }
 
   private async createPlain(
