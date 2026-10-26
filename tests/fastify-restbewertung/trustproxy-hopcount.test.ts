@@ -11,7 +11,7 @@
 //   2. Das Produkt reicht keine Hop-Anzahl an Fastify: mit `KLARWERK_TRUST_PROXY=1` bleibt
 //      `request.ip` beim direkten Client die Socket-Adresse; mit IP-Liste wird derselbe Kopf vom
 //      nicht vertrauten Client zurückgewiesen und nur über den vertrauten Proxy angenommen.
-//   3. Ausgelieferte Konfiguration: `docker-compose.prod.yml` reicht die Variable nicht durch.
+//   3. Produktion verlangt eine ausdrückliche sichere Proxy-Liste ohne Vorgabewert.
 // Die Kalibrierung des Advisory-Falls auf 5.8.5 ist historisch (s. Kommentar im zweiten Block).
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -129,9 +129,9 @@ describe("GHSA-3m5p-2c4r-xxw2 · K1: Version am heutigen Stand", () => {
     };
     const spanne = pkg.dependencies.fastify ?? "";
     expect(spanne, "package.json erlaubt eine Auflösung in den betroffenen Bereich").toMatch(
-      /^\^\d+\.\d+\.\d+$/,
+      /^\^?\d+\.\d+\.\d+$/,
     );
-    expect(vergleiche(teile(spanne.slice(1)), BEHOBEN_AB)).toBeGreaterThanOrEqual(0);
+    expect(vergleiche(teile(spanne.replace(/^\^/, "")), BEHOBEN_AB)).toBeGreaterThanOrEqual(0);
   });
 
   it("die laufende Instanz meldet die Version aus der Lockdatei", async () => {

@@ -1,6 +1,6 @@
 # Fastify-Sicherheitsrest GHSA-3m5p-2c4r-xxw2 — Neubewertung am aktuellen Stand
 
-**Stand:** 06.10.2026, Nacharbeit 2 (Hebung auf 5.12.1) · **Basis:** `2b1131ad` (1.0.0-beta.1.713) · **Auftrag:** `aufnahme:20260922:fastify-restbewertung`
+**Stand:** 26.10.2026, W4.3-Abgleich mit der erhaltenen W4.7-Bindung · **Basis:** `423fa122` (.1046). Die frühere Hebung auf 5.12.1 bleibt unten als Historie erhalten.
 
 Ausgangspunkt ist der in JOB 4272 Runde 4 offen gelassene Rest (`fastify` 5.8.5, GHSA-3m5p-2c4r-xxw2,
 s. `tests/produktionsabhaengigkeiten/README.md` Abschnitt „`fastify`", Stand 17.09.2026). Jener Bericht
@@ -10,16 +10,16 @@ Die beiden Zeilen unten werden von `trustproxy-hopcount.test.ts` gegen `package-
 gemeldeten Versionsbereich gehalten. Ändert sich die gebundene Version, wird der Test rot und verlangt
 diese Bewertung neu — er wird dann nicht angepasst, sondern die Bewertung.
 
-**Gebundene Version:** 5.12.1
+**Gebundene Version:** 5.12.7
 **Urteil:** außerhalb des betroffenen Bereichs
 
 ## 1. Version und Advisory (K1)
 
 | Was | Beleg |
 |---|---|
-| Bindung in `package.json` | `"fastify": "^5.12.1"` (`package.json:44`; vorher `^5.0.0`) |
-| Gebundene Version | `package-lock.json`, Eintrag `node_modules/fastify` → `5.12.1` (Zeilen 3821–3822; vorher 5.8.5) |
-| Laufzeitversion | Der Test liest die Version der **laufenden** Produktinstanz (`buildApp(...).version`) nach `npm ci` im Prüfplatz und hält sie gegen die Lockdatei. Auf 5.8.5 grün in den Kandidaten `6519a364` und `c277165b`; auf 5.12.1 belegt erst der nächste Prüflauf. |
+| Bindung in `package.json` | `"fastify": "5.12.7"`, exakt erhalten aus W4.7. Sowohl eine sichere exakte Bindung als auch eine sichere Caret-Untergrenze erfüllen den Test; die behobene Untergrenze bleibt 5.12.1. |
+| Gebundene Version | `package-lock.json`, Eintrag `node_modules/fastify` → `5.12.7`. Für den dokumentierten Bereich `>=5.8.3 <5.12.1` liegt diese Bindung außerhalb. |
+| Laufzeitversion | Der Test liest die Version der **laufenden** Produktinstanz (`buildApp(...).version`) nach `npm ci` im Prüfplatz und hält sie gegen die Lockdatei. 5.12.7 wurde im aktuellen W4.3-Lauf tatsächlich gemeldet; die unveränderte Versionsgegenprobe läuft erneut im endgültigen Pflichtlauf. |
 | Advisory | GHSA-3m5p-2c4r-xxw2, *moderate*, betroffen `>=5.8.3 <5.12.1`, behoben ab 5.12.1. Gegenstand: `trustProxy` als **Hop-Anzahl**; ein Client, der den Ursprung am Proxy vorbei erreicht, bestimmt die Weiterleitungskette selbst. |
 | Datierung | Veröffentlicht 18.08.2026, aktualisiert 02.09.2026 — so von BEN in der Prüfung des Kandidaten `6519a364` an der offiziellen GitHub-Advisory gelesen (`HISTORIE/nacharbeit-1/BEN/ANTWORT.json`, Hinweise). Ältester datierter Beleg im Repository: `npm audit --omit=dev` vom 17.09.2026 (`tests/produktionsabhaengigkeiten/README.md:127`). |
 
@@ -49,9 +49,7 @@ aus dem Test entfernt: er beschrieb die nicht mehr gebundene Version.
 wird derselbe Kopf vom direkten Client **zurückgewiesen** (`request.ip` = `198.51.100.200`) und nur über
 den vertrauten Proxy `10.0.0.5` angenommen.
 
-**Was das Repository ausliefert:** `docker-compose.prod.yml` reicht `KLARWERK_TRUST_PROXY` nicht durch
-und nutzt kein `env_file` (Test); `env.demo.beispiel:67` führt die Variable nur auskommentiert;
-`docs/` nennt sie nicht. Auf diesen Wegen war die Bedingung nie erfüllt.
+**Was das Repository ausliefert:** `docker-compose.prod.yml` verlangt `KLARWERK_TRUST_PROXY` ausdrücklich ohne Vorgabewert und nutzt kein `env_file`. Startvertrag, Beispiel und Betreiberanleitung führen die Produktionspflicht. Die bestehende Ablehnung von Hopzahlen und pauschalen Netzen bleibt erhalten. Die konkrete von Root bestätigte Coolify-Zuordnung und ihre erneute Prüfung nach Proxy-Neuerstellung stehen in `docs/operations/kundeninstanz-neuinstallation.md`; hier wurde kein realer Proxy angesprochen.
 
 ## 3. Behebung (K3)
 
@@ -72,7 +70,7 @@ Damit ist die Advisory-Bedingung im Produkt auf **jeder** fastify-Version unerre
 Client-IP hinter dem Proxy; alle Drosseln zählen dann gegen die Proxy-IP (gemeinsames Kontingent),
 bis die IP-Adresse(n) des Proxys eingetragen sind. Das ist fail-safe, aber spürbar.
 
-### Umgesetzt, separat: die Versionshebung auf 5.12.1
+### Historie: die damalige separate Versionshebung auf 5.12.1
 
 Die kleinste kompatible Aktualisierung ist `fastify` **5.12.1** (innerhalb `^5`, kein Hauptwechsel).
 Übernommen sind die beiden **von npm erzeugten** Dateien aus `ROOT-LOCKFILE-20261006/`
@@ -97,11 +95,15 @@ als doppelte Umwandlung `as unknown as …` (Zeile 231) da und kann `TS2352` nic
 Typprüfung mit 5.12.1 grün ist, zeigt erst der Prüflauf (`tools/build` im Prüfplatz) — hier ist nichts
 gelaufen.
 
+## Heutiger Abgleich
+
+W4.7 bindet Fastify exakt auf 5.12.7. W4.3 verändert weder diese Abhängigkeit noch ihre Lockknoten und verwendet die erhaltene dazu passende Installation. Die zwei veralteten Prüfannahmen (Dokument noch 5.12.1 und ausschließlich Caret erlaubt) sind damit konkret berichtigt; Versionsbereich, sichere Untergrenze und alle echten Proxy-Gegenproben bleiben wirksam. Dies ist eine Einordnung in den bereits dokumentierten Advisory-Bereich, keine neue Advisory-Recherche.
+
 ## Nicht gemessen
 
 - Eigener Abruf der offiziellen Advisory (Datierung nach BENs Lesung).
 - Die tatsächliche `KLARWERK_TRUST_PROXY`-Einstellung laufender Instanzen und ob ihr Fastify-Ursprung
   am Proxy vorbei direkt erreichbar ist.
-- `fastify` 5.12.1 in Typprüfung und Laufzeit — bis zum Prüflauf dieses Kandidaten.
+- Die frühere 5.12.1-Installation wurde hier nicht wiederhergestellt; geprüft wird die erhaltene 5.12.7-Bindung.
 - Das Verhalten von 5.12.1 bei einer numerischen `trustProxy`-Einstellung selbst: das Produkt reicht
   keine mehr durch, gemessen wird deshalb nur das Produkt.
