@@ -99,7 +99,8 @@ export class WissenspaketZip {
         );
       },
     });
-    const kompressor = createDeflateRaw({ chunkSize: 64 * 1024 });
+    // Kleiner nativer Hash-/Kompressionsarbeitsbereich; vollständige DEFLATE-Einträge bleiben erhalten.
+    const kompressor = createDeflateRaw({ chunkSize: 64 * 1024, memLevel: 4 });
     const lauf = pipeline(kompressor, ziel, { ...(this.signal ? { signal: this.signal } : {}) });
     void lauf.catch(() => {});
     try {
