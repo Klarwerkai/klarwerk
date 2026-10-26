@@ -10,6 +10,7 @@ import type { DraftPayload } from "../api/types";
 import { lokaleSitzungEpoche, lokalesKontoErlaubt } from "../lib/lokaleSitzung";
 import {
   type NewOp,
+  type OfflineVorgangsStand,
   type QueueCounts,
   type QueuedOp,
   clearSynced,
@@ -19,6 +20,7 @@ import {
   markFailed,
   markPending,
   markSynced,
+  offlineVorgangsStand,
   ohneEigentuemer,
   pendingCount,
   replacePayload,
@@ -304,7 +306,7 @@ export interface OfflineQueueApi {
    * neuer ungebundener Bestand, und ein stilles Verschlucken wäre Datenverlust. Der Aufrufer
    * behält den Text im Formular und sagt, was los ist (s. `Mobile.tsx`).
    */
-  enqueue: (op: NeuerVorgang) => Promise<boolean>;
+  enqueue: (op: NeuerVorgang, erwartet?: OfflineVorgangsStand | null) => Promise<boolean>;
   persistError: string | null;
   /**
    * JOB 4193: die Entscheidung eines Menschen ERSETZT die liegende Nutzlast (samt dem Stand, gegen
@@ -315,8 +317,9 @@ export interface OfflineQueueApi {
     id: string,
     payload: DraftPayload,
     title: string,
+    erwartet: OfflineVorgangsStand | null,
     seenUpdatedAt?: string,
-  ) => Promise<boolean>;
+  ) => Promise<OfflineVorgangsStand | false>;
   syncNow: () => Promise<SyncResult>;
 }
 
@@ -598,8 +601,7 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
   );
 
   const enqueue = useCallback(
-    async (op: NeuerVorgang): Promise<boolean> => {
-      const vorher = new Map(queueRef.current.map((o) => [o.id, JSON.stringify(o)]));
+    async (op: NeuerVorgang, erwartet?: OfflineVorgangsStand | null): Promise<boolean> => {
       const epoche = lokaleSitzungEpoche();
       try {
         return await offlineExklusiv(() => {
@@ -614,7 +616,14 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
                     (o.status === "queued" || o.status === "failed"),
                 )
               : undefined;
-          if (bestehend && vorher.get(bestehend.id) !== JSON.stringify(bestehend)) {
+          if (
+            op.kind === "draft.update" &&
+            (bestehend
+              ? !erwartet ||
+                erwartet.id !== bestehend.id ||
+                erwartet.inhalt !== JSON.stringify(bestehend)
+              : erwartet != null)
+          ) {
             setPersistError(
               "Der Offlinevorgang wurde in einem anderen Fenster geändert. Bitte den neuen Stand prüfen; deine Eingabe bleibt erhalten.",
             );
@@ -639,10 +648,9 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
       id: string,
       payload: DraftPayload,
       title: string,
+      erwartet: OfflineVorgangsStand | null,
       seenUpdatedAt?: string,
-    ): Promise<boolean> => {
-      const vorher = queueRef.current.find((o) => o.id === id);
-      const erwarteterStand = vorher ? JSON.stringify(vorher) : null;
+    ): Promise<OfflineVorgangsStand | false> => {
       const epoche = lokaleSitzungEpoche();
       try {
         return await offlineExklusiv(() => {
@@ -650,8 +658,9 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
           const aktuell = readOfflineQueue<VorgangMitStand>().find((o) => o.id === id);
           if (
             !aktuell ||
-            erwarteterStand === null ||
-            JSON.stringify(aktuell) !== erwarteterStand ||
+            !erwartet ||
+            erwartet.id !== id ||
+            JSON.stringify(aktuell) !== erwartet.inhalt ||
             (aktuell.status !== "queued" && aktuell.status !== "failed")
           ) {
             setPersistError(
@@ -667,13 +676,16 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
             )
           )
             return false;
-          return commitQueue(
-            (q) =>
-              replacePayload(q, id, payload, title).map((o) =>
-                o.id === id && o.status === "queued" ? mitStand(o, seenUpdatedAt) : o,
-              ),
-            epoche,
-          );
+          let neuerStand: OfflineVorgangsStand | false = false;
+          const angenommen = commitQueue((q) => {
+            const neu = replacePayload(q, id, payload, title).map((o) =>
+              o.id === id && o.status === "queued" ? mitStand(o, seenUpdatedAt) : o,
+            );
+            const ersetzt = neu.find((o) => o.id === id);
+            if (ersetzt) neuerStand = offlineVorgangsStand(ersetzt);
+            return neu;
+          }, epoche);
+          return angenommen ? neuerStand : false;
         });
       } catch (e) {
         setPersistError(errMsg(e));

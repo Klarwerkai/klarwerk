@@ -21,6 +21,7 @@ import {
   merkeAntwortRechtewechsel,
 } from "../../apps/web/src/lib/fragenArbeitsstand";
 import { bestaetigeLokalesKonto } from "../../apps/web/src/lib/lokaleSitzung";
+import { offlineVorgangsStand } from "../../apps/web/src/lib/offlineQueue";
 import {
   OFFLINE_PHOTO_PREFIX,
   readOfflineQueue,
@@ -244,9 +245,14 @@ describe("W4.6 dauerhafte Offlineannahme und Sitzungsende", () => {
       expect(
         await Promise.all([
           port("b").queue.enqueue(op("Z")),
-          port("a").queue.replace(x.id, { title: "X-neu", bodyHtml: html }, "X-neu"),
+          port("a").queue.replace(
+            x.id,
+            { title: "X-neu", bodyHtml: html },
+            "X-neu",
+            offlineVorgangsStand(x),
+          ),
         ]),
-      ).toEqual([true, true]);
+      ).toEqual([true, expect.objectContaining({ id: x.id })]);
     });
     expect(
       readOfflineQueue<{ title: string }>()
@@ -515,14 +521,17 @@ it("zwei gleichzeitige Änderungen desselben lokalen Vorgangs werden verglichen;
   });
   const id = port("edit-a").queue.queue[0]?.id;
   if (!id) throw new Error("Lokaler Ausgang fehlt");
+  const initial = port("edit-a").queue.queue.find((o) => o.id === id);
+  if (!initial) throw new Error("Geöffneter Stand fehlt");
+  const basis = offlineVorgangsStand(initial);
   let result: unknown;
   await act(async () => {
     result = await Promise.all([
-      port("edit-a").queue.replace(id, { title: "Erste Änderung" }, "Erste Änderung"),
-      port("edit-b").queue.replace(id, { title: "Zweite Änderung" }, "Zweite Änderung"),
+      port("edit-a").queue.replace(id, { title: "Erste Änderung" }, "Erste Änderung", basis),
+      port("edit-b").queue.replace(id, { title: "Zweite Änderung" }, "Zweite Änderung", basis),
     ]);
   });
-  expect(result).toEqual([true, false]);
+  expect(result).toEqual([expect.objectContaining({ id }), false]);
   expect(readOfflineQueue<{ title: string }>().map((o) => o.title)).toEqual(["Erste Änderung"]);
   expect(port("edit-b").queue.persistError).toContain("anderen Fenster");
 });
@@ -547,4 +556,117 @@ it("gleichzeitige Offlineupdates desselben Serverentwurfs überschreiben keinen 
     "Erste lokale Fassung",
   ]);
   expect(port("update-b").queue.persistError).toContain("anderen Fenster");
+});
+
+it("B verarbeitet die fremde Queueänderung, seine beim Öffnen gebundene replace-Erwartung bleibt trotzdem alt", async () => {
+  await mount("seq-a");
+  await mount("seq-b");
+  await act(async () => {
+    await port("seq-a").queue.enqueue(op("Geöffnet"));
+  });
+  const opened = port("seq-b").queue.queue[0];
+  if (!opened) throw new Error("Geöffneter Vorgang fehlt");
+  const basis = offlineVorgangsStand(opened);
+  await act(async () => {
+    expect(
+      await port("seq-a").queue.replace(opened.id, { title: "Neu von A" }, "Neu von A", basis),
+    ).toMatchObject({ id: opened.id });
+  });
+  await act(async () =>
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "kw.offlineQueue.v1",
+        newValue: localStorage.getItem("kw.offlineQueue.v1"),
+      }),
+    ),
+  );
+  await settle(() => port("seq-b").queue.queue[0]?.title === "Neu von A");
+  let accepted: unknown;
+  await act(async () => {
+    accepted = await port("seq-b").queue.replace(
+      opened.id,
+      { title: "Altes Formular B" },
+      "Altes Formular B",
+      basis,
+    );
+  });
+  expect(accepted).toBe(false);
+  expect(readOfflineQueue<{ title: string }>()[0]?.title).toBe("Neu von A");
+  expect(port("seq-b").queue.persistError).toContain("anderen Fenster");
+});
+it("auch enqueue eines vorhandenen Draftupdates hält Bs geöffnete Basis nach verarbeitetem Storageevent fest", async () => {
+  await mount("seq-update-a");
+  await mount("seq-update-b");
+  const update = (title: string): NeuerVorgang => ({
+    ...op(title),
+    kind: "draft.update",
+    draftId: "seq-server",
+    seenUpdatedAt: "v1",
+  });
+  await act(async () => {
+    expect(await port("seq-update-a").queue.enqueue(update("Geöffnet"), null)).toBe(true);
+  });
+  const opened = port("seq-update-b").queue.queue[0];
+  if (!opened) throw new Error("Geöffneter Vorgang fehlt");
+  const basis = offlineVorgangsStand(opened);
+  await act(async () => {
+    expect(await port("seq-update-a").queue.enqueue(update("Neu von A"), basis)).toBe(true);
+  });
+  await act(async () =>
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "kw.offlineQueue.v1",
+        newValue: localStorage.getItem("kw.offlineQueue.v1"),
+      }),
+    ),
+  );
+  await settle(() => port("seq-update-b").queue.queue[0]?.title === "Neu von A");
+  await act(async () => {
+    expect(await port("seq-update-b").queue.enqueue(update("Altes Formular B"), basis)).toBe(false);
+  });
+  expect(readOfflineQueue<{ title: string }>()[0]?.title).toBe("Neu von A");
+  expect(port("seq-update-b").queue.persistError).toContain("anderen Fenster");
+});
+
+it("ein angenommenes Ersetzen liefert genau die neue Basis für die nächste eigene Speicherung", async () => {
+  await mount("basis-folge");
+  await act(async () => {
+    expect(await port("basis-folge").queue.enqueue(op("Geöffnet"))).toBe(true);
+  });
+  const opened = port("basis-folge").queue.queue[0];
+  if (!opened) throw new Error("Geöffneter Vorgang fehlt");
+  const alteBasis = offlineVorgangsStand(opened);
+  let neueBasis: Awaited<ReturnType<OfflineQueueApi["replace"]>> = false;
+  await act(async () => {
+    neueBasis = await port("basis-folge").queue.replace(
+      opened.id,
+      { title: "Eigene erste Fassung" },
+      "Eigene erste Fassung",
+      alteBasis,
+    );
+  });
+  const gespeichert = readOfflineQueue()[0];
+  if (!gespeichert) throw new Error("Gespeicherter neuer Stand fehlt");
+  expect(neueBasis).toEqual(offlineVorgangsStand(gespeichert));
+  if (!neueBasis) throw new Error("Neue Basis fehlt");
+  const gebundeneBasis = neueBasis;
+  await act(async () => {
+    expect(
+      await port("basis-folge").queue.replace(
+        opened.id,
+        { title: "Eigene zweite Fassung" },
+        "Eigene zweite Fassung",
+        gebundeneBasis,
+      ),
+    ).toMatchObject({ id: opened.id });
+    expect(
+      await port("basis-folge").queue.replace(
+        opened.id,
+        { title: "Veraltet" },
+        "Veraltet",
+        alteBasis,
+      ),
+    ).toBe(false);
+  });
+  expect(readOfflineQueue()[0]?.title).toBe("Eigene zweite Fassung");
 });
