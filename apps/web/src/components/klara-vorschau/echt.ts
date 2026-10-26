@@ -875,7 +875,7 @@ async function frageStellen(
     // WELCHE Grundlage fehlt (zur Markierung, zum Artikel, allgemein) und ob es Ungeprüftes gibt.
     const roh = beantwortet && r.answer ? r.answer : fehlendeGrundlage(antwort, bezug, t);
     const text = roh.slice(0, 20_000);
-    const getragen = r.citedSources?.length ? r.citedSources : r.sources;
+    const getragen = r.citedSources ?? [];
     // Klara 03 · K3: eine Nicht-Antwort hat keine Quelle. Herangezogene Kandidaten neben dem Satz
     // „keine Grundlage“ sähen aus wie Belege, die es nicht gibt.
     const quellen = beantwortet ? getragen.filter((q) => q.length > 0).slice(0, 20) : [];

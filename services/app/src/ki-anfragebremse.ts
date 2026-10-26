@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { sprache } from "../../auth";
+import { mitModellKontext } from "../../reasoner";
 import { Anfragebremse, type BremsGrenze, bremsSatz } from "./anfragebremse";
 import { tokenFromRequest } from "./http";
 
@@ -75,6 +76,18 @@ export interface KiAnfragebremseDeps {
 }
 
 export function registriereKiAnfragebremse(app: FastifyInstance, deps: KiAnfragebremseDeps): void {
+  // Alle HTTP-Wege bekommen denselben ausschließlich authentifizierten Modellkontext.
+  app.addHook("onRequest", (request, _reply, done) => {
+    const token = tokenFromRequest(request);
+    if (!token) {
+      mitModellKontext({}, done);
+      return;
+    }
+    void deps.authenticate(token).then(
+      (user) => mitModellKontext(user ? { actor: user.id } : {}, done),
+      (error: Error) => done(error),
+    );
+  });
   const grenze = deps.grenze;
   if (grenze === null) {
     return;

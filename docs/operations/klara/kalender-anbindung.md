@@ -108,7 +108,7 @@ Der Zugang kommt ausschließlich aus der Betreiber-Einspeisung (derselbe Weg wie
 ```
 KLARWERK_KALENDER_M365_BASE_URL=https://graph.microsoft.com/v1.0
 KLARWERK_KALENDER_M365_TOKEN=<delegiertes Zugangsmerkmal des abgegrenzten Testkalenderkontos>
-KLARWERK_KALENDER_M365_KONTEN=<Klarwerk-Anmeldeadresse>[,<weitere>]
+KLARWERK_KALENDER_M365_KONTO_IDS=<unveränderliche Klarwerk-Konto-ID>[,<weitere>]
 ```
 
 Nur die genannten Klarwerk-Konten erhalten diesen Anbieter; alle anderen sehen „nicht verbunden“. Es

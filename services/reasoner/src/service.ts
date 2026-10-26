@@ -1857,7 +1857,7 @@ export class Reasoner {
         // Derselbe eine Fehlerdatensatz wie bei der Auslastung: das Glied, an dem der Lauf stand,
         // der bis dahin gesammelte Verbrauch und die Versuchsfehler. Ein Schreibfehler verdeckt die
         // Sperre nicht.
-        await this.recordRun(
+        await this.recordRunBestEffort(
           task,
           locale,
           startedAt,
@@ -1939,7 +1939,7 @@ export class Reasoner {
         // Wissensbasis), und `select` rechnet ohnehin ohne Modell. Nennt der Provider kein Modell
         // oder hat keines gearbeitet, FEHLT das Feld — es wird kein Ersatz eingesetzt.
         const model = spur.gerufen ? provider.modelName?.() : undefined;
-        await this.recordRun(
+        await this.recordRunBestEffort(
           task,
           locale,
           startedAt,
@@ -1967,6 +1967,7 @@ export class Reasoner {
         lenkung?.beantwortetVon?.(provider);
         return result;
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") throw err;
         // SCRUM-498 B2: Backpressure ist KEIN Provider-Fehler — nicht auf den deterministischen
         // Fallback ausweichen, sondern durchreichen (die HTTP-Schicht macht daraus 503 + Retry-After).
         // D5: die Abschaltung ebenso — kein Ausweichen auf das nächste Glied, sie gilt für den Lauf.
@@ -1985,7 +1986,7 @@ export class Reasoner {
           versuchsfehler.push(
             `${provider.name}${versuchsModell ? ` (${versuchsModell})` : ""}: ${protokollMeldung(err)}`,
           );
-          await this.recordRun(
+          await this.recordRunBestEffort(
             task,
             locale,
             startedAt,
@@ -2028,7 +2029,7 @@ export class Reasoner {
     }
     // mega26 Block A: der FEHLGESCHLAGENE Lauf trägt denselben Kontext wie der erfolgreiche —
     // gerade der Fehlerfall ist der, den ein Prüfer später zuordnen können muss.
-    await this.recordRun(
+    await this.recordRunBestEffort(
       task,
       locale,
       startedAt,
@@ -2101,6 +2102,14 @@ export class Reasoner {
       ...(ausgang.status === "success" ? erzeugtFeld(ausgang.erzeugt) : {}),
       versuche: lb.versuchsliste,
     }).catch(() => undefined);
+  }
+
+  private async recordRunBestEffort(...args: Parameters<Reasoner["recordRun"]>): Promise<void> {
+    try {
+      await this.recordRun(...args);
+    } catch {
+      console.warn("[KLARWERK] KI-Laufprotokoll konnte nicht gespeichert werden.");
+    }
   }
 
   private async recordRun(

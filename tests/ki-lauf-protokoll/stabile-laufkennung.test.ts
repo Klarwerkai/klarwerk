@@ -197,16 +197,16 @@ describe("R-1373 / PL1a: eine vorab gebildete Kennung je runTask-Lauf", () => {
     });
   }
 
-  it("L7 · fehlgeschlagener finaler Write: der bestehende Fortsetzungsweg behält die ID", async () => {
+  it("L7 · fehlgeschlagener finaler Write: Ergebnis und eine Laufkennung bleiben, kein weiterer Modellversuch", async () => {
     const env = await aufbau(async () => VORSCHLAG);
     env.append.mockRejectedValueOnce(new Error("Speicher vorübergehend nicht erreichbar"));
 
     expect((await env.reasoner.assistText(SATZ, "de")).text).toBe(VORSCHLAG);
 
     startVorSchreiben(env.starts, 1);
-    // Der erste Write scheiterte. Der vorhandene Fortsetzungsweg schreibt erst nach dem
-    // nächsten Versuch erneut; beide Übergaben müssen dieselbe vorab gebildete ID tragen.
-    expect(env.append.mock.calls.map(([lauf]) => lauf.id)).toEqual([LAUF_ID, LAUF_ID]);
-    expect((await einzigerLauf(env.repo))?.versuche).toHaveLength(2);
+    // Der eine Write scheiterte; das bezahlte gültige Ergebnis bleibt erhalten.
+    expect(env.append.mock.calls.map(([lauf]) => lauf.id)).toEqual([LAUF_ID]);
+    expect(env.append.mock.calls[0]?.[0].versuche).toHaveLength(1);
+    expect(await env.repo.recent(10)).toEqual([]); // ehrlich: kein gespeicherter Lauf
   });
 });

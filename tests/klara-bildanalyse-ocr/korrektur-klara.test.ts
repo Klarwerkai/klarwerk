@@ -101,10 +101,10 @@ describe("B1 · K5 — Klara verwendet die berichtigte Fassung für Frage und Zu
     expect(b?.korrektur?.rohText).toBe("Herr Mül1er zahlt 4.250 EUR");
 
     const k = klaraBildKontext("Begleittext der Datei.", [wirksam], t, ortVon);
-    expect(k.kontext).toContain(
+    expect(quelltext(k.kontext)).toContain(
       "[rechnung.png · Bild 1] bildfundstelle.kontext.textBerichtigt: Herr Müller zahlt 4.250 EUR",
     );
-    expect(k.kontext).not.toContain("Mül1er");
+    expect(quelltext(k.kontext)).not.toContain("Mül1er");
     // Frage UND Zusammenfassung bekommen denselben (berichtigten) Kontext — die Anweisung ändert nur
     // den Auftrag.
     expect(klaraAnweisung("frage", "Wer zahlt?", k, t)).toContain("Wer zahlt?");
@@ -117,7 +117,9 @@ describe("B1 · K5 — Klara verwendet die berichtigte Fassung für Frage und Zu
 
     // Ohne Berichtigung: derselbe Weg mit dem Rohbefund (Gegenprobe).
     const ohne = klaraBildKontext("", [roh], t, ortVon);
-    expect(ohne.kontext).toContain("klarabildkontext.kontext.text: Herr Mül1er zahlt 4.250 EUR");
+    expect(quelltext(ohne.kontext)).toContain(
+      "klarabildkontext.kontext.text: Herr Mül1er zahlt 4.250 EUR",
+    );
     // Der Fingerabdruck unterscheidet beide Stände (eine Antwort zum Rohbefund gilt danach nicht).
     expect(korrekturFingerabdruck([wirksam])).not.toBe(korrekturFingerabdruck([roh]));
   });
@@ -252,8 +254,8 @@ describe("B5 · K5 — die Berichtigung wirkt auch in der Bildbeschreibung desse
     expect(b?.korrektur?.rohBildinhalt).toContain("LAGFR");
 
     const k = klaraBildKontext("Lagerliste.", [wirksam as QuellenBefund], t, ortVon);
-    expect(k.kontext).not.toMatch(/LAGFR/i);
-    expect(k.kontext).toContain("klarabildkontext.kontext.inhalt: Ein weißes Schild");
+    expect(quelltext(k.kontext)).not.toMatch(/LAGFR/i);
+    expect(quelltext(k.kontext)).toContain("klarabildkontext.kontext.inhalt: Ein weißes Schild");
     for (const auftrag of ["frage", "zusammenfassung"] as const) {
       expect(klaraAnweisung(auftrag, "Was steht auf dem Bild?", k, t)).toContain(
         "bildfundstelle.anweisung.berichtigt",
@@ -261,7 +263,7 @@ describe("B5 · K5 — die Berichtigung wirkt auch in der Bildbeschreibung desse
     }
     // Ohne Berichtigung: keine solche Anweisung, Beschreibung unverändert (Gegenprobe).
     const ohne = klaraBildKontext("", [roh], t, ortVon);
-    expect(ohne.kontext).toContain("LAGFR 4711");
+    expect(quelltext(ohne.kontext)).toContain("LAGFR 4711");
     expect(klaraAnweisung("frage", "x", ohne, t)).not.toContain("bildfundstelle.anweisung");
     expect(b?.korrektur?.beschreibungNichtAngeglichen).toBeUndefined();
   });
@@ -314,9 +316,9 @@ describe("B6 · K5/K8 — wiederholte Wörter und Zahlen: Angleichung nur bei ei
     expect(b?.bildinhalt.text).toBe("Links 10, rechts 10");
     expect(b?.korrektur?.beschreibungNichtAngeglichen).toBe(true);
     const k = klaraBildKontext("", [wirksam as QuellenBefund], t, ortVon);
-    expect(k.kontext).not.toContain("11, rechts 11");
-    expect(k.kontext).toContain("bildfundstelle.kontext.textBerichtigt: 10 11");
-    expect(k.kontext).toContain(
+    expect(quelltext(k.kontext)).not.toContain("11, rechts 11");
+    expect(quelltext(k.kontext)).toContain("bildfundstelle.kontext.textBerichtigt: 10 11");
+    expect(quelltext(k.kontext)).toContain(
       "bildfundstelle.kontext.inhaltVorBerichtigung: Links 10, rechts 10",
     );
     expect(klaraAnweisung("zusammenfassung", "", k, t)).toContain(
@@ -397,8 +399,8 @@ describe("B7 · K5/K7/K8 — entfernte oder nicht zuordenbare Wörter in der Bes
 
       const k = klaraBildKontext("", [wirksam as QuellenBefund], t, ortVon);
       expect(k.eintraege[0]?.bildinhaltVorBerichtigung, art).toBe(true);
-      expect(k.kontext, art).toContain(alt);
-      expect(k.kontext, art).not.toContain(aktuell);
+      expect(quelltext(k.kontext), art).toContain(alt);
+      expect(quelltext(k.kontext), art).not.toContain(aktuell);
       for (const auftrag of ["frage", "zusammenfassung"] as const) {
         expect(klaraAnweisung(auftrag, frage, k, t), art).toContain(
           "bildfundstelle.anweisung.berichtigt",
@@ -418,7 +420,7 @@ describe("B7 · K5/K7/K8 — entfernte oder nicht zuordenbare Wörter in der Bes
     const [zurueck] = quellenMitKorrekturen([roh], praefix, []);
     expect(zurueck?.befunde[0]).toBe(bild);
     const k = klaraBildKontext("", [zurueck as QuellenBefund], t, ortVon);
-    expect(k.kontext).toContain(aktuell);
+    expect(quelltext(k.kontext)).toContain(aktuell);
     expect(belegstellen(frage, "", k).map((x) => [x.art, x.auszug])).toEqual([
       ["bild", `${ROH_T} — ${BESCHREIBUNG}`],
     ]);
@@ -431,3 +433,12 @@ describe("B7 · K5/K7/K8 — entfernte oder nicht zuordenbare Wörter in der Bes
     expect(eingang.vorkommen[0]?.src).toBe(vorher);
   });
 });
+
+// OCR3: derselbe legitime Text und dieselben Fundstellen liegen jetzt in begrenzten JSON-Daten.
+function quelltext(kontext: string): string {
+  const daten = JSON.parse(kontext.split("\n")[1] ?? "null") as {
+    dokument: string;
+    hinweise: string[];
+  };
+  return [daten.dokument, ...daten.hinweise].join("\n\n");
+}

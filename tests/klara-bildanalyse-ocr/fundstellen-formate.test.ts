@@ -159,8 +159,8 @@ describe("W1 · Tabelle — Fundstelle einer Zelle und Berichtigung einer Zelle"
     nahe(bereichVon(b, "10"), { links: 40, oben: 70, breite: 4, hoehe: 40 / 3 });
     // Klara bekommt die Berichtigung, nicht den Lesefehler.
     const k = klaraBildKontext("", [wirksam as QuellenBefund], t, ortVon);
-    expect(k.kontext).toContain("Dichtung 10 0,80");
-    expect(k.kontext).not.toContain("1O");
+    expect(quelltext(k.kontext)).toContain("Dichtung 10 0,80");
+    expect(quelltext(k.kontext)).not.toContain("1O");
     // Grenze (OCR-E03): die erkannte Tabelle wird nicht nachgebaut, sie bleibt als Rohbefund.
     expect(b.tabelle).toBeNull();
     expect(b.korrektur?.rohTabelle?.[2]).toEqual(["Dichtung", "1O", "0,80"]);
@@ -212,10 +212,12 @@ describe("W2 · Mehrseitig — erste und letzte Seite, Teilfehler, Berichtigung 
       "Seite 3 Ergebnis 70",
     ]);
     const k = klaraBildKontext("", [wirksam as QuellenBefund], t, ortVon);
-    expect(k.kontext).toContain(
+    expect(quelltext(k.kontext)).toContain(
       "[scan.pptx · Folie 2, Bild 2] bildfundstelle.kontext.textBerichtigt: Seite 3 Ergebnis 70",
     );
-    expect(k.kontext).toContain("[scan.pptx · Folie 2, Bild 1] klarabildkontext.kontext.offen");
+    expect(quelltext(k.kontext)).toContain(
+      "[scan.pptx · Folie 2, Bild 1] klarabildkontext.kontext.offen",
+    );
     expect(k.vollstaendig).toBe(false);
   });
 });
@@ -257,10 +259,10 @@ describe("W3 · Gemischtes Dokument — nativer Text unverändert, jedes Bild zu
       "Folie 2, Bild 2",
     ]);
     expect(k.gesamt).toBe(4);
-    expect(k.kontext).toContain("VENTIL 83");
-    expect(k.kontext).not.toContain("VENTIL 8E");
+    expect(quelltext(k.kontext)).toContain("VENTIL 83");
+    expect(quelltext(k.kontext)).not.toContain("VENTIL 8E");
     // Der native Text der Datei ist durch die Berichtigung nicht verändert.
-    expect(k.kontext.startsWith(pptx.text.trim())).toBe(true);
+    expect(quelltext(k.kontext).startsWith(pptx.text.trim())).toBe(true);
   });
 });
 
@@ -299,14 +301,14 @@ describe("W4 · Tatsächliche und scheinbare Zahlenabweichung — getrennte Fund
       t,
       ortVon,
     );
-    expect(k.kontext).toContain(dokument);
-    expect(k.kontext).toContain(
+    expect(quelltext(k.kontext)).toContain(dokument);
+    expect(quelltext(k.kontext)).toContain(
       "[angebot.png · Bild 1] klarabildkontext.kontext.text: Gesamtsumme 1.800 €",
     );
-    expect(k.kontext).toContain(
+    expect(quelltext(k.kontext)).toContain(
       "[rechnung.png · Bild 1] bildfundstelle.kontext.textBerichtigt: Gesamtsumme 1.500 €",
     );
-    expect(k.kontext).not.toContain("1.5OO");
+    expect(quelltext(k.kontext)).not.toContain("1.5OO");
   });
 });
 
@@ -343,3 +345,12 @@ describe("W5 · Ausgewählter Bereich — zwei Textblöcke in einem Bild", () =>
     nahe(bereichVon(b, "ANGEBOT"), { links: 4, oben: 5, breite: 26, hoehe: 7.5 });
   });
 });
+
+// OCR3: derselbe legitime Text und dieselben Fundstellen liegen jetzt in begrenzten JSON-Daten.
+function quelltext(kontext: string): string {
+  const daten = JSON.parse(kontext.split("\n")[1] ?? "null") as {
+    dokument: string;
+    hinweise: string[];
+  };
+  return [daten.dokument, ...daten.hinweise].join("\n\n");
+}

@@ -4621,6 +4621,9 @@ const en: typeof de = {
   "prof.correctTitle": "Correct account details",
   "prof.correctPassword": "Current password (only for a new email)",
   "prof.correctSubmit": "Save account details",
+  emailPending:
+    "Please confirm the new address using the email. Your previous address remains valid until then.",
+  emailConfirm: "Confirm new email address",
   "prof.correctSaved": "Account details saved.",
   "prof.correctUnchanged": "Nothing changed.",
   "prof.correctSso": "Confirm with SSO instead",

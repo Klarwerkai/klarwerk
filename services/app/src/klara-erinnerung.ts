@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import { mitModellKontext } from "../../reasoner";
 import type { KlaraAufgabeRepo } from "./klara-aufgabe";
 import {
   type LokaleZeit,
@@ -1104,15 +1105,16 @@ export class InMemoryKlaraErinnerungRepo implements KlaraErinnerungRepo {
 
   faellige(jetzt: number, limit: number): Promise<KlaraErinnerungEintrag[]> {
     return Promise.resolve(
-      [...this.eintraege.values()]
-        .filter(
-          (e) =>
-            e.erinnerung.status === "aktiv" &&
-            e.steuer.naechste !== null &&
-            e.steuer.naechste <= jetzt,
-        )
-        .sort((a, b) => (a.steuer.naechste ?? 0) - (b.steuer.naechste ?? 0))
-        .slice(0, limit),
+      faireErinnerungen(
+        [...this.eintraege.values()]
+          .filter(
+            (e) =>
+              e.erinnerung.status === "aktiv" &&
+              e.steuer.naechste !== null &&
+              e.steuer.naechste <= jetzt,
+          )
+          .sort((a, b) => (a.steuer.naechste ?? 0) - (b.steuer.naechste ?? 0)),
+      ).slice(0, limit),
     );
   }
 
@@ -1343,14 +1345,16 @@ export class InMemoryKlaraErinnerungLaufRepo implements KlaraErinnerungLaufRepo 
   ): Promise<KlaraErinnerungLauf[]> {
     const jetztIso = new Date(jetzt).toISOString();
     return Promise.resolve(
-      [...this.laeufe.values()]
-        .filter(
-          (l) =>
-            (l.status === "laeuft" && (l.leaseBis ?? "") < jetztIso) ||
-            ((l.status === "fehlgeschlagen" || fortsetzbarerTeil(l)) && l.versuch < maxVersuche),
-        )
-        .sort((a, b) => a.geplantFuer.localeCompare(b.geplantFuer))
-        .slice(0, limit),
+      faireReihenfolge(
+        [...this.laeufe.values()]
+          .filter(
+            (l) =>
+              (l.status === "laeuft" && (l.leaseBis ?? "") < jetztIso) ||
+              ((l.status === "fehlgeschlagen" || fortsetzbarerTeil(l)) && l.versuch < maxVersuche),
+          )
+          .sort((a, b) => a.geplantFuer.localeCompare(b.geplantFuer)),
+        (l) => l.kontoId,
+      ).slice(0, limit),
     );
   }
 
@@ -1804,9 +1808,12 @@ export class PgKlaraErinnerungRepo implements KlaraErinnerungRepo {
 
   async faellige(jetzt: number, limit: number): Promise<KlaraErinnerungEintrag[]> {
     const res = await this.pool.query<ErinnerungZeile>(
-      `SELECT ${ERINNERUNG_SPALTEN} FROM klara_erinnerungen
-        WHERE status = 'aktiv' AND naechste_faelligkeit IS NOT NULL AND naechste_faelligkeit <= $1
-        ORDER BY naechste_faelligkeit, id LIMIT $2`,
+      `WITH kandidaten AS (
+          SELECT ${ERINNERUNG_SPALTEN}, id, row_number() OVER (PARTITION BY konto_id ORDER BY naechste_faelligkeit, id) AS konto_rang
+          FROM klara_erinnerungen
+          WHERE status = 'aktiv' AND naechste_faelligkeit IS NOT NULL AND naechste_faelligkeit <= $1
+        )
+        SELECT ${ERINNERUNG_SPALTEN} FROM kandidaten ORDER BY konto_rang, naechste_faelligkeit, id LIMIT $2`,
       [new Date(jetzt), limit],
     );
     return res.rows.map(eintragAus);
@@ -1995,10 +2002,13 @@ export class PgKlaraErinnerungLaufRepo implements KlaraErinnerungLaufRepo {
     limit: number,
   ): Promise<KlaraErinnerungLauf[]> {
     const res = await this.pool.query<LaufZeile>(
-      `SELECT ${LAUF_SPALTEN} FROM klara_erinnerung_laeufe
-        WHERE (status = 'laeuft' AND lease_bis < $1)
-           OR ((status = 'fehlgeschlagen' OR ${fortsetzbarSql("")}) AND versuch < $2)
-        ORDER BY geplant_fuer LIMIT $3`,
+      `WITH kandidaten AS (
+          SELECT ${LAUF_SPALTEN},
+             row_number() OVER (PARTITION BY konto_id ORDER BY geplant_fuer, vorkommen_id) AS konto_rang
+          FROM klara_erinnerung_laeufe
+          WHERE (status = 'laeuft' AND lease_bis < $1)
+             OR ((status = 'fehlgeschlagen' OR ${fortsetzbarSql("")}) AND versuch < $2)
+        ) SELECT ${LAUF_SPALTEN} FROM kandidaten ORDER BY konto_rang, geplant_fuer LIMIT $3`,
       [new Date(jetzt), maxVersuche, limit],
     );
     return res.rows.map(laufAus);
@@ -3977,7 +3987,10 @@ export interface KlaraErinnerungSteuerungDeps {
    * vertraulich). `ki`: ein Modell hat geantwortet (nicht der gekennzeichnete Ersatz). Fehlt er oder
    * scheitert er, ist die Zusammenfassung `nicht_verfuegbar` — die Erinnerung kommt trotzdem.
    */
-  readonly zusammenfassen?: (text: string) => Promise<{ text: string; ki: boolean }>;
+  readonly zusammenfassen?: (
+    text: string,
+    kontoId: string,
+  ) => Promise<{ text: string; ki: boolean }>;
   /**
    * Klara 11 (P07-AC05): die dauerhafte Sperre GENAU EINES Vorkommens aus der Kalenderanbindung —
    * gelesen unmittelbar vor jeder Wirkung. Fehlt sie, gibt es keine Kalendersperre.
@@ -4039,6 +4052,30 @@ interface RoutineEntwurf {
   readonly pflegeQuellen?: readonly GelesenePflegeQuelle[];
 }
 
+/** Runde je tatsächlichem Konto; keine zusätzliche Queue und keine parallele Wirkung. */
+function faireReihenfolge<T>(eintraege: readonly T[], kontoVon: (e: T) => string): T[] {
+  const konten = new Map<string, T[]>();
+  for (const e of eintraege) {
+    const konto = kontoVon(e);
+    const gruppe = konten.get(konto) ?? [];
+    gruppe.push(e);
+    konten.set(konto, gruppe);
+  }
+  const runden = [...konten.values()].map((gruppe) => ({ gruppe, index: 0 }));
+  const result: T[] = [];
+  for (let i = 0; i < runden.length; i++) {
+    const runde = runden[i];
+    if (!runde) continue;
+    const e = runde.gruppe[runde.index++];
+    if (e !== undefined) result.push(e);
+    if (runde.index < runde.gruppe.length) runden.push(runde);
+  }
+  return result;
+}
+function faireErinnerungen(eintraege: readonly KlaraErinnerungEintrag[]): KlaraErinnerungEintrag[] {
+  return faireReihenfolge(eintraege, (e) => e.erinnerung.kontoId);
+}
+
 export class KlaraErinnerungSteuerung {
   private readonly deps: KlaraErinnerungSteuerungDeps;
   private readonly jetzt: () => number;
@@ -4087,9 +4124,19 @@ export class KlaraErinnerungSteuerung {
     try {
       const faellig = await this.deps.ablage.erinnerungen.faellige(beginn, 200);
       z.faelligeErinnerungen = faellig.length;
-      for (const eintrag of faellig) {
+      const jeKonto = new Map<string, number>();
+      const fair = faireErinnerungen(faellig).sort(
+        (a, b) =>
+          Number(a.erinnerung.aktion === "inhalt_zusammenfassen") -
+          Number(b.erinnerung.aktion === "inhalt_zusammenfassen"),
+      );
+      for (const eintrag of fair) {
+        const konto = eintrag.erinnerung.kontoId;
+        const anzahl = jeKonto.get(konto) ?? 0;
+        if (anzahl >= 5) continue;
+        jeKonto.set(konto, anzahl + 1);
         try {
-          await this.bearbeite(eintrag, z);
+          await mitModellKontext({ actor: konto }, () => this.bearbeite(eintrag, z));
         } catch {
           z.fehler += 1;
         }
@@ -4099,9 +4146,12 @@ export class KlaraErinnerungSteuerung {
         KLARA_ERINNERUNG_MAX_VERSUCHE,
         200,
       );
-      for (const lauf of offen) {
+      for (const lauf of faireReihenfolge(offen, (l) => l.kontoId)) {
+        const anzahl = jeKonto.get(lauf.kontoId) ?? 0;
+        if (anzahl >= 5) continue;
+        jeKonto.set(lauf.kontoId, anzahl + 1);
         try {
-          await this.nimmWiederAuf(lauf, z);
+          await mitModellKontext({ actor: lauf.kontoId }, () => this.nimmWiederAuf(lauf, z));
         } catch {
           z.fehler += 1;
         }
@@ -4472,6 +4522,7 @@ export class KlaraErinnerungSteuerung {
     try {
       const r = await this.deps.zusammenfassen(
         quelle.text.slice(0, KLARA_ERINNERUNG_ZUSAMMENFASSUNG_QUELLE_MAX),
+        e.kontoId,
       );
       const ergebnis = r.text.trim();
       if (ergebnis.length === 0) {

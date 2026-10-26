@@ -5,6 +5,27 @@ export type Sprache = "de" | "en" | "nl";
 // änderte eine Umformulierung im Dienstmodul still einen Text, den Menschen in drei Sprachen sehen,
 // und nur die deutsche Fassung liefe mit. Gehalten von tests/q9-oidc-literalquelle/.
 export const MELDUNGEN = {
+  EMAIL_CHANGE_INVALID: {
+    de: "Diese Adressbestätigung ist ungültig oder abgelaufen.",
+    en: "This email confirmation is invalid or has expired.",
+    nl: "Deze adresbevestiging is ongeldig of verlopen.",
+  },
+  EMAIL_CHANGE_UNAVAILABLE: {
+    de: "Die neue Adresse kann derzeit nicht per E-Mail bestätigt werden. Die bisherige Adresse bleibt gültig.",
+    en: "The new address cannot currently be confirmed by email. The previous address remains valid.",
+    nl: "Het nieuwe adres kan momenteel niet per e-mail worden bevestigd. Het vorige adres blijft geldig.",
+  },
+  EMAIL_CHANGE_SUBJECT: {
+    de: "KLARWERK: Neue E-Mail-Adresse bestätigen",
+    en: "KLARWERK: Confirm your new email address",
+    nl: "KLARWERK: Bevestig je nieuwe e-mailadres",
+  },
+  EMAIL_CHANGE_BODY: {
+    de: "Bestätigen Sie Ihre neue Adresse über diesen Link (15 Minuten gültig). Melden Sie sich dazu mit Ihrem bisherigen Konto an:",
+    en: "Confirm your new email address using this link (valid for 15 minutes). Sign in with your existing account:",
+    nl: "Bevestig je nieuwe e-mailadres via deze link (15 minuten geldig). Meld je aan met je bestaande account:",
+  },
+
   INVALID_CREDENTIALS: {
     de: "E-Mail oder Passwort falsch.",
     en: "Email or password is incorrect.",

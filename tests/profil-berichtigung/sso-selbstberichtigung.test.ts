@@ -91,7 +91,19 @@ async function baueApp(): Promise<Buehne> {
     { keyResolver: JWKS, tokenExchanger: () => idToken() },
   );
   const app = Fastify();
-  await app.register(authRoutes(service, { oidc: provider }));
+  const mails: { to: string; text: string }[] = [];
+  mailAusgang.set(app, mails);
+  await app.register(
+    authRoutes(service, {
+      oidc: provider,
+      mailer: {
+        send: async (m) => {
+          mails.push(m);
+        },
+      },
+      resetBaseUrl: "https://klarwerk.attrappe.test/reset",
+    }),
+  );
   await app.ready();
   return { app, audit };
 }
@@ -188,7 +200,9 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
     expect(zielCookie(bestaetigt.antwort)).toMatch(/^kw_oidc_ziel=;.*Max-Age=0/);
 
     const r = await berichtige(app, bestaetigt.token, { email: NEU });
-    expect(r.statusCode, r.body).toBe(200);
+    expect(r.statusCode, r.body).toBe(202);
+    expect((await ich(app, bestaetigt.token)).email).toBe(ALT);
+    await bestaetigeNeueAdresse(app, bestaetigt.token);
     expect((await ich(app, bestaetigt.token)).email).toBe(NEU);
 
     const eintraege = (await audit.list({})) as {
@@ -211,7 +225,8 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
     const { app } = await baueApp();
     const ausgang = await sso(app, null);
     const { token } = await sso(app, "profil", ausgang.token);
-    expect((await berichtige(app, token, { email: NEU })).statusCode).toBe(200);
+    expect((await berichtige(app, token, { email: NEU })).statusCode).toBe(202);
+    await bestaetigeNeueAdresse(app, token);
     const nochmal = await berichtige(app, token, { email: "dritte@firma.de" });
     expect(nochmal.statusCode).toBe(403);
     expect((await ich(app, token)).email).toBe(NEU);
@@ -223,7 +238,8 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
     const { token } = await sso(app, "profil", ausgang.token);
     const falsch = await berichtige(app, token, { email: "kein-at" });
     expect(falsch.statusCode).toBe(400);
-    expect((await berichtige(app, token, { email: NEU })).statusCode).toBe(200);
+    expect((await berichtige(app, token, { email: NEU })).statusCode).toBe(202);
+    await bestaetigeNeueAdresse(app, token);
   });
 
   it("P4 — sitzungsgebunden, und eine gewöhnliche SSO-Anmeldung bestätigt nichts", async () => {
@@ -236,7 +252,8 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
     expect(fremd.statusCode, "die Bestätigung hängt an der Sitzung des Rückrufs").toBe(403);
     expect((await ich(app, andereSitzung.token)).email).toBe(ALT);
     // Die bestätigte Sitzung kann es weiterhin.
-    expect((await berichtige(app, bestaetigt.token, { email: NEU })).statusCode).toBe(200);
+    expect((await berichtige(app, bestaetigt.token, { email: NEU })).statusCode).toBe(202);
+    await bestaetigeNeueAdresse(app, bestaetigt.token);
   });
 
   it("P5 — befristet: nach fünf Minuten gilt die Bestätigung nicht mehr", async () => {
@@ -293,3 +310,19 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
     }
   });
 });
+
+const mailAusgang = new WeakMap<FastifyInstance, { to: string; text: string }[]>();
+async function bestaetigeNeueAdresse(app: FastifyInstance, sitzung: string): Promise<void> {
+  const mail = mailAusgang.get(app)?.at(-1);
+  expect(mail?.to).toBe(NEU);
+  const link = new URL(mail?.text.split("\n").at(-1) ?? "");
+  const token = link.searchParams.get("emailBestaetigung");
+  expect(token).toBeTruthy();
+  const r = await app.inject({
+    method: "POST",
+    url: "/api/auth/me/email/confirm",
+    headers: { authorization: `Bearer ${sitzung.replace(/^kw_session=/, "")}` },
+    payload: { token },
+  });
+  expect(r.statusCode, r.body).toBe(200);
+}

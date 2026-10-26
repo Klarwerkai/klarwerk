@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import type {
+  EmailChange,
   PasswordResetRepo,
   ResetToken,
   SecondFactor,
@@ -84,6 +85,13 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE TABLE IF NOT EXISTS password_resets (
   token text PRIMARY KEY,
   user_id text NOT NULL,
+  expires_at bigint NOT NULL
+);
+CREATE TABLE IF NOT EXISTS email_changes (
+  token text PRIMARY KEY,
+  user_id text NOT NULL UNIQUE,
+  email text NOT NULL,
+  previous_email text NOT NULL,
   expires_at bigint NOT NULL
 );
 -- R-0562: der eigene zweite Faktor (TOTP) je Konto. Eigene Tabelle statt Spalten an users, damit
@@ -526,6 +534,39 @@ export class PgPasswordResetRepo implements PasswordResetRepo {
 
   async delete(token: string): Promise<void> {
     await this.pool.query("DELETE FROM password_resets WHERE token=$1", [token]);
+  }
+  async createEmailChange(entry: EmailChange): Promise<void> {
+    await this.pool.query(
+      "INSERT INTO email_changes(token,user_id,email,previous_email,expires_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(user_id) DO UPDATE SET token=excluded.token,email=excluded.email,previous_email=excluded.previous_email,expires_at=excluded.expires_at",
+      [entry.token, entry.userId, entry.email, entry.previousEmail, entry.expiresAt],
+    );
+  }
+  async takeEmailChange(
+    token: string,
+    userId: string,
+    now: number,
+  ): Promise<EmailChange | undefined> {
+    const result = await this.pool.query<{
+      token: string;
+      user_id: string;
+      email: string;
+      previous_email: string;
+      expires_at: string;
+    }>("DELETE FROM email_changes WHERE token=$1 AND user_id=$2 AND expires_at>$3 RETURNING *", [
+      token,
+      userId,
+      now,
+    ]);
+    const row = result.rows[0];
+    return row
+      ? {
+          token: row.token,
+          userId: row.user_id,
+          email: row.email,
+          previousEmail: row.previous_email,
+          expiresAt: Number(row.expires_at),
+        }
+      : undefined;
   }
 }
 

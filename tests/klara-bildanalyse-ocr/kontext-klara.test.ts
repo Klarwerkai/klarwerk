@@ -71,10 +71,16 @@ describe("C1 · K1 — Text nur im eingebetteten Bild, mit Folie und Bild", () =
     expect(DOKUMENT).not.toContain("LAGER");
 
     const k = klaraBildKontext(DOKUMENT, [befund], t, ortVon, [eingang]);
-    expect(k.kontext).toContain("Wartungsplan");
-    expect(k.kontext).toContain(`[wartung.pptx · Folie 1, Bild 1] Bildtext: ${TEXT_JE_MARKE.A}`);
-    expect(k.kontext).toContain(`[wartung.pptx · Folie 2, Bild 1] Bildtext: ${TEXT_JE_MARKE.B}`);
-    expect(k.kontext).toContain(`[wartung.pptx · Folie 2, Bild 2] Bildtext: ${TEXT_JE_MARKE.C}`);
+    expect(quelltext(k.kontext)).toContain("Wartungsplan");
+    expect(quelltext(k.kontext)).toContain(
+      `[wartung.pptx · Folie 1, Bild 1] Bildtext: ${TEXT_JE_MARKE.A}`,
+    );
+    expect(quelltext(k.kontext)).toContain(
+      `[wartung.pptx · Folie 2, Bild 1] Bildtext: ${TEXT_JE_MARKE.B}`,
+    );
+    expect(quelltext(k.kontext)).toContain(
+      `[wartung.pptx · Folie 2, Bild 2] Bildtext: ${TEXT_JE_MARKE.C}`,
+    );
 
     const belege = belegstellen("Welche Nummer hat das Lager?", DOKUMENT, k);
     expect(belege[0]).toMatchObject({
@@ -88,7 +94,7 @@ describe("C1 · K1 — Text nur im eingebetteten Bild, mit Folie und Bild", () =
 
     const anweisung = klaraAnweisung("frage", "Welche Nummer hat das Lager?", k, t);
     expect(anweisung).toContain("Welche Nummer hat das Lager?");
-    expect(anweisung).toContain("[wartung.pptx · Folie 1, Bild 1]");
+    expect(anweisung).toContain(i18n.t("klarabildkontext.anweisung.beispiel"));
     expect(anweisung).toContain("erfinde keinen Text");
   });
 });
@@ -98,10 +104,10 @@ describe("C2 · K2 — Zusammenfassung mit Dokumenttext UND Bildtext", () => {
     const { eingang, befund } = await gelesenesDeck();
     const k = klaraBildKontext(DOKUMENT, [befund], t, ortVon, [eingang]);
     for (const zeile of FOLIENTEXT) {
-      expect(k.kontext).toContain(zeile);
+      expect(quelltext(k.kontext)).toContain(zeile);
     }
     for (const marke of ["A", "B", "C"]) {
-      expect(k.kontext).toContain(TEXT_JE_MARKE[marke] as string);
+      expect(quelltext(k.kontext)).toContain(TEXT_JE_MARKE[marke] as string);
     }
     const anweisung = klaraAnweisung("zusammenfassung", "", k, t);
     expect(anweisung).toContain(i18n.t("klarabildkontext.anweisung.zusammenfassung"));
@@ -117,7 +123,7 @@ describe("C2 · K2 — Zusammenfassung mit Dokumenttext UND Bildtext", () => {
     expect(anweisung).toContain(
       i18n.t("klarabildkontext.anweisung.unvollstaendig", { offen: 1, gesamt: 4 }),
     );
-    expect(k.kontext).toContain(i18n.t("bildautomatik.hinweis.pptxLayout"));
+    expect(quelltext(k.kontext)).toContain(i18n.t("bildautomatik.hinweis.pptxLayout"));
   });
 });
 
@@ -139,13 +145,13 @@ describe("C3 · laufende Analyse — kein Anschein von Vollständigkeit", () => 
     const k = klaraBildKontext(DOKUMENT, [mitten as QuellenBefund], t, ortVon, [eingang]);
     expect(k.laeuft).toBe(true);
     expect(k.vollstaendig).toBe(false);
-    expect(k.kontext).toContain(TEXT_JE_MARKE.A as string);
-    expect(k.kontext).not.toContain(TEXT_JE_MARKE.B as string);
-    expect(k.kontext).not.toContain(TEXT_JE_MARKE.C as string);
+    expect(quelltext(k.kontext)).toContain(TEXT_JE_MARKE.A as string);
+    expect(quelltext(k.kontext)).not.toContain(TEXT_JE_MARKE.B as string);
+    expect(quelltext(k.kontext)).not.toContain(TEXT_JE_MARKE.C as string);
     const laeuft = i18n.t("klarabildkontext.kontext.offen", {
       status: i18n.t("bildautomatik.status.laeuft"),
     });
-    expect(k.kontext).toContain(`[wartung.pptx · Folie 2, Bild 1] ${laeuft}`);
+    expect(quelltext(k.kontext)).toContain(`[wartung.pptx · Folie 2, Bild 1] ${laeuft}`);
     const anweisung = klaraAnweisung("frage", "Was steht auf Folie 2?", k, t);
     expect(anweisung).toContain(i18n.t("klarabildkontext.anweisung.laeuft"));
     expect(anweisung).toContain("behaupte keine Vollständigkeit");
@@ -158,7 +164,7 @@ describe("C4 · K6 — nur Befunde der aktuellen Quelle", () => {
     const neu = pptxBildEingang("neu.pptx", pptx.html, pptx);
     const fremd = klaraBildKontext(DOKUMENT, [befund], t, ortVon, [neu]);
     expect(fremd.eintraege).toEqual([]);
-    expect(fremd.kontext).not.toContain(TEXT_JE_MARKE.A as string);
+    expect(quelltext(fremd.kontext)).not.toContain(TEXT_JE_MARKE.A as string);
 
     // Rumpf: derselbe Quellname, aber das Bild an Position 1 trägt einen anderen Anker.
     const bild = dataUrl(bildMit("A"));
@@ -170,7 +176,7 @@ describe("C4 · K6 — nur Befunde der aktuellen Quelle", () => {
     const jetzt = rumpfBildEingang("diesem Text", html.replace("kw-1", "kw-9"));
     const k = klaraBildKontext("x", [gelesen], t, ortVon, [jetzt]);
     expect(k.eintraege).toEqual([]);
-    expect(k.kontext).not.toContain(TEXT_JE_MARKE.A as string);
+    expect(quelltext(k.kontext)).not.toContain(TEXT_JE_MARKE.A as string);
   });
 });
 
@@ -324,3 +330,12 @@ describe("C8 · K4 — Nacharbeit 4: Ausschalten WÄHREND des Laufs", () => {
     ]);
   });
 });
+
+// OCR3: derselbe legitime Text und dieselben Fundstellen liegen jetzt in begrenzten JSON-Daten.
+function quelltext(kontext: string): string {
+  const daten = JSON.parse(kontext.split("\n")[1] ?? "null") as {
+    dokument: string;
+    hinweise: string[];
+  };
+  return [daten.dokument, ...daten.hinweise].join("\n\n");
+}

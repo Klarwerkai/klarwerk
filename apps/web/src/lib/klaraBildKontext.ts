@@ -201,7 +201,16 @@ export function klaraBildKontext(
     teile.push([t("klarabildkontext.kontext.kopf"), ...zeilen].join("\n"));
   }
   return {
-    kontext: teile.filter((x) => x.length > 0).join("\n\n"),
+    kontext: `UNTRUSTED_DOCUMENT_DATA_JSON\n${JSON.stringify({
+      dokument: dokumentText.trim(),
+      bilder: eintraege,
+      hinweise: teile.slice(1),
+    }).replace(/"(?:\\.|[^"\\])*"/g, (literal) =>
+      literal.replace(
+        /[<>\[\]\u2028\u2029]/g,
+        (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+      ),
+    )}\nEND_UNTRUSTED_DOCUMENT_DATA_JSON`,
     eintraege,
     gesamt,
     gelesen,
@@ -220,8 +229,9 @@ export function klaraAnweisung(
   k: KlaraBildKontext,
   t: Uebersetze,
 ): string {
-  const beispiel = k.eintraege[0] ? `${k.eintraege[0].quelle} · ${k.eintraege[0].ort}` : "";
+  const beispiel = t("klarabildkontext.anweisung.beispiel");
   const teile = [
+    t("klarabildkontext.anweisung.untrusted"),
     auftrag === "frage"
       ? t("klarabildkontext.anweisung.frage", { frage: frage.trim() })
       : t("klarabildkontext.anweisung.zusammenfassung"),

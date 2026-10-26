@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
-import type { Mailer } from "../../notifications";
+import { ConsoleMailer, type Mailer } from "../../notifications";
 import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
@@ -828,12 +828,54 @@ export function authRoutes(
               );
             }
           }
-          const stand = await service.correctAccountData(user.id, eingabe, user.id);
-          if (neueEmail && ssoBestaetigt) {
-            // Einmalig: die Bestätigung trägt genau EINE Adressänderung.
-            ssoBestaetigung.delete(schluessel);
+          if (neueEmail && eingabe.email !== undefined) {
+            if (!options.mailer || options.mailer instanceof ConsoleMailer || !options.resetBaseUrl)
+              throw new AuthError(
+                "FORBIDDEN",
+                "EMAIL_CHANGE_UNAVAILABLE" satisfies Meldungsschluessel,
+              );
+            const pending = await service.requestEmailChange(user.id, eingabe.email);
+            const link = new URL(options.resetBaseUrl);
+            link.pathname = "/profil";
+            link.search = "";
+            link.searchParams.set("emailBestaetigung", pending.token);
+            await options.mailer.send({
+              to: pending.email,
+              subject: meldung("EMAIL_CHANGE_SUBJECT", sprache(request)),
+              text: `${meldung("EMAIL_CHANGE_BODY", sprache(request))}\n${link.href}`,
+            });
+            const stand = await service.correctAccountData(
+              user.id,
+              eingabe.name === undefined ? {} : { name: eingabe.name },
+              user.id,
+            );
+            if (ssoBestaetigt) ssoBestaetigung.delete(schluessel);
+            reply.code(202).send({ ...stand, emailChangePending: true });
+            return;
           }
+          const stand = await service.correctAccountData(user.id, eingabe, user.id);
           reply.code(200).send(stand);
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
+    app.post<{ Body: { token?: unknown } }>(
+      "/api/auth/me/email/confirm",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) return;
+        const token = request.body?.token;
+        if (typeof token !== "string" || !token) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: meldung("EMAIL_CHANGE_INVALID", sprache(request)),
+          });
+          return;
+        }
+        try {
+          reply.code(200).send(await service.confirmEmailChange(user.id, token));
         } catch (error) {
           sendError(reply, error, sprache(request));
         }

@@ -233,6 +233,37 @@ function entwurfLesen(): Entwurf | null {
   }
 }
 
+function EmailAdresseBestaetigen({
+  token,
+  onZurueck,
+}: { token: string; onZurueck: () => void }): JSX.Element {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const confirm = useMutation({
+    mutationFn: () => authApi.confirmEmail(token),
+    onSuccess: (stand) => {
+      qc.setQueryData(["auth", "me"], stand);
+      void qc.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+  return (
+    <Detailkarte titel={t("prof.emailConfirm")} onZurueck={onZurueck} testId="email-bestaetigung">
+      {confirm.isSuccess ? (
+        <output>{t("prof.correctSaved")}</output>
+      ) : (
+        <Button type="button" disabled={confirm.isPending} onClick={() => confirm.mutate()}>
+          {t("prof.emailConfirm")}
+        </Button>
+      )}
+      {confirm.isError ? (
+        <p role="alert">
+          {confirm.error instanceof ApiError ? confirm.error.message : t("state.error")}
+        </p>
+      ) : null}
+    </Detailkarte>
+  );
+}
+
 function KontodatenDetail({
   onZurueck,
   ausSso,
@@ -305,7 +336,7 @@ function KontodatenDetail({
       if (neueEmail) {
         setSsoBestaetigt(false);
       }
-      setHinweis(t("prof.correctSaved"));
+      setHinweis(t(stand.emailChangePending ? "prof.emailPending" : "prof.correctSaved"));
     },
     onError: (e: unknown) => {
       // Abgelehnte Bestätigung: zurück auf „unbestätigt", damit der Weg erneut bedienbar ist.
@@ -629,6 +660,7 @@ export function Profile(): JSX.Element {
   const [busy, setBusy] = useState(false);
   // R-0582: Rücksprung aus der SSO-Bestätigung (`/profil?kontodaten=sso`) öffnet die Karte wieder.
   const suche = new URLSearchParams(useLocation().search);
+  const emailBestaetigung = suche.get("emailBestaetigung");
   const ausSso = suche.get("kontodaten") === "sso";
   // produkt:20261010:assistenz-name-avatar: `/profil?bereich=assistenz` öffnet „Meine Assistenz".
   // produkt:20261012:klara-setup-shortcuts-umsetzung: dieselbe Karte heisst jetzt „Klara“; der
@@ -640,12 +672,23 @@ export function Profile(): JSX.Element {
     | "passwort"
     | "wirkung"
     | "kontodaten"
+    | "email"
     | "zweifaktor"
     | "meineDaten"
     | "loeschantrag"
     | "assistenz"
     | "funktionen"
-  >(ausSso ? "kontodaten" : zurAssistenz ? "assistenz" : zuFunktionen ? "funktionen" : null);
+  >(
+    emailBestaetigung
+      ? "email"
+      : ausSso
+        ? "kontodaten"
+        : zurAssistenz
+          ? "assistenz"
+          : zuFunktionen
+            ? "funktionen"
+            : null,
+  );
   const assistenz = useAssistenzAnzeige();
   const assistenzStand = useAssistenzStand();
   const zweiFaktor = useQuery({ queryKey: ZWEI_FAKTOR_KEY, queryFn: authApi.secondFactorStatus });
@@ -668,6 +711,15 @@ export function Profile(): JSX.Element {
         <PasswortDetail onZurueck={zurueck} onChanged={() => void signOut()} />
       ) : null}
       {detail === "wirkung" ? <WirkungDetail onZurueck={zurueck} /> : null}
+      {detail === "email" && emailBestaetigung ? (
+        <EmailAdresseBestaetigen
+          token={emailBestaetigung}
+          onZurueck={() => {
+            setDetail(null);
+            navigate("/profil");
+          }}
+        />
+      ) : null}
       {detail === "kontodaten" ? <KontodatenDetail onZurueck={zurueck} ausSso={ausSso} /> : null}
       {detail === "zweifaktor" ? <ZweiFaktorDetail onZurueck={zurueck} /> : null}
       {detail === "meineDaten" ? <MeineDatenDetail onZurueck={zurueck} /> : null}

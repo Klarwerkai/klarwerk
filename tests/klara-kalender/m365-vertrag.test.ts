@@ -327,15 +327,15 @@ describe("K3 · Fehlerlagen ohne falschen Erfolg und ohne fremden Text", () => {
     await expect(kaputt.a.konto()).rejects.toMatchObject({ lage: "anbieter_ausgefallen" });
   });
 
-  it("Betreiber-Einspeisung: nur vollständig, nur https, nur für genannte Anmeldeadressen", () => {
+  it("Betreiber-Einspeisung: nur vollständig, nur https, nur für genannte unveränderliche Konto-IDs", () => {
     const voll = {
       KLARWERK_KALENDER_M365_BASE_URL: BASIS,
       KLARWERK_KALENDER_M365_TOKEN: ZUGANG,
-      KLARWERK_KALENDER_M365_KONTEN: "ada@klarwerk-test.example, Erik@Klarwerk-Test.example",
+      KLARWERK_KALENDER_M365_KONTO_IDS: "konto-Ada, konto-Erik",
     };
     const e = kalenderAnbieterAusEnv(voll);
-    expect(e?.fuer("ADA@klarwerk-test.example")).toBeInstanceOf(M365KalenderAnbieter);
-    expect(e?.fuer("erik@klarwerk-test.example")).toBeInstanceOf(M365KalenderAnbieter);
+    expect(e?.fuer("konto-Ada")).toBeInstanceOf(M365KalenderAnbieter);
+    expect(e?.fuer("konto-Erik")).toBeInstanceOf(M365KalenderAnbieter);
     expect(e?.fuer("vera@klarwerk-test.example")).toBeNull();
     expect(e?.fuer(undefined)).toBeNull();
     for (const fehlt of Object.keys(voll)) {

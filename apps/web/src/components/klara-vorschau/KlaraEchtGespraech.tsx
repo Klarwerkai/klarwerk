@@ -122,7 +122,7 @@ function QuellenZeile({
     return (
       <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
         <li className={KLEINTITEL}>{t("klaragespraech.quellen")}</li>
-        {n.quellen.map((q, i) => {
+        {n.quellen.map((q) => {
           const a = angaben.get(q);
           const geprueft =
             a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
@@ -139,7 +139,7 @@ function QuellenZeile({
                 to={leserHref({ koId: q, fassung: a?.fassung ?? null })}
                 className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-semibold text-text hover:border-ink/30"
               >
-                [{i + 1}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
+                [{a?.kandidatenIndex ?? "?"}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
               </Link>
               {a && geprueft !== "ja" ? (
                 <span className="font-semibold text-trust-warn-text">
@@ -155,7 +155,7 @@ function QuellenZeile({
               {t("assistenzminimal.quellen.details")}
             </summary>
             <ul className="mt-0.5 space-y-0.5 pl-2 text-muted">
-              {n.quellen.map((q, i) => {
+              {n.quellen.map((q) => {
                 const a = angaben.get(q);
                 const geprueft =
                   a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
@@ -167,7 +167,7 @@ function QuellenZeile({
                   : t("klarakontext.quelle.ohneAngaben");
                 return (
                   <li key={q} data-testid="klara-quelle-detail" data-ko={q}>
-                    [{i + 1}] {angabe}
+                    [{a?.kandidatenIndex ?? "?"}] {angabe}
                   </li>
                 );
               })}
@@ -180,7 +180,7 @@ function QuellenZeile({
   return (
     <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
       <li className={KLEINTITEL}>{t("klaragespraech.quellen")}</li>
-      {n.quellen.map((q, i) => {
+      {n.quellen.map((q) => {
         const a = angaben.get(q);
         const geprueft = a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
         return (
@@ -196,7 +196,7 @@ function QuellenZeile({
               to={leserHref({ koId: q, fassung: a?.fassung ?? null })}
               className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-semibold text-text hover:border-ink/30"
             >
-              [{i + 1}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
+              [{a?.kandidatenIndex ?? "?"}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
             </Link>
             {a ? (
               <span className="text-muted">

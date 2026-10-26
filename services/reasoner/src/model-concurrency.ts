@@ -54,6 +54,63 @@ export class ConfidentialEgressError extends Error {
   }
 }
 
+export interface ModellKontext {
+  readonly actor?: string | undefined;
+  readonly signal?: AbortSignal | undefined;
+}
+const modellKontext = new AsyncLocalStorage<ModellKontext>();
+/** Nur die Kompositionswurzel bindet authentifizierte Konten bzw. tatsächliche Jobbesitzer. */
+export function mitModellKontext<T>(kontext: ModellKontext, fn: () => T): T {
+  return modellKontext.run(kontext, fn);
+}
+export function pruefeModellAbbruch(): void {
+  modellKontext.getStore()?.signal?.throwIfAborted();
+}
+export class ModelBudgetError extends ModelCapacityError {
+  constructor(readonly retryAfterSeconds: number) {
+    super("Das endliche Modellkontingent dieses Zeitfensters ist ausgeschöpft.");
+  }
+}
+/** Endliches Prozessbudget; fehlender Kontext erhält einen ehrlichen gemeinsamen Bibliotheksrahmen. */
+export class ModelCallBudget {
+  private readonly accounts = new Map<string, number>();
+  private started: number;
+  private global = 0;
+  private unbound = 0;
+  constructor(
+    private readonly now: () => number = Date.now,
+    private readonly max = 30,
+    private readonly windowMs = 60_000,
+  ) {
+    this.started = now();
+  }
+  consume(actor?: string): void {
+    const now = this.now();
+    if (now - this.started >= this.windowMs || now < this.started) {
+      this.started = now;
+      this.accounts.clear();
+      this.global = 0;
+      this.unbound = 0;
+    }
+    const count = actor ? (this.accounts.get(actor) ?? 0) : this.unbound;
+    const limit = actor ? this.max : this.max * 4;
+    if (this.global >= this.max * 20 || count >= limit)
+      throw new ModelBudgetError(
+        Math.max(1, Math.ceil((this.started + this.windowMs - now) / 1000)),
+      );
+    this.global += 1;
+    if (actor) this.accounts.set(actor, count + 1);
+    else this.unbound += 1;
+  }
+  get size(): number {
+    return this.accounts.size;
+  }
+}
+let modelBudget = new ModelCallBudget();
+export function resetModelBudgetForTests(): void {
+  modelBudget = new ModelCallBudget();
+}
+
 export interface ModelCapConfig {
   max: number; // max. gleichzeitige Modellaufrufe
   queueMax: number; // max. Wartende, bevor sofort abgelehnt wird
@@ -464,8 +521,13 @@ export function cappedModelClient(
       confidential: boolean,
       maxTokens?: number,
       // REF-02 (Ben nacharbeit-3): der Abbruch des Aufrufers reist bis zum Transport.
-      signal?: AbortSignal,
+      requestedSignal?: AbortSignal,
     ) => {
+      const inheritedSignal = modellKontext.getStore()?.signal;
+      const signal =
+        requestedSignal && inheritedSignal
+          ? AbortSignal.any([requestedSignal, inheritedSignal])
+          : (requestedSignal ?? inheritedSignal);
       // gesamt-ki-freigaberegeln: die zentrale Freigabe für Vertrauliches wirkt bis hierher — aber
       // nur über den Merker, den der Reasoner je Versuch setzt; die Einstufung selbst bleibt `true`.
       if (opts.rejectsConfidential && confidential && !vertraulicheUebertragungFreigegeben()) {
@@ -492,10 +554,17 @@ export function cappedModelClient(
             if (signal?.aborted) {
               throw new ModellAufrufAbgebrochen();
             }
+            pruefeModellAbbruch();
+            modelBudget.consume(modellKontext.getStore()?.actor);
             vermerkeModellAufruf();
-            return signal
-              ? inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens, signal)
-              : inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens);
+            return (
+              signal
+                ? inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens, signal)
+                : inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens)
+            ).then((result) => {
+              signal?.throwIfAborted();
+              return result;
+            });
           }),
       );
     },
@@ -529,6 +598,8 @@ export function cappedModelClient(
                   // JOB 3036 R2: der Bildweg zählt genauso als Modellaufruf wie der Textweg.
                   pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
                   pruefeVertraulichVorUebertragung(opts.rejectsConfidential, confidential);
+                  pruefeModellAbbruch();
+                  modelBudget.consume(modellKontext.getStore()?.actor);
                   vermerkeModellAufruf();
                   return innerVision(
                     ausgehendSystem,
@@ -536,7 +607,10 @@ export function cappedModelClient(
                     ausgehendUser,
                     confidential,
                     maxTokens,
-                  );
+                  ).then((result) => {
+                    pruefeModellAbbruch();
+                    return result;
+                  });
                 }),
             );
           },

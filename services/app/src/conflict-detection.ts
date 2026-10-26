@@ -16,6 +16,7 @@ import {
   geltungsKollision,
   isConfidential,
 } from "../../knowledge-object";
+import { pruefeModellAbbruch } from "../../reasoner";
 import type {
   ConflictJudgeOutcome,
   DuplicateJudgeOutcome,
@@ -221,7 +222,11 @@ export async function detectConflictsForKo(
         cap: vergleichsDeckel(umfang),
         vollabgleich: umfang === "vollstaendig",
         // bens V5: Stale-Schreibschutz — vor dem Persistieren beide gebundenen Versionen prüfen.
-        isCurrent: async (id, version) => (await deps.ko.get(id))?.version === version,
+        isCurrent: async (id, version) => {
+          const current = await deps.ko.get(id);
+          pruefeModellAbbruch();
+          return current?.version === version;
+        },
         coverage,
         // R-1632 / R-1633: Widerspruch bei verschiedener Geltung → Kontext-/Rollenkonflikt.
         geltungsKollision,

@@ -406,15 +406,16 @@ export function quellenAngabenAus(
   const angaben: KlaraQuellenAngabe[] = [];
   for (const koId of quellen) {
     const b = jeId.get(koId);
-    if (!b?.titel) {
-      continue;
-    }
     const stand = antwort.quellenStand?.[koId];
     angaben.push({
       koId,
-      titel: [...b.titel].slice(0, 300).join(""),
-      fassung: typeof stand === "number" ? stand : typeof b.version === "number" ? b.version : null,
-      geprueft: typeof b.validiert === "boolean" ? b.validiert : null,
+      titel: b?.titel ? [...b.titel].slice(0, 300).join("") : koId,
+      ...(antwort.result.sources.indexOf(koId) >= 0
+        ? { kandidatenIndex: antwort.result.sources.indexOf(koId) + 1 }
+        : {}),
+      fassung:
+        typeof stand === "number" ? stand : typeof b?.version === "number" ? b.version : null,
+      geprueft: typeof b?.validiert === "boolean" ? b.validiert : null,
     });
   }
   return angaben;

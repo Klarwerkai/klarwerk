@@ -96,7 +96,17 @@ export interface ResetToken {
   expiresAt: number;
 }
 
+export interface EmailChange {
+  token: string;
+  userId: string;
+  email: string;
+  previousEmail: string;
+  expiresAt: number;
+}
+
 export interface PasswordResetRepo {
+  createEmailChange(entry: EmailChange): Promise<void>;
+  takeEmailChange(token: string, userId: string, now: number): Promise<EmailChange | undefined>;
   create(entry: ResetToken): Promise<void>;
   find(token: string): Promise<ResetToken | undefined>;
   delete(token: string): Promise<void>;
@@ -320,5 +330,18 @@ export class InMemoryPasswordResetRepo implements PasswordResetRepo {
   delete(token: string): Promise<void> {
     this.tokens.delete(token);
     return Promise.resolve();
+  }
+  private readonly emailChanges = new Map<string, EmailChange>();
+  createEmailChange(entry: EmailChange): Promise<void> {
+    for (const [token, old] of this.emailChanges)
+      if (old.userId === entry.userId) this.emailChanges.delete(token);
+    this.emailChanges.set(entry.token, entry);
+    return Promise.resolve();
+  }
+  takeEmailChange(token: string, userId: string, now: number): Promise<EmailChange | undefined> {
+    const entry = this.emailChanges.get(token);
+    if (!entry || entry.userId !== userId) return Promise.resolve(undefined);
+    this.emailChanges.delete(token);
+    return Promise.resolve(entry.expiresAt > now ? entry : undefined);
   }
 }

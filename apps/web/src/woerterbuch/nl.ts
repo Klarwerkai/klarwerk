@@ -4618,6 +4618,9 @@ const nl: typeof de = {
   "prof.correctTitle": "Accountgegevens corrigeren",
   "prof.correctPassword": "Huidig wachtwoord (alleen bij nieuw e-mailadres)",
   "prof.correctSubmit": "Accountgegevens opslaan",
+  emailPending:
+    "Bevestig het nieuwe adres via de e-mail. Tot die tijd blijft je vorige adres geldig.",
+  emailConfirm: "Nieuw e-mailadres bevestigen",
   "prof.correctSaved": "Accountgegevens opgeslagen.",
   "prof.correctUnchanged": "Niets gewijzigd.",
   "prof.correctSso": "In plaats daarvan bevestigen met SSO",

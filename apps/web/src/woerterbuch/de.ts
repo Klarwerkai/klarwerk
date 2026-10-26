@@ -5885,6 +5885,9 @@ const de = {
   "prof.correctTitle": "Kontodaten berichtigen",
   "prof.correctPassword": "Aktuelles Passwort (nur bei neuer E-Mail)",
   "prof.correctSubmit": "Kontodaten speichern",
+  emailPending:
+    "Bitte bestätigen Sie die neue Adresse über die E-Mail. Bis dahin bleibt Ihre bisherige Adresse gültig.",
+  emailConfirm: "Neue E-Mail-Adresse bestätigen",
   "prof.correctSaved": "Kontodaten gespeichert.",
   "prof.correctUnchanged": "Nichts geändert.",
   "prof.correctSso": "Stattdessen mit SSO bestätigen",

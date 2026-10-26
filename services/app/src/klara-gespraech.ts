@@ -137,6 +137,8 @@ export interface KlaraObjektbezug {
  * gelesene Fassung und ob die Quelle geprüft war. `null` heisst: der Frageweg hat es nicht gesagt.
  */
 export interface KlaraQuellenAngabe {
+  /** Einsbasierte Stelle in den tatsächlichen Antwortkandidaten; fehlt bei historischem Altbestand. */
+  readonly kandidatenIndex?: number;
   readonly koId: string;
   readonly titel: string;
   readonly fassung: number | null;
@@ -582,6 +584,12 @@ export function pruefeObjektbezug(roh: unknown): KlaraObjektbezug {
  * genannten Quellen gehören — eine Angabe zu einer Kennung, die die Antwort gar nicht nennt, wäre
  * eine erfundene Quelle.
  */
+function quellennummer(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > 10_000)
+    throw eingabeFehler("Ungültiger Kandidatenindex.");
+  return value;
+}
+
 function quellenAngabenAus(roh: unknown, quellen: readonly string[]): KlaraQuellenAngabe[] {
   if (roh === undefined || roh === null) {
     return [];
@@ -605,6 +613,9 @@ function quellenAngabenAus(roh: unknown, quellen: readonly string[]): KlaraQuell
     }
     return {
       koId,
+      ...(e.kandidatenIndex === undefined
+        ? {}
+        : { kandidatenIndex: quellennummer(e.kandidatenIndex) }),
       titel: kurzerText(e.titel, 300, `quellenAngaben[${i}].titel`),
       fassung: wahlweiseFassung(e.fassung, `quellenAngaben[${i}].fassung`),
       geprueft: typeof e.geprueft === "boolean" ? e.geprueft : null,

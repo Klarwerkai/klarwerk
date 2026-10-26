@@ -437,7 +437,7 @@ export class M365KalenderAnbieter implements KalenderAnbieter {
 //
 //   KLARWERK_KALENDER_M365_BASE_URL  https-Basisadresse (z. B. https://graph.microsoft.com/v1.0)
 //   KLARWERK_KALENDER_M365_TOKEN     delegiertes Zugangsmerkmal des abgegrenzten Testkalenderkontos
-//   KLARWERK_KALENDER_M365_KONTEN    Komma-Liste der Klarwerk-Anmeldeadressen, die DIESES Konto
+//   KLARWERK_KALENDER_M365_KONTO_IDS    Komma-Liste der unveränderlichen Klarwerk-Konto-IDs, die DIESES Konto
 //                                    verwenden dürfen — sonst niemand
 //
 // Der Token wird HIER gelesen und nur in die Closure gebunden; er verlässt die Fabrik nie als Wert.
@@ -446,8 +446,8 @@ export class M365KalenderAnbieter implements KalenderAnbieter {
 // eigene Microsoft-Anmeldung ist eine offene Produktentscheidung und hier nicht vorweggenommen.
 
 export interface M365Einspeisung {
-  /** Der Anbieter für das Klarwerk-Konto mit dieser Anmeldeadresse — oder `null`. */
-  readonly fuer: (anmeldeadresse: string | null | undefined) => KalenderAnbieter | null;
+  /** Der Anbieter für das Klarwerk-Konto mit dieser unveränderlichen Kennung — oder `null`. */
+  readonly fuer: (kontoId: string | null | undefined) => KalenderAnbieter | null;
 }
 
 export function kalenderAnbieterAusEnv(
@@ -456,9 +456,9 @@ export function kalenderAnbieterAusEnv(
 ): M365Einspeisung | undefined {
   const baseUrl = env.KLARWERK_KALENDER_M365_BASE_URL;
   const token = env.KLARWERK_KALENDER_M365_TOKEN;
-  const konten = (env.KLARWERK_KALENDER_M365_KONTEN ?? "")
+  const konten = (env.KLARWERK_KALENDER_M365_KONTO_IDS ?? "")
     .split(",")
-    .map((k) => k.trim().toLowerCase())
+    .map((k) => k.trim())
     .filter((k) => k.length > 0);
   let https = false;
   try {
@@ -476,6 +476,6 @@ export function kalenderAnbieterAusEnv(
     ...(fetchFn ? { fetchFn } : {}),
   });
   return {
-    fuer: (adresse) => (adresse && erlaubt.has(adresse.trim().toLowerCase()) ? anbieter : null),
+    fuer: (kontoId) => (kontoId && erlaubt.has(kontoId) ? anbieter : null),
   };
 }

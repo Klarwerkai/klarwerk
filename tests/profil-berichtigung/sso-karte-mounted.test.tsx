@@ -99,6 +99,7 @@ function testAnbieter(): OidcProvider {
 }
 
 let app: FastifyInstance | null = null;
+let bestaetigungsMails: { to: string; text: string }[] = [];
 /** Der Cookie-Speicher des „Browsers". */
 const glas = new Map<string, string>();
 /** Wohin die Seite navigieren wollte (`window.location.assign`). */
@@ -158,7 +159,18 @@ async function baueApp(): Promise<void> {
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),
   });
   app = Fastify();
-  await app.register(authRoutes(service, { oidc: testAnbieter() }));
+  bestaetigungsMails = [];
+  await app.register(
+    authRoutes(service, {
+      oidc: testAnbieter(),
+      mailer: {
+        send: async (m) => {
+          bestaetigungsMails.push(m);
+        },
+      },
+      resetBaseUrl: "https://klarwerk.attrappe.test/reset",
+    }),
+  );
   await app.ready();
 }
 
@@ -399,7 +411,15 @@ describe("R-0582 · SSO-Bestätigung über die echte Profilkarte", () => {
     await profil("/profil?kontodaten=sso", KONTO_A.name);
     expect(feld(t("adm.email"))?.value).toBe(NEU);
     await klick(knopf(t("prof.correctSubmit")));
-    await warteBis(() => text().includes(t("prof.correctSaved")), "gespeichert");
+    await warteBis(() => text().includes(t("prof.emailPending")), "Bestätigung steht aus");
+    expect((await ich()).email).toBe(KONTO_A.email);
+    expect(bestaetigungsMails).toHaveLength(1);
+    expect(bestaetigungsMails[0]?.to).toBe(NEU);
+    const link = new URL(bestaetigungsMails[0]?.text.split("\n").at(-1) ?? "");
+    abbauen();
+    await montiere(createElement(Profile), link.pathname + link.search);
+    await klick(knopf(t("prof.emailConfirm")));
+    await warteBis(() => text().includes(t("prof.correctSaved")), "Mailadresse bestätigt");
     const nachher = await ich();
     expect(nachher.id).toBe(a.id);
     expect(nachher.email).toBe(NEU);

@@ -313,3 +313,11 @@ export {
   KlaraAusweichwegGesperrtFehler,
   type KlaraAusweichwegGrund,
 } from "./src/anbieterbindung";
+
+export {
+  mitModellKontext,
+  pruefeModellAbbruch,
+  ModelBudgetError,
+  ModelCallBudget,
+  resetModelBudgetForTests,
+} from "./src/model-concurrency";

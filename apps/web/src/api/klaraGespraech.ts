@@ -54,6 +54,8 @@ export interface KlaraSeitenbezugAuskunft {
 
 /** Klara 03: Titel, Fassung und Prüfstatus einer Antwortquelle, wie der Frageweg sie nannte. */
 export interface KlaraQuellenAngabe {
+  /** Einsbasierte Stelle in den tatsächlichen Antwortkandidaten; fehlt bei historischem Altbestand. */
+  readonly kandidatenIndex?: number;
   koId: string;
   titel: string;
   fassung: number | null;

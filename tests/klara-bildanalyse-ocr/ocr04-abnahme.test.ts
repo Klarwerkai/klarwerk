@@ -179,7 +179,7 @@ describe("B · das Produkt: keine Auslassung, keine falsche Fundstelle, kein ver
     const offen = i18n.t("klarabildkontext.kontext.offen", {
       status: i18n.t("bildautomatik.status.nichtAnalysiert"),
     });
-    expect(k.kontext).toContain(`[wartung.pptx · Folie 2, Bild 2] ${offen}`);
+    expect(quelltext(k.kontext)).toContain(`[wartung.pptx · Folie 2, Bild 2] ${offen}`);
   });
 
   it("B3 · nach der Bildänderung trägt Klaras Kontext den neuen Text, nicht den alten", async () => {
@@ -223,3 +223,12 @@ describe("C · Automatik und Genauigkeit sind getrennte Nachweise", () => {
     });
   });
 });
+
+// OCR3: derselbe legitime Text und dieselben Fundstellen liegen jetzt in begrenzten JSON-Daten.
+function quelltext(kontext: string): string {
+  const daten = JSON.parse(kontext.split("\n")[1] ?? "null") as {
+    dokument: string;
+    hinweise: string[];
+  };
+  return [daten.dokument, ...daten.hinweise].join("\n\n");
+}

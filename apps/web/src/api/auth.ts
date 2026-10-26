@@ -9,6 +9,7 @@ export interface SessionUser {
   role: Role;
   // R-0582: verknüpfte SSO-Identität — dann bietet die Kontodatenkarte die SSO-Bestätigung an.
   oidcSubject?: string;
+  emailChangePending?: boolean;
   // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene Weisungsbefugnis.
   weisungsbefugnis?: { bereiche: string[]; erteiltVon: string; erteiltAm: string };
 }
@@ -49,6 +50,8 @@ export const authApi = {
   status: (): Promise<AuthStatus> => api.get<AuthStatus>("/auth/status"),
   notice: (): Promise<NoticeAck> => api.get<NoticeAck>("/auth/notice"),
   acknowledgeNotice: (): Promise<NoticeAck> => api.post<NoticeAck>("/auth/notice"),
+  confirmEmail: (token: string): Promise<SessionUser> =>
+    api.post<SessionUser>("/auth/me/email/confirm", { token }),
   me: (): Promise<SessionUser> => api.get<SessionUser>("/auth/me"),
   login: (email: string, password: string): Promise<LoginAntwort> =>
     api.post<LoginAntwort>("/auth/login", { email, password }),

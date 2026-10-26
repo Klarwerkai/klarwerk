@@ -242,7 +242,7 @@ describe("WP-SUBMIT-ASYNC (c+d): der failed-Pfad ist ehrlich und traegt die Ursa
     });
     // mega28 A2: der Ausgang trägt zusätzlich die Abdeckung — die Ursache bleibt exakt gepinnt.
     expect(await runner("ko-1")).toMatchObject({ ok: false, fallbackReason: "no-model" });
-    expect(detectionsTouched).toBe(2); // Konflikt- UND Duplikat-Erkennung liefen
+    expect(detectionsTouched).toBe(3); // Eigentümer lesen, dann Konflikt- UND Duplikat-Erkennung
   });
 
   it("Retry-Route: failed → POST /api/kos/:id/ai-check reiht neu ein (200 pending); done → 409; unbekannt → 404", async () => {

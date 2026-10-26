@@ -22,8 +22,8 @@ import type { ConflictService } from "../../conflicts";
 //    revise macht den alten Lauf zum No-op — der Worker reiht dann (gedeckelt) einen frischen Job
 //    für die NEUE Version ein. Stale-done ist unmöglich.
 //  - TIMEOUT: jeder Job hat eine harte Frist (AI_CHECK_JOB_TIMEOUT_MS) → failed/timeout. Der
-//    innere Erkennungs-Lauf ist nicht abbrechbar (best-effort-Kette) und läuft ggf. leer weiter —
-//    sein später Abschluss schreibt dank der pending-Bedingung nichts mehr.
+//    innere Lauf erhält ein AbortSignal bis zum unterstützten Modellport. Sein Platz bleibt bis
+//    zu seinem tatsächlichen Ende belegt; späte Ergebnisse dürfen keine Befunde mehr eintragen.
 //  - QUEUE-KAPPE: MAX_AI_CHECK_QUEUE — darüber wird der ÄLTESTE wartende Job ehrlich als
 //    failed/queue-overflow markiert statt still zu wachsen.
 //  - RETRY-DECKEL: max MAX_AI_CHECK_AUTO_RETRIES automatische Re-Enqueues je KO-Version (Schutz
@@ -38,7 +38,7 @@ import {
   type KoService,
   gleichePruefbasis,
 } from "../../knowledge-object";
-import type { Reasoner } from "../../reasoner";
+import { type Reasoner, mitModellKontext, pruefeModellAbbruch } from "../../reasoner";
 import { detectConflictsForKo } from "./conflict-detection";
 import type { PruefUmfang } from "./detection-cap";
 import { type SemanticPrefilter, detectDuplicatesForKo } from "./duplicate-detection";
@@ -175,7 +175,11 @@ export function classifyAiCheckFailure(err: unknown): AiCheckFailureReason {
 
 // AUFNAHME 20260922 · R-1124: `umfang` fehlt im Normalfall (= gedeckelt); `vollstaendig` kommt
 // nur aus der ausdrücklichen Wahl am Wiederholen-Weg (detection-cap.ts).
-export type AiCheckRunner = (koId: string, umfang?: PruefUmfang) => Promise<AiCheckRunOutcome>;
+export type AiCheckRunner = (
+  koId: string,
+  umfang?: PruefUmfang,
+  signal?: AbortSignal,
+) => Promise<AiCheckRunOutcome>;
 
 export interface VollabgleichVormerkung {
   /** Reiht den Job als Vollabgleich ein bzw. stuft den wartenden hoch und löst die Sperre. */
@@ -255,12 +259,14 @@ export function shouldReEnqueueAiCheck(aiCheck: AiCheck | undefined, nowMs: numb
 export function runWithTimeout(
   run: Promise<AiCheckRunOutcome>,
   timeoutMs: number,
+  controller?: AbortController,
 ): Promise<AiCheckRunOutcome> {
   return new Promise((resolve) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
+        controller?.abort();
         resolve({ ok: false, fallbackReason: "timeout" });
       }
     }, timeoutMs);
@@ -442,75 +448,83 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
       startBasis = undefined;
     }
     // R-1124: nur der gewählte Vollabgleich trägt seinen Umfang mit; der Normalfall ruft wie bisher.
-    const outcome = await runWithTimeout(
-      vollstaendig.has(koId) ? deps.run(koId, "vollstaendig") : deps.run(koId),
-      jobTimeoutMs,
+    const controller = new AbortController();
+    const inner = Promise.resolve().then(() =>
+      mitModellKontext({ actor: start?.author, signal: controller.signal }, () =>
+        deps.run(koId, vollstaendig.has(koId) ? "vollstaendig" : undefined, controller.signal),
+      ),
     );
-    // AUFNAHME 20260922: hat sich die Basis WÄHREND des Laufs geändert, wird das Ergebnis NICHT
-    // eingetragen — es gälte für einen Stand, den es nicht mehr gibt. Gleicher Text genügt dafür
-    // nicht: die Fassungsnummer ist Teil der Basis. Das enge Restfenster zwischen dieser Probe und
-    // dem Schreiben deckt die Bindung selbst: der Nachweis trägt `startBasis`, und jeder Leser
-    // leitet daraus „überholt" ab.
-    let basisMoved = false;
-    if (startBasis) {
-      try {
-        const vorher = await deps.ko.get(koId);
-        basisMoved =
-          vorher !== undefined &&
-          !gleichePruefbasis(await deps.ko.aktuellePruefbasis(vorher), startBasis);
-      } catch {
-        basisMoved = false;
-      }
-    }
-    let resolved = false;
-    if (!basisMoved) {
-      try {
-        resolved = await deps.ko.resolveAiCheck(
-          koId,
-          {
-            ok: outcome.ok,
-            ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
-            // AUFTRAG-mega28 A2: die Abdeckung reist mit dem Abschluss ans KO — DORT liest sie die
-            // Oberfläche (Badge/Bestätigungs-Karte), nicht nur ein internes Feld.
-            ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
-          },
-          expectedVersion,
-          startBasis,
-        );
-      } catch {
-        resolved = false; // Status-Write scheiterte — der Lazy-Re-Enqueue holt den Job später nach.
-      }
-    }
-    // PII-frei: nur Id, Status, Dauer — nie Inhalte.
-    log(
-      `[KLARWERK] KI-Pruefung ko=${koId} status=${outcome.ok ? "done" : "failed"}${
-        outcome.fallbackReason ? ` grund=${outcome.fallbackReason}` : ""
-      } dauer=${now() - startedMs}ms geschrieben=${resolved}${basisMoved ? " basis-gewandert" : ""}`,
-    );
-    if (resolved || (expectedVersion === undefined && !basisMoved)) {
-      return null;
-    }
-    // Bedingter Write griff nicht: prüfen, ob die INHALTSVERSION (bzw. die Basis) gewandert ist
-    // (Änderung während des Laufs). Dann war dieser Lauf ein ehrlicher No-op — einmalig (gedeckelt)
-    // einen frischen Job für die NEUE Basis vermerken und einreihen.
     try {
-      const current = await deps.ko.get(koId);
-      const versionMoved =
-        current?.aiCheck?.status === "pending" &&
-        (basisMoved || current.version !== expectedVersion);
-      if (versionMoved && consumeAutoRetry(koId, await zielSchluessel(current))) {
-        const marked = await deps.ko.markAiCheckPending(koId);
-        if (marked) {
-          log(
-            `[KLARWERK] KI-Pruefung ko=${koId} version=${expectedVersion}->${current.version} — alter Lauf No-op, frischer Job eingereiht`,
-          );
-          return current.version;
+      const outcome = await runWithTimeout(inner, jobTimeoutMs, controller);
+      // AUFNAHME 20260922: hat sich die Basis WÄHREND des Laufs geändert, wird das Ergebnis NICHT
+      // eingetragen — es gälte für einen Stand, den es nicht mehr gibt. Gleicher Text genügt dafür
+      // nicht: die Fassungsnummer ist Teil der Basis. Das enge Restfenster zwischen dieser Probe und
+      // dem Schreiben deckt die Bindung selbst: der Nachweis trägt `startBasis`, und jeder Leser
+      // leitet daraus „überholt" ab.
+      let basisMoved = false;
+      if (startBasis) {
+        try {
+          const vorher = await deps.ko.get(koId);
+          basisMoved =
+            vorher !== undefined &&
+            !gleichePruefbasis(await deps.ko.aktuellePruefbasis(vorher), startBasis);
+        } catch {
+          basisMoved = false;
         }
       }
-    } catch {
-      // Nachlesen scheiterte — kein Auto-Retry; der Lazy-Re-Enqueue greift später.
+      let resolved = false;
+      if (!basisMoved) {
+        try {
+          resolved = await deps.ko.resolveAiCheck(
+            koId,
+            {
+              ok: outcome.ok,
+              ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+              // AUFTRAG-mega28 A2: die Abdeckung reist mit dem Abschluss ans KO — DORT liest sie die
+              // Oberfläche (Badge/Bestätigungs-Karte), nicht nur ein internes Feld.
+              ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
+            },
+            expectedVersion,
+            startBasis,
+          );
+        } catch {
+          resolved = false; // Status-Write scheiterte — der Lazy-Re-Enqueue holt den Job später nach.
+        }
+      }
+      // PII-frei: nur Id, Status, Dauer — nie Inhalte.
+      log(
+        `[KLARWERK] KI-Pruefung ko=${koId} status=${outcome.ok ? "done" : "failed"}${
+          outcome.fallbackReason ? ` grund=${outcome.fallbackReason}` : ""
+        } dauer=${now() - startedMs}ms geschrieben=${resolved}${basisMoved ? " basis-gewandert" : ""}`,
+      );
+      if (resolved || (expectedVersion === undefined && !basisMoved)) {
+        return null;
+      }
+      // Bedingter Write griff nicht: prüfen, ob die INHALTSVERSION (bzw. die Basis) gewandert ist
+      // (Änderung während des Laufs). Dann war dieser Lauf ein ehrlicher No-op — einmalig (gedeckelt)
+      // einen frischen Job für die NEUE Basis vermerken und einreihen.
+      try {
+        const current = await deps.ko.get(koId);
+        const versionMoved =
+          current?.aiCheck?.status === "pending" &&
+          (basisMoved || current.version !== expectedVersion);
+        if (versionMoved && consumeAutoRetry(koId, await zielSchluessel(current))) {
+          const marked = await deps.ko.markAiCheckPending(koId);
+          if (marked) {
+            log(
+              `[KLARWERK] KI-Pruefung ko=${koId} version=${expectedVersion}->${current.version} — alter Lauf No-op, frischer Job eingereiht`,
+            );
+            return current.version;
+          }
+        }
+      } catch {
+        // Nachlesen scheiterte — kein Auto-Retry; der Lazy-Re-Enqueue greift später.
+      }
+      return null;
+    } finally {
+      // Der Platz gehört dem tatsächlichen inneren Lauf, auch wenn er das Signal ignoriert.
+      await inner.catch(() => undefined);
     }
-    return null;
   };
 
   const pump = (): void => {
@@ -627,113 +641,127 @@ export interface AiCheckRunnerDeps {
 // Modell lief nur der deterministische Anteil → ehrlich failed/no-model. Nur ein Lauf ohne
 // jeden Fehler ist done. Die detect*-Kerne erhalten Urteil UND neutrale Ursache.
 export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
-  return async (koId: string, umfang: PruefUmfang = "gedeckelt"): Promise<AiCheckRunOutcome> => {
-    let failure: unknown = null;
-    const captureFailure = (msg: string, err: unknown): void => {
-      failure = failure ?? err ?? new Error(msg);
-    };
-    // Schmaler Beobachtungs-Wrapper NUR über die zwei Judge-Flächen, die die detect*-Pfade
-    // nutzen — kein Reasoner-Umbau, kein verändertes Routing (der echte Reasoner urteilt über
-    // den F1-Ergebnis-Vertrag; die Kerne bekommen Urteil und neutrale Ursache).
-    // Der Struktur-Cast ist bewusst: die detect*-Deps tippen `Reasoner`, brauchen aber genau
-    // diese zwei Methoden.
-    // D-AISTATE PAKET 1 (bens V1): die Paar-Vertraulichkeit (vom Detection-Kern gesetzt) reicht bis in
-    // den Reasoner durch — er nimmt bei `confidential` die Cloud aus der Judge-Kette (kein Egress). Die
-    // Signatur spiegelt EXAKT die echte Facade (coreA, coreB, locale, confidential): der App-Root-
-    // Callback ruft judgeConflictOutcome(a, b, "de", confidential) — locale ist das dritte Argument.
-    const observedReasoner = {
-      judgeConflictOutcome: async (
-        a: string,
-        b: string,
-        locale: "de" | "en" = "de",
-        confidential = false,
-      ) => {
-        try {
-          deps.vorVergleich?.("konflikt");
-          return await deps.reasoner.judgeConflictOutcome(a, b, locale, confidential);
-        } catch (err) {
-          failure = failure ?? err;
-          throw err;
-        }
-      },
-      judgeDuplicateOutcome: async (
-        a: string,
-        b: string,
-        locale: "de" | "en" = "de",
-        confidential = false,
-      ) => {
-        try {
-          deps.vorVergleich?.("dublette");
-          return await deps.reasoner.judgeDuplicateOutcome(a, b, locale, confidential);
-        } catch (err) {
-          failure = failure ?? err;
-          throw err;
-        }
-      },
-    } as unknown as Reasoner;
-    // AUFTRAG-mega28 A2/A3: beide Läufe melden ihre Abdeckung; die ZUSAMMENFASSUNG nimmt die
-    // schwächere (mergeCoverage) — sie darf nie mehr behaupten, als der schlechtere Lauf trägt.
-    const conflictCoverage = await detectConflictsForKo(
-      koId,
-      { ko: deps.ko, conflicts: deps.conflicts, reasoner: observedReasoner },
-      captureFailure,
-      umfang,
-    );
-    const duplicateCoverage = await detectDuplicatesForKo(
-      koId,
-      {
-        ko: deps.ko,
-        overlaps: deps.overlaps,
-        reasoner: observedReasoner,
-        settings: deps.overlapSettings,
-        semanticPrefilter: deps.semanticPrefilter,
-      },
-      captureFailure,
-      umfang,
-    );
-    // Interne Gründe nie persistieren: vollständige Projektion auf den bestehenden Drahtvertrag.
-    const merged = mergeCoverage(conflictCoverage, duplicateCoverage);
-    const coverage: AiCheckCoverage = {
-      available: merged.available,
-      selected: merged.selected,
-      alreadyOpen: merged.alreadyOpen,
-      attempted: merged.attempted,
-      completed: merged.completed,
-      skipped: merged.skipped,
-      capped: merged.capped,
-      aborted: merged.aborted,
-    };
-    // Laufweite Fehler haben Vorrang vor einzelnen Vergleichsausfällen, auch bei Kapazitätsabbruch.
-    // Job-Frist und Queue-Überlauf werden weiterhin außerhalb dieses Runners abgeschlossen.
-    if (failure !== null) {
-      return { ok: false, fallbackReason: classifyAiCheckFailure(failure), coverage };
-    }
-    // Häufigste Klasse gewinnt; bei Gleichstand die erste aus der vereinbarten Klassenreihenfolge.
-    // Ausschließlich die zusammengeführte Abdeckung entscheidet, nicht die Reihenfolge der Aufrufe.
-    let comparisonReason: AiCheckFailureReason | undefined;
-    let highestCount = 0;
-    for (const reason of [
-      "no-model",
-      "confidential",
-      "auth",
-      "rate-limit",
-      "unreachable",
-      "bad-response",
-      "model-timeout",
-      "model-error",
-    ] as const) {
-      const count = merged.skippedReasons?.[reason] ?? 0;
-      if (count > highestCount) {
-        highestCount = count;
-        comparisonReason = reason;
+  return async (
+    koId: string,
+    umfang: PruefUmfang = "gedeckelt",
+    signal?: AbortSignal,
+  ): Promise<AiCheckRunOutcome> => {
+    const owner = await deps.ko.get(koId);
+    return mitModellKontext({ actor: owner?.author, signal }, async () => {
+      pruefeModellAbbruch();
+      let failure: unknown = null;
+      const captureFailure = (msg: string, err: unknown): void => {
+        failure = failure ?? err ?? new Error(msg);
+      };
+      // Schmaler Beobachtungs-Wrapper NUR über die zwei Judge-Flächen, die die detect*-Pfade
+      // nutzen — kein Reasoner-Umbau, kein verändertes Routing (der echte Reasoner urteilt über
+      // den F1-Ergebnis-Vertrag; die Kerne bekommen Urteil und neutrale Ursache).
+      // Der Struktur-Cast ist bewusst: die detect*-Deps tippen `Reasoner`, brauchen aber genau
+      // diese zwei Methoden.
+      // D-AISTATE PAKET 1 (bens V1): die Paar-Vertraulichkeit (vom Detection-Kern gesetzt) reicht bis in
+      // den Reasoner durch — er nimmt bei `confidential` die Cloud aus der Judge-Kette (kein Egress). Die
+      // Signatur spiegelt EXAKT die echte Facade (coreA, coreB, locale, confidential): der App-Root-
+      // Callback ruft judgeConflictOutcome(a, b, "de", confidential) — locale ist das dritte Argument.
+      const observedReasoner = {
+        judgeConflictOutcome: async (
+          a: string,
+          b: string,
+          locale: "de" | "en" = "de",
+          confidential = false,
+        ) => {
+          try {
+            deps.vorVergleich?.("konflikt");
+            pruefeModellAbbruch();
+            const outcome = await deps.reasoner.judgeConflictOutcome(a, b, locale, confidential);
+            pruefeModellAbbruch();
+            return outcome;
+          } catch (err) {
+            failure = failure ?? err;
+            throw err;
+          }
+        },
+        judgeDuplicateOutcome: async (
+          a: string,
+          b: string,
+          locale: "de" | "en" = "de",
+          confidential = false,
+        ) => {
+          try {
+            deps.vorVergleich?.("dublette");
+            pruefeModellAbbruch();
+            const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b, locale, confidential);
+            pruefeModellAbbruch();
+            return outcome;
+          } catch (err) {
+            failure = failure ?? err;
+            throw err;
+          }
+        },
+      } as unknown as Reasoner;
+      // AUFTRAG-mega28 A2/A3: beide Läufe melden ihre Abdeckung; die ZUSAMMENFASSUNG nimmt die
+      // schwächere (mergeCoverage) — sie darf nie mehr behaupten, als der schlechtere Lauf trägt.
+      const conflictCoverage = await detectConflictsForKo(
+        koId,
+        { ko: deps.ko, conflicts: deps.conflicts, reasoner: observedReasoner },
+        captureFailure,
+        umfang,
+      );
+      const duplicateCoverage = await detectDuplicatesForKo(
+        koId,
+        {
+          ko: deps.ko,
+          overlaps: deps.overlaps,
+          reasoner: observedReasoner,
+          settings: deps.overlapSettings,
+          semanticPrefilter: deps.semanticPrefilter,
+        },
+        captureFailure,
+        umfang,
+      );
+      // Interne Gründe nie persistieren: vollständige Projektion auf den bestehenden Drahtvertrag.
+      const merged = mergeCoverage(conflictCoverage, duplicateCoverage);
+      const coverage: AiCheckCoverage = {
+        available: merged.available,
+        selected: merged.selected,
+        alreadyOpen: merged.alreadyOpen,
+        attempted: merged.attempted,
+        completed: merged.completed,
+        skipped: merged.skipped,
+        capped: merged.capped,
+        aborted: merged.aborted,
+      };
+      // Laufweite Fehler haben Vorrang vor einzelnen Vergleichsausfällen, auch bei Kapazitätsabbruch.
+      // Job-Frist und Queue-Überlauf werden weiterhin außerhalb dieses Runners abgeschlossen.
+      if (failure !== null) {
+        return { ok: false, fallbackReason: classifyAiCheckFailure(failure), coverage };
       }
-    }
-    if (merged.skipped > 0) {
-      return { ok: false, fallbackReason: comparisonReason ?? "model-error", coverage };
-    }
-    if (!deps.reasoner.status().active) {
-      return { ok: false, fallbackReason: "no-model", coverage };
-    }
-    return { ok: true, coverage };
+      // Häufigste Klasse gewinnt; bei Gleichstand die erste aus der vereinbarten Klassenreihenfolge.
+      // Ausschließlich die zusammengeführte Abdeckung entscheidet, nicht die Reihenfolge der Aufrufe.
+      let comparisonReason: AiCheckFailureReason | undefined;
+      let highestCount = 0;
+      for (const reason of [
+        "no-model",
+        "confidential",
+        "auth",
+        "rate-limit",
+        "unreachable",
+        "bad-response",
+        "model-timeout",
+        "model-error",
+      ] as const) {
+        const count = merged.skippedReasons?.[reason] ?? 0;
+        if (count > highestCount) {
+          highestCount = count;
+          comparisonReason = reason;
+        }
+      }
+      if (merged.skipped > 0) {
+        return { ok: false, fallbackReason: comparisonReason ?? "model-error", coverage };
+      }
+      if (!deps.reasoner.status().active) {
+        return { ok: false, fallbackReason: "no-model", coverage };
+      }
+      return { ok: true, coverage };
+    });
   };
 }

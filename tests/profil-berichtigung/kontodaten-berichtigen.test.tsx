@@ -11,7 +11,7 @@
 //   B1  Selbst · Name      Profil → „Kontodaten berichtigen" → Name · Server, Sitzung, Profilzeile,
 //                          Prüfprotokoll (`user.account-corrected`, Name vorher/nachher, keine Adresse)
 //   B2  Selbst · E-Mail    ohne/mit falschem Passwort abgelehnt (nichts geändert) · mit richtigem
-//                          Passwort geändert · Anmeldung nur noch mit neuer Adresse
+//                          Passwort und neuer Mail bestätigt · Anmeldung nur noch mit neuer Adresse
 //   B3  Selbst · Fehler    Adresse eines anderen Kontos → Satz des Servers, nichts geändert ·
 //                          Verbindungsstörung → Meldung, nichts geändert
 //   B4  Admin              Nutzerkarte → „Kontodaten berichtigen" · /api/users und Anmeldung des
@@ -24,7 +24,7 @@
 // WAS ECHT IST: Server (`buildApp`/`buildServices`, In-Memory, eigene Instanz je Fall), Clientabruf
 // (`authApi`/`endpoints`), Karten, Toasts. Ersetzt ist allein der Transport (`fetch` → `app.inject`),
 // wie in `tests/verwaltung-schreibwege/karten-am-echten-server.test.tsx`.
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
@@ -52,6 +52,9 @@ const ADMIN = { name: "Ada Verwaltung", email: "ada@verwaltung.test", password: 
 const WANDA = { name: "Wanda Wartend", email: "wanda@verwaltung.test", password: "wanda-geheim-1" };
 
 let app: FastifyInstance | null = null;
+let bestaetigungsMails: { to: string; text: string }[] = [];
+beforeEach(() => vi.stubEnv("APP_BASE_URL", "https://klarwerk.attrappe.test"));
+afterEach(() => vi.unstubAllEnvs());
 let cookie: string | null = null;
 let adminCookie = "";
 let wandaCookie = "";
@@ -142,7 +145,14 @@ async function berichtigungen(): Promise<Eintrag[]> {
 }
 
 async function vorrichtung(): Promise<void> {
-  app = buildApp(buildServices());
+  const services = buildServices();
+  bestaetigungsMails = [];
+  services.mailer = {
+    send: async (m) => {
+      bestaetigungsMails.push(m);
+    },
+  };
+  app = buildApp(services);
   await app.ready();
   const a = await app.inject({ method: "POST", url: "/api/auth/register", payload: ADMIN });
   expect(a.statusCode, "Admin-Ersteinrichtung").toBe(201);
@@ -187,7 +197,7 @@ async function warteBis(bedingung: () => boolean, was: string): Promise<void> {
   throw new Error(`Zustand nie erreicht: ${was} — sichtbar: ${text().slice(0, 400)}`);
 }
 
-async function montiere(inhalt: ReactNode): Promise<void> {
+async function montiere(inhalt: ReactNode, einstieg = "/"): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -208,7 +218,7 @@ async function montiere(inhalt: ReactNode): Promise<void> {
               null,
               createElement(
                 MemoryRouter,
-                null,
+                { initialEntries: [einstieg] },
                 createElement(NavGuardProvider, null, inhalt, createElement(ToastViewport)),
               ),
             ),
@@ -389,21 +399,37 @@ describe("B2 · Selbstberichtigung der E-Mail", () => {
     expect((await ich(wandaCookie)).email).toBe(WANDA.email);
   });
 
-  it("richtiges Passwort: geändert — Anmeldung nur noch mit der neuen Adresse", async () => {
-    await kontodatenKarte();
-    await tippe(feld(t("adm.email")), NEU);
-    await tippe(feld(t("prof.correctPassword")), WANDA.password);
-    await klick(knopf(t("prof.correctSubmit")));
-    await warteBis(() => text().includes(t("prof.correctSaved")), "Bestätigung");
-    expect((await ich(wandaCookie)).email).toBe(NEU);
-    expect((await anmelden(NEU, WANDA.password)).status, "neue Adresse").toBe(200);
-    expect((await anmelden(WANDA.email, WANDA.password)).status, "alte Adresse").toBe(401);
-    const e = (await berichtigungen())[0] as Eintrag;
-    expect(e.payload).toMatchObject({ fields: ["email"], via: "self" });
-    expect(JSON.stringify(e.payload), "weder alte noch neue Adresse im Protokoll").not.toContain(
-      "@",
-    );
-  });
+  it.each(["de", "en", "nl"])(
+    "Adresse erst nach echter Mail und Profil-Bestätigung geändert: %s",
+    async (sprache) => {
+      await i18n.changeLanguage(sprache);
+      await kontodatenKarte();
+      await tippe(feld(t("adm.email")), NEU);
+      await tippe(feld(t("prof.correctPassword")), WANDA.password);
+      await klick(knopf(t("prof.correctSubmit")));
+      await warteBis(() => text().includes(t("prof.emailPending")), "Bestätigung steht aus");
+      expect((await ich(wandaCookie)).email).toBe(WANDA.email);
+      expect(await berichtigungen()).toEqual([]);
+      expect(bestaetigungsMails).toHaveLength(1);
+      expect(bestaetigungsMails[0]?.to).toBe(NEU);
+      const link = new URL(bestaetigungsMails[0]?.text.split("\n").at(-1) ?? "");
+      await act(async () => root?.unmount());
+      root = null;
+      container.remove();
+      await montiere(createElement(Profile), link.pathname + link.search);
+      expect((await ich(wandaCookie)).email).toBe(WANDA.email);
+      await klick(knopf(t("prof.emailConfirm")));
+      await warteBis(() => text().includes(t("prof.correctSaved")), "Mailadresse bestätigt");
+      expect((await ich(wandaCookie)).email).toBe(NEU);
+      expect((await anmelden(NEU, WANDA.password)).status, "neue Adresse").toBe(200);
+      expect((await anmelden(WANDA.email, WANDA.password)).status, "alte Adresse").toBe(401);
+      const e = (await berichtigungen())[0] as Eintrag;
+      expect(e.payload).toMatchObject({ fields: ["email"], via: "self" });
+      expect(JSON.stringify(e.payload), "weder alte noch neue Adresse im Protokoll").not.toContain(
+        "@",
+      );
+    },
+  );
 });
 
 // ------------------------------------------------------------------------------------------------

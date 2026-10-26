@@ -124,7 +124,19 @@ async function baueApp(): Promise<{ app: FastifyInstance; jetzt: number }> {
   });
   const saml = createSamlProvider(konfig(), { now: () => jetzt });
   const app = Fastify();
-  app.register(authRoutes(service, { saml }));
+  const mails: { to: string; text: string }[] = [];
+  mailAusgang.set(app, mails);
+  app.register(
+    authRoutes(service, {
+      saml,
+      mailer: {
+        send: async (m) => {
+          mails.push(m);
+        },
+      },
+      resetBaseUrl: "https://klarwerk.attrappe.test/reset",
+    }),
+  );
   await app.ready();
   return { app, jetzt };
 }
@@ -223,7 +235,9 @@ describe("R-0582 · ein reines SAML-Konto berichtigt seine E-Mail selbst — mit
       const bestaetigt = await samlDurchlauf(app, jetzt, KONTO_A, "profil", vorher.sitzung);
       expect(bestaetigt.abschluss.headers.location).toBe("/profil?kontodaten=sso");
       const r = await berichtige(app, bestaetigt.sitzung, { email: NEU });
-      expect(r.statusCode, r.body).toBe(200);
+      expect(r.statusCode, r.body).toBe(202);
+      expect((await ich(app, bestaetigt.sitzung)).email).toBe(KONTO_A.email);
+      await bestaetigeNeueAdresse(app, bestaetigt.sitzung);
       const nachher = await ich(app, bestaetigt.sitzung);
       expect(nachher).toMatchObject({ id: kontoId, email: NEU });
       // Einmalig: eine zweite Adressänderung braucht eine neue Bestätigung.
@@ -269,3 +283,19 @@ describe("R-0582 · ein reines SAML-Konto berichtigt seine E-Mail selbst — mit
     }
   });
 });
+
+const mailAusgang = new WeakMap<FastifyInstance, { to: string; text: string }[]>();
+async function bestaetigeNeueAdresse(app: FastifyInstance, sitzung: string): Promise<void> {
+  const mail = mailAusgang.get(app)?.at(-1);
+  expect(mail?.to).toBe(NEU);
+  const link = new URL(mail?.text.split("\n").at(-1) ?? "");
+  const token = link.searchParams.get("emailBestaetigung");
+  expect(token).toBeTruthy();
+  const r = await app.inject({
+    method: "POST",
+    url: "/api/auth/me/email/confirm",
+    headers: { authorization: `Bearer ${sitzung.replace(/^kw_session=/, "")}` },
+    payload: { token },
+  });
+  expect(r.statusCode, r.body).toBe(200);
+}

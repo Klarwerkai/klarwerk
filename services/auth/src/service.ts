@@ -1674,6 +1674,41 @@ export class AuthService {
    * anhängend und keine zweite Ablage für Anschriften); dass die Adresse geändert wurde, steht da.
    * Vermerk vor Schreiben in EINEM Rahmen, wie `approveUser`. Ohne Änderung kein Eintrag.
    */
+  /** Neue Adresse erst nach Besitznachweis, gebunden an Konto UND bisherige/neue Adresse. */
+  async requestEmailChange(
+    userId: string,
+    email: string,
+  ): Promise<{ token: string; email: string }> {
+    const user = await this.requireUser(userId);
+    const normalized = email.trim();
+    const other = await this.users.findByEmail(normalized);
+    if (other && other.id !== userId)
+      throw new AuthError("EMAIL_TAKEN", "EMAIL_TAKEN" satisfies Meldungsschluessel);
+    const token = this.genToken();
+    await this.resetTokens.createEmailChange({
+      token: hashTokenAtRest(token),
+      userId,
+      email: normalized,
+      previousEmail: user.email,
+      expiresAt: this.now() + 15 * 60_000,
+    });
+    return { token, email: normalized };
+  }
+  async confirmEmailChange(userId: string, token: string): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const change = await this.resetTokens.takeEmailChange(
+      hashTokenAtRest(token),
+      userId,
+      this.now(),
+    );
+    if (!change || change.previousEmail !== user.email)
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "EMAIL_CHANGE_INVALID" satisfies Meldungsschluessel,
+      );
+    return this.correctAccountData(userId, { email: change.email }, userId);
+  }
+
   async correctAccountData(
     userId: string,
     input: { name?: string; email?: string },

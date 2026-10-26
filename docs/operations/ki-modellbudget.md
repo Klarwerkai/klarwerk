@@ -1,0 +1,13 @@
+# Modellbudget und Hintergrundläufe
+
+Die tatsächliche Übertragung am bestehenden Modellport zählt pro Prozess und festem 60-Sekunden-Fenster. Ein authentifiziertes Konto beziehungsweise der gespeicherte Eigentümer eines Hintergrundauftrags darf höchstens 30 Übertragungen auslösen. Text und Bilder teilen dieses Budget. Es gilt auch auf HTTP-Routen außerhalb der bisherigen Routenliste sowie für Erinnerungen und KI-Prüfjobs. Angaben aus Nutzdaten, frei behaupteten Kennungen oder Headern wechseln das Konto nicht.
+
+Zusätzlich gelten höchstens 600 Übertragungen pro Prozess und Fenster. Bibliotheksaufrufe ohne authentifizierten oder gespeicherten Eigentümer teilen ein eigenes endliches Budget von 120. Die bisherigen globalen Grenzen für aktive Modellaufrufe und Wartende gelten weiter. Ein abgewiesener Übertragungsversuch löst keinen Provideraufruf aus. Der bestehende HTTP-Anfragezähler bleibt zusätzlich bestehen; dessen Einstellung „aus“ hebt dieses Modellbudget nicht auf. Nach Fensterablauf beginnt die Zählung neu; die Kontenmenge ist durch das globale Budget begrenzt.
+
+Der Erinnerungstakt wählt bereits vor seinem Mengenlimit reihum nach Konto, bevorzugt einfache Erinnerungen und bearbeitet höchstens fünf Einträge einschließlich Wiederaufnahme je Konto und Takt. Er bleibt sequenziell. Der KI-Prüfworker gibt seinen einzigen Platz erst nach dem tatsächlichen Ende des inneren Jobs frei. Ein Fristablauf sendet ein AbortSignal bis zu unterstützten Modelltransporten; ein Transport, der es ignoriert, bleibt bis zu seinem Ende belegt. Späte Ergebnisse dürfen keine neuen Befunde eintragen.
+
+Die öffentlichen KI-Statusrouten lesen ausschließlich den Cache. Bewusste geschützte Admin-Funktionschecks bleiben erhalten. Ein Fehler beim Speichern des Laufprotokolls wird gemeldet und ändert ein vorhandenes gültiges Modellergebnis nicht; er startet keinen zweiten Modellversuch. Ein nicht gespeicherter Lauf wird nicht als gespeichert ausgewiesen.
+
+OCR-Text, Beschreibung, Quellname und Fundstelle werden als begrenzte JSON-Daten mit einer eigenen Vertrauensregel an den Assistenzweg übergeben. Das schützt die Struktur und erhält legitime Angaben und Berichtigungen; es ist kein Nachweis, dass ein reales Modell jede semantische Prompt-Injektion abwehrt. Die OCR4-Mengensteuerung ist unverändert.
+
+Die Quellenanzeige erhält die einsbasierte Position in den tatsächlichen Antwortkandidaten. Leere belegte Quellen bleiben leer; bei historischem Bestand ohne bekannte Position erscheint [?]. Der vorhandene PG-JSON-Speicher übernimmt das zusätzliche Feld. Eine globale Erweiterung des Dev-Journals um persönliche Gespräche erfolgt hier nicht.

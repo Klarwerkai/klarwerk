@@ -206,6 +206,7 @@ import {
 import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
 import { can, canChangeRole, canManageUsers } from "../../rbac";
+import { mitModellKontext } from "../../reasoner";
 import {
   type AssistPresetRepo,
   Ausgangspruefung,
@@ -2811,10 +2812,13 @@ export function modelBusyErrorHandler(
   reply: FastifyReply,
 ): void {
   if (error instanceof ModelCapacityError) {
-    reply.code(503).header("Retry-After", "1").send({
-      error: "MODEL_BUSY",
-      message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
-    });
+    reply
+      .code(503)
+      .header("Retry-After", String("retryAfterSeconds" in error ? error.retryAfterSeconds : 1))
+      .send({
+        error: "MODEL_BUSY",
+        message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
+      });
     return;
   }
   // R-0590 · Ben nacharbeit-1: eine Klara-Antwort unter Zustimmung, deren zugestimmter Anbieter nicht
@@ -4207,15 +4211,11 @@ export function buildApp(
   // Abrechnungstatsache). Damit ist je Aufgabe ableitbar, ob die Kette Cloud oder Nicht-Cloud
   // enthaelt — weniger als Anbieter-/Modelloffenlegung, aber mehr als frueher; das ist eine
   // BEWUSSTE Vertragsentscheidung (Kostenhinweis fuer alle Rollen), keine stille Erweiterung.
-  // PAKET 2 (D-AISTATE, Pedi 23.07.): der Status-Abruf stößt — HÖCHSTENS einmal je Cache-Frist (60 s)
-  // und feuern-und-vergessen — einen echten Erreichbarkeits-Probe an; die Antwort trägt sofort den
-  // aktuellen Cache-Zustand (kein Ping pro Request, Kosten/Rate geschont).
+  // Beide öffentlichen Auskünfte lesen ausschließlich den Cache; ein bewusster Admin-Probelauf bleibt separat.
   app.get("/api/reasoner/status", async () => {
-    services.reasoner.refreshReachabilityIfStale();
     return services.reasoner.publicStatus();
   });
   app.get("/api/ai-status", async () => {
-    services.reasoner.refreshReachabilityIfStale();
     return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
   });
   // R-0599 (Ben nacharbeit-2): die KI-Lage der Kopfzeile — ob gerade eine externe, eine hausinterne
@@ -4410,7 +4410,7 @@ export function buildApp(
         return null;
       }
       const konto = await services.auth.kontoLesen(kontoId);
-      return klaraKalenderEinspeisung.fuer(konto?.email);
+      return klaraKalenderEinspeisung.fuer(konto?.id);
     });
   const kalenderAnbindungDienst = new KalenderAnbindungDienst({
     repo: services.klaraKalender,
@@ -4450,15 +4450,16 @@ export function buildApp(
     // AW-18 · bestellte Zusammenfassung über den VORHANDENEN KI-Weg (FR-RSN-03 `assistText`),
     // vertraulich eingestuft: ob ein Cloudmodell persönliche Inhalte sehen darf, entscheidet die
     // zentrale KI-Freigabe (`kiFreigabe.vertraulicheInhalte`). `demo` = gekennzeichneter Ersatz.
-    zusammenfassen: async (text) => {
-      const r = await services.reasoner.assistText(
-        text,
-        "de",
-        "Fasse diesen persönlichen Text in höchstens fünf kurzen Sätzen sachlich zusammen. Erfinde nichts.",
-        true,
-      );
-      return { text: r.text, ki: !r.demo };
-    },
+    zusammenfassen: async (text, kontoId) =>
+      mitModellKontext({ actor: kontoId }, async () => {
+        const r = await services.reasoner.assistText(
+          text,
+          "de",
+          "Fasse diesen persönlichen Text in höchstens fünf kurzen Sätzen sachlich zusammen. Erfinde nichts.",
+          true,
+        );
+        return { text: r.text, ki: !r.demo };
+      }),
     // Klara 11 (P07-AC05/AC06): die dauerhafte Kalendersperre GENAU EINES Vorkommens — gelesen
     // unmittelbar vor jeder Wirkung, also auch nach Neustart und verspätetem Abgleich.
     vorkommenSperre: (kontoId, erinnerungId, vorkommenId) =>

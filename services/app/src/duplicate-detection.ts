@@ -16,6 +16,7 @@ import {
 } from "../../conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
+import { pruefeModellAbbruch } from "../../reasoner";
 import type { Reasoner } from "../../reasoner";
 import {
   comparisonFailureReason,
@@ -106,6 +107,7 @@ export async function detectDuplicatesForKo(
     if (pool.length === 0) {
       // R-0194 (bens Befund zu K3): auch ohne Vergleichspartner ist das eine Anlage bzw. Änderung —
       // die lokale Prüfsumme des (nicht-Demo-)Subjekts wird gepflegt. Kein Vergleich, kein Modell.
+      pruefeModellAbbruch();
       deps.overlaps.checksums.upsert(subjectSubject);
       return coverage;
     }
@@ -132,7 +134,11 @@ export async function detectDuplicatesForKo(
         // Weg nicht (selectOverlapCandidates) — ohne Deckel ist das der ganze Pool.
         cap: vergleichsDeckel(umfang),
         // bens V5: Stale-Schreibschutz — vor dem Persistieren beide gebundenen Versionen prüfen.
-        isCurrent: async (id, version) => (await deps.ko.get(id))?.version === version,
+        isCurrent: async (id, version) => {
+          const current = await deps.ko.get(id);
+          pruefeModellAbbruch();
+          return current?.version === version;
+        },
         coverage,
       },
     );
