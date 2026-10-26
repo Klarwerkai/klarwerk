@@ -82,8 +82,10 @@ export class PgOverlapRepo implements OverlapRepo {
     return (res.rowCount ?? 0) > 0;
   }
 
-  async findById(id: string): Promise<OverlapEntry | undefined> {
-    const res = await this.pool.query<OverlapRow>("SELECT data FROM ko_overlaps WHERE id=$1", [id]);
+  async findById(id: string, tx?: TxContext): Promise<OverlapEntry | undefined> {
+    const res = await this.q(tx).query<OverlapRow>("SELECT data FROM ko_overlaps WHERE id=$1", [
+      id,
+    ]);
     return res.rows[0]?.data;
   }
 
@@ -100,8 +102,8 @@ export class PgOverlapRepo implements OverlapRepo {
     return tx ? pgQueryable(tx) : poolQueryable(this.pool);
   }
 
-  async update(entry: OverlapEntry): Promise<void> {
-    await this.pool.query("UPDATE ko_overlaps SET data=$2 WHERE id=$1", [
+  async update(entry: OverlapEntry, tx?: TxContext): Promise<void> {
+    await this.q(tx).query("UPDATE ko_overlaps SET data=$2 WHERE id=$1", [
       entry.id,
       JSON.stringify(entry),
     ]);

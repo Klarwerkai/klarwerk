@@ -41,7 +41,7 @@ type Ablagen = { koRepo: object; overlapRepo: object; conflictsRepo: object; aud
 type AblageName = keyof Ablagen;
 
 interface OffenerVorgang {
-  readonly rueckstellungen: (() => void)[];
+  readonly rueckstellungen: (() => void | Promise<void>)[];
   // Je Journal (Abschlussfunktion) die zurückgehaltenen Zeilen in Schreibreihenfolge.
   readonly journal: Map<(zeilen: unknown[]) => void, unknown[]>;
 }
@@ -131,7 +131,18 @@ const ERFASSUNG: Readonly<Record<AblageName, Readonly<Record<string, Erfassung>>
       return ergebnis;
     },
   },
-  overlapRepo: { closeOpenForKo: schliessenErfassen },
+  overlapRepo: {
+    closeOpenForKo: schliessenErfassen,
+    update: async (ziel, echt, args, vorgang) => {
+      const neu = args[0] as { id: string };
+      const alle = await gebunden<() => Promise<{ id: string }[]>>(ziel, "all")();
+      const vorher = alle.find((e) => e.id === neu.id);
+      const ergebnis = await echt(...args);
+      const zuruecksetzen = gebunden<(id: string, v: unknown) => void>(ziel, "zuruecksetzen");
+      vorgang.rueckstellungen.push(() => zuruecksetzen(neu.id, vorher));
+      return ergebnis;
+    },
+  },
   conflictsRepo: { closeOpenForKo: schliessenErfassen },
   auditRepo: {
     append: async (ziel, echt, args, vorgang) => {
@@ -275,13 +286,13 @@ export function speicherVorgang<R extends Ablagen>(
   const kettenSperre = <T>(tx: TxContext | undefined, fn: () => Promise<T>): Promise<T> =>
     tx && eigeneKontexte.has(tx) ? fn() : exklusiv(fn);
 
-  function zurueckstellen(vorgang: OffenerVorgang, fehler: unknown): never {
+  async function zurueckstellen(vorgang: OffenerVorgang, fehler: unknown): Promise<never> {
     // Jeder Schritt wird zurückgestellt, auch wenn ein einzelner dabei scheitert; ein solches
     // Scheitern wird NICHT verschwiegen, sondern mit dem Ausgangsfehler gemeldet.
     const gescheitert: unknown[] = [];
     for (const zurueck of [...vorgang.rueckstellungen].reverse()) {
       try {
-        zurueck();
+        await zurueck();
       } catch (e) {
         gescheitert.push(e);
       }
@@ -295,10 +306,16 @@ export function speicherVorgang<R extends Ablagen>(
     throw fehler;
   }
 
-  const klammer: WithTx = <T>(fn: (tx: TxContext) => Promise<T>): Promise<T> =>
+  const klammer: WithTx = <T>(
+    fn: (tx: TxContext) => Promise<T>,
+    ruecknahme?: () => Promise<void>,
+  ): Promise<T> =>
     exklusiv(async () => {
       const kontext: TxContext = { brand: "TxContext" };
-      const vorgang: OffenerVorgang = { rueckstellungen: [], journal: new Map() };
+      const vorgang: OffenerVorgang = {
+        rueckstellungen: ruecknahme ? [ruecknahme] : [],
+        journal: new Map(),
+      };
       offeneVorgaenge.set(kontext, vorgang);
       eigeneKontexte.add(kontext);
       let beenden: () => void = () => undefined;
@@ -315,7 +332,7 @@ export function speicherVorgang<R extends Ablagen>(
             abschluss(zeilen);
           }
         } catch (fehler) {
-          zurueckstellen(vorgang, fehler);
+          return await zurueckstellen(vorgang, fehler);
         }
         return ergebnis;
       } finally {

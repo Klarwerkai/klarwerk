@@ -1583,7 +1583,7 @@ export type DraftResponseKind =
   | "error";
 
 export function classifyDraftResponse(status: number): DraftResponseKind {
-  if (status === 201) {
+  if (status === 201 || status === 200) {
     return "created";
   }
   if (status === 401) {

@@ -66,8 +66,7 @@ export function Verantwortung({
     },
     onError: fehler,
   });
-  const fassung =
-    ko.spaceId !== undefined && ko.version !== undefined ? { expectedVersion: ko.version } : {};
+  const fassung = ko.version !== undefined ? { expectedVersion: ko.version } : {};
   const freigeben = useMutation({
     mutationFn: (dubletteGesehen: boolean) =>
       endpoints.ko.act(

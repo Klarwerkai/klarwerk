@@ -1318,6 +1318,7 @@ export interface ZusammenfuehrungsAuftrag {
   quellen: string[];
   bestaetigt: true;
   vermerk?: string;
+  operationId?: string;
 }
 
 export interface ZusammenfuehrungsErgebnis {

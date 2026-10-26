@@ -480,7 +480,7 @@ export class ZurufService {
     const gefunden: KnowledgeObject[] = [];
     for (const id of koIds) {
       const ko = await this.koService.get(id);
-      if (ko && ko.status === "validiert" && sichtbar(ko)) {
+      if (ko && !ko.mergedInto && ko.status === "validiert" && sichtbar(ko)) {
         gefunden.push(ko);
       }
     }

@@ -832,7 +832,7 @@ export interface MelderHandle {
 
 /** Startet den Takt. Ein Fehler eines Takts geht an `onError`, der nächste Takt läuft normal. */
 export function starteWissensereignisMelder(opts: {
-  melder: WissensereignisMelder;
+  melder: Pick<WissensereignisMelder, "lauf">;
   intervalMs: number;
   onError?: (error: unknown) => void;
   setIntervalFn?: (callback: () => void, ms: number) => IntervalHandle;

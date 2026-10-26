@@ -351,24 +351,25 @@ describe("klara1b Teil A/B: robustes Einfuegen + Kopieren + kompakte Antwort (DO
 });
 
 // AUFTRAG-JOB507-D4: die Antwort des Draft-POSTs wird KLASSIFIZIERT statt an drei Stellen erraten.
-// Die Zusage ist bewusst fail-closed: NUR das dokumentierte 201 der Route
-// (services/app/src/routes/capture-routes.ts) gilt als angelegter Entwurf; jede andere Antwort ist
-// Create-0. Damit kann kein neuer Statuscode versehentlich als Erfolg durchrutschen.
+// Die Zusage ist fail-closed: 201 (Anlage) und 200 (quittierte Wiederholung) tragen einen Entwurf;
+// jede andere Antwort bleibt Create-0. Damit kann kein neuer Statuscode versehentlich als Erfolg durchrutschen.
 describe("AUFTRAG-JOB507-D4: Draft-Antwortklassen (DOM-freies Modul)", () => {
-  it("classifyDraftResponse: 201 created, 401 auth, 403 forbidden, 413 too-large, 429 rate-limited, sonst error", () => {
+  it("classifyDraftResponse: 201/200 created, 401 auth, 403 forbidden, 413 too-large, 429 rate-limited, sonst error", () => {
     expect(classifyDraftResponse(201)).toBe("created");
+    expect(classifyDraftResponse(200)).toBe("created");
     expect(classifyDraftResponse(401)).toBe("auth");
     expect(classifyDraftResponse(403)).toBe("forbidden");
     expect(classifyDraftResponse(413)).toBe("too-large");
     expect(classifyDraftResponse(429)).toBe("rate-limited");
-    for (const status of [200, 202, 204, 400, 404, 409, 500, 502]) {
+    for (const status of [202, 204, 400, 404, 409, 500, 502]) {
       expect(classifyDraftResponse(status), String(status)).toBe("error");
     }
   });
 
   it("draftWasCreated: genau eine Klasse zaehlt als Entwurf — alles andere ist Create-0", () => {
     expect(draftWasCreated(classifyDraftResponse(201))).toBe(true);
-    for (const status of [200, 401, 403, 413, 429, 500]) {
+    expect(draftWasCreated(classifyDraftResponse(200))).toBe(true);
+    for (const status of [401, 403, 413, 429, 500]) {
       expect(draftWasCreated(classifyDraftResponse(status)), String(status)).toBe(false);
     }
   });
@@ -911,14 +912,14 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
   // Ableitung, derselbe Schluessel, kein Raten.
   it("K2/K3: Quelle = Deep-Link (/wissen/:id, extern) + Status + Trust unter „Mehr“, DE/EN/NL", () => {
     // Deep-Link ueber den gespiegelten Helfer, extern geoeffnet, ohne Opener-Zugriff.
-    expect(html).toContain("link.href = koDetailUrl(window.location.origin, resolved[i].id)");
+    expect(html).toContain("link.href = koDetailUrl(window.location.origin, id)");
     expect(html).toContain('link.target = "_blank"');
     expect(html).toContain('link.rel = "noopener noreferrer"');
     // Aufbau ueber DOM-APIs (textContent) — kein HTML-Sink fuer KO-Titel.
-    expect(html).toContain("link.textContent = resolved[i].title");
+    expect(html).toContain("link.textContent = geladen ? quelle.title : id");
     // Status aus der Bibliotheks-Ableitung; unbekannt wird NIE geraten.
     expect(html).toContain("function askQuellenDetailZeile(nummer, quelle)");
-    expect(html).toContain('teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"))');
+    expect(html).toContain('var teile = [t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown")]');
     for (const key of [
       'askStatusValidiert: "',
       'askStatusPruefung: "',
@@ -934,7 +935,7 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
     // JOB 3092 S6: dazu `version: null` und `geladen: false` — der gescheiterte Abruf ist als
     // solcher markiert, damit die Herkunftszeile keinen Pruefstand behauptet (Lehre JOB 3091 R3).
     expect(html).toContain(
-      '{ id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, geladen: false }',
+      '{ id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, passage: null, original: null, geladen: false }',
     );
   });
 });

@@ -2337,6 +2337,7 @@ export function CaptureArbeitsraum({
   // statt einer Wiederholung, und nach einem Antwortverlust entstünde ein zweites vollständiges
   // Wissensobjekt. Wann er fällt und wann er bleibt, steht in lib/createOperation.ts.
   const submitOperationRef = useRef<string | null>(null);
+  const submitAbdruckRef = useRef<string | null>(null);
 
   // AUFTRAG-mega22 Block E: steht hier eine Meldung, hat der Server einen 409 mit einem Code
   // geliefert, für den ein NEUER Vorgang der richtige Ausweg ist. Die Oberfläche bietet die
@@ -2350,7 +2351,9 @@ export function CaptureArbeitsraum({
         throw new Error("no draft");
       }
       // Ein Vorgang, ein Schlüssel — über alle Wiederholungen hinweg, bis er eindeutig erledigt ist.
-      if (!submitOperationRef.current) {
+      const abdruck = JSON.stringify({ draft, draftId, reviewerIds: [...reviewerIds].sort() });
+      if (!submitOperationRef.current || submitAbdruckRef.current !== abdruck) {
+        submitAbdruckRef.current = abdruck;
         submitOperationRef.current = newCreateOperationId();
       }
       const operationId = submitOperationRef.current;
@@ -2541,6 +2544,7 @@ export function CaptureArbeitsraum({
       } else {
         ko = await endpoints.ko.create({
           ...createPayload,
+          operationId,
           // SCRUM-395: Prüfer-Vorschlag beim direkten Einreichen.
           ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
         });

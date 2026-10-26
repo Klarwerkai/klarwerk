@@ -411,7 +411,7 @@ export interface KoSearchProjectionRepo {
    * in der das Objekt zurueckkehrt. InMemory ignoriert ihn.
    */
   replace(projection: KoSearchProjection, tx?: TxContext): Promise<void>;
-  find(koId: string, koVersion: number): Promise<KoSearchProjection | undefined>;
+  find(koId: string, koVersion: number, tx?: TxContext): Promise<KoSearchProjection | undefined>;
   listByKo(koId: string): Promise<KoSearchProjection[]>;
   /**
    * DIE Standardsuche: ODER-Treffer ueber das Effective Search Document der AKTIVEN KO-Version
@@ -476,7 +476,7 @@ export interface KoSearchProjectionRepo {
    * fuer Gate und Gegenprobe. Sie ist bewusst NICHT Teil von `KoSearchProjection`: die Generation
    * gehoert zur Steuerung des Bestands, nicht zum abgeleiteten Suchdokument.
    */
-  generationOf(koId: string, koVersion: number): Promise<number | null | undefined>;
+  generationOf(koId: string, koVersion: number, tx?: TxContext): Promise<number | null | undefined>;
   /**
    * Traegt JEDE aktive Zeile die Zielfassung UND die genannte Generation? Die Gate-Frage aus
    * 09 §2.4 („seit Beginn keine Projektionsmutation einer anderen Generation"), als eine Aussage.
@@ -706,7 +706,11 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     });
   }
 
-  generationOf(koId: string, koVersion: number): Promise<number | null | undefined> {
+  generationOf(
+    koId: string,
+    koVersion: number,
+    _tx?: TxContext,
+  ): Promise<number | null | undefined> {
     const key = schluessel(koId, koVersion);
     return Promise.resolve(this.items.has(key) ? (this.generationen.get(key) ?? null) : undefined);
   }
@@ -726,7 +730,7 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     return true;
   }
 
-  find(koId: string, koVersion: number): Promise<KoSearchProjection | undefined> {
+  find(koId: string, koVersion: number, _tx?: TxContext): Promise<KoSearchProjection | undefined> {
     return Promise.resolve(this.items.get(schluessel(koId, koVersion)));
   }
 

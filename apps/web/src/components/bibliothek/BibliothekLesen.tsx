@@ -25,6 +25,7 @@ import {
 import type { ExtractedPoint, KnowledgeObject, KnowledgeType, KoProposal } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
+import { useNavGuardOptional, useUnloadGuard } from "../../app/NavGuardContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
 import { abfrageMitBestand, auffrischungGescheitert } from "../../lib/abfrageBestand";
@@ -1387,7 +1388,7 @@ export function BibliothekLesen({
    * gehörte. Ein „eingereicht" oder eine gemeldete Sperre, die über dem nächsten, frisch geöffneten
    * Formular stehenbliebe, wäre eine Auskunft über einen Vorgang, den es nicht mehr gibt.
    */
-  const bearbeitenBeenden = (): void => {
+  const bearbeitenBeenden = useCallback((): void => {
     setEdit(null);
     setEinreichLage(null);
     setSpeicherLage(null);
@@ -1397,7 +1398,7 @@ export function BibliothekLesen({
     // oder weil abgebrochen wurde —, gibt es nichts mehr nachzuholen; sie über ein neues Formular
     // hinweg stehenzulassen, hiesse einen Schritt zu überspringen, den niemand gemacht hat.
     teilstandRef.current = null;
-  };
+  }, []);
 
   // ================================================================================================
   // JOB 4075 · DER DIREKTWEG SCHREIBT BEDINGT — UND SAGT, WENN JEMAND DAZWISCHENGEKOMMEN IST.
@@ -2243,6 +2244,11 @@ export function BibliothekLesen({
       ? null
       : stand.metadataRevision;
 
+  const editBasis = useRef<string | null>(null);
+  const editorInhalt = (wert: EditState): string => {
+    const { version: _version, einordnung: _einordnung, ...inhalt } = wert;
+    return JSON.stringify(inhalt);
+  };
   const startEdit = (ko: KnowledgeObject): void => {
     setErr(null);
     setEinreichLage(null);
@@ -2253,7 +2259,7 @@ export function BibliothekLesen({
     // JOB 4163: ein frisch aufgehendes Formular hat nichts nachzuholen — die Buchführung des
     // vorigen Versuchs gehörte zu einem anderen Text und einer anderen Fassung.
     teilstandRef.current = null;
-    setEdit({
+    const geoeffnet: EditState = {
       title: ko.title,
       statement: ko.statement,
       bodyHtml: ko.bodyHtml ?? "",
@@ -2269,8 +2275,25 @@ export function BibliothekLesen({
       // JOB 4251: dasselbe für die Einordnung — der Stand, der in DIESEM Moment auf dem Bildschirm
       // stand (s. `gesehenerEinordnungsstand`).
       einordnung: gesehenerEinordnungsstand(ko),
-    });
+    };
+    editBasis.current = editorInhalt(geoeffnet);
+    setEdit(geoeffnet);
   };
+
+  const navGuard = useNavGuardOptional();
+  const editDirty = edit !== null && editorInhalt(edit) !== editBasis.current;
+  useUnloadGuard(editDirty);
+  useEffect(() => {
+    if (!edit) return;
+    navGuard?.setGuard({
+      isDirty: () => editDirty,
+      save: async () => {
+        await save.mutateAsync({ expectedVersion: edit.version, einordnung: edit.einordnung });
+      },
+      abschliessen: bearbeitenBeenden,
+    });
+    return () => navGuard?.setGuard(null);
+  }, [navGuard, edit, editDirty, save.mutateAsync, bearbeitenBeenden]);
 
   // ================================================================================================
   // WIKI-BEARBEITUNGSRESERVIERUNG · SOLANGE DAS FORMULAR OFFEN IST, WEISS DER SERVER ES.
@@ -2891,7 +2914,7 @@ export function BibliothekLesen({
                           act.mutate({
                             action: "rate",
                             verdict: "up",
-                            ...(ko.spaceId ? { expectedVersion: ko.version } : {}),
+                            ...(ko.version === undefined ? {} : { expectedVersion: ko.version }),
                           });
                           schliessen();
                         }}
@@ -3567,6 +3590,7 @@ export function BibliothekLesen({
                   // „Änderung einreichen" nach einer Sperre schiebt „Abbrechen" nicht seitlich weg.
                   className="min-w-[12rem]"
                   disabled={
+                    edit.version === null ||
                     einreichen.isPending ||
                     appendDocument.isPending ||
                     appendUnclear ||
@@ -3574,7 +3598,11 @@ export function BibliothekLesen({
                   }
                   onClick={() =>
                     einreichen.mutate({
-                      baseVersion: ko.version,
+                      baseVersion:
+                        edit.version ??
+                        (() => {
+                          throw new Error("Öffnungsfassung unbekannt");
+                        })(),
                       statement: edit.statement,
                       bodyHtml: edit.bodyHtml,
                       bestehenderRumpf: ko.bodyHtml ?? null,
@@ -3609,7 +3637,10 @@ export function BibliothekLesen({
               <Button
                 variant="ghost"
                 data-testid="bib-bearbeiten-abbrechen"
-                onClick={bearbeitenBeenden}
+                onClick={() => {
+                  if (navGuard) navGuard.guard(bearbeitenBeenden);
+                  else bearbeitenBeenden();
+                }}
               >
                 {t("ko.cancelEdit")}
               </Button>

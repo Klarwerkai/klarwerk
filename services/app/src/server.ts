@@ -33,6 +33,11 @@ import {
   starteRotationsimpuls,
 } from "./protokoll-rotationsimpuls";
 import { registerSecurityHeaders } from "./security-headers";
+import {
+  initialisiereMitPool,
+  registriereServerSignale,
+  serverLifecycle,
+} from "./server-lifecycle";
 // JOB 3776: der Startvertrag wird am Einstiegspunkt gerufen — als erste Anweisung von `start()`,
 // damit sein Abbruch durch `start().catch(...)` läuft und als EINE lesbare Zeile erscheint.
 import { pruefeStartvertrag } from "./start-vertrag";
@@ -63,32 +68,34 @@ const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
 // ohne → In-Memory (lokaler Schnellstart). Läuft identisch auf Hetzner/On-Prem/Cloud.
 async function pgServices(databaseUrl: string) {
   const pool = createPool(databaseUrl);
-  // Instanztrennung (R-0597/R-0790/R-0860): diese Datenbank gehört genau einer Anlage. Startet eine
-  // andere Anlage (anderer Hostname in APP_BASE_URL) gegen sie, wirft `bindeInstanzVorMigration` —
-  // VOR `migrate()`, damit eine fremde Anlage (womöglich mit anderem Softwarestand) keine einzige
-  // Produktmigration an der Datenbank einer anderen Kundenanlage ausführt. Angelegt wird vorab NUR
-  // die Bindungstabelle. In Produktion ist die erfolgreiche Prüfung Pflicht: fehlt APP_BASE_URL
-  // oder ist sie unlesbar, bricht der Start ebenfalls ab. Der Abbruch läuft durch
-  // `start().catch(...)` als eine lesbare Zeile.
-  const bindung = await bindeInstanzVorMigration(pool, normalizeEnv(process.env.APP_BASE_URL), {
-    pflicht: process.env.NODE_ENV === "production",
+  return initialisiereMitPool(pool, async () => {
+    // Instanztrennung (R-0597/R-0790/R-0860): diese Datenbank gehört genau einer Anlage. Startet eine
+    // andere Anlage (anderer Hostname in APP_BASE_URL) gegen sie, wirft `bindeInstanzVorMigration` —
+    // VOR `migrate()`, damit eine fremde Anlage (womöglich mit anderem Softwarestand) keine einzige
+    // Produktmigration an der Datenbank einer anderen Kundenanlage ausführt. Angelegt wird vorab NUR
+    // die Bindungstabelle. In Produktion ist die erfolgreiche Prüfung Pflicht: fehlt APP_BASE_URL
+    // oder ist sie unlesbar, bricht der Start ebenfalls ab. Der Abbruch läuft durch
+    // `start().catch(...)` als eine lesbare Zeile.
+    const bindung = await bindeInstanzVorMigration(pool, normalizeEnv(process.env.APP_BASE_URL), {
+      pflicht: process.env.NODE_ENV === "production",
+    });
+    if (bindung.art === "gebunden") {
+      process.stderr.write(
+        `[KLARWERK] Instanzbindung: diese Datenbank ist jetzt an die Anlage „${bindung.anlage}“ gebunden.\n`,
+      );
+    }
+    await migrate(pool);
+    // WP-VIP2-GATE (bens P1, Token-at-Rest): Einmal-Migration des Klartext-Token-Bestands
+    // (Format-Erkennung via sha256:-Praefix → idempotent, zweiter Lauf findet nichts mehr);
+    // raeumt dabei abgelaufene Sessions/Reset-Tokens auf.
+    const migrated = await migrateAuthTokensAtRest(pool);
+    if (migrated.hashedSessions > 0 || migrated.hashedResets > 0) {
+      process.stderr.write(
+        `[KLARWERK] Token-at-Rest-Migration: ${migrated.hashedSessions} Session(s) und ${migrated.hashedResets} Reset-Token in-place gehasht.\n`,
+      );
+    }
+    return { services: buildPgServices(pool), pool };
   });
-  if (bindung.art === "gebunden") {
-    process.stderr.write(
-      `[KLARWERK] Instanzbindung: diese Datenbank ist jetzt an die Anlage „${bindung.anlage}“ gebunden.\n`,
-    );
-  }
-  await migrate(pool);
-  // WP-VIP2-GATE (bens P1, Token-at-Rest): Einmal-Migration des Klartext-Token-Bestands
-  // (Format-Erkennung via sha256:-Praefix → idempotent, zweiter Lauf findet nichts mehr);
-  // raeumt dabei abgelaufene Sessions/Reset-Tokens auf.
-  const migrated = await migrateAuthTokensAtRest(pool);
-  if (migrated.hashedSessions > 0 || migrated.hashedResets > 0) {
-    process.stderr.write(
-      `[KLARWERK] Token-at-Rest-Migration: ${migrated.hashedSessions} Session(s) und ${migrated.hashedResets} Reset-Token in-place gehasht.\n`,
-    );
-  }
-  return buildPgServices(pool);
 }
 
 // State-of-the-Art Single-Origin-Auslieferung: Security-Header (HSTS/CSP/…),
@@ -191,8 +198,9 @@ async function start(): Promise<void> {
   // P08-AC07: EINE Schreibsperre für Journal und Firmenreset — während der Reset das Journal
   // ersetzt, weisen alle journalierten Ablagen Schreibvorgänge ab.
   const schreibsperre = new JournalSchreibsperre();
-  const services = databaseUrl
-    ? await pgServices(databaseUrl)
+  const pg = databaseUrl ? await pgServices(databaseUrl) : undefined;
+  const services = pg
+    ? pg.services
     : journal
       ? await buildDevPersistServices(journal, schreibsperre)
       : buildServices();
@@ -206,312 +214,386 @@ async function start(): Promise<void> {
   // Instanz — gestartet unten nach `app.listen`, neben den übrigen Fristläufen.
   let erinnerungLauf: (() => Promise<KlaraErinnerungLaufbericht>) | undefined;
   const erinnerungTakt = resolveKlaraErinnerungTaktMs(process.env[KLARA_ERINNERUNG_TAKT_ENV]);
-  const loeschmarkierungen = leseLoeschmarkierungsAblage();
-  await fuehreLoeschmarkierungenNach(loeschmarkierungen, services.vormachenRoutinen);
-  const app = buildApp(services, {
-    loeschmarkierungen,
-    klaraErinnerungen: (lauf) => {
-      erinnerungLauf = lauf;
-      return erinnerungTakt;
+  let app: FastifyInstance | undefined;
+  const lifecycle = serverLifecycle({
+    closeApp: async () => {
+      await app?.close();
     },
-    factoryReset,
-    klaraAufraeumen: (lauf) => {
-      klaraAufraeumLauf = lauf;
+    closePool: async () => {
+      await pg?.pool.end();
     },
-    tls,
-    hintergrundpruefung: (lauf) => {
-      hintergrundLauf = lauf;
+    workerIdle: async () => {
+      await services.aiCheckWorker?.idle();
     },
   });
-  await configureWebDelivery(app);
-  // Dieselben Lesewege für den Melder und für die Replay-Grenze des Wiederanlaufs.
-  const wissensereignisQuellen: WissensereignisQuellen = {
-    wissensobjekte: () => services.ko.list({}),
-    revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
-    offeneWidersprueche: () => services.conflicts.unresolved(),
-    wissensobjekt: (id) => services.ko.get(id),
-  };
-  if (wiederanlauf) {
-    registriereWiederanlauf(app, {
-      wiederanlauf,
-      audit: services.audit,
-      auth: services.auth,
-      quellen: wissensereignisQuellen,
-      log: { info: (t) => app.log.warn(t) },
+  const signaleEntfernen = registriereServerSignale(process, lifecycle.beende, () => {
+    process.stderr.write("[KLARWERK] Geordneter Serverabschluss fehlgeschlagen.\n");
+    process.exitCode = 1;
+  });
+  try {
+    const loeschmarkierungen = leseLoeschmarkierungsAblage();
+    await fuehreLoeschmarkierungenNach(loeschmarkierungen, services.vormachenRoutinen);
+    const server = buildApp(services, {
+      loeschmarkierungen,
+      klaraErinnerungen: (lauf) => {
+        erinnerungLauf = lauf;
+        return erinnerungTakt;
+      },
+      factoryReset,
+      klaraAufraeumen: (lauf) => {
+        klaraAufraeumLauf = lauf;
+      },
+      tls,
+      hintergrundpruefung: (lauf) => {
+        hintergrundLauf = lauf;
+      },
     });
-  }
-  const port = Number(process.env.PORT ?? "3001");
-  // SCRUM-525 P.5 (WP3-Batch3): die wirksame KI-Zuordnung (Policy) MUSS feststehen, BEVOR der Server
-  // Requests annimmt — sonst gäbe es kurz nach dem Neustart ein Fenster mit Default-„auto". Daher VOR
-  // app.listen und mit await. Präzedenz: ENV KLARWERK_REASONER_POLICY (deklarativ, transient) > persistierte
-  // Admin-Wahl > Default. Ein DB-Lesefehler fällt NICHT still auf auto, sondern fail-closed auf
-  // deterministic (source "load-error") und wird LAUT geloggt.
-  const policy = await services.reasoner.loadPersistedPolicy({
-    envGlobal: process.env.KLARWERK_REASONER_POLICY,
-  });
-  if (policy.source === "load-error") {
-    // SCRUM-525 P.5 (WP-C): Befund 3(b) — es gibt HIER keinen Retry/Auto-Recovery-Mechanismus (die Policy
-    // wird nur EINMAL beim Boot geladen, s. Kommentar an loadPersistedPolicy). Die persistierte Wahl greift
-    // erst wieder nach einem Prozess-Neustart, NICHT automatisch, sobald die DB wieder erreichbar ist —
-    // die Log-Meldung darf das nicht suggerieren. Bis zum Neustart bleibt fail-closed=deterministic aktiv;
-    // ein Admin kann die Zuordnung in der Zwischenzeit über die API neu setzen (setTaskConfig ist nicht
-    // ENV-gesperrt, s. ReasonerPolicyLockedError).
-    // R-0623 (Ben, Nacharbeit 3): `policy.detail` ist hier der rohe Text des Datenbankfehlers — er
-    // steht nicht im Log; die Lage nennt das Ereignis, der Text bleibt fest.
-    app.log.error(
-      { event: "ki_zuordnung_ladefehler" },
-      `KI-Zuordnung konnte NICHT geladen werden — fail-closed auf global=${policy.config.global} (kein Cloud-Egress). Bitte DB prüfen und den Prozess NEU STARTEN, um die persistierte Wahl zu laden (keine automatische Wiederherstellung im laufenden Betrieb) — oder die Zuordnung in der Zwischenzeit unter KI-Verwaltung neu setzen.`,
+    app = server;
+    server.addHook("preClose", async () => {
+      lifecycle.stoppeTakte();
+    });
+    server.addHook("onClose", async () => {
+      await lifecycle.schliesseRessourcen();
+      signaleEntfernen();
+    });
+    await configureWebDelivery(server);
+    // Dieselben Lesewege für den Melder und für die Replay-Grenze des Wiederanlaufs.
+    const wissensereignisQuellen: WissensereignisQuellen = {
+      wissensobjekte: () => services.ko.list({}),
+      revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
+      offeneWidersprueche: () => services.conflicts.unresolved(),
+      wissensobjekt: (id) => services.ko.get(id),
+    };
+    if (wiederanlauf) {
+      registriereWiederanlauf(server, {
+        wiederanlauf,
+        audit: services.audit,
+        auth: services.auth,
+        quellen: wissensereignisQuellen,
+        log: { info: (t) => server.log.warn(t) },
+      });
+    }
+    const port = Number(process.env.PORT ?? "3001");
+    // SCRUM-525 P.5 (WP3-Batch3): die wirksame KI-Zuordnung (Policy) MUSS feststehen, BEVOR der Server
+    // Requests annimmt — sonst gäbe es kurz nach dem Neustart ein Fenster mit Default-„auto". Daher VOR
+    // app.listen und mit await. Präzedenz: ENV KLARWERK_REASONER_POLICY (deklarativ, transient) > persistierte
+    // Admin-Wahl > Default. Ein DB-Lesefehler fällt NICHT still auf auto, sondern fail-closed auf
+    // deterministic (source "load-error") und wird LAUT geloggt.
+    const policy = await services.reasoner.loadPersistedPolicy({
+      envGlobal: process.env.KLARWERK_REASONER_POLICY,
+    });
+    if (policy.source === "load-error") {
+      // SCRUM-525 P.5 (WP-C): Befund 3(b) — es gibt HIER keinen Retry/Auto-Recovery-Mechanismus (die Policy
+      // wird nur EINMAL beim Boot geladen, s. Kommentar an loadPersistedPolicy). Die persistierte Wahl greift
+      // erst wieder nach einem Prozess-Neustart, NICHT automatisch, sobald die DB wieder erreichbar ist —
+      // die Log-Meldung darf das nicht suggerieren. Bis zum Neustart bleibt fail-closed=deterministic aktiv;
+      // ein Admin kann die Zuordnung in der Zwischenzeit über die API neu setzen (setTaskConfig ist nicht
+      // ENV-gesperrt, s. ReasonerPolicyLockedError).
+      // R-0623 (Ben, Nacharbeit 3): `policy.detail` ist hier der rohe Text des Datenbankfehlers — er
+      // steht nicht im Log; die Lage nennt das Ereignis, der Text bleibt fest.
+      server.log.error(
+        { event: "ki_zuordnung_ladefehler" },
+        `KI-Zuordnung konnte NICHT geladen werden — fail-closed auf global=${policy.config.global} (kein Cloud-Egress). Bitte DB prüfen und den Prozess NEU STARTEN, um die persistierte Wahl zu laden (keine automatische Wiederherstellung im laufenden Betrieb) — oder die Zuordnung in der Zwischenzeit unter KI-Verwaltung neu setzen.`,
+      );
+    } else if (policy.source === "env") {
+      server.log.info(
+        `KI-Zuordnung per KLARWERK_REASONER_POLICY gesetzt (global=${policy.config.global}, transient — überschreibt die persistierte Wahl für diesen Start).`,
+      );
+    } else if (policy.source === "persisted") {
+      server.log.info(`KI-Zuordnung aus der Persistenz geladen (global=${policy.config.global}).`);
+    } else {
+      server.log.info(
+        `Keine KI-Zuordnung konfiguriert — es gilt der Standard (global=${policy.config.global}). Unter KI-Verwaltung setzbar; die Wahl wird dann persistiert.`,
+      );
+    }
+    if (policy.detail && policy.source !== "load-error") {
+      // z. B. ein ignorierter, ungültiger ENV-Wert — ehrlich melden.
+      server.log.warn(policy.detail);
+    }
+    if (lifecycle.beendet) throw new Error("SERVER_STOPPED");
+    await server.listen({ port, host: "0.0.0.0" });
+    // JOB 517 — PID-DATEI FUER DEN RESTORE-DRILL. Additiv und nur bei gesetztem KLARWERK_PID_FILE;
+    // ohne die Variable aendert sich nichts.
+    //
+    // Warum NACH `app.listen` und nicht davor: Die Datei ist die Zusage „dieser Prozess nimmt
+    // Requests an". Wer sie vorher schriebe, liesse den Drill gegen einen Server laufen, der noch
+    // nicht horcht — und ein Verbindungsfehler saehe dann wie ein Restorefehler aus. Scheitert
+    // `listen`, wird die Datei nie geschrieben, und der Drill bricht am fehlenden PID ab statt an
+    // einer falschen Zusage.
+    const pidFile = process.env.KLARWERK_PID_FILE;
+    if (pidFile && pidFile.trim() !== "") {
+      writeFileSync(pidFile, `${process.pid}\n`, "utf8");
+      server.log.info(`PID-Datei geschrieben: ${pidFile} (pid ${process.pid})`);
+    }
+    // Ehrlicher Betriebsmodus im Log — hilft bei „warum sind meine Daten weg?"-Diagnosen.
+    const mode = databaseUrl ? "Postgres" : journal ? "Dev-Persistenz (Journal)" : "In-Memory";
+    server.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);
+    const warnung = klartextWarnung(tls, process.env);
+    if (warnung) {
+      server.log.warn(warnung);
+    } else {
+      server.log.info(
+        `Transport am App-Port: ${tls ? "TLS (mindestens 1.2)" : "Klartext (Entwicklung)"}`,
+      );
+    }
+    // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist eine EXPLIZITE Operation (nicht mehr
+    // lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen, damit die
+    // Frist aus `TRASH_RETENTION_DAYS` ohne Cron greift; ein KO-Fehler bricht den Lauf nicht ab (per-KO onSweepError-Log).
+    // R-0623 (Ben, Nacharbeit 1): die Fehler dieser Läufe gehen als `err` über den
+    // Erlaubnislisten-Serializer ins Log (Typ, Code, Quelltextstelle) — nicht mehr als `String(error)`
+    // im Meldungstext, der Datenbankmeldungen samt Inhalten trägt.
+    const sweepFehler = (id: string, error: unknown) =>
+      server.log.warn({ err: error, koId: id }, "Papierkorb-Endlöschung eines KO fehlgeschlagen");
+    lifecycle
+      .verfolge(services.ko.runTrashSweep("system", sweepFehler))
+      .then((purged) => {
+        if (purged > 0) {
+          server.log.info(
+            `Papierkorb-Endlöschung beim Start: ${purged} abgelaufene KO(s) entfernt.`,
+          );
+        }
+      })
+      .catch((error) => {
+        server.log.warn({ err: error }, "Papierkorb-Endlöschung beim Start übersprungen");
+      });
+    // SCRUM-523 P.3 (WP1-Batch3): zusätzlich PERIODISCH sweepen (nicht nur beim Start), damit abgelaufene
+    // Einträge auch in langlaufenden Prozessen ohne Neustart endgültig verschwinden. Intervall aus der
+    // Umgebung (Default 6 h). Reads bleiben schreibfrei; der Sweep ist idempotent (nur abgelaufene Einträge).
+    const sweepInterval = resolveTrashSweepIntervalMs(process.env.KLARWERK_TRASH_SWEEP_INTERVAL_MS);
+    lifecycle.takt(
+      startTrashSweepScheduler({
+        intervalMs: sweepInterval,
+        runSweep: lifecycle.lauf(() => services.ko.runTrashSweep("system", sweepFehler)),
+        onSwept: (purged) =>
+          server.log.info(
+            `Papierkorb-Endlöschung (periodisch): ${purged} abgelaufene KO(s) entfernt.`,
+          ),
+        onError: (error) =>
+          server.log.warn({ err: error }, "Periodischer Papierkorb-Sweep übersprungen"),
+      }),
     );
-  } else if (policy.source === "env") {
-    app.log.info(
-      `KI-Zuordnung per KLARWERK_REASONER_POLICY gesetzt (global=${policy.config.global}, transient — überschreibt die persistierte Wahl für diesen Start).`,
-    );
-  } else if (policy.source === "persisted") {
-    app.log.info(`KI-Zuordnung aus der Persistenz geladen (global=${policy.config.global}).`);
-  } else {
-    app.log.info(
-      `Keine KI-Zuordnung konfiguriert — es gilt der Standard (global=${policy.config.global}). Unter KI-Verwaltung setzbar; die Wahl wird dann persistiert.`,
-    );
-  }
-  if (policy.detail && policy.source !== "load-error") {
-    // z. B. ein ignorierter, ungültiger ENV-Wert — ehrlich melden.
-    app.log.warn(policy.detail);
-  }
-  await app.listen({ port, host: "0.0.0.0" });
-  // JOB 517 — PID-DATEI FUER DEN RESTORE-DRILL. Additiv und nur bei gesetztem KLARWERK_PID_FILE;
-  // ohne die Variable aendert sich nichts.
-  //
-  // Warum NACH `app.listen` und nicht davor: Die Datei ist die Zusage „dieser Prozess nimmt
-  // Requests an". Wer sie vorher schriebe, liesse den Drill gegen einen Server laufen, der noch
-  // nicht horcht — und ein Verbindungsfehler saehe dann wie ein Restorefehler aus. Scheitert
-  // `listen`, wird die Datei nie geschrieben, und der Drill bricht am fehlenden PID ab statt an
-  // einer falschen Zusage.
-  const pidFile = process.env.KLARWERK_PID_FILE;
-  if (pidFile && pidFile.trim() !== "") {
-    writeFileSync(pidFile, `${process.pid}\n`, "utf8");
-    app.log.info(`PID-Datei geschrieben: ${pidFile} (pid ${process.pid})`);
-  }
-  // Ehrlicher Betriebsmodus im Log — hilft bei „warum sind meine Daten weg?"-Diagnosen.
-  const mode = databaseUrl ? "Postgres" : journal ? "Dev-Persistenz (Journal)" : "In-Memory";
-  app.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);
-  const warnung = klartextWarnung(tls, process.env);
-  if (warnung) {
-    app.log.warn(warnung);
-  } else {
-    app.log.info(
-      `Transport am App-Port: ${tls ? "TLS (mindestens 1.2)" : "Klartext (Entwicklung)"}`,
-    );
-  }
-  // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist eine EXPLIZITE Operation (nicht mehr
-  // lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen, damit die
-  // Frist aus `TRASH_RETENTION_DAYS` ohne Cron greift; ein KO-Fehler bricht den Lauf nicht ab (per-KO onSweepError-Log).
-  // R-0623 (Ben, Nacharbeit 1): die Fehler dieser Läufe gehen als `err` über den
-  // Erlaubnislisten-Serializer ins Log (Typ, Code, Quelltextstelle) — nicht mehr als `String(error)`
-  // im Meldungstext, der Datenbankmeldungen samt Inhalten trägt.
-  const sweepFehler = (id: string, error: unknown) =>
-    app.log.warn({ err: error, koId: id }, "Papierkorb-Endlöschung eines KO fehlgeschlagen");
-  services.ko
-    .runTrashSweep("system", sweepFehler)
-    .then((purged) => {
+    // Aufnahme gesamt-papierkorb (Pedi 17.09.2026, B5: „Papierkorb mit Frist von 30 Tagen, danach
+    // endgültig" — für Wissensobjekte UND Entwürfe): dieselbe Frist, derselbe Takt für den
+    // Entwurfs-Papierkorb. Beim Start und danach periodisch, wie oben beim Wissensobjekt.
+    const entwurfSweepFehler = (id: string, error: unknown) =>
+      server.log.warn(
+        { err: error, entwurfId: id },
+        "Papierkorb-Endlöschung eines Entwurfs fehlgeschlagen",
+      );
+    const entwuerfeEntfernt = (anlass: "beim Start" | "(periodisch)") => (purged: number) => {
       if (purged > 0) {
-        app.log.info(`Papierkorb-Endlöschung beim Start: ${purged} abgelaufene KO(s) entfernt.`);
+        server.log.info(
+          `Papierkorb-Endlöschung ${anlass}: ${purged} abgelaufene Entwürfe entfernt.`,
+        );
       }
-    })
-    .catch((error) => {
-      app.log.warn({ err: error }, "Papierkorb-Endlöschung beim Start übersprungen");
-    });
-  // SCRUM-523 P.3 (WP1-Batch3): zusätzlich PERIODISCH sweepen (nicht nur beim Start), damit abgelaufene
-  // Einträge auch in langlaufenden Prozessen ohne Neustart endgültig verschwinden. Intervall aus der
-  // Umgebung (Default 6 h). Reads bleiben schreibfrei; der Sweep ist idempotent (nur abgelaufene Einträge).
-  const sweepInterval = resolveTrashSweepIntervalMs(process.env.KLARWERK_TRASH_SWEEP_INTERVAL_MS);
-  startTrashSweepScheduler({
-    intervalMs: sweepInterval,
-    runSweep: () => services.ko.runTrashSweep("system", sweepFehler),
-    onSwept: (purged) =>
-      app.log.info(`Papierkorb-Endlöschung (periodisch): ${purged} abgelaufene KO(s) entfernt.`),
-    onError: (error) => app.log.warn({ err: error }, "Periodischer Papierkorb-Sweep übersprungen"),
-  });
-  // Aufnahme gesamt-papierkorb (Pedi 17.09.2026, B5: „Papierkorb mit Frist von 30 Tagen, danach
-  // endgültig" — für Wissensobjekte UND Entwürfe): dieselbe Frist, derselbe Takt für den
-  // Entwurfs-Papierkorb. Beim Start und danach periodisch, wie oben beim Wissensobjekt.
-  const entwurfSweepFehler = (id: string, error: unknown) =>
-    app.log.warn(
-      { err: error, entwurfId: id },
-      "Papierkorb-Endlöschung eines Entwurfs fehlgeschlagen",
+    };
+    lifecycle
+      .verfolge(services.capture.runDraftTrashSweep(entwurfSweepFehler))
+      .then(entwuerfeEntfernt("beim Start"))
+      .catch((error) => {
+        server.log.warn(
+          { err: error },
+          "Papierkorb-Endlöschung der Entwürfe beim Start übersprungen",
+        );
+      });
+    lifecycle.takt(
+      startTrashSweepScheduler({
+        intervalMs: sweepInterval,
+        runSweep: lifecycle.lauf(() => services.capture.runDraftTrashSweep(entwurfSweepFehler)),
+        onSwept: entwuerfeEntfernt("(periodisch)"),
+        onError: (error) =>
+          server.log.warn(
+            { err: error },
+            "Periodischer Papierkorb-Sweep der Entwürfe übersprungen",
+          ),
+      }),
     );
-  const entwuerfeEntfernt = (anlass: "beim Start" | "(periodisch)") => (purged: number) => {
-    if (purged > 0) {
-      app.log.info(`Papierkorb-Endlöschung ${anlass}: ${purged} abgelaufene Entwürfe entfernt.`);
+    server.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
+    // R-0664 · Peters Entscheidung 2 (12.10.2026): Serverprotokolle 14 Tage, dann automatisch gelöscht
+    // — am tatsächlichen Speicherort, einschliesslich Diagnosekopien im Protokollordner. Wirkt, wo
+    // `start.command` die Ausgabedatei nennt (Insel); im Docker-Betrieb ist sie nicht gesetzt.
+    const protokollFristTage = leseProtokollFristTage(process.env[PROTOKOLL_FRIST_ENV]);
+    const protokollPflege = lifecycle.takt(
+      starteProtokollPflege({
+        fristTage: protokollFristTage,
+        datei: process.env[LOG_DATEI_ENV],
+        onGepflegt: (ergebnis) =>
+          server.log.info(
+            {
+              rotiert: ergebnis.rotiertNach !== null,
+              geloescht: ergebnis.geloescht.length,
+            },
+            "Protokollpflege: rotiert bzw. abgelaufene Protokolle gelöscht.",
+          ),
+        onError: (error) => server.log.warn({ err: error }, "Protokollpflege übersprungen."),
+      }),
+    );
+    if (protokollPflege) {
+      server.log.info(`Protokollpflege aktiv — Frist ${protokollFristTage} Tage.`);
     }
-  };
-  services.capture
-    .runDraftTrashSweep(entwurfSweepFehler)
-    .then(entwuerfeEntfernt("beim Start"))
-    .catch((error) => {
-      app.log.warn({ err: error }, "Papierkorb-Endlöschung der Entwürfe beim Start übersprungen");
-    });
-  startTrashSweepScheduler({
-    intervalMs: sweepInterval,
-    runSweep: () => services.capture.runDraftTrashSweep(entwurfSweepFehler),
-    onSwept: entwuerfeEntfernt("(periodisch)"),
-    onError: (error) =>
-      app.log.warn({ err: error }, "Periodischer Papierkorb-Sweep der Entwürfe übersprungen"),
-  });
-  app.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
-  // R-0664 · Peters Entscheidung 2 (12.10.2026): Serverprotokolle 14 Tage, dann automatisch gelöscht
-  // — am tatsächlichen Speicherort, einschliesslich Diagnosekopien im Protokollordner. Wirkt, wo
-  // `start.command` die Ausgabedatei nennt (Insel); im Docker-Betrieb ist sie nicht gesetzt.
-  const protokollFristTage = leseProtokollFristTage(process.env[PROTOKOLL_FRIST_ENV]);
-  const protokollPflege = starteProtokollPflege({
-    fristTage: protokollFristTage,
-    datei: process.env[LOG_DATEI_ENV],
-    onGepflegt: (ergebnis) =>
-      app.log.info(
-        {
-          rotiert: ergebnis.rotiertNach !== null,
-          geloescht: ergebnis.geloescht.length,
-        },
-        "Protokollpflege: rotiert bzw. abgelaufene Protokolle gelöscht.",
-      ),
-    onError: (error) => app.log.warn({ err: error }, "Protokollpflege übersprungen."),
-  });
-  if (protokollPflege) {
-    app.log.info(`Protokollpflege aktiv — Frist ${protokollFristTage} Tage.`);
-  }
-  // R-0664 (Ben, Nacharbeit 16): im Docker-Betrieb rotiert Docker die aktive Protokolldatei täglich
-  // selbst — angestossen durch einen inhaltsfreien Füllblock (protokoll-rotationsimpuls.ts). Wirkt
-  // nur mit gesetzter Docker-`max-size`: im Ein-Befehl-Weg (docker-compose.prod.yml). Das Abbild und
-  // damit Coolify setzen sie nicht — dort hält der externe Host-Connector Impuls und Pflege
-  // (Nacharbeit 25); auf der Insel ist sie ebenfalls nicht gesetzt.
-  const rotationsimpuls = starteRotationsimpuls({
-    maxSize: leseMaxSize(process.env[DOCKER_LOG_MAX_SIZE_ENV]),
-    onError: (error) => app.log.warn({ err: error }, "Rotationsimpuls übersprungen."),
-  });
-  if (rotationsimpuls) {
-    app.log.info("Rotationsimpuls aktiv — Docker rotiert die aktive Protokolldatei täglich.");
-  }
-  if (klaraAufraeumLauf) {
-    const klaraInterval = resolveKlaraAufraeumIntervalMs(
-      process.env.KLARWERK_KLARA_AUFRAEUM_INTERVAL_MS,
+    // R-0664 (Ben, Nacharbeit 16): im Docker-Betrieb rotiert Docker die aktive Protokolldatei täglich
+    // selbst — angestossen durch einen inhaltsfreien Füllblock (protokoll-rotationsimpuls.ts). Wirkt
+    // nur mit gesetzter Docker-`max-size`: im Ein-Befehl-Weg (docker-compose.prod.yml). Das Abbild und
+    // damit Coolify setzen sie nicht — dort hält der externe Host-Connector Impuls und Pflege
+    // (Nacharbeit 25); auf der Insel ist sie ebenfalls nicht gesetzt.
+    const rotationsimpuls = lifecycle.takt(
+      starteRotationsimpuls({
+        maxSize: leseMaxSize(process.env[DOCKER_LOG_MAX_SIZE_ENV]),
+        onError: (error) => server.log.warn({ err: error }, "Rotationsimpuls übersprungen."),
+      }),
     );
-    starteKlaraAufraeumen({
-      lauf: klaraAufraeumLauf,
-      intervalMs: klaraInterval,
-      log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
-    });
-    app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
-  }
-  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111/R-1125): gescheiterte und überholte
-  // Prüfungen nachholen — beim Start (verlorene Warteschlange) und danach periodisch, gedeckelt.
-  // Im Wiederanlauf gestoppt (Modellvergleiche; ihr Tagesverbrauch nach der Sicherung fehlt der Kette).
-  if (hintergrundLauf && !wiederanlauf) {
-    starteHintergrundpruefung({
-      lauf: hintergrundLauf,
-      intervalMs: HINTERGRUNDLAUF_INTERVAL_MS,
-      log: { info: (t) => app.log.info(t), warn: (t) => app.log.warn(t) },
-    });
-    app.log.info(
-      `Hintergrundprüfung aktiv — Intervall ${Math.round(HINTERGRUNDLAUF_INTERVAL_MS / 60000)} min.`,
-    );
-  }
-  // R-0466: die Aufbewahrungsfrist des Interaktionsgedächtnisses ist eine LÖSCHFRIST. Gelesen wird
-  // ein abgelaufener Eintrag ohnehin nicht mehr; dieser Lauf entfernt ihn beim Start und danach im
-  // Takt des Papierkorb-Sweeps endgültig aus der Ablage.
-  const gedaechtnis = new GedaechtnisDienst({ repo: services.gedaechtnis });
-  const gedaechtnisGeloescht = (anlass: string) => (n: number) => {
-    if (n > 0) {
-      app.log.info(`Gedächtnis aufgeräumt (${anlass}): ${n} abgelaufene Einträge gelöscht.`);
+    if (rotationsimpuls) {
+      server.log.info("Rotationsimpuls aktiv — Docker rotiert die aktive Protokolldatei täglich.");
     }
-  };
-  gedaechtnis
-    .raeumeAbgelaufeneAuf()
-    .then(gedaechtnisGeloescht("Start"))
-    .catch((error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"));
-  startTrashSweepScheduler({
-    intervalMs: sweepInterval,
-    runSweep: () => gedaechtnis.raeumeAbgelaufeneAuf(),
-    onSwept: gedaechtnisGeloescht("periodisch"),
-    onError: (error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
-  });
-  // produkt:20261011:peter-p09: im Wiederanlauf starten die Außenaktionen unten NICHT. Sie laufen
-  // erst nach der Freigabe und einem Neustart ohne den Schalter — ab der Replay-Grenze.
-  if (wiederanlauf) {
-    app.log.warn(
-      `Wiederanlauf ${wiederanlauf.kennung}: Außenaktionen gestoppt (${GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id).join(", ")}). Nach der Freigabe ohne ${WIEDERANLAUF_ENV} neu starten.`,
+    if (klaraAufraeumLauf) {
+      const klaraInterval = resolveKlaraAufraeumIntervalMs(
+        process.env.KLARWERK_KLARA_AUFRAEUM_INTERVAL_MS,
+      );
+      lifecycle.takt(
+        starteKlaraAufraeumen({
+          lauf: lifecycle.lauf(klaraAufraeumLauf),
+          intervalMs: klaraInterval,
+          log: { info: (t) => server.log.info(t), warn: (felder, t) => server.log.warn(felder, t) },
+        }),
+      );
+      server.log.info(
+        `Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`,
+      );
+    }
+    // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111/R-1125): gescheiterte und überholte
+    // Prüfungen nachholen — beim Start (verlorene Warteschlange) und danach periodisch, gedeckelt.
+    // Im Wiederanlauf gestoppt (Modellvergleiche; ihr Tagesverbrauch nach der Sicherung fehlt der Kette).
+    if (hintergrundLauf && !wiederanlauf) {
+      lifecycle.takt(
+        starteHintergrundpruefung({
+          lauf: lifecycle.lauf(hintergrundLauf),
+          intervalMs: HINTERGRUNDLAUF_INTERVAL_MS,
+          log: { info: (t) => server.log.info(t), warn: (t) => server.log.warn(t) },
+        }),
+      );
+      server.log.info(
+        `Hintergrundprüfung aktiv — Intervall ${Math.round(HINTERGRUNDLAUF_INTERVAL_MS / 60000)} min.`,
+      );
+    }
+    // R-0466: die Aufbewahrungsfrist des Interaktionsgedächtnisses ist eine LÖSCHFRIST. Gelesen wird
+    // ein abgelaufener Eintrag ohnehin nicht mehr; dieser Lauf entfernt ihn beim Start und danach im
+    // Takt des Papierkorb-Sweeps endgültig aus der Ablage.
+    const gedaechtnis = new GedaechtnisDienst({ repo: services.gedaechtnis });
+    const gedaechtnisGeloescht = (anlass: string) => (n: number) => {
+      if (n > 0) {
+        server.log.info(`Gedächtnis aufgeräumt (${anlass}): ${n} abgelaufene Einträge gelöscht.`);
+      }
+    };
+    lifecycle
+      .verfolge(gedaechtnis.raeumeAbgelaufeneAuf())
+      .then(gedaechtnisGeloescht("Start"))
+      .catch((error) => server.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"));
+    lifecycle.takt(
+      startTrashSweepScheduler({
+        intervalMs: sweepInterval,
+        runSweep: lifecycle.lauf(() => gedaechtnis.raeumeAbgelaufeneAuf()),
+        onSwept: gedaechtnisGeloescht("periodisch"),
+        onError: (error) => server.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
+      }),
     );
-    return;
-  }
-  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): persönliche Erinnerungen zustellen —
-  // erst nach der bestehenden Wiederanlaufsperre: der Takt kann auch Quellen lesen, Modelle
-  // aufrufen und Routinenberichte erstellen. Vor Nachführung/Freigabe wird weder der Startlauf
-  // ausgeführt noch ein späterer Takt eingerichtet. Danach gelten Readback und Nachholregel.
-  if (erinnerungLauf) {
-    starteKlaraErinnerungen({
-      lauf: erinnerungLauf,
-      intervalMs: erinnerungTakt,
-      log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
-    });
-    app.log.info(`Erinnerungssteuerung aktiv — Takt ${Math.round(erinnerungTakt / 1000)} s.`);
-  }
-  // produkt:20261011:assistenz-skills-werkzeuge: wartende und durch einen Neustart unterbrochene
-  // Fähigkeitsaufträge aus dem Assistenzprofil wieder aufnehmen — unter derselben Auftragskennung,
-  // mit der DANN gültigen Lage und den DANN gültigen Rechten. Beim Start und im Takt des
-  // Papierkorb-Sweeps; im Wiederanlauf nicht (oben beendet: eine Fähigkeit kann nach außen wirken).
-  const faehigkeiten = services.faehigkeiten;
-  if (faehigkeiten) {
-    const aufnehmen = async (): Promise<number> =>
-      (await faehigkeiten.arbeiteWarteschlangeAb()).length;
-    aufnehmen().catch((error) =>
-      app.log.warn({ err: error }, "Fähigkeitsaufträge: Wiederaufnahme übersprungen"),
+    // produkt:20261011:peter-p09: im Wiederanlauf starten die Außenaktionen unten NICHT. Sie laufen
+    // erst nach der Freigabe und einem Neustart ohne den Schalter — ab der Replay-Grenze.
+    if (wiederanlauf) {
+      server.log.warn(
+        `Wiederanlauf ${wiederanlauf.kennung}: Außenaktionen gestoppt (${GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id).join(", ")}). Nach der Freigabe ohne ${WIEDERANLAUF_ENV} neu starten.`,
+      );
+      return;
+    }
+    // produkt:20261007:klara-erinnerungen-kalender (Klara 10): persönliche Erinnerungen zustellen —
+    // erst nach der bestehenden Wiederanlaufsperre: der Takt kann auch Quellen lesen, Modelle
+    // aufrufen und Routinenberichte erstellen. Vor Nachführung/Freigabe wird weder der Startlauf
+    // ausgeführt noch ein späterer Takt eingerichtet. Danach gelten Readback und Nachholregel.
+    if (erinnerungLauf) {
+      lifecycle.takt(
+        starteKlaraErinnerungen({
+          lauf: lifecycle.lauf(erinnerungLauf),
+          intervalMs: erinnerungTakt,
+          log: { info: (t) => server.log.info(t), warn: (felder, t) => server.log.warn(felder, t) },
+        }),
+      );
+      server.log.info(`Erinnerungssteuerung aktiv — Takt ${Math.round(erinnerungTakt / 1000)} s.`);
+    }
+    // produkt:20261011:assistenz-skills-werkzeuge: wartende und durch einen Neustart unterbrochene
+    // Fähigkeitsaufträge aus dem Assistenzprofil wieder aufnehmen — unter derselben Auftragskennung,
+    // mit der DANN gültigen Lage und den DANN gültigen Rechten. Beim Start und im Takt des
+    // Papierkorb-Sweeps; im Wiederanlauf nicht (oben beendet: eine Fähigkeit kann nach außen wirken).
+    const faehigkeiten = services.faehigkeiten;
+    if (faehigkeiten) {
+      const aufnehmen = async (): Promise<number> =>
+        (await faehigkeiten.arbeiteWarteschlangeAb()).length;
+      lifecycle
+        .verfolge(aufnehmen())
+        .catch((error) =>
+          server.log.warn({ err: error }, "Fähigkeitsaufträge: Wiederaufnahme übersprungen"),
+        );
+      lifecycle.takt(
+        startTrashSweepScheduler({
+          intervalMs: sweepInterval,
+          runSweep: lifecycle.lauf(aufnehmen),
+          onError: (error) =>
+            server.log.warn({ err: error }, "Fähigkeitsaufträge: Abarbeitung übersprungen"),
+        }),
+      );
+    }
+    // R-1657 (Nacharbeit 2): „KLARWERK analysiert regelmäßig …" — die Lückenerkennung über den
+    // Reasoner läuft im eigenen Takt über die vorgemerkten Betrachtersichten (services/management,
+    // `wissenssprintLauf`). Intervall aus KLARWERK_WISSENSSPRINT_INTERVAL_MS, Vorgabe 15 min,
+    // Untergrenze 1 min (dieselbe Auslegung wie beim Papierkorb-Takt).
+    const sprintTakt = resolveTrashSweepIntervalMs(
+      process.env.KLARWERK_WISSENSSPRINT_INTERVAL_MS,
+      WISSENSSPRINT_TAKT_MS,
     );
-    startTrashSweepScheduler({
-      intervalMs: sweepInterval,
-      runSweep: aufnehmen,
-      onError: (error) =>
-        app.log.warn({ err: error }, "Fähigkeitsaufträge: Abarbeitung übersprungen"),
-    });
-  }
-  // R-1657 (Nacharbeit 2): „KLARWERK analysiert regelmäßig …" — die Lückenerkennung über den
-  // Reasoner läuft im eigenen Takt über die vorgemerkten Betrachtersichten (services/management,
-  // `wissenssprintLauf`). Intervall aus KLARWERK_WISSENSSPRINT_INTERVAL_MS, Vorgabe 15 min,
-  // Untergrenze 1 min (dieselbe Auslegung wie beim Papierkorb-Takt).
-  const sprintTakt = resolveTrashSweepIntervalMs(
-    process.env.KLARWERK_WISSENSSPRINT_INTERVAL_MS,
-    WISSENSSPRINT_TAKT_MS,
-  );
-  services.management.regelmaessigeAnalyseAktiv(sprintTakt);
-  startTrashSweepScheduler({
-    intervalMs: sprintTakt,
-    runSweep: () => services.management.wissenssprintLauf(),
-    onError: (error) => app.log.warn({ err: error }, "Lückenerkennung übersprungen"),
-  });
-  app.log.info(
-    `Lückenerkennung über den Reasoner aktiv — Takt ${Math.round(sprintTakt / 60000)} min.`,
-  );
-  // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Ohne gültiges Ziel in
-  // KLARWERK_WEBHOOKS läuft nichts — kein Takt, kein Protokolleintrag.
-  const webhooks = ladeWebhookZiele(process.env);
-  for (const fehler of webhooks.fehler) {
-    app.log.warn(`Webhook-Ziel verworfen: ${fehler}`);
-  }
-  if (webhooks.ziele.length > 0) {
-    // R-1349: derselbe Name wie im Modul (`WEBHOOKS_TAKT_ENV`), nicht eine zweite Schreibweise.
-    const melderTakt = resolveWebhookTaktMs(process.env[WEBHOOKS_TAKT_ENV]);
-    const melder = new WissensereignisMelder({
-      quellen: wissensereignisQuellen,
-      audit: services.audit,
-      ziele: webhooks.ziele,
-      log: { warn: (t) => app.log.warn(t) },
-    });
-    starteWissensereignisMelder({
-      melder,
-      intervalMs: melderTakt,
-      // R-0623: der Fehler geht als `err` über den Erlaubnislisten-Serializer, nicht als Text.
-      onError: (error) => app.log.warn({ err: error }, "Wissensereignis-Abgleich übersprungen"),
-    });
-    app.log.info(
-      `Wissensereignis-Meldungen aktiv — ${webhooks.ziele.length} Ziel(e), Takt ${melderTakt / 1000} s.`,
+    services.management.regelmaessigeAnalyseAktiv(sprintTakt);
+    lifecycle.takt(
+      startTrashSweepScheduler({
+        intervalMs: sprintTakt,
+        runSweep: lifecycle.lauf(() => services.management.wissenssprintLauf()),
+        onError: (error) => server.log.warn({ err: error }, "Lückenerkennung übersprungen"),
+      }),
     );
+    server.log.info(
+      `Lückenerkennung über den Reasoner aktiv — Takt ${Math.round(sprintTakt / 60000)} min.`,
+    );
+    // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Ohne gültiges Ziel in
+    // KLARWERK_WEBHOOKS läuft nichts — kein Takt, kein Protokolleintrag.
+    const webhooks = ladeWebhookZiele(process.env);
+    for (const fehler of webhooks.fehler) {
+      server.log.warn(`Webhook-Ziel verworfen: ${fehler}`);
+    }
+    if (webhooks.ziele.length > 0) {
+      // R-1349: derselbe Name wie im Modul (`WEBHOOKS_TAKT_ENV`), nicht eine zweite Schreibweise.
+      const melderTakt = resolveWebhookTaktMs(process.env[WEBHOOKS_TAKT_ENV]);
+      const melder = new WissensereignisMelder({
+        quellen: wissensereignisQuellen,
+        audit: services.audit,
+        ziele: webhooks.ziele,
+        log: { warn: (t) => server.log.warn(t) },
+      });
+      lifecycle.takt(
+        starteWissensereignisMelder({
+          melder: { lauf: lifecycle.lauf(() => melder.lauf()) },
+          intervalMs: melderTakt,
+          // R-0623: der Fehler geht als `err` über den Erlaubnislisten-Serializer, nicht als Text.
+          onError: (error) =>
+            server.log.warn({ err: error }, "Wissensereignis-Abgleich übersprungen"),
+        }),
+      );
+      server.log.info(
+        `Wissensereignis-Meldungen aktiv — ${webhooks.ziele.length} Ziel(e), Takt ${melderTakt / 1000} s.`,
+      );
+    }
+  } catch (error) {
+    try {
+      await lifecycle.beende();
+    } finally {
+      signaleEntfernen();
+    }
+    throw error;
   }
 }
 

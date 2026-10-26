@@ -54,6 +54,7 @@ export interface OverlapResolution {
   // Führungsartikel und seine Fassung, die den Inhalt aufgenommen hat. Additiv, Altbestand ohne.
   mergedIntoKoId?: string;
   mergedVersion?: number;
+  mergeOperation?: { id: string; actor: string; fingerprint: string; retiredKoId: string };
 }
 
 export interface OverlapEntry {

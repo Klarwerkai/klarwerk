@@ -721,6 +721,17 @@ export interface KoEinstufungMenschlich {
 }
 
 export interface KnowledgeObject {
+  /** Quittungen der beiden konkreten Word-Rückwege; mit ihrem Schreibvorgang gespeichert. */
+  wordReturnOps?: {
+    id: string;
+    actor: string;
+    action: "propose" | "revise-release";
+    baseVersion: number;
+    fingerprint: string;
+    resultVersion: number;
+    proposalId?: string;
+  }[];
+
   id: string;
   title: string; // Titel als Aussage
   statement: string; // bleibt Plaintext-Kurzfassung (Output/Ask/Suche)

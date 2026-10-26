@@ -108,7 +108,7 @@ export function erstelleVermaechtnisBuch(e: VermaechtnisEingabe): VermaechtnisBu
     if (!istBeitragVon(ko, e.person.id)) {
       continue;
     }
-    if (ko.deletedAt) {
+    if (ko.deletedAt || ko.mergedInto) {
       ausgelassen.papierkorb += 1;
     } else if (!e.darfSehen(ko)) {
       ausgelassen.nichtEinsehbar += 1;

@@ -8,6 +8,7 @@ import { endpoints } from "../../api/endpoints";
 import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
 import type { KnowledgeObject } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
+import { useNavGuardOptional } from "../../app/NavGuardContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
 import { auffrischungGescheitert } from "../../lib/abfrageBestand";
@@ -472,6 +473,11 @@ export function BibliothekFlaeche({
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
+  const navGuard = useNavGuardOptional();
+  const bewacht = (aktion: () => void): void => {
+    if (navGuard) navGuard.guard(aktion);
+    else aktion();
+  };
   // JOB 3121 · UX-14: die eine Breitenfrage dieser Fläche. Sie entscheidet weiter unten NUR die
   // Anordnung — keinen Abruf, keinen Filter, keine Aussage über den Bestand.
   const schmal = useMediaQuery(SCHMAL_ABFRAGE);
@@ -1502,27 +1508,29 @@ export function BibliothekFlaeche({
     halt?.focus({ preventScroll: true });
   });
   const waehle = (id: string): void => {
-    if (schmal || (tablet && !listeGewuenscht)) {
-      // Schmal tritt der Bericht AN DIE STELLE der Liste — der Fokus geht mit, auf seinen ersten
-      // Halt (den Rückweg). Breit bleibt er, wo er ist: dort wechselt nichts den Platz.
-      // JOB 3335: auf dem Lese-Tablet gilt dasselbe, sobald die Liste mit der Wahl verschwindet
-      // (Vorliebe „zu"); bleibt sie als Schublade stehen, bleibt auch der Fokus auf der Zeile.
-      fokusZiel.current = "bericht";
-      // Und hier, VOR dem Verschwinden der Liste, ist der einzige Augenblick, in dem ihre
-      // Rollposition noch abzulesen ist: gleich zeigt derselbe Rollbereich den Bericht.
-      listenRollstand.current = listenRoller()?.scrollTop ?? null;
-    }
-    if (vorgewaehlt === undefined) {
-      setParams(
-        (prev) => {
-          const p = new URLSearchParams(prev);
-          p.set(EINTRAG_PARAM, id);
-          return p;
-        },
-        { replace: true },
-      );
-    }
-    beiWahl?.(id);
+    bewacht(() => {
+      if (schmal || (tablet && !listeGewuenscht)) {
+        // Schmal tritt der Bericht AN DIE STELLE der Liste — der Fokus geht mit, auf seinen ersten
+        // Halt (den Rückweg). Breit bleibt er, wo er ist: dort wechselt nichts den Platz.
+        // JOB 3335: auf dem Lese-Tablet gilt dasselbe, sobald die Liste mit der Wahl verschwindet
+        // (Vorliebe „zu"); bleibt sie als Schublade stehen, bleibt auch der Fokus auf der Zeile.
+        fokusZiel.current = "bericht";
+        // Und hier, VOR dem Verschwinden der Liste, ist der einzige Augenblick, in dem ihre
+        // Rollposition noch abzulesen ist: gleich zeigt derselbe Rollbereich den Bericht.
+        listenRollstand.current = listenRoller()?.scrollTop ?? null;
+      }
+      if (vorgewaehlt === undefined) {
+        setParams(
+          (prev) => {
+            const p = new URLSearchParams(prev);
+            p.set(EINTRAG_PARAM, id);
+            return p;
+          },
+          { replace: true },
+        );
+      }
+      beiWahl?.(id);
+    });
   };
   // ================================================================================================
   // JOB 3121 · UX-14 — DER RÜCKWEG: ER WÄHLT AB, MEHR NICHT.
@@ -1544,26 +1552,28 @@ export function BibliothekFlaeche({
   // `BibliothekLesen.tsx:402` steht, ist eine benannte Restschuld: ein gemeinsamer Ausdruck
   // bräuchte eine dieser beiden Dateien, und beide stehen nicht in den Zielpfaden (§4/§10).
   const zurueckZurListe = (): void => {
-    zuletztGelesen.current = gewaehltEffektiv;
-    fokusZiel.current = "liste";
-    if (vorgewaehlt !== undefined) {
-      const p = new URLSearchParams(params);
-      p.delete(EINTRAG_PARAM);
-      p.delete("edit");
-      const suche = p.toString();
-      // `replace` wie beim Blättern (`KnowledgeDetail.tsx:36-38`): der Zurück-Knopf des Browsers
-      // soll die Bibliothek verlassen, nicht durch jede gelesene Zeile stolpern.
-      navigate({ pathname: "/bibliothek", search: suche ? `?${suche}` : "" }, { replace: true });
-      return;
-    }
-    setParams(
-      (prev) => {
-        const p = new URLSearchParams(prev);
+    bewacht(() => {
+      zuletztGelesen.current = gewaehltEffektiv;
+      fokusZiel.current = "liste";
+      if (vorgewaehlt !== undefined) {
+        const p = new URLSearchParams(params);
         p.delete(EINTRAG_PARAM);
-        return p;
-      },
-      { replace: true },
-    );
+        p.delete("edit");
+        const suche = p.toString();
+        // `replace` wie beim Blättern (`KnowledgeDetail.tsx:36-38`): der Zurück-Knopf des Browsers
+        // soll die Bibliothek verlassen, nicht durch jede gelesene Zeile stolpern.
+        navigate({ pathname: "/bibliothek", search: suche ? `?${suche}` : "" }, { replace: true });
+        return;
+      }
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete(EINTRAG_PARAM);
+          return p;
+        },
+        { replace: true },
+      );
+    });
   };
   // ================================================================================================
   // JOB 3335 · UX-21 — DER SCHALTER „TREFFERLISTE": ER ÄNDERT DIE SICHTBARKEIT DER LISTE, SONST NICHTS.

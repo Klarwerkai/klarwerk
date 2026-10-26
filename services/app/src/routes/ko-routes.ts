@@ -19,6 +19,7 @@ import {
   externalAttachAllowed,
   pruefeAbrufbeleg,
 } from "../../../external-search";
+import { KoError } from "../../../knowledge-object";
 import {
   type AnzeigestatusEingaenge,
   type CreateKoInput,
@@ -831,6 +832,7 @@ interface PutBody {
    * JOB 3667 R5: `clearBody` ist die AUSDRÜCKLICHE Löschung des Fließtextes. Ohne sie heisst ein
    * fehlender `bodyHtml` „nicht eingereicht", und die Übernahme lässt den bestehenden stehen.
    */
+  operationId?: string;
   proposal?: {
     statement?: unknown;
     bodyHtml?: unknown;
@@ -2090,207 +2092,224 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       }
     });
 
-    app.post<{ Body: Omit<CreateKoInput, "author"> & { reviewerIds?: string[] } }>(
-      "/api/kos",
-      { onRequest: requireKoCreateBeforeParse },
-      async (request, reply) => {
-        const user = await guards.requirePermission("ko.create", request, reply);
-        if (!user) {
+    app.post<{
+      Body: Omit<CreateKoInput, "author"> & { reviewerIds?: string[]; operationId?: string };
+    }>("/api/kos", { onRequest: requireKoCreateBeforeParse }, async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        // FR-CAP-07: Autor = angemeldeter Nutzer, serverseitig gesetzt (nicht aus dem Body).
+        // SCRUM-470 (ben-Review #1): Herkunfts-/Vertrauensanker (`sources`: peerValidated, externalId/
+        // pageId, spaceKey, sourceVersion) dürfen NUR über den Import-Pfad gesetzt werden. Auf dem
+        // öffentlichen Schreibpfad Client-`sources` verwerfen — sonst könnte jeder mit ko.create
+        // gefälschte/peer-validierte Anker setzen und spätere pageId-Upserts kapern.
+        // WP-SHIP8-CLOSE-3/4 (bens ROT-1): importCandidateId ebenfalls verwerfen — der
+        // Kandidaten-Anker gehört AUSSCHLIESSLICH dem Import-Accept (sonst könnte ein Client
+        // die Crash-Recovery eines fremden Review-Claims auf sein eigenes KO umlenken bzw.
+        // den DB-Unique-Anker eines Kandidaten vorab besetzen).
+        // JOB 557: `ownership` ebenfalls verwerfen. `ko.create` hat jeder Experte; über den
+        // Spread wäre das Feld allein durch seine Existenz an `CreateKoInput` öffentlich setzbar
+        // gewesen — und wer ein Objekt anlegt, könnte damit die Nacharbeit eines fremden
+        // Menschen erklären. Serverwerte werden hier nicht aus ungeprüftem Clientspread geerbt;
+        // der autorisierte Weg ist die Aktion `ownership` (Recht `ko.validate`) weiter unten.
+        // R-0139 / FR-EXT-02: `origin` und `importedVia` ebenfalls verwerfen. Beide sind
+        // HERKUNFTSAUSSAGEN — `origin` prüft allein der Entwurfsweg (`normalizeOriginIn`,
+        // services/capture), `importedVia` setzen allein die Importwege. `KoService.create` prüft
+        // keines von beiden nach; über diesen Spread hätte jeder mit `ko.create` ein Objekt als
+        // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
+        // (Capture.tsx `createPayload`).
+        // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
+        // menschlichen Annahme eines Importkandidaten. Die Destrukturierung darunter verwirft
+        // `origin` VOLLSTÄNDIG — damit auch jedes `import` (am Draht gemessen: W6 in
+        // `tests/import-kandidaten-echt/annahme-in-validierung.test.ts`).
+        const {
+          reviewerIds,
+          operationId,
+          sources: _ignoredSources,
+          importCandidateId: _ignoredAnchor,
+          ownership: _ignoredOwnership,
+          origin: _ignoredOrigin,
+          importedVia: _ignoredImportedVia,
+          // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
+          dokumentHerkunft: _ignoredDokumentHerkunft,
+          // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
+          stufeNurAnheben: _ignoredStufeNurAnheben,
+          // produkt:20261007:templates-default: der Vorlagenbezug ist kein Feld des Objekts; er
+          // geht in die Einreichprüfung und danach in den Nutzungsvermerk (`vorlagen.ts`).
+          vorlage: vorlagenBezug,
+          ...input
+        } = request.body as typeof request.body & { vorlage?: unknown };
+        // ==========================================================================================
+        // JOB 3429 (Q3 c) — OHNE EINSTUFUNG ENTSTEHT HIER KEIN WISSENSOBJEKT.
+        // ==========================================================================================
+        //
+        // DER BEFUND (JOB 3082 Runde 3, Codex-Antwort 25 Punkt 2). Die Stufenpflicht stand an ZWEI
+        // von DREI Anlagewegen: in der Oberfläche (`apps/web/src/pages/Capture.tsx`, `requestSubmit`
+        // kehrt ohne Wahl um) und am Entwurfs-Promote (`services/capture/src/service.ts`,
+        // `toKoInput` → INCOMPLETE). Hier fehlte sie, weil `confidentiality` am Eingabetyp optional
+        // ist (`services/knowledge-object/src/types.ts:230`) — ein Rumpf ohne das Feld legte an. So
+        // entstand ein Objekt, das NIEMAND eingestuft hat, und jede spätere Regel, die auf der Stufe
+        // aufbaut, stünde für dieses Objekt auf Sand.
+        //
+        // EINE PFLICHT, DIE NUR DER CLIENT KENNT, IST KEINE — derselbe Satz, mit dem JOB 3082 den
+        // Promote-Weg begründet hat (`services/capture/src/service.ts`, `KO_PFLICHTFELDER`).
+        //
+        // WARUM HIER UND NICHT IM DIENST. `ko.create` ist auch der Weg von Import und Seed, und für
+        // die gelten eigene Regeln (s. Kommentar oben: Herkunftsanker nur über den Import). Ein
+        // bewusst uneingestuftes Objekt — Altbestand, Fixtures — entsteht weiterhin über den Dienst.
+        // Verschärft wird genau der ÖFFENTLICHE Schreibweg, dort, wo er schon heute seine eigenen
+        // Grenzen zieht.
+        //
+        // WARUM KEIN VORGABEWERT. Ein stilles „intern" wäre genau die erfundene Einstufung, die
+        // JOB 3076/3082 abgeschafft haben: „nie eingestuft" muss ausdrückbar bleiben, sonst kann
+        // `discloseConfidentiality` (`confidentiality.ts:99-102`) den Altbestand nicht mehr ehrlich
+        // als `{ null, "unknown" }` melden. Fehlende Stufe ist ein Eingabefehler, keine Annahme.
+        //
+        // NUR DAS FEHLEN steht hier. Ein VORHANDENER, aber ungültiger Wert wird schon vom Dienst
+        // abgewiesen (`service.ts`, INVALID_CONFIDENTIALITY → 400) — auch `null`, das darum nicht in
+        // diese Prüfung gehört. Zwei Prüfungen für denselben Wert wären zwei Auslegungen.
+        //
+        // BESTAND BLEIBT UNANGETASTET: das wirkt nur auf neue Anlagen, rückwirkend ändert sich nichts.
+        //
+        // JOB 3569: der Satz selbst steht jetzt in `sendMissingConfidentiality` (oben im Modul) —
+        // der Dokumentweg `POST /api/kos/from-document` gibt dieselbe Antwort und darf dafür
+        // keinen zweiten Wortlaut erfinden. An der PRÜFUNG ändert das nichts.
+        if (input.confidentiality === undefined) {
+          sendMissingConfidentiality(reply);
           return;
         }
-        try {
-          // FR-CAP-07: Autor = angemeldeter Nutzer, serverseitig gesetzt (nicht aus dem Body).
-          // SCRUM-470 (ben-Review #1): Herkunfts-/Vertrauensanker (`sources`: peerValidated, externalId/
-          // pageId, spaceKey, sourceVersion) dürfen NUR über den Import-Pfad gesetzt werden. Auf dem
-          // öffentlichen Schreibpfad Client-`sources` verwerfen — sonst könnte jeder mit ko.create
-          // gefälschte/peer-validierte Anker setzen und spätere pageId-Upserts kapern.
-          // WP-SHIP8-CLOSE-3/4 (bens ROT-1): importCandidateId ebenfalls verwerfen — der
-          // Kandidaten-Anker gehört AUSSCHLIESSLICH dem Import-Accept (sonst könnte ein Client
-          // die Crash-Recovery eines fremden Review-Claims auf sein eigenes KO umlenken bzw.
-          // den DB-Unique-Anker eines Kandidaten vorab besetzen).
-          // JOB 557: `ownership` ebenfalls verwerfen. `ko.create` hat jeder Experte; über den
-          // Spread wäre das Feld allein durch seine Existenz an `CreateKoInput` öffentlich setzbar
-          // gewesen — und wer ein Objekt anlegt, könnte damit die Nacharbeit eines fremden
-          // Menschen erklären. Serverwerte werden hier nicht aus ungeprüftem Clientspread geerbt;
-          // der autorisierte Weg ist die Aktion `ownership` (Recht `ko.validate`) weiter unten.
-          // R-0139 / FR-EXT-02: `origin` und `importedVia` ebenfalls verwerfen. Beide sind
-          // HERKUNFTSAUSSAGEN — `origin` prüft allein der Entwurfsweg (`normalizeOriginIn`,
-          // services/capture), `importedVia` setzen allein die Importwege. `KoService.create` prüft
-          // keines von beiden nach; über diesen Spread hätte jeder mit `ko.create` ein Objekt als
-          // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
-          // (Capture.tsx `createPayload`).
-          // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
-          // menschlichen Annahme eines Importkandidaten. Die Destrukturierung darunter verwirft
-          // `origin` VOLLSTÄNDIG — damit auch jedes `import` (am Draht gemessen: W6 in
-          // `tests/import-kandidaten-echt/annahme-in-validierung.test.ts`).
-          const {
-            reviewerIds,
-            sources: _ignoredSources,
-            importCandidateId: _ignoredAnchor,
-            ownership: _ignoredOwnership,
-            origin: _ignoredOrigin,
-            importedVia: _ignoredImportedVia,
-            // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
-            dokumentHerkunft: _ignoredDokumentHerkunft,
-            // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
-            stufeNurAnheben: _ignoredStufeNurAnheben,
-            // produkt:20261007:templates-default: der Vorlagenbezug ist kein Feld des Objekts; er
-            // geht in die Einreichprüfung und danach in den Nutzungsvermerk (`vorlagen.ts`).
-            vorlage: vorlagenBezug,
-            ...input
-          } = request.body as typeof request.body & { vorlage?: unknown };
-          // ==========================================================================================
-          // JOB 3429 (Q3 c) — OHNE EINSTUFUNG ENTSTEHT HIER KEIN WISSENSOBJEKT.
-          // ==========================================================================================
-          //
-          // DER BEFUND (JOB 3082 Runde 3, Codex-Antwort 25 Punkt 2). Die Stufenpflicht stand an ZWEI
-          // von DREI Anlagewegen: in der Oberfläche (`apps/web/src/pages/Capture.tsx`, `requestSubmit`
-          // kehrt ohne Wahl um) und am Entwurfs-Promote (`services/capture/src/service.ts`,
-          // `toKoInput` → INCOMPLETE). Hier fehlte sie, weil `confidentiality` am Eingabetyp optional
-          // ist (`services/knowledge-object/src/types.ts:230`) — ein Rumpf ohne das Feld legte an. So
-          // entstand ein Objekt, das NIEMAND eingestuft hat, und jede spätere Regel, die auf der Stufe
-          // aufbaut, stünde für dieses Objekt auf Sand.
-          //
-          // EINE PFLICHT, DIE NUR DER CLIENT KENNT, IST KEINE — derselbe Satz, mit dem JOB 3082 den
-          // Promote-Weg begründet hat (`services/capture/src/service.ts`, `KO_PFLICHTFELDER`).
-          //
-          // WARUM HIER UND NICHT IM DIENST. `ko.create` ist auch der Weg von Import und Seed, und für
-          // die gelten eigene Regeln (s. Kommentar oben: Herkunftsanker nur über den Import). Ein
-          // bewusst uneingestuftes Objekt — Altbestand, Fixtures — entsteht weiterhin über den Dienst.
-          // Verschärft wird genau der ÖFFENTLICHE Schreibweg, dort, wo er schon heute seine eigenen
-          // Grenzen zieht.
-          //
-          // WARUM KEIN VORGABEWERT. Ein stilles „intern" wäre genau die erfundene Einstufung, die
-          // JOB 3076/3082 abgeschafft haben: „nie eingestuft" muss ausdrückbar bleiben, sonst kann
-          // `discloseConfidentiality` (`confidentiality.ts:99-102`) den Altbestand nicht mehr ehrlich
-          // als `{ null, "unknown" }` melden. Fehlende Stufe ist ein Eingabefehler, keine Annahme.
-          //
-          // NUR DAS FEHLEN steht hier. Ein VORHANDENER, aber ungültiger Wert wird schon vom Dienst
-          // abgewiesen (`service.ts`, INVALID_CONFIDENTIALITY → 400) — auch `null`, das darum nicht in
-          // diese Prüfung gehört. Zwei Prüfungen für denselben Wert wären zwei Auslegungen.
-          //
-          // BESTAND BLEIBT UNANGETASTET: das wirkt nur auf neue Anlagen, rückwirkend ändert sich nichts.
-          //
-          // JOB 3569: der Satz selbst steht jetzt in `sendMissingConfidentiality` (oben im Modul) —
-          // der Dokumentweg `POST /api/kos/from-document` gibt dieselbe Antwort und darf dafür
-          // keinen zweiten Wortlaut erfinden. An der PRÜFUNG ändert das nichts.
-          if (input.confidentiality === undefined) {
-            sendMissingConfidentiality(reply);
+        // R-1631 (gesamt-anlagenzugang): derselbe Eingang wie an `action: "anlagenkontext"` —
+        // Unförmiges ist ein 400, nichts wird gekürzt. Fehlt das Feld, ist nichts angegeben.
+        if (input.anlagenkontext !== undefined && input.anlagenkontext !== null) {
+          const fehler = anlagenkontextFehler(input.anlagenkontext);
+          if (fehler) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: fehler });
             return;
           }
-          // R-1631 (gesamt-anlagenzugang): derselbe Eingang wie an `action: "anlagenkontext"` —
-          // Unförmiges ist ein 400, nichts wird gekürzt. Fehlt das Feld, ist nichts angegeben.
-          if (input.anlagenkontext !== undefined && input.anlagenkontext !== null) {
-            const fehler = anlagenkontextFehler(input.anlagenkontext);
-            if (fehler) {
-              reply.code(400).send({ error: "BAD_REQUEST", message: fehler });
-              return;
-            }
-          }
-          // R-0034 / FR-CAP-08: das Fachgebiet beim Anlegen trägt dieselbe Grenze wie die Aktion
-          // `domain` — ein Nicht-Text oder ein überlanger Wert ist ein 400, nichts wird gekürzt.
-          if (
-            input.domain !== undefined &&
-            input.domain !== null &&
-            (typeof input.domain !== "string" || input.domain.trim().length > DOMAIN_MAX_LENGTH)
-          ) {
-            reply.code(400).send({
-              error: "INVALID",
-              message: `domain muss Text mit höchstens ${DOMAIN_MAX_LENGTH} Zeichen sein.`,
-            });
-            return;
-          }
-          // produkt:20261007:templates-default: Pflichtfelder der Vorlage, Space-Vorgaben und
-          // gepflegte Begriffe — serverseitig, VOR der Anlage. Ein Entwurf bleibt davon unberührt.
-          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund): mit gewähltem
-          // Space laufen Prüfung, Anlage und Zuordnung unter derselben Sperre wie die
-          // Spacelöschung (`sperre`). Gewinnt die Löschung vorher, antwortet die Prüfung 409
-          // `SPACE_GELOESCHT`; misslingt die Zuordnung, ist die Anlage zurückgenommen (409).
-          const anlage = async () => {
-            const entscheid = await deps.vorlagen?.pruefe(
-              vorlagenBezug,
-              { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
-              user,
-            );
-            if (entscheid && !entscheid.ok) {
-              return { absage: entscheid } as const;
-            }
-            let neu = await ko.create({ ...input, author: user.id });
-            // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das
-            // gesagt (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben — AUSSER die
-            // Space-Zuordnung scheitert: dann ist die Anlage zurückgenommen.
-            let vermerk: "fehlgeschlagen" | undefined;
-            if (entscheid?.ok && entscheid.bezug) {
-              try {
-                await deps.vorlagen?.vermerke(neu.id, entscheid.bezug, user);
-                if (entscheid.bezug.spaceId) {
-                  neu = (await ko.get(neu.id)) ?? neu;
-                }
-              } catch (fehlerWert) {
-                if (fehlerWert instanceof VorlagenSpaceFehler) {
-                  return { spaceFehler: fehlerWert } as const;
-                }
-                request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
-                vermerk = "fehlgeschlagen";
-              }
-            }
-            return { created: neu, vorlagenVermerk: vermerk } as const;
-          };
-          const ergebnis = deps.vorlagen
-            ? await deps.vorlagen.sperre(vorlagenBezug, anlage)
-            : await anlage();
-          if ("absage" in ergebnis) {
-            sendeVorlagenAbsage(reply, ergebnis.absage);
-            return;
-          }
-          if ("spaceFehler" in ergebnis) {
-            sendeVorlagenSpaceKonflikt(reply, ergebnis.spaceFehler);
-            return;
-          }
-          const created = ergebnis.created;
-          const vorlagenVermerk = ergebnis.vorlagenVermerk;
-          // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
-          // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
-          // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
-          const reviewers = [...new Set(reviewerIds ?? [])].filter((id) => id !== user.id);
-          if (reviewers.length > 0) {
-            await validation.assign(created.id, reviewers, user.id);
-            await notifyAssignment?.(created.id, reviewers);
-          } else {
-            // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen.
-            await routeNeuesObjekt?.(created.id, user);
-          }
-          // WP-SUBMIT-ASYNC (Pedis Architektur-Entscheid R3, 21.07.): die KI-Prüfung blockiert
-          // das Einreichen NICHT mehr (Messung: 1:28 min). Statt der früheren synchronen
-          // detect*-Aufrufe wird nur der Prüf-Job vermerkt (aiCheck pending, ein schmaler
-          // Feld-Patch) und im In-Process-Worker NACH der Antwort abgearbeitet — dieselben
-          // Erkennungs-Pfade, dieselben Ergebnis-Signale, nur später (Status im Board sichtbar).
-          // Die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending) — das Nachlesen
-          // passiert VOR dem enqueue, damit die Antwort deterministisch den Job-Start zeigt.
-          let submitted = created;
-          // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung (externer
-          // Modellaufruf mit dem Text) noch in die Ähnlichkeitsablage (Einbettung = durchsuchbar).
-          // Die Warnung reist als `schutzdatenQuarantaene` (nur die Arten) in der 201-Antwort mit.
-          const inQuarantaene = inSchutzdatenQuarantaene(created);
-          if (aiCheckWorker && !inQuarantaene) {
-            await ko.markAiCheckPending(created.id);
-            submitted = (await ko.get(created.id)) ?? created;
-            // WP-SHIP8-CLOSE-2 (bens F3): die Zielversion des frisch gesetzten pending-Vermerks
-            // reist SYNCHRON mit dem Job — die Overflow-Eviction schließt hart versionsgebunden ab.
-            aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
-          }
-          reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
-          // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
-          // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
-          // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
-          if (!inQuarantaene) {
-            await indexKoForDuplicatePrefilter(created, semanticPrefilter);
-          }
-        } catch (error) {
-          sendError(reply, error);
         }
-      },
-    );
+        // R-0034 / FR-CAP-08: das Fachgebiet beim Anlegen trägt dieselbe Grenze wie die Aktion
+        // `domain` — ein Nicht-Text oder ein überlanger Wert ist ein 400, nichts wird gekürzt.
+        if (
+          input.domain !== undefined &&
+          input.domain !== null &&
+          (typeof input.domain !== "string" || input.domain.trim().length > DOMAIN_MAX_LENGTH)
+        ) {
+          reply.code(400).send({
+            error: "INVALID",
+            message: `domain muss Text mit höchstens ${DOMAIN_MAX_LENGTH} Zeichen sein.`,
+          });
+          return;
+        }
+        // produkt:20261007:templates-default: Pflichtfelder der Vorlage, Space-Vorgaben und
+        // gepflegte Begriffe — serverseitig, VOR der Anlage. Ein Entwurf bleibt davon unberührt.
+        // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund): mit gewähltem
+        // Space laufen Prüfung, Anlage und Zuordnung unter derselben Sperre wie die
+        // Spacelöschung (`sperre`). Gewinnt die Löschung vorher, antwortet die Prüfung 409
+        // `SPACE_GELOESCHT`; misslingt die Zuordnung, ist die Anlage zurückgenommen (409).
+        const anlage = async () => {
+          const entscheid = await deps.vorlagen?.pruefe(
+            vorlagenBezug,
+            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+            user,
+          );
+          if (entscheid && !entscheid.ok) {
+            return { absage: entscheid } as const;
+          }
+          if (operationId !== undefined && typeof operationId !== "string") {
+            throw new KoError("INVALID_OPERATION_ID", "operationId muss Text sein.");
+          }
+          let neu = await ko.create(
+            { ...input, author: user.id },
+            operationId === undefined
+              ? undefined
+              : {
+                  id: operationId,
+                  actor: user.id,
+                  fingerprint: createOperationFingerprint({
+                    weg: "ko-create",
+                    inhalt: input,
+                    vorlage: vorlagenBezug,
+                    reviewerIds:
+                      reviewerIds === undefined ? undefined : [...new Set(reviewerIds)].sort(),
+                  }),
+                },
+          );
+          // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das
+          // gesagt (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben — AUSSER die
+          // Space-Zuordnung scheitert: dann ist die Anlage zurückgenommen.
+          let vermerk: "fehlgeschlagen" | undefined;
+          if (entscheid?.ok && entscheid.bezug) {
+            try {
+              await deps.vorlagen?.vermerke(neu.id, entscheid.bezug, user);
+              if (entscheid.bezug.spaceId) {
+                neu = (await ko.get(neu.id)) ?? neu;
+              }
+            } catch (fehlerWert) {
+              if (fehlerWert instanceof VorlagenSpaceFehler) {
+                return { spaceFehler: fehlerWert } as const;
+              }
+              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+              vermerk = "fehlgeschlagen";
+            }
+          }
+          return { created: neu, vorlagenVermerk: vermerk } as const;
+        };
+        const ergebnis = deps.vorlagen
+          ? await deps.vorlagen.sperre(vorlagenBezug, anlage)
+          : await anlage();
+        if ("absage" in ergebnis) {
+          sendeVorlagenAbsage(reply, ergebnis.absage);
+          return;
+        }
+        if ("spaceFehler" in ergebnis) {
+          sendeVorlagenSpaceKonflikt(reply, ergebnis.spaceFehler);
+          return;
+        }
+        const created = ergebnis.created;
+        const vorlagenVermerk = ergebnis.vorlagenVermerk;
+        // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
+        // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
+        // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
+        const reviewers = [...new Set(reviewerIds ?? [])].filter((id) => id !== user.id);
+        if (reviewers.length > 0) {
+          await validation.assign(created.id, reviewers, user.id);
+          await notifyAssignment?.(created.id, reviewers);
+        } else {
+          // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen.
+          await routeNeuesObjekt?.(created.id, user);
+        }
+        // WP-SUBMIT-ASYNC (Pedis Architektur-Entscheid R3, 21.07.): die KI-Prüfung blockiert
+        // das Einreichen NICHT mehr (Messung: 1:28 min). Statt der früheren synchronen
+        // detect*-Aufrufe wird nur der Prüf-Job vermerkt (aiCheck pending, ein schmaler
+        // Feld-Patch) und im In-Process-Worker NACH der Antwort abgearbeitet — dieselben
+        // Erkennungs-Pfade, dieselben Ergebnis-Signale, nur später (Status im Board sichtbar).
+        // Die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending) — das Nachlesen
+        // passiert VOR dem enqueue, damit die Antwort deterministisch den Job-Start zeigt.
+        let submitted = created;
+        // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung (externer
+        // Modellaufruf mit dem Text) noch in die Ähnlichkeitsablage (Einbettung = durchsuchbar).
+        // Die Warnung reist als `schutzdatenQuarantaene` (nur die Arten) in der 201-Antwort mit.
+        const inQuarantaene = inSchutzdatenQuarantaene(created);
+        if (aiCheckWorker && !inQuarantaene) {
+          await ko.markAiCheckPending(created.id);
+          submitted = (await ko.get(created.id)) ?? created;
+          // WP-SHIP8-CLOSE-2 (bens F3): die Zielversion des frisch gesetzten pending-Vermerks
+          // reist SYNCHRON mit dem Job — die Overflow-Eviction schließt hart versionsgebunden ab.
+          aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
+        }
+        reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
+        // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
+        // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
+        // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
+        if (!inQuarantaene) {
+          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+        }
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
 
     // ==============================================================================================
     // AUFTRAG-mega19 Block B — DIE ERSTANLAGE AUS DOKUMENTEN. EINE FACHOPERATION, NEBEN DER ROUTE.
@@ -3163,6 +3182,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           body.action === "category" ||
           body.action === "propose" ||
           body.action === "decide-proposal";
+        if (code === "STALE_WRITE" && (body.action === "attach" || body.action === "detach")) {
+          reply.code(409).send({ error: code, message });
+          return true;
+        }
         if (code === "KO_STALE" || (code === "STALE_WRITE" && konfliktSpeicherweg)) {
           // Die JETZT gespeicherte Version reist mit — ohne sie kann die Oberfläche den Menschen
           // nicht entscheiden lassen, sondern nur „hat nicht geklappt" sagen.
@@ -4005,11 +4028,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               );
             }
             const { sources: _verworfen, ...changes } = body.changes ?? {};
+            if (body.operationId !== undefined && typeof body.operationId !== "string") return badRequest("operationId muss Text sein.");
+            let wiederholt = false;
             const freigegeben = await ko.reviseUndFreigeben(id, changes, user.id, {
               trust: TRUST_MAX,
+              ...(body.operationId === undefined ? {} : { operation: {
+                id: body.operationId, fingerprint: createOperationFingerprint({ action: "revise-release", expectedVersion: erwartet, changes })
+              }}),
+              meldeWiederholung: () => { wiederholt = true; },
               ...(erwartet === undefined ? {} : { expectedVersion: erwartet }),
             });
-            reply.code(200).send(await nachNeuerFassung(freigegeben));
+            reply.code(200).send(wiederholt ? freigegeben : await nachNeuerFassung(freigegeben));
             return;
           }
           // ======================================================================================
@@ -4053,6 +4082,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 );
               }
             }
+            if (body.operationId !== undefined && typeof body.operationId !== "string") return badRequest("operationId muss Text sein.");
             const angelegt = await ko.addProposal(id, user.id, {
               statement: vorschlag.statement,
               ...(typeof vorschlag.bodyHtml === "string" ? { bodyHtml: vorschlag.bodyHtml } : {}),
@@ -4067,7 +4097,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               kontoregel: can(user.role, "users.manage")
                 ? "freiwillige-zweitpruefung"
                 : "pflichtpruefung",
-            });
+            }, body.operationId === undefined ? {} : { operation: {
+              id: body.operationId, fingerprint: createOperationFingerprint({
+                action: "propose", baseVersion: basis, statement: vorschlag.statement.trim(),
+                bodyHtml: vorschlag.bodyHtml, clearBody: vorschlag.clearBody === true,
+                origin: vorschlag.origin, pruefer
+              })
+            }});
             reply.code(200).send(angelegt.ko);
             return;
           }

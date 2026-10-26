@@ -432,7 +432,10 @@ const RUECKNAHME_VORAB_FRIST_MS = 2000;
 // Pg-Pool); ohne Injektion (Tests, InMemory, Dev-Journal-Persistenz) bleibt purgeKo beim sequentiellen
 // Fallback. `fn` bekommt den opaken TxContext (services/db-tx) und reicht ihn an repo.delete/
 // audit.record durch — KEIN Pg-Typ in dieser Signatur.
-export type WithTx = <T>(fn: (tx: TxContext) => Promise<T>) => Promise<T>;
+export type WithTx = <T>(
+  fn: (tx: TxContext) => Promise<T>,
+  ruecknahme?: () => Promise<void>,
+) => Promise<T>;
 
 // Aufnahme gesamt-auditprotokoll (Lauf 3): was die Belegschritte einer Erstanlage der Rücknahmeklammer
 // melden (`schreibeErstanlage`) — nur im Weg ohne Transaktion von Bedeutung.
@@ -1071,6 +1074,103 @@ export class KoService {
     }
   }
 
+  // Der Kontext ist eine an diese Instanz gebundene Fähigkeit. Nur der Paarvorgang
+  // darf die bereits gehaltenen Sperren wiederverwenden; fremde HTTP-Aufrufe warten.
+  private readonly paarVorgaenge = new WeakMap<
+    object,
+    {
+      ids: Set<string>;
+      tx?: TxContext | undefined;
+      nachCommit: (() => void)[];
+      ruecknahmen: (() => Promise<void>)[];
+    }
+  >();
+
+  async mitKoPaar<T>(ids: readonly string[], fn: (kontext: object) => Promise<T>): Promise<T> {
+    const geordnet = [...new Set(ids)].sort();
+    const sperren = (i: number): Promise<T> => {
+      const id = geordnet[i];
+      return id === undefined
+        ? (async () => {
+            const kontext = {};
+            this.paarVorgaenge.set(kontext, {
+              ids: new Set(geordnet),
+              nachCommit: [],
+              ruecknahmen: [],
+            });
+            try {
+              return await fn(kontext);
+            } finally {
+              this.paarVorgaenge.delete(kontext);
+            }
+          })()
+        : this.withKoLock(id, () => sperren(i + 1));
+    };
+    return sperren(0);
+  }
+
+  private paarKontext(kontext: object, id?: string) {
+    const vorgang = this.paarVorgaenge.get(kontext);
+    if (!vorgang || (id !== undefined && !vorgang.ids.has(id))) {
+      throw new KoError("INVALID", "Ungültiger Schreibkontext.");
+    }
+    return vorgang;
+  }
+
+  private imKoLock<T>(id: string, kontext: object | undefined, fn: () => Promise<T>): Promise<T> {
+    if (kontext !== undefined) {
+      this.paarKontext(kontext, id);
+      return fn();
+    }
+    return this.withKoLock(id, fn);
+  }
+
+  async imPaarVorgang<T>(kontext: object, fn: (tx: TxContext) => Promise<T>): Promise<T> {
+    const vorgang = this.paarKontext(kontext);
+    if (vorgang.tx || !this.ruecknahmeKlammer) {
+      throw new KoError("INVALID", "Die gemeinsame Schreibtransaktion ist nicht verfügbar.");
+    }
+    const wert = await this.ruecknahmeKlammer(
+      async (tx) => {
+        vorgang.tx = tx;
+        try {
+          for (const id of [...vorgang.ids].sort()) await this.repo.findById(id, tx, true);
+          return await fn(tx);
+        } finally {
+          vorgang.tx = undefined;
+        }
+      },
+      this.withTx
+        ? undefined
+        : async () => {
+            const fehler: unknown[] = [];
+            for (const zurueck of [...vorgang.ruecknahmen].reverse()) {
+              try {
+                await zurueck();
+              } catch (error) {
+                fehler.push(error);
+              }
+            }
+            if (fehler.length) throw new AggregateError(fehler, "Fassungsrücknahme fehlgeschlagen");
+          },
+    );
+    for (const melden of vorgang.nachCommit) melden();
+    return wert;
+  }
+
+  async getImPaarVorgang(kontext: object, id: string): Promise<KnowledgeObject | undefined> {
+    const vorgang = this.paarKontext(kontext, id);
+    if (!vorgang.tx) throw new KoError("INVALID", "Keine gemeinsame Schreibtransaktion.");
+    const ko = await this.repo.findById(id, vorgang.tx);
+    return ko?.deletedAt ? undefined : ko;
+  }
+
+  private meldeNachVorgang(id: string, ko: KnowledgeObject | undefined, kontext?: object): void {
+    if (kontext !== undefined)
+      this.paarKontext(kontext, id).nachCommit.push(() => this.meldeAenderung(id, ko));
+    else this.meldeAenderung(id, ko);
+  }
+
   // SCRUM-509 R3: EIN Read-Modify-Write-Pfad für KO-Mutationen. Per-KO serialisiert (withKoLock →
   // kein Interleave IM Prozess) UND optimistisch auf DB-Ebene (repo.update macht Compare-and-Set auf
   // rowVersion → ein veralteter fremder Write kann nichts überschreiben, auch prozessübergreifend).
@@ -1090,23 +1190,31 @@ export class KoService {
       value: T;
       audit?: (tx?: TxContext) => Promise<void>;
     },
+    kontext?: object,
   ): Promise<T> {
     let gespeichert: KnowledgeObject | undefined;
-    const value = await this.withKoLock(id, async () => {
-      const ko = await this.require(id);
+    const value = await this.imKoLock(id, kontext, async () => {
+      const tx = kontext === undefined ? undefined : this.paarKontext(kontext, id).tx;
+      const ko = await this.require(id, tx);
+      if (ko.mergedInto)
+        throw new KoError("KO_STALE", "Der Artikel ist in einem anderen Artikel aufgegangen.");
       const { updated, value, audit } = apply(ko);
-      await this.schreibeMitBeleg(
-        (tx) => this.repo.update(updated, tx),
-        async (tx) => {
-          await audit?.(tx);
-        },
-        () => this.rollbackKo(ko),
-        id,
-      );
+      if (tx) {
+        await this.repo.update(updated, tx);
+        await audit?.(tx);
+      } else
+        await this.schreibeMitBeleg(
+          (tx) => this.repo.update(updated, tx),
+          async (tx) => {
+            await audit?.(tx);
+          },
+          () => this.rollbackKo(ko),
+          id,
+        );
       gespeichert = updated;
       return value;
     });
-    this.meldeAenderung(id, gespeichert);
+    this.meldeNachVorgang(id, gespeichert, kontext);
     return this.lesefassungWert(value);
   }
 
@@ -1196,16 +1304,21 @@ export class KoService {
       // auf demselben Client läuft wie die drei Schreiber davor. Ohne withTx ist er undefined.
       audit?: (tx?: TxContext) => Promise<void>;
     },
+    kontext?: object,
   ): Promise<T> {
     // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
     let gespeichert: KnowledgeObject | undefined;
-    const value = await this.mutateKoTxRoh(id, (ko) => {
-      const gebaut = build(ko);
-      gespeichert = gebaut.updated;
-      return gebaut;
-    });
+    const value = await this.mutateKoTxRoh(
+      id,
+      (ko) => {
+        const gebaut = build(ko);
+        gespeichert = gebaut.updated;
+        return gebaut;
+      },
+      kontext,
+    );
     // R-0195 / R-0470: erst NACH dem Speichern — ein Wurf endet vorher, dann reiht nichts ein.
-    this.meldeAenderung(id, gespeichert);
+    this.meldeNachVorgang(id, gespeichert, kontext);
     return this.lesefassungWert(value);
   }
 
@@ -1217,9 +1330,13 @@ export class KoService {
       snapshot?: { author: string; note: string };
       audit?: (tx?: TxContext) => Promise<void>;
     },
+    kontext?: object,
   ): Promise<T> {
-    return this.withKoLock(id, async () => {
-      const before = await this.require(id);
+    return this.imKoLock(id, kontext, async () => {
+      const vorgang = kontext === undefined ? undefined : this.paarKontext(kontext, id);
+      const before = await this.require(id, vorgang?.tx);
+      if (before.mergedInto)
+        throw new KoError("KO_STALE", "Der Artikel ist in einem anderen Artikel aufgegangen.");
       const { updated, value, snapshot, audit } = build(before);
       // R-0098: Hat sich der Rumpf geändert, wird `bildInhalte` neu abgeleitet. `build` ist
       // synchron, das Lesen eines Objekt-Store-Bildes nicht — deshalb hier, noch vor dem Schreiben.
@@ -1232,6 +1349,29 @@ export class KoService {
         (updated.bodyHtml !== before.bodyHtml || updated.bildInhalte === undefined)
       ) {
         updated.bildInhalte = await this.bildInhalteVon(updated.bodyHtml);
+      }
+      if (vorgang?.tx) {
+        const tx = vorgang.tx;
+        if (!this.withTx && snapshot) {
+          const metadata = await this.searchProjections.metadata.find(id);
+          vorgang.ruecknahmen.push(async () => {
+            await this.versions?.remove(updated.id, updated.version);
+            await this.searchProjections.remove(updated.id, updated.version, { ruecknahme: true });
+            if (metadata)
+              await this.searchProjections.metadata.upsert({
+                ...metadata,
+                at: new Date(this.now()).toISOString(),
+              });
+            else await this.searchProjections.metadata.remove(id);
+          });
+        }
+        await this.repo.update(updated, tx);
+        if (snapshot) {
+          await this.snapshot(updated, snapshot.author, snapshot.note, tx);
+          await this.persistSearchProjection(updated, undefined, tx);
+        }
+        await audit?.(tx);
+        return value;
       }
       if (this.withTx) {
         // JOB 2704 D1: die vier Schritte in EINER Transaktion — Reihenfolge wie im Fallback unten,
@@ -1472,11 +1612,14 @@ export class KoService {
   private async classificationForRebuild(
     ko: KnowledgeObject,
     alt: KoSearchProjection | undefined,
+    tx?: TxContext,
   ): Promise<ClassificationSnapshot> {
     if (alt && alt.projectionVersion === SEARCH_PROJECTION_VERSION) {
       return alt.classificationSnapshot;
     }
-    const snapshot = (await this.versions?.listByKo(ko.id))?.find((s) => s.version === ko.version);
+    const snapshot = (await this.versions?.listByKo(ko.id, tx))?.find(
+      (s) => s.version === ko.version,
+    );
     return snapshot ? classificationFromVersionSnapshot(snapshot) : reconstructedClassification(ko);
   }
 
@@ -1662,38 +1805,47 @@ export class KoService {
     const control = await this.searchProjections.controlState();
     const bauGeneration =
       control.projectionState === "V2_BUILDING" ? control.buildGeneration : null;
-    for (const ko of await this.repo.list({})) {
-      if (ko.deletedAt) {
-        continue;
-      }
-      geprueft += 1;
-      const alt = await this.searchProjections.find(ko.id, ko.version);
-      if (alt && alt.projectionVersion !== SEARCH_PROJECTION_VERSION) {
-        v2Migriert += 1;
-      }
-      const frisch = buildSearchProjection(ko, at, {
-        classification: await this.classificationForRebuild(ko, alt),
+    for (const kandidat of await this.repo.list({})) {
+      await this.withKoLock(kandidat.id, async () => {
+        const bauen = async (tx?: TxContext): Promise<void> => {
+          const ko = await this.repo.findById(kandidat.id, tx, true);
+          if (!ko) return;
+          if (ko.deletedAt) {
+            return;
+          }
+          geprueft += 1;
+          const alt = await this.searchProjections.find(ko.id, ko.version, tx);
+          if (alt && alt.projectionVersion !== SEARCH_PROJECTION_VERSION) {
+            v2Migriert += 1;
+          }
+          const frisch = buildSearchProjection(ko, at, {
+            classification: await this.classificationForRebuild(ko, alt, tx),
+          });
+          if (alt?.contentHash === frisch.contentHash) {
+            unveraendert += 1;
+            if (
+              bauGeneration !== null &&
+              alt.projectionVersion === SEARCH_PROJECTION_VERSION &&
+              (await this.searchProjections.generationOf(ko.id, ko.version, tx)) === bauGeneration
+            ) {
+              await this.projectMetadata(ko, at, tx);
+              return;
+            }
+          }
+          // `createdAt` der bestehenden Zeile bleibt erhalten — sie wurde neu abgeleitet, nicht neu
+          // geboren; nur `updatedAt` klettert.
+          await this.searchProjections.replace(
+            alt ? { ...frisch, createdAt: alt.createdAt, updatedAt: at } : frisch,
+            tx,
+          );
+          geschrieben += 1;
+          // Die zweite Hälfte des Suchdokuments gehört zum Rebuild: eine Inhaltszeile ohne
+          // Metadatenzeile wäre nach Kategorie oder Schlagwort nicht auffindbar.
+          await this.projectMetadata(ko, at, tx);
+        };
+        if (this.withTx) await this.withTx(bauen);
+        else await bauen();
       });
-      if (alt?.contentHash === frisch.contentHash) {
-        unveraendert += 1;
-        if (
-          bauGeneration !== null &&
-          alt.projectionVersion === SEARCH_PROJECTION_VERSION &&
-          (await this.searchProjections.generationOf(ko.id, ko.version)) === bauGeneration
-        ) {
-          await this.projectMetadata(ko, at);
-          continue;
-        }
-      }
-      // `createdAt` der bestehenden Zeile bleibt erhalten — sie wurde neu abgeleitet, nicht neu
-      // geboren; nur `updatedAt` klettert.
-      await this.searchProjections.replace(
-        alt ? { ...frisch, createdAt: alt.createdAt, updatedAt: at } : frisch,
-      );
-      geschrieben += 1;
-      // Die zweite Hälfte des Suchdokuments gehört zum Rebuild: eine Inhaltszeile ohne
-      // Metadatenzeile wäre nach Kategorie oder Schlagwort nicht auffindbar.
-      await this.projectMetadata(ko, at);
     }
     return { geprueft, geschrieben, unveraendert, v2Migriert };
   }
@@ -4185,54 +4337,56 @@ export class KoService {
       quelle?: KoAnhangsquelle;
     },
   ): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    // SCRUM-121: nur gesetzte Felder übernehmen (kein leeres dataUrl bei Objekt-Referenz).
-    const attachment: KoAttachment = {
-      id: this.genId(),
-      name: input.name,
-      mime: input.mime,
-      author,
-      at: new Date(this.now()).toISOString(),
-      ...(input.dataUrl ? { dataUrl: input.dataUrl } : {}),
-      ...(input.objectId ? { objectId: input.objectId } : {}),
-      ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
-      ...(input.size !== undefined ? { size: input.size } : {}),
-      ...(input.quelle ? { quelle: input.quelle } : {}),
-    };
-    const updated: KnowledgeObject = {
-      ...ko,
-      attachments: [...(ko.attachments ?? []), attachment],
-    };
-    // Aufnahme gesamt-auditprotokoll (Lauf 3): Anhang, Belegzeile und `ko.attached` gemeinsam
-    // (`schreibeMitBeleg`). Ohne Transaktion bleibt eine schon geschriebene Belegzeile bei einem
-    // Beleg-Ausfall stehen (append-only) — derselbe harmlose Spiegel wie in `appendDocumentExtract`.
-    await this.schreibeMitBeleg(
-      async (tx) => {
-        await this.repo.update(updated, tx);
-        if (attachment.objectId) {
-          await this.appendEvidence(
-            {
-              koId: id,
-              koVersion: ko.version,
-              kind: "attachment",
-              attachmentId: attachment.id,
-              objectId: attachment.objectId,
-              label: attachment.name,
-              mime: attachment.mime,
-              createdBy: author,
-              createdAt: attachment.at,
-            },
-            tx,
-          );
-        }
-      },
-      async (tx) => {
-        await this.audit?.record({ actor: author, action: "ko.attached", target: id }, tx);
-      },
-      () => this.rollbackKo(ko),
-    );
-    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
-    return this.lesefassung(updated);
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      // SCRUM-121: nur gesetzte Felder übernehmen (kein leeres dataUrl bei Objekt-Referenz).
+      const attachment: KoAttachment = {
+        id: this.genId(),
+        name: input.name,
+        mime: input.mime,
+        author,
+        at: new Date(this.now()).toISOString(),
+        ...(input.dataUrl ? { dataUrl: input.dataUrl } : {}),
+        ...(input.objectId ? { objectId: input.objectId } : {}),
+        ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
+        ...(input.size !== undefined ? { size: input.size } : {}),
+        ...(input.quelle ? { quelle: input.quelle } : {}),
+      };
+      const updated: KnowledgeObject = {
+        ...ko,
+        attachments: [...(ko.attachments ?? []), attachment],
+      };
+      // Aufnahme gesamt-auditprotokoll (Lauf 3): Anhang, Belegzeile und `ko.attached` gemeinsam
+      // (`schreibeMitBeleg`). Ohne Transaktion bleibt eine schon geschriebene Belegzeile bei einem
+      // Beleg-Ausfall stehen (append-only) — derselbe harmlose Spiegel wie in `appendDocumentExtract`.
+      await this.schreibeMitBeleg(
+        async (tx) => {
+          await this.repo.update(updated, tx);
+          if (attachment.objectId) {
+            await this.appendEvidence(
+              {
+                koId: id,
+                koVersion: ko.version,
+                kind: "attachment",
+                attachmentId: attachment.id,
+                objectId: attachment.objectId,
+                label: attachment.name,
+                mime: attachment.mime,
+                createdBy: author,
+                createdAt: attachment.at,
+              },
+              tx,
+            );
+          }
+        },
+        async (tx) => {
+          await this.audit?.record({ actor: author, action: "ko.attached", target: id }, tx);
+        },
+        () => this.rollbackKo(ko),
+      );
+      // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+      return this.lesefassung(updated);
+    });
   }
 
   /**
@@ -4487,19 +4641,21 @@ export class KoService {
     attachmentId: string,
     actor: string,
   ): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    const updated: KnowledgeObject = {
-      ...ko,
-      attachments: (ko.attachments ?? []).filter((a) => a.id !== attachmentId),
-    };
-    await this.schreibeMitBeleg(
-      (tx) => this.repo.update(updated, tx),
-      async (tx) => {
-        await this.audit?.record({ actor, action: "ko.detached", target: id }, tx);
-      },
-      () => this.rollbackKo(ko),
-    );
-    return this.lesefassung(updated);
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      const updated: KnowledgeObject = {
+        ...ko,
+        attachments: (ko.attachments ?? []).filter((a) => a.id !== attachmentId),
+      };
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record({ actor, action: "ko.detached", target: id }, tx);
+        },
+        () => this.rollbackKo(ko),
+      );
+      return this.lesefassung(updated);
+    });
   }
 
   // SCRUM-129 / FR-KO-07: externe Quelle anfügen. Externe Quellen sind NIE peer-validiert.
@@ -4677,7 +4833,7 @@ export class KoService {
    * keine Route gibt es aus.
    */
   async listMitBestandsabgleich(): Promise<KnowledgeObject[]> {
-    const kos = (await this.repo.list({})).filter((k) => !k.deletedAt);
+    const kos = (await this.repo.list({})).filter((k) => !k.deletedAt && !k.mergedInto);
     if (!kos.some(brauchtPruefstand)) {
       return kos;
     }
@@ -4775,7 +4931,9 @@ export class KoService {
   // KEIN DEFAULT — siehe KoRepo.list: vier Aufrufer dieses Repos brauchen die getrashten Zeilen
   // zwingend. Nur die normale Listenroute übergibt den Trim.
   async list(filter: KoFilter = {}, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
-    return this.lesefassungen((await this.repo.list(filter, trim)).filter((k) => !k.deletedAt));
+    return this.lesefassungen(
+      (await this.repo.list(filter, trim)).filter((k) => !k.deletedAt && !k.mergedInto),
+    );
   }
 
   /**
@@ -4875,7 +5033,7 @@ export class KoService {
     trim?: KoSichtbarkeitstrim,
   ): Promise<KnowledgeObject[]> {
     return this.lesefassungen(
-      (await this.repo.listForSearch(filter, trim)).filter((k) => !k.deletedAt),
+      (await this.repo.listForSearch(filter, trim)).filter((k) => !k.deletedAt && !k.mergedInto),
     );
   }
 
@@ -5170,7 +5328,7 @@ export class KoService {
       kos
         // R-0658: ein Objekt in Quarantäne ist kein Suchkandidat (Ask/Klara) — auch nicht über
         // Kategorie oder Schlagwort, die in der Metadatenprojektion weiter stehen.
-        .filter((ko) => !ko.deletedAt && !inSchutzdatenQuarantaene(ko))
+        .filter((ko) => !ko.deletedAt && !ko.mergedInto && !inSchutzdatenQuarantaene(ko))
         .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
     );
   }
@@ -5905,6 +6063,8 @@ export class KoService {
     author: string,
     opts: {
       expectedVersion?: number;
+      schreibkontext?: object;
+      zusammenQuellrechte?: KoQuellrechte;
       // Aufnahme gesamt-auditprotokoll (Runde 2): ein ZWEITER Beleg derselben Fassung, geschrieben
       // im selben Audit-Schritt wie `ko.revised` — scheitert er, rollt die Revision mit zurück
       // (Beispiel: `ko.revalidated` aus `LifecycleService.confirmStillValid`). `version` wird ergänzt.
@@ -5939,63 +6099,74 @@ export class KoService {
     // der KO (inkl. Versions-Bump/Reset auf „offen"/Trust 0) kompensierend zurückgerollt und ein bereits
     // geschriebener Snapshot entfernt — kein Teilzustand, keine unauditierte Änderung. Die Bewertungen
     // werden NICHT gelöscht: sie tragen ihre koVersion und sind ab der neuen Version implizit „stale".
-    return this.mutateKoTx(id, (ko) => {
-      // JOB 3667 R2: der bedingte Schreibzugriff, INNERHALB des serialisierten Abschnitts.
-      this.pruefeErwarteteVersion(ko, opts.expectedVersion);
-      // JOB 4213: und die Herkunftsangabe, im selben Abschnitt und gegen denselben gelesenen Stand.
-      this.pruefeHerkunft(ko, herkunft);
-      // JOB 4213 R3: und die Anhangsfundstellen — ebenfalls gegen DIESEN gelesenen Stand, weil die
-      // Frage „hängt die Datei noch am Objekt?" nur am aktuellen Stand zu beantworten ist.
-      if (zurueckgeholt !== undefined) {
-        this.pruefeUebernahmeAnhaenge(ko, zurueckgeholt.inhalt, zurueckgeholt.bekannteKennungen);
-      }
-      const revised = this.naechsteFassung(ko, wirksameAenderung, author);
-      const version = revised.version;
-      return {
-        updated: revised,
-        value: revised,
-        // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
-        //
-        // JOB 4213 · RUNDE 2 — DER VERMERK BLEIBT „überarbeitet", AUCH BEI EINER ÜBERNAHME, und das
-        // ist eine Entscheidung wie schon in JOB 3667 R7 („überarbeitet und freigegeben"). Ein
-        // SECHSTER fester Dienst-Vermerk ist nur halb geliefert, solange er nicht übersetzt wird:
-        // die Anzeige bildet ihn über `apps/web/src/lib/koHistoryNote.ts` auf einen Katalogschlüssel
-        // ab, und diese Datei ist NICHT Zielpfad dieses Auftrags (Runde 1 hat sie angefasst — das
-        // war der Zielpfad-Verstoß). Ohne Eintrag dort stünde das deutsche Wort mitten im englischen
-        // und niederländischen Text, genau der Befund, gegen den JOB 3627 steht.
-        //
-        // ES GEHT NICHTS VERLOREN: WAS geschah, sagt der Vermerk (überarbeitet); DASS der Inhalt aus
-        // einer früheren Fassung stammt, sagt der Datensatz selbst — `history[].restoredFrom` (s.
-        // `naechsteFassung`), und die Fläche setzt daraus ihren eigenen, übersetzten Satz
-        // (`ko.snapshotRestoredFrom`). Der Vermerk hätte das nur ein zweites Mal behauptet.
-        snapshot: { author, note: "überarbeitet" },
-        // JOB 2704 D1: der Beleg läuft auf dem Transaktionsclient der Revision (tx aus mutateKoTx,
-        // undefined ohne withTx) — er committet und verschwindet mit ihr.
-        audit: async (tx) => {
-          const vorher = await opts.zusatzBeleg?.vorher?.(tx);
-          await this.audit?.record(
-            {
-              actor: author,
-              action: "ko.revised",
-              target: id,
-              payload: { version },
-            },
-            tx,
-          );
-          if (opts.zusatzBeleg) {
+    return this.mutateKoTx(
+      id,
+      (ko) => {
+        // JOB 3667 R2: der bedingte Schreibzugriff, INNERHALB des serialisierten Abschnitts.
+        this.pruefeErwarteteVersion(ko, opts.expectedVersion);
+        // JOB 4213: und die Herkunftsangabe, im selben Abschnitt und gegen denselben gelesenen Stand.
+        this.pruefeHerkunft(ko, herkunft);
+        // JOB 4213 R3: und die Anhangsfundstellen — ebenfalls gegen DIESEN gelesenen Stand, weil die
+        // Frage „hängt die Datei noch am Objekt?" nur am aktuellen Stand zu beantworten ist.
+        if (zurueckgeholt !== undefined) {
+          this.pruefeUebernahmeAnhaenge(ko, zurueckgeholt.inhalt, zurueckgeholt.bekannteKennungen);
+        }
+        const revised = this.naechsteFassung(ko, wirksameAenderung, author);
+        if (opts.schreibkontext && opts.zusammenQuellrechte) {
+          this.paarKontext(opts.schreibkontext, id);
+          const rechte = normalizeQuellrechte(opts.zusammenQuellrechte);
+          if (!rechte) throw new KoError("INVALID_CONFIDENTIALITY", "Ungültige Quellrechte.");
+          revised.quellrechte = rechte;
+          revised.confidentiality = opts.zusammenQuellrechte.stufe;
+        }
+        const version = revised.version;
+        return {
+          updated: revised,
+          value: revised,
+          // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
+          //
+          // JOB 4213 · RUNDE 2 — DER VERMERK BLEIBT „überarbeitet", AUCH BEI EINER ÜBERNAHME, und das
+          // ist eine Entscheidung wie schon in JOB 3667 R7 („überarbeitet und freigegeben"). Ein
+          // SECHSTER fester Dienst-Vermerk ist nur halb geliefert, solange er nicht übersetzt wird:
+          // die Anzeige bildet ihn über `apps/web/src/lib/koHistoryNote.ts` auf einen Katalogschlüssel
+          // ab, und diese Datei ist NICHT Zielpfad dieses Auftrags (Runde 1 hat sie angefasst — das
+          // war der Zielpfad-Verstoß). Ohne Eintrag dort stünde das deutsche Wort mitten im englischen
+          // und niederländischen Text, genau der Befund, gegen den JOB 3627 steht.
+          //
+          // ES GEHT NICHTS VERLOREN: WAS geschah, sagt der Vermerk (überarbeitet); DASS der Inhalt aus
+          // einer früheren Fassung stammt, sagt der Datensatz selbst — `history[].restoredFrom` (s.
+          // `naechsteFassung`), und die Fläche setzt daraus ihren eigenen, übersetzten Satz
+          // (`ko.snapshotRestoredFrom`). Der Vermerk hätte das nur ein zweites Mal behauptet.
+          snapshot: { author, note: "überarbeitet" },
+          // JOB 2704 D1: der Beleg läuft auf dem Transaktionsclient der Revision (tx aus mutateKoTx,
+          // undefined ohne withTx) — er committet und verschwindet mit ihr.
+          audit: async (tx) => {
+            const vorher = await opts.zusatzBeleg?.vorher?.(tx);
             await this.audit?.record(
               {
                 actor: author,
-                action: opts.zusatzBeleg.action,
+                action: "ko.revised",
                 target: id,
-                payload: { ...opts.zusatzBeleg.payload, ...vorher, version },
+                payload: { version },
               },
               tx,
             );
-          }
-        },
-      };
-    });
+            if (opts.zusatzBeleg) {
+              await this.audit?.record(
+                {
+                  actor: author,
+                  action: opts.zusatzBeleg.action,
+                  target: id,
+                  payload: { ...opts.zusatzBeleg.payload, ...vorher, version },
+                },
+                tx,
+              );
+            }
+          },
+        };
+      },
+      opts.schreibkontext,
+    );
   }
 
   // ==============================================================================================
@@ -6249,12 +6420,59 @@ export class KoService {
   //
   // WER DAS DARF, entscheidet die Route (`users.manage`, wie bei `ValidationService.adminValidate`).
   // Dieser Dienst kennt keine Rechte — er bekommt den Akteur und den Vertrauenswert gereicht.
+  private rueckwegQuittung(
+    ko: KnowledgeObject,
+    actor: string,
+    action: "propose" | "revise-release",
+    operation: { id: string; fingerprint: string },
+  ) {
+    const id = normalizeCreateOperationId(operation.id);
+    const bekannt = ko.wordReturnOps?.find((op) => op.id === id);
+    if (
+      bekannt &&
+      (bekannt.actor !== actor ||
+        bekannt.action !== action ||
+        bekannt.fingerprint !== operation.fingerprint)
+    ) {
+      throw new KoError(
+        "IDEMPOTENCY_PAYLOAD_MISMATCH",
+        "Die Vorgangskennung gehört zu einem anderen Rückweg.",
+      );
+    }
+    return bekannt;
+  }
+
   async reviseUndFreigeben(
     id: string,
     changes: ReviseMitHerkunft,
     actor: string,
-    opts: { trust: number; expectedVersion?: number },
+    opts: {
+      trust: number;
+      expectedVersion?: number;
+      operation?: { id: string; fingerprint: string };
+      schreibkontext?: object;
+      meldeWiederholung?: () => void;
+    },
   ): Promise<KnowledgeObject> {
+    if (opts.operation && !opts.schreibkontext) {
+      const operation = opts.operation;
+      return this.mitKoPaar([id], (kontext) =>
+        this.imPaarVorgang(kontext, async (tx) => {
+          const ko = await this.require(id, tx);
+          const quittung = this.rueckwegQuittung(ko, actor, "revise-release", operation);
+          if (quittung) {
+            const snapshot = (await this.versions?.listByKo(id, tx))?.find(
+              (v) => v.version === quittung.resultVersion,
+            );
+            if (!snapshot)
+              throw new KoError("CREATE_REPAIR_REQUIRED", "Die gespeicherte Rückwegfassung fehlt.");
+            opts.meldeWiederholung?.();
+            return this.lesefassung(snapshot.snapshot);
+          }
+          return this.reviseUndFreigeben(id, changes, actor, { ...opts, schreibkontext: kontext });
+        }),
+      );
+    }
     if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
     }
@@ -6268,46 +6486,62 @@ export class KoService {
       herkunft === undefined || zurueckgeholt === undefined
         ? changes
         : { ...zurueckgeholt.inhalt, restoredFromVersion: herkunft };
-    return this.mutateKoTx(id, (ko) => {
-      this.pruefeErwarteteVersion(ko, opts.expectedVersion);
-      // JOB 4213: auch hier geprüft, nicht geglaubt. Eine Übernahme über DIESEN Weg bliebe trotzdem
-      // ungeprüft — `naechsteFassung` hebt die gleichzeitige Freigabe auf (s. dort); die Prüfung hier
-      // verhindert bloss, dass eine erfundene Herkunftszahl in den Datensatz läuft.
-      this.pruefeHerkunft(ko, herkunft);
-      if (zurueckgeholt !== undefined) {
-        this.pruefeUebernahmeAnhaenge(ko, zurueckgeholt.inhalt, zurueckgeholt.bekannteKennungen);
-      }
-      const fassung = this.naechsteFassung(ko, wirksameAenderung, actor, {
-        actor,
-        trust: opts.trust,
-      });
-      const version = fassung.version;
-      return {
-        updated: fassung,
-        value: fassung,
-        // Derselbe Vermerk wie an jeder anderen Überarbeitung — die Begründung steht bei
-        // `naechsteFassung` (JOB 3667 Runde 7). Die Freigabe belegen die zwei Einträge unten.
-        snapshot: { author: actor, note: "überarbeitet" },
-        audit: async (tx) => {
-          await this.audit?.record(
-            { actor, action: "ko.revised", target: id, payload: { version } },
-            tx,
-          );
-          // AW06-K02: der Beleg nennt die Kontoregel — hier die direkte Annahme durch ein Konto
-          // mit Freigaberecht (die Route lässt diesen Weg nur dafür zu).
-          const annahme = await this.audit?.record(
+    return this.mutateKoTx(
+      id,
+      (ko) => {
+        this.pruefeErwarteteVersion(ko, opts.expectedVersion);
+        // JOB 4213: auch hier geprüft, nicht geglaubt. Eine Übernahme über DIESEN Weg bliebe trotzdem
+        // ungeprüft — `naechsteFassung` hebt die gleichzeitige Freigabe auf (s. dort); die Prüfung hier
+        // verhindert bloss, dass eine erfundene Herkunftszahl in den Datensatz läuft.
+        this.pruefeHerkunft(ko, herkunft);
+        if (zurueckgeholt !== undefined) {
+          this.pruefeUebernahmeAnhaenge(ko, zurueckgeholt.inhalt, zurueckgeholt.bekannteKennungen);
+        }
+        const fassung = this.naechsteFassung(ko, wirksameAenderung, actor, {
+          actor,
+          trust: opts.trust,
+        });
+        const version = fassung.version;
+        if (opts.operation)
+          fassung.wordReturnOps = [
+            ...(ko.wordReturnOps ?? []),
             {
+              id: normalizeCreateOperationId(opts.operation.id),
               actor,
-              action: "ko.admin-validated",
-              target: id,
-              payload: { koVersion: version, kontoregel: "direktannahme" satisfies Kontoregel },
+              action: "revise-release",
+              baseVersion: ko.version,
+              fingerprint: opts.operation.fingerprint,
+              resultVersion: version,
             },
-            tx,
-          );
-          await this.verweisAufAnnahme(fassung, annahme, tx);
-        },
-      };
-    });
+          ];
+        return {
+          updated: fassung,
+          value: fassung,
+          // Derselbe Vermerk wie an jeder anderen Überarbeitung — die Begründung steht bei
+          // `naechsteFassung` (JOB 3667 Runde 7). Die Freigabe belegen die zwei Einträge unten.
+          snapshot: { author: actor, note: "überarbeitet" },
+          audit: async (tx) => {
+            await this.audit?.record(
+              { actor, action: "ko.revised", target: id, payload: { version } },
+              tx,
+            );
+            // AW06-K02: der Beleg nennt die Kontoregel — hier die direkte Annahme durch ein Konto
+            // mit Freigaberecht (die Route lässt diesen Weg nur dafür zu).
+            const annahme = await this.audit?.record(
+              {
+                actor,
+                action: "ko.admin-validated",
+                target: id,
+                payload: { koVersion: version, kontoregel: "direktannahme" satisfies Kontoregel },
+              },
+              tx,
+            );
+            await this.verweisAufAnnahme(fassung, annahme, tx);
+          },
+        };
+      },
+      opts.schreibkontext,
+    );
   }
 
   // ==============================================================================================
@@ -6341,7 +6575,24 @@ export class KoService {
       /** AW06-K02: die Kontoregel des Einreichers; die Route leitet sie aus seinem Recht ab. */
       kontoregel?: KoProposal["kontoregel"];
     },
+    opts: { operation?: { id: string; fingerprint: string }; schreibkontext?: object } = {},
   ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
+    if (opts.operation && !opts.schreibkontext) {
+      const operation = opts.operation;
+      return this.mitKoPaar([id], (kontext) =>
+        this.imPaarVorgang(kontext, async (tx) => {
+          const ko = await this.require(id, tx);
+          const quittung = this.rueckwegQuittung(ko, author, "propose", operation);
+          if (quittung) {
+            const proposal = ko.proposals?.find((p) => p.id === quittung.proposalId);
+            if (!proposal)
+              throw new KoError("CREATE_REPAIR_REQUIRED", "Der gespeicherte Vorschlag fehlt.");
+            return { ko: await this.lesefassung(ko), proposal };
+          }
+          return this.addProposal(id, author, input, { ...opts, schreibkontext: kontext });
+        }),
+      );
+    }
     if (input.pruefer !== undefined && input.pruefer === author) {
       // Dieselbe Regel wie bei der Entscheidung: die eigene Änderung prüft niemand selbst.
       throw new KoError(
@@ -6362,44 +6613,61 @@ export class KoService {
         "Ein Änderungsvorschlag kann den Fließtext ersetzen ODER löschen, nicht beides.",
       );
     }
-    return this.mutateKo(id, (ko) => {
-      this.pruefeErwarteteVersion(ko, input.baseVersion);
-      const proposal: KoProposal = {
-        id: this.genId(),
-        author,
-        at: new Date(this.now()).toISOString(),
-        baseVersion: ko.version,
-        statement,
-        // Kein Rumpf und keine Löschabsicht → das Feld steht gar nicht erst da.
-        ...(rumpf !== null ? { bodyHtml: rumpf } : {}),
-        ...(input.clearBody === true ? { clearBody: true } : {}),
-        status: "offen",
-        ...(input.origin ? { origin: input.origin } : {}),
-        ...(input.pruefer ? { pruefer: input.pruefer } : {}),
-        ...(input.kontoregel ? { kontoregel: input.kontoregel } : {}),
-      };
-      const updated: KnowledgeObject = { ...ko, proposals: [...(ko.proposals ?? []), proposal] };
-      return {
-        updated,
-        value: { ko: updated, proposal },
-        audit: async (tx) => {
-          await this.audit?.record(
+    return this.mutateKo(
+      id,
+      (ko) => {
+        this.pruefeErwarteteVersion(ko, input.baseVersion);
+        const proposal: KoProposal = {
+          id: this.genId(),
+          author,
+          at: new Date(this.now()).toISOString(),
+          baseVersion: ko.version,
+          statement,
+          // Kein Rumpf und keine Löschabsicht → das Feld steht gar nicht erst da.
+          ...(rumpf !== null ? { bodyHtml: rumpf } : {}),
+          ...(input.clearBody === true ? { clearBody: true } : {}),
+          status: "offen",
+          ...(input.origin ? { origin: input.origin } : {}),
+          ...(input.pruefer ? { pruefer: input.pruefer } : {}),
+          ...(input.kontoregel ? { kontoregel: input.kontoregel } : {}),
+        };
+        const updated: KnowledgeObject = { ...ko, proposals: [...(ko.proposals ?? []), proposal] };
+        if (opts.operation)
+          updated.wordReturnOps = [
+            ...(ko.wordReturnOps ?? []),
             {
+              id: normalizeCreateOperationId(opts.operation.id),
               actor: author,
-              action: "ko.proposed",
-              target: id,
-              payload: {
-                proposalId: proposal.id,
-                baseVersion: proposal.baseVersion,
-                ...(proposal.pruefer ? { pruefer: proposal.pruefer } : {}),
-                ...(proposal.kontoregel ? { kontoregel: proposal.kontoregel } : {}),
-              },
+              action: "propose",
+              baseVersion: ko.version,
+              fingerprint: opts.operation.fingerprint,
+              resultVersion: ko.version,
+              proposalId: proposal.id,
             },
-            tx,
-          );
-        },
-      };
-    });
+          ];
+        return {
+          updated,
+          value: { ko: updated, proposal },
+          audit: async (tx) => {
+            await this.audit?.record(
+              {
+                actor: author,
+                action: "ko.proposed",
+                target: id,
+                payload: {
+                  proposalId: proposal.id,
+                  baseVersion: proposal.baseVersion,
+                  ...(proposal.pruefer ? { pruefer: proposal.pruefer } : {}),
+                  ...(proposal.kontoregel ? { kontoregel: proposal.kontoregel } : {}),
+                },
+              },
+              tx,
+            );
+          },
+        };
+      },
+      opts.schreibkontext,
+    );
   }
 
   // ==============================================================================================
@@ -6450,6 +6718,12 @@ export class KoService {
         throw new KoError(
           "PROPOSAL_OWN",
           "Den eigenen Änderungsvorschlag gibt niemand selbst frei — er muss von jemand anders geprüft werden.",
+        );
+      }
+      if (entscheidung === "uebernehmen" && vorschlag.baseVersion !== ko.version) {
+        throw new KoError(
+          "KO_STALE",
+          "Die Basis dieses Vorschlags ist überholt. Die aktuelle Fassung und der offene Vorschlag bleiben erhalten.",
         );
       }
       const entschiedenAm = new Date(this.now()).toISOString();
@@ -7008,95 +7282,104 @@ export class KoService {
     opts: EinordnungsBedingung,
   ): Promise<KnowledgeObject> {
     return this.withKoLock(id, async () => {
-      const before = await this.require(id);
-      const stand = await this.searchProjections.metadata.find(id);
-      // GIBT ES KEINE ZEILE, GIBT ES KEINEN STAND: `undefined` ist dann nie gleich einer erwarteten
-      // Zahl, und der Aufruf wird abgewiesen statt stillschweigend durchgelassen. Das ist die
-      // strengere und die wahre Auslegung — wer einen Stand erwartet, den es nicht gibt, hat nicht
-      // gesehen, was jetzt gilt.
-      if (
-        opts.expectedMetadataRevision !== undefined &&
-        stand?.metadataRevision !== opts.expectedMetadataRevision
-      ) {
-        throw new KoError(
-          "KO_STALE",
-          `Die Einordnung dieses Wissensobjekts wurde inzwischen geändert (jetzt Stand ${stand?.metadataRevision ?? "keiner"}, erwartet ${opts.expectedMetadataRevision}). Es wurde nichts überschrieben.`,
-        );
-      }
-      // Die Inhaltsfassung wird NUR betrachtet, wenn der Aufrufer sie mitgibt — über dieselbe eine
-      // Stelle, die auch der Inhaltsweg benutzt (`pruefeErwarteteVersion`).
-      this.pruefeErwarteteVersion(before, opts.expectedVersion);
-      const updated = apply(before);
-      const vorher = metadataTextsOf(before);
-      const nachher = metadataTextsOf(updated);
-      if (
-        before.category === updated.category &&
-        gleicheTagFolge(before.tags, updated.tags) &&
-        metadataTextsEqual(vorher, nachher)
-      ) {
-        // IDENTISCHE WIEDERHOLUNG: kein Write, kein Beleg, kein Revisions-Bump. Nur die Zusicherung,
-        // dass die Projektion überhaupt existiert (Altbestand) — und die ist selbst idempotent.
-        const unveraendert = await this.projectMetadata(before, new Date(this.now()).toISOString());
-        // JOB 4251: die Quittung gilt auch hier. „Es hat sich nichts geändert" ist ein gültiger
-        // Ausgang, und der Aufrufer braucht danach denselben Stempel wie nach jedem anderen — sonst
-        // liefe sein nächster Schritt gegen einen Stand, den er nicht kennt.
-        opts.meldeMetadatenstand?.(unveraendert.projection.metadataRevision);
-        return before;
-      }
-      const schritte = async (tx?: TxContext): Promise<number> => {
-        const ergebnis = await this.projectMetadata(
-          updated,
-          new Date(this.now()).toISOString(),
-          tx,
-        );
-        await this.audit?.record(
-          {
-            actor,
-            action: beleg.action,
-            target: id,
-            payload: {
-              // Der Audit-Mindestinhalt aus Abschnitt 4: KO-Id (= target), vorher/nachher, Actor
-              // (= actor), Zeitpunkt (setzt die Audit-Kette selbst), metadata_revision und Ursache.
-              grund: beleg.grund,
-              vorher: { category: before.category, tags: [...(before.tags ?? [])] },
-              nachher: { category: updated.category, tags: [...(updated.tags ?? [])] },
-              metadataRevision: ergebnis.projection.metadataRevision,
-              metadataChanged: ergebnis.changed,
-              // Rückwärtskompatibel: der bisherige Beleg trug genau dieses Feld.
-              category: updated.category,
+      const schreiben = async (tx?: TxContext): Promise<KnowledgeObject> => {
+        const before = await this.repo.findById(id, tx, true);
+        if (!before || before.deletedAt)
+          throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+        if (before.mergedInto)
+          throw new KoError("KO_STALE", "Der Artikel ist in einem anderen Artikel aufgegangen.");
+        const stand = await this.searchProjections.metadata.find(id, tx);
+        // GIBT ES KEINE ZEILE, GIBT ES KEINEN STAND: `undefined` ist dann nie gleich einer erwarteten
+        // Zahl, und der Aufruf wird abgewiesen statt stillschweigend durchgelassen. Das ist die
+        // strengere und die wahre Auslegung — wer einen Stand erwartet, den es nicht gibt, hat nicht
+        // gesehen, was jetzt gilt.
+        if (
+          opts.expectedMetadataRevision !== undefined &&
+          stand?.metadataRevision !== opts.expectedMetadataRevision
+        ) {
+          throw new KoError(
+            "KO_STALE",
+            `Die Einordnung dieses Wissensobjekts wurde inzwischen geändert (jetzt Stand ${stand?.metadataRevision ?? "keiner"}, erwartet ${opts.expectedMetadataRevision}). Es wurde nichts überschrieben.`,
+          );
+        }
+        // Die Inhaltsfassung wird NUR betrachtet, wenn der Aufrufer sie mitgibt — über dieselbe eine
+        // Stelle, die auch der Inhaltsweg benutzt (`pruefeErwarteteVersion`).
+        this.pruefeErwarteteVersion(before, opts.expectedVersion);
+        const updated = apply(before);
+        const vorher = metadataTextsOf(before);
+        const nachher = metadataTextsOf(updated);
+        if (
+          before.category === updated.category &&
+          gleicheTagFolge(before.tags, updated.tags) &&
+          metadataTextsEqual(vorher, nachher)
+        ) {
+          // IDENTISCHE WIEDERHOLUNG: kein Write, kein Beleg, kein Revisions-Bump. Nur die Zusicherung,
+          // dass die Projektion überhaupt existiert (Altbestand) — und die ist selbst idempotent.
+          const unveraendert = await this.projectMetadata(
+            before,
+            new Date(this.now()).toISOString(),
+            tx,
+          );
+          // JOB 4251: die Quittung gilt auch hier. „Es hat sich nichts geändert" ist ein gültiger
+          // Ausgang, und der Aufrufer braucht danach denselben Stempel wie nach jedem anderen — sonst
+          // liefe sein nächster Schritt gegen einen Stand, den er nicht kennt.
+          opts.meldeMetadatenstand?.(unveraendert.projection.metadataRevision);
+          return before;
+        }
+        const schritte = async (tx?: TxContext): Promise<number> => {
+          const ergebnis = await this.projectMetadata(
+            updated,
+            new Date(this.now()).toISOString(),
+            tx,
+          );
+          await this.audit?.record(
+            {
+              actor,
+              action: beleg.action,
+              target: id,
+              payload: {
+                // Der Audit-Mindestinhalt aus Abschnitt 4: KO-Id (= target), vorher/nachher, Actor
+                // (= actor), Zeitpunkt (setzt die Audit-Kette selbst), metadata_revision und Ursache.
+                grund: beleg.grund,
+                vorher: { category: before.category, tags: [...(before.tags ?? [])] },
+                nachher: { category: updated.category, tags: [...(updated.tags ?? [])] },
+                metadataRevision: ergebnis.projection.metadataRevision,
+                metadataChanged: ergebnis.changed,
+                // Rückwärtskompatibel: der bisherige Beleg trug genau dieses Feld.
+                category: updated.category,
+              },
             },
-          },
-          tx,
-        );
-        return ergebnis.projection.metadataRevision;
-      };
-      // Aufnahme gesamt-auditprotokoll (Lauf 3, §12.3 „Kategorie"): mit `withTx` laufen Write,
-      // Metadatenprojektion und Beleg in EINER Transaktion — scheitert einer, bleibt nichts davon.
-      if (this.withTx) {
-        const revision = await this.withTx(async (tx) => {
+            tx,
+          );
+          return ergebnis.projection.metadataRevision;
+        };
+        // Aufnahme gesamt-auditprotokoll (Lauf 3, §12.3 „Kategorie"): mit `withTx` laufen Write,
+        // Metadatenprojektion und Beleg in EINER Transaktion — scheitert einer, bleibt nichts davon.
+        if (tx) {
           await this.repo.update(updated, tx);
-          return schritte(tx);
-        });
-        opts.meldeMetadatenstand?.(revision);
-        return updated;
-      }
-      await this.repo.update(updated);
-      try {
-        const revision = await schritte();
-        // ERST HIER, nach dem Beleg: gemeldet wird nur ein Stand, der auch WIRKLICH gilt. Scheitert
-        // die Projektion oder der Beleg, läuft die Kompensation unten — und der Aufrufer hat dann
-        // keinen Stempel bekommen, den er für bestätigt halten könnte.
-        opts.meldeMetadatenstand?.(revision);
-        return updated;
-      } catch (err) {
-        // Kompensation: der autoritative Stand geht zurück, und die Projektion wird auf DIESEN
-        // Stand zurückgeführt — sonst bliebe die Suche auf einem Wert stehen, den es nicht gibt.
-        await this.rollbackKo(before).catch(() => undefined);
-        await this.projectMetadata(before, new Date(this.now()).toISOString()).catch(
-          () => undefined,
-        );
-        throw err;
-      }
+          const revision = await schritte(tx);
+          opts.meldeMetadatenstand?.(revision);
+          return updated;
+        }
+        await this.repo.update(updated);
+        try {
+          const revision = await schritte();
+          // ERST HIER, nach dem Beleg: gemeldet wird nur ein Stand, der auch WIRKLICH gilt. Scheitert
+          // die Projektion oder der Beleg, läuft die Kompensation unten — und der Aufrufer hat dann
+          // keinen Stempel bekommen, den er für bestätigt halten könnte.
+          opts.meldeMetadatenstand?.(revision);
+          return updated;
+        } catch (err) {
+          // Kompensation: der autoritative Stand geht zurück, und die Projektion wird auf DIESEN
+          // Stand zurückgeführt — sonst bliebe die Suche auf einem Wert stehen, den es nicht gibt.
+          await this.rollbackKo(before).catch(() => undefined);
+          await this.projectMetadata(before, new Date(this.now()).toISOString()).catch(
+            () => undefined,
+          );
+          throw err;
+        }
+      };
+      return this.withTx ? this.withTx(schreiben) : schreiben();
     });
   }
 
@@ -8098,45 +8381,50 @@ export class KoService {
     ziel: Omit<KoMergedInto, "at" | "by">,
     actor: string,
     expectedVersion: number,
+    schreibkontext?: object,
   ): Promise<KnowledgeObject> {
     if (ziel.koId === id) {
       throw new KoError("INVALID", "Ein Wissensobjekt kann nicht in sich selbst aufgehen.");
     }
-    return this.mutateKo(id, (ko) => {
-      this.pruefeErwarteteVersion(ko, expectedVersion);
-      if (ko.mergedInto) {
-        throw new KoError(
-          "KO_STALE",
-          "Dieses Wissensobjekt ist bereits in einem anderen Artikel aufgegangen. Es wurde nichts überschrieben.",
-        );
-      }
-      const mergedInto: KoMergedInto = {
-        ...ziel,
-        at: new Date(this.now()).toISOString(),
-        by: actor,
-      };
-      const updated: KnowledgeObject = { ...ko, mergedInto };
-      return {
-        updated,
-        value: updated,
-        audit: async (tx) => {
-          await this.audit?.record(
-            {
-              actor,
-              action: "ko.merged-into",
-              target: id,
-              payload: {
-                koId: ziel.koId,
-                version: ziel.version,
-                overlapId: ziel.overlapId,
-                eigeneVersion: ko.version,
-              },
-            },
-            tx,
+    return this.mutateKo(
+      id,
+      (ko) => {
+        this.pruefeErwarteteVersion(ko, expectedVersion);
+        if (ko.mergedInto) {
+          throw new KoError(
+            "KO_STALE",
+            "Dieses Wissensobjekt ist bereits in einem anderen Artikel aufgegangen. Es wurde nichts überschrieben.",
           );
-        },
-      };
-    });
+        }
+        const mergedInto: KoMergedInto = {
+          ...ziel,
+          at: new Date(this.now()).toISOString(),
+          by: actor,
+        };
+        const updated: KnowledgeObject = { ...ko, mergedInto };
+        return {
+          updated,
+          value: updated,
+          audit: async (tx) => {
+            await this.audit?.record(
+              {
+                actor,
+                action: "ko.merged-into",
+                target: id,
+                payload: {
+                  koId: ziel.koId,
+                  version: ziel.version,
+                  overlapId: ziel.overlapId,
+                  eigeneVersion: ko.version,
+                },
+              },
+              tx,
+            );
+          },
+        };
+      },
+      schreibkontext,
+    );
   }
 
   // FR-RBAC-02: KO löschen (nur Controller/Admin/Autor, serverseitig erzwungen) mit Audit.
@@ -8606,8 +8894,8 @@ export class KoService {
     return true;
   }
 
-  private async require(id: string): Promise<KnowledgeObject> {
-    const ko = await this.repo.findById(id);
+  private async require(id: string, tx?: TxContext): Promise<KnowledgeObject> {
+    const ko = await this.repo.findById(id, tx);
     // SCRUM-422: getrashte KOs sind für alle normalen Pfade nicht vorhanden.
     if (!ko || ko.deletedAt) {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");

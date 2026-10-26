@@ -15,6 +15,7 @@ function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
     measures: [],
     type: "best_practice",
     category: "Anlage 1",
+    confidentiality: "intern",
     tags: [],
     confidence: 0,
     trust: 80,
@@ -42,6 +43,15 @@ async function setup(kos: KnowledgeObject[]) {
 }
 
 describe("OutputService (SCRUM-117 / FE-OUT)", () => {
+  it("ungeklärte historische Schutzstufe bleibt vom Output ausgeschlossen", async () => {
+    const { confidentiality: _stufe, ...altbestand } = ko({ id: "UNGEKLAERT" });
+    const { output } = await setup([altbestand as KnowledgeObject]);
+    expect(await output.listEligible(alles)).toEqual([]);
+    await expect(
+      output.generate({ kind: "instruction", koIds: ["UNGEKLAERT"] }, alles),
+    ).rejects.toMatchObject({ code: "CONFIDENTIAL" });
+  });
+
   let svc: Awaited<ReturnType<typeof setup>>;
 
   beforeEach(async () => {

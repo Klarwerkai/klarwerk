@@ -325,7 +325,10 @@ describe("R-0632 · die Herabstufungssperre eines Word-Entwurfs gilt auch am Wis
 
       // Auch nach dem Anheben bleibt die Sperre: kein Weg zurück auf eine niedrigere Stufe.
       const zurueck = await koStufeSetzen(a, a[rolle], koId, "vertraulich");
-      expect(zurueck.statusCode, zurueck.body).toBe(403);
+      // Mit der bestehenden P6-Lesepolicy verliert der Controller auf Stufe streng die Sicht.
+      // Er erhält dann dieselbe 404 wie bei einer unbekannten Kennung; die Stufe bleibt erhalten.
+      expect(zurueck.statusCode, zurueck.body).toBe(rolle === "controller" ? 404 : 403);
+      if (rolle === "controller") expect(zurueck.json().error).toBe("NOT_FOUND");
       expect(await koStufe(a, koId)).toBe("streng_vertraulich");
     });
   }

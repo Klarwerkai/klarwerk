@@ -127,8 +127,21 @@ import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
 // und eine Serverfrist für Sitzungen, die in einer offenen Transaktion schweigen (s. db-tx/vorrat.ts).
+export function beobachtePoolFehler(
+  pool: Pick<Pool, "on">,
+  melde: (text: string) => void = (text) => {
+    process.stderr.write(`${text}\n`);
+  },
+): void {
+  pool.on("error", () => {
+    melde("[KLARWERK] Datenbank: eine unbenutzte Verbindung wurde unterbrochen.");
+  });
+}
+
 export function createPool(connectionString?: string): Pool {
-  return new Pool(vorratsKonfiguration(connectionString));
+  const pool = new Pool(vorratsKonfiguration(connectionString));
+  beobachtePoolFehler(pool);
+  return pool;
 }
 
 // ================================================================================================

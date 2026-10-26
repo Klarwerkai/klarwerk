@@ -808,7 +808,7 @@ export const endpoints = {
     bearbeitungBeenden: (id: string, sitzung: string) =>
       api.del<{ beendet: boolean }>(`/kos/${id}/bearbeitungen/${sitzung}`),
     // SCRUM-395: optionaler Prüfer-Vorschlag direkt beim Einreichen (reviewerIds).
-    create: (body: DraftPayload & { reviewerIds?: string[] }) =>
+    create: (body: DraftPayload & { reviewerIds?: string[]; operationId?: string }) =>
       api.post<KnowledgeObject>("/kos", body),
     // AUFTRAG-mega19 Block B: Erstanlage/Promote MIT Ankerdokumenten — ein Vorgang, oder keiner.
     createFromDocument: (body: CreateFromDocumentRequest) =>

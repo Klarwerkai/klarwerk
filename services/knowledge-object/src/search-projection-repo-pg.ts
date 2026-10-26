@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { type Queryable, type TxContext, pgQueryable } from "../../db-tx";
+import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { KoMetadataProjectionRepo } from "./metadata-projection-repo";
 import { PgKoMetadataProjectionRepo } from "./metadata-projection-repo-pg";
 import type { KoSichtbarkeitstrim } from "./repo";
@@ -563,11 +563,17 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
     }, tx);
   }
 
-  async generationOf(koId: string, koVersion: number): Promise<number | null | undefined> {
-    const res = await this.pool.query<{ generation: string | number | null }>(
-      "SELECT generation FROM ko_search_projections WHERE ko_id=$1 AND ko_version=$2",
-      [koId, koVersion],
-    );
+  async generationOf(
+    koId: string,
+    koVersion: number,
+    tx?: TxContext,
+  ): Promise<number | null | undefined> {
+    const res = await (tx ? pgQueryable(tx) : poolQueryable(this.pool)).query<{
+      generation: string | number | null;
+    }>("SELECT generation FROM ko_search_projections WHERE ko_id=$1 AND ko_version=$2", [
+      koId,
+      koVersion,
+    ]);
     const row = res.rows[0];
     return row ? alsZahl(row.generation) : undefined;
   }
@@ -590,8 +596,12 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
     return res.rows.length === 0;
   }
 
-  async find(koId: string, koVersion: number): Promise<KoSearchProjection | undefined> {
-    const res = await this.pool.query<ProjectionRow>(
+  async find(
+    koId: string,
+    koVersion: number,
+    tx?: TxContext,
+  ): Promise<KoSearchProjection | undefined> {
+    const res = await (tx ? pgQueryable(tx) : poolQueryable(this.pool)).query<ProjectionRow>(
       `SELECT ${LESE_SPALTEN} FROM ko_search_projections WHERE ko_id=$1 AND ko_version=$2`,
       [koId, koVersion],
     );

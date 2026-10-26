@@ -512,8 +512,23 @@
     // AUFTRAG-JOB507-D4 — was die Antwort des Draft-POSTs bedeutet, wird EINMAL entschieden.
     // Spiegel von wordAddin.ts#classifyDraftResponse. FAIL-CLOSED: nur das dokumentierte 201 der
     // Route gilt als angelegter Entwurf; jede andere Antwort ist Create-0.
+    var letzterEntwurfsVorgang = null;
+    function mitEntwurfsVorgang(roh) {
+      var payload = typeof roh === "string" ? JSON.parse(roh) : roh;
+      var abdruck = JSON.stringify(payload);
+      if (!letzterEntwurfsVorgang || letzterEntwurfsVorgang.abdruck !== abdruck) {
+        var bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        letzterEntwurfsVorgang = {
+          abdruck: abdruck,
+          id: "office-" + Array.prototype.map.call(bytes, function (b) { return ("0" + b.toString(16)).slice(-2); }).join("")
+        };
+      }
+      return JSON.stringify(Object.assign({}, payload, { operationId: letzterEntwurfsVorgang.id }));
+    }
+
     function classifyDraftResponse(status) {
-      if (status === 201) { return "created"; }
+      if ((status === 201 || status === 200)) { return "created"; }
       if (status === 401) { return "auth"; }
       if (status === 403) { return "forbidden"; }
       if (status === 413) { return "too-large"; }
@@ -4884,7 +4899,7 @@
         // seit dieser Runde schon am Eingang von `sendeEntwurf` — ein zweites Setzen waere eine
         // zweite Stelle fuer denselben Zustand und koennte den ersten nur noch wiederholen.
         // R-0169 (Nacharbeit 5): die im Dokument gespeicherte Kennung reist mit (falls vorhanden).
-        prepared.payload = mitDokumentkennung(prepared.payload, gespeicherteDokumentkennung());
+        prepared.payload = mitEntwurfsVorgang(mitDokumentkennung(prepared.payload, gespeicherteDokumentkennung()));
         fetch("/api/drafts", {
           method: "POST",
           credentials: "include",
@@ -5084,7 +5099,7 @@
       // R-0169 (Nacharbeit 5): dieselbe Dokumentkennung wie im Auswahl-Weg.
       var gespeicherteKennung = gespeicherteDokumentkennung();
       if (gespeicherteKennung) { koerper.dokumentId = gespeicherteKennung; }
-      var nutzlast = JSON.stringify(koerper);
+      var nutzlast = mitEntwurfsVorgang(koerper);
       fetch("/api/drafts/from-docx", {
         method: "POST",
         credentials: "include",
@@ -6767,7 +6782,7 @@
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: mitEntwurfsVorgang({
           title: title,
           // JOB 2703 D3: der VOLLE Fragetext als Aussage — die 500-Zeichen-Kappung im Client ist
           // stillgelegt; der Server kuerzt kanonisch (kernaussageAusKlartext).

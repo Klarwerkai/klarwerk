@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // ================================================================================================
 // R-1107 / R-0201 / R-0565 (Aufnahme gesamt-dublettenvergleich) — ZWEI DUBLETTEN BEWUSST ZU EINEM.
 // ================================================================================================
@@ -28,11 +29,7 @@
 // lesen dürfen (`feldFreigabe`, dieselbe Regel wie die Feldredaktion der Dublettenliste) und beide
 // müssen im selben Space liegen — sonst würde Inhalt in einen anderen Leserkreis verschoben.
 //
-// DIE BENANNTE GRENZE: die drei Schreibschritte haben KEINE gemeinsame Transaktion; jeder ist für
-// sich atomar mit seinem Beleg. Alles, was fachlich scheitern kann (Rechte, Fassungen, Stand des
-// Befunds, Eingaben), wird VOR dem ersten Schreibschritt geprüft. Bricht danach die Infrastruktur
-// ab, kann ein Zwischenstand bleiben (neue Fassung am Führungsartikel ohne Verweis am anderen) —
-// verloren geht dabei nichts, und beide Artikel bleiben gewöhnlich bearbeitbar.
+// Beide KO-Sperren bleiben bis zum gemeinsamen Commit aller drei Schreibschritte gehalten.
 import type { ConflictService, OverlapEntry, OverlapService } from "../../conflicts";
 import type { KnowledgeObject, KoService, KoSource } from "../../knowledge-object";
 import type { SessionUser } from "./http";
@@ -53,6 +50,7 @@ export interface ZusammenfuehrungsAuftrag {
   /** Die ausdrückliche Freigabe nach der Vorschau — ohne sie wird nichts geschrieben. */
   bestaetigt: true;
   vermerk?: string;
+  operationId?: string;
 }
 
 type FehlerCode = "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "INVALID";
@@ -126,6 +124,13 @@ export function leseZusammenfuehrungsAuftrag(body: unknown): ZusammenfuehrungsAu
       "Die ausdrückliche Freigabe nach der Vorschau fehlt — es wurde nichts zusammengeführt.",
     );
   }
+  if (
+    roh.operationId !== undefined &&
+    (typeof roh.operationId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(roh.operationId))
+  ) {
+    throw new ZusammenfuehrungsFehler("INVALID", "Ungültige Vorgangskennung.");
+  }
   const vermerk = typeof roh.vermerk === "string" ? roh.vermerk.trim() : "";
   return {
     fuehrend: artikel(roh.fuehrend, "fuehrend"),
@@ -136,6 +141,7 @@ export function leseZusammenfuehrungsAuftrag(body: unknown): ZusammenfuehrungsAu
     massnahmen: textListe(roh.massnahmen, "massnahmen"),
     quellen: textListe(roh.quellen, "quellen"),
     bestaetigt: true,
+    ...(roh.operationId === undefined ? {} : { operationId: roh.operationId as string }),
     ...(vermerk ? { vermerk } : {}),
   };
 }
@@ -219,116 +225,211 @@ function neueFassung(
   };
 }
 
+export function gemeinsameQuellrechte(a: KnowledgeObject, b: KnowledgeObject) {
+  const stufen = ["intern", "vertraulich", "streng_vertraulich"] as const;
+  const rang = (k: KnowledgeObject): number => {
+    const direkt = stufen.indexOf(k.confidentiality as (typeof stufen)[number]);
+    const quelle = k.quellrechte === undefined ? 0 : stufen.indexOf(k.quellrechte.stufe);
+    if (direkt < 0 || quelle < 0) {
+      throw new ZusammenfuehrungsFehler(
+        "CONFLICT",
+        "Mindestens eine Seite hat eine ungeklärte Schutzstufe. Bitte die bestehende Einstufung zuerst ausdrücklich klären.",
+      );
+    }
+    return Math.max(direkt, quelle);
+  };
+  const aLeser = a.quellrechte?.leser;
+  const bLeser = b.quellrechte?.leser;
+  const leser =
+    aLeser === undefined
+      ? bLeser
+      : bLeser === undefined
+        ? aLeser
+        : aLeser.filter((id) => bLeser.includes(id));
+  const stufe = stufen[Math.max(rang(a), rang(b))];
+  if (stufe === undefined) throw new ZusammenfuehrungsFehler("CONFLICT", "Schutzstufe ungeklärt.");
+  return {
+    stufe,
+    ...(leser === undefined ? {} : { leser: [...new Set(leser)].sort() }),
+    ...(a.quellrechte?.leserUnvollstaendig || b.quellrechte?.leserUnvollstaendig
+      ? { leserUnvollstaendig: true as const }
+      : {}),
+  };
+}
+
 export async function fuehreZusammen(
   deps: ZusammenfuehrungsDeps,
   user: SessionUser,
   overlapId: string,
   auftrag: ZusammenfuehrungsAuftrag,
 ): Promise<ZusammenfuehrungsErgebnis> {
-  // `get` blendet einen offenen Befund mit überholter Fassungsbindung aus — derselbe Lesepfad wie
-  // `GET /api/duplicates/:id`. Ein geschlossener Befund wird gelesen und ehrlich abgewiesen.
-  // Nicht sichtbar sieht aus wie nicht vorhanden (mega74 D, dieselbe Regel wie
-  // `GET /api/duplicates/:id`): ein Paar, das dieser Mensch nicht sehen darf, bekommt kein 403,
-  // sonst wäre die Abweisung selbst die Auskunft, dass es das Paar gibt.
-  const befund = await deps.overlaps.get(overlapId);
-  if (!befund || !(await paarSichtbar(user, befund.koA, befund.koB, deps.kos))) {
-    throw new ZusammenfuehrungsFehler("NOT_FOUND", "Überschneidung nicht gefunden.");
-  }
-  if (befund.status === "geschlossen") {
-    throw new ZusammenfuehrungsFehler("CONFLICT", "Diese Überschneidung ist bereits geschlossen.");
-  }
-  const paar = [befund.koA, befund.koB];
-  if (
-    auftrag.fuehrend.id === auftrag.aufgehend.id ||
-    !paar.includes(auftrag.fuehrend.id) ||
-    !paar.includes(auftrag.aufgehend.id)
-  ) {
-    throw new ZusammenfuehrungsFehler(
-      "INVALID",
-      "Führungsartikel und aufgehender Artikel müssen die beiden Seiten dieses Befunds sein.",
-    );
-  }
-  const fuehrend = await deps.ko.get(auftrag.fuehrend.id);
-  const aufgehend = await deps.ko.get(auftrag.aufgehend.id);
-  if (!fuehrend || !aufgehend) {
-    throw new ZusammenfuehrungsFehler("NOT_FOUND", "Eine Seite dieses Paares gibt es nicht mehr.");
-  }
-  await pruefeKuratorischesRecht(user, fuehrend, aufgehend, deps.kos);
-  if (fuehrend.mergedInto || aufgehend.mergedInto) {
-    throw new ZusammenfuehrungsFehler(
-      "CONFLICT",
-      "Eine Seite ist bereits in einem anderen Artikel aufgegangen.",
-    );
-  }
-  if (
-    fuehrend.version !== auftrag.fuehrend.version ||
-    aufgehend.version !== auftrag.aufgehend.version
-  ) {
-    throw new ZusammenfuehrungsFehler(
-      "CONFLICT",
-      "Eine Seite wurde seit der Vorschau geändert. Es wurde nichts zusammengeführt — bitte die Vorschau neu öffnen.",
-    );
-  }
-  nurVorhandenes(auftrag.bedingungen, fuehrend.conditions, aufgehend.conditions, "bedingungen");
-  nurVorhandenes(auftrag.massnahmen, fuehrend.measures, aufgehend.measures, "massnahmen");
-  const quellKennungen = new Set((aufgehend.sources ?? []).map((q) => q.id));
-  if (auftrag.quellen.some((id) => !quellKennungen.has(id))) {
-    throw new ZusammenfuehrungsFehler(
-      "INVALID",
-      "quellen: nur Quellen des aufgehenden Artikels können mitgenommen werden.",
-    );
-  }
+  const { operationId, ...nutzlast } = auftrag;
+  const fingerprint = createHash("sha256").update(JSON.stringify(nutzlast)).digest("hex");
+  return deps.ko
+    .mitKoPaar([auftrag.fuehrend.id, auftrag.aufgehend.id], async (schreibkontext) =>
+      deps.ko.imPaarVorgang(schreibkontext, async (tx) => {
+        // `get` blendet einen offenen Befund mit überholter Fassungsbindung aus — derselbe Lesepfad wie
+        // `GET /api/duplicates/:id`. Ein geschlossener Befund wird gelesen und ehrlich abgewiesen.
+        // Nicht sichtbar sieht aus wie nicht vorhanden (mega74 D, dieselbe Regel wie
+        // `GET /api/duplicates/:id`): ein Paar, das dieser Mensch nicht sehen darf, bekommt kein 403,
+        // sonst wäre die Abweisung selbst die Auskunft, dass es das Paar gibt.
+        // Erst nach den sortierten PG-Zeilensperren lesen: auch reine Rechte-/Stufenänderungen
+        // ohne Inhaltsversionswechsel gehören zur Grundlage dieses Vorgangs.
+        const fuehrend = await deps.ko.getImPaarVorgang(schreibkontext, auftrag.fuehrend.id);
+        const aufgehend = await deps.ko.getImPaarVorgang(schreibkontext, auftrag.aufgehend.id);
+        const kos: KoSichtbarkeitsZugang = {
+          get: async (id) =>
+            id === auftrag.fuehrend.id
+              ? fuehrend
+              : id === auftrag.aufgehend.id
+                ? aufgehend
+                : undefined,
+        };
+        const befund = await deps.overlaps.getImVorgang(overlapId, tx);
+        if (!befund || !(await paarSichtbar(user, befund.koA, befund.koB, kos))) {
+          throw new ZusammenfuehrungsFehler("NOT_FOUND", "Überschneidung nicht gefunden.");
+        }
+        if (befund.status === "geschlossen") {
+          const beleg = befund.resolution?.mergeOperation;
+          const quittierteVersion = befund.resolution?.mergedVersion;
+          if (
+            typeof quittierteVersion === "number" &&
+            operationId &&
+            beleg?.id === operationId &&
+            beleg.actor === user.id &&
+            beleg.fingerprint === fingerprint &&
+            befund.resolution?.mergedIntoKoId === auftrag.fuehrend.id &&
+            beleg.retiredKoId === auftrag.aufgehend.id
+          ) {
+            const a = fuehrend;
+            const b = aufgehend;
+            if (a && b) {
+              await pruefeKuratorischesRecht(user, a, b, kos);
+              return {
+                befund,
+                fuehrend: { id: a.id, version: quittierteVersion, status: a.status },
+                aufgehend: { id: b.id, mergedInto: b.mergedInto },
+              };
+            }
+          }
+          throw new ZusammenfuehrungsFehler(
+            "CONFLICT",
+            "Diese Überschneidung ist bereits geschlossen.",
+          );
+        }
+        const paar = [befund.koA, befund.koB];
+        if (
+          auftrag.fuehrend.id === auftrag.aufgehend.id ||
+          !paar.includes(auftrag.fuehrend.id) ||
+          !paar.includes(auftrag.aufgehend.id)
+        ) {
+          throw new ZusammenfuehrungsFehler(
+            "INVALID",
+            "Führungsartikel und aufgehender Artikel müssen die beiden Seiten dieses Befunds sein.",
+          );
+        }
+        if (!fuehrend || !aufgehend) {
+          throw new ZusammenfuehrungsFehler(
+            "NOT_FOUND",
+            "Eine Seite dieses Paares gibt es nicht mehr.",
+          );
+        }
+        await pruefeKuratorischesRecht(user, fuehrend, aufgehend, kos);
+        if (fuehrend.mergedInto || aufgehend.mergedInto) {
+          throw new ZusammenfuehrungsFehler(
+            "CONFLICT",
+            "Eine Seite ist bereits in einem anderen Artikel aufgegangen.",
+          );
+        }
+        if (
+          fuehrend.version !== auftrag.fuehrend.version ||
+          aufgehend.version !== auftrag.aufgehend.version
+        ) {
+          throw new ZusammenfuehrungsFehler(
+            "CONFLICT",
+            "Eine Seite wurde seit der Vorschau geändert. Es wurde nichts zusammengeführt — bitte die Vorschau neu öffnen.",
+          );
+        }
+        nurVorhandenes(
+          auftrag.bedingungen,
+          fuehrend.conditions,
+          aufgehend.conditions,
+          "bedingungen",
+        );
+        nurVorhandenes(auftrag.massnahmen, fuehrend.measures, aufgehend.measures, "massnahmen");
+        const quellKennungen = new Set((aufgehend.sources ?? []).map((q) => q.id));
+        if (auftrag.quellen.some((id) => !quellKennungen.has(id))) {
+          throw new ZusammenfuehrungsFehler(
+            "INVALID",
+            "quellen: nur Quellen des aufgehenden Artikels können mitgenommen werden.",
+          );
+        }
 
-  // --- 1. Die neue Fassung des Führungsartikels (gewöhnliche, ungeprüfte Überarbeitung) ---------
-  const revidiert = await deps.ko.revise(
-    fuehrend.id,
-    neueFassung(fuehrend, aufgehend, auftrag),
-    user.id,
-    {
-      expectedVersion: fuehrend.version,
-      zusatzBeleg: {
-        action: "ko.merge-received",
-        payload: {
-          from: aufgehend.id,
-          fromVersion: aufgehend.version,
+        // --- 1. Die neue Fassung des Führungsartikels (gewöhnliche, ungeprüfte Überarbeitung) ---------
+        const revidiert = await deps.ko.revise(
+          fuehrend.id,
+          neueFassung(fuehrend, aufgehend, auftrag),
+          user.id,
+          {
+            expectedVersion: fuehrend.version,
+            schreibkontext,
+            zusammenQuellrechte: gemeinsameQuellrechte(fuehrend, aufgehend),
+            zusatzBeleg: {
+              action: "ko.merge-received",
+              payload: {
+                from: aufgehend.id,
+                fromVersion: aufgehend.version,
+                overlapId,
+                quellen: auftrag.quellen.length,
+              },
+            },
+          },
+        );
+        // --- 2. Der aufgehende Artikel bleibt und verweist -------------------------------------------
+        const aufgegangen = await deps.ko.markMergedInto(
+          aufgehend.id,
+          { koId: fuehrend.id, version: revidiert.version, overlapId },
+          user.id,
+          aufgehend.version,
+          schreibkontext,
+        );
+        // --- 3. Der Befund schliesst als „zusammengeführt" -------------------------------------------
+        const geschlossen = await deps.overlaps.closeAsMerged(
           overlapId,
-          quellen: auftrag.quellen.length,
-        },
-      },
-    },
-  );
-  // --- 2. Der aufgehende Artikel bleibt und verweist -------------------------------------------
-  const aufgegangen = await deps.ko.markMergedInto(
-    aufgehend.id,
-    { koId: fuehrend.id, version: revidiert.version, overlapId },
-    user.id,
-    aufgehend.version,
-  );
-  // --- 3. Der Befund schliesst als „zusammengeführt" -------------------------------------------
-  const geschlossen = await deps.overlaps.closeAsMerged(
-    overlapId,
-    user.id,
-    {
-      survivorKoId: fuehrend.id,
-      survivorVersion: revidiert.version,
-      retiredKoId: aufgehend.id,
-    },
-    auftrag.vermerk,
-  );
-  // --- 4. Der gewöhnliche Nachlauf einer neuen Fassung (wie `nachNeuerFassung`, ko-routes.ts) ---
-  // ERST NACH dem Abschluss: der Sweep schlösse sonst genau diesen Befund als `superseded`.
-  await deps.conflicts?.onKoRevised(fuehrend.id, revidiert.version);
-  await deps.overlaps.onKoRevised(fuehrend.id, revidiert.version);
-  let stand: KnowledgeObject = revidiert;
-  if (deps.aiCheckWorker && revidiert.aiCheck) {
-    await deps.ko.markAiCheckPending(fuehrend.id);
-    const markiert = await deps.ko.get(fuehrend.id);
-    deps.aiCheckWorker.enqueue(fuehrend.id, markiert?.aiCheck?.koVersion);
-    stand = markiert ?? revidiert;
-  }
-  return {
-    befund: geschlossen,
-    fuehrend: { id: stand.id, version: stand.version, status: stand.status },
-    aufgehend: { id: aufgegangen.id, mergedInto: aufgegangen.mergedInto },
-  };
+          user.id,
+          {
+            survivorKoId: fuehrend.id,
+            survivorVersion: revidiert.version,
+            retiredKoId: aufgehend.id,
+          },
+          auftrag.vermerk,
+          tx,
+          operationId
+            ? { id: operationId, actor: user.id, fingerprint, retiredKoId: aufgehend.id }
+            : undefined,
+        );
+        return { revidiert, aufgegangen, geschlossen };
+      }),
+    )
+    .then(async (wert) => {
+      if (wert.befund !== undefined) return wert;
+      const { revidiert, aufgegangen, geschlossen } = wert;
+      const fuehrend = revidiert;
+      // --- 4. Der gewöhnliche Nachlauf einer neuen Fassung (wie `nachNeuerFassung`, ko-routes.ts) ---
+      // ERST NACH dem Abschluss: der Sweep schlösse sonst genau diesen Befund als `superseded`.
+      await deps.conflicts?.onKoRevised(fuehrend.id, revidiert.version);
+      await deps.overlaps.onKoRevised(fuehrend.id, revidiert.version);
+      let stand: KnowledgeObject = revidiert;
+      if (deps.aiCheckWorker && revidiert.aiCheck) {
+        await deps.ko.markAiCheckPending(fuehrend.id);
+        const markiert = await deps.ko.get(fuehrend.id);
+        deps.aiCheckWorker.enqueue(fuehrend.id, markiert?.aiCheck?.koVersion);
+        stand = markiert ?? revidiert;
+      }
+      return {
+        befund: geschlossen,
+        fuehrend: { id: stand.id, version: stand.version, status: stand.status },
+        aufgehend: { id: aufgegangen.id, mergedInto: aufgegangen.mergedInto },
+      };
+    });
 }

@@ -956,6 +956,21 @@
   // WISSENS-ENTWURF AUS EXCEL (R-0187) — der vorhandene Entwurfsweg
   // ----------------------------------------------------------------------------------------------
 
+    var letzterEntwurfsVorgang = null;
+    function mitEntwurfsVorgang(roh) {
+      var payload = typeof roh === "string" ? JSON.parse(roh) : roh;
+      var abdruck = JSON.stringify(payload);
+      if (!letzterEntwurfsVorgang || letzterEntwurfsVorgang.abdruck !== abdruck) {
+        var bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        letzterEntwurfsVorgang = {
+          abdruck: abdruck,
+          id: "office-" + Array.prototype.map.call(bytes, function (b) { return ("0" + b.toString(16)).slice(-2); }).join("")
+        };
+      }
+      return JSON.stringify(Object.assign({}, payload, { operationId: letzterEntwurfsVorgang.id }));
+    }
+
   function entwurfSenden() {
     if (!z.kontext || z.host !== "excel" || z.bewertung.zustand === "leer") {
       meldung("rueckgabe-meldung", "Erst Zellen markieren und lesen.");
@@ -969,10 +984,10 @@
     return abruf("/api/drafts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: titel, statement: z.kontextText, bodyHtml: K.excelTabelleHtml(z.kontext) }),
+      body: mitEntwurfsVorgang({ title: titel, statement: z.kontextText, bodyHtml: K.excelTabelleHtml(z.kontext) }),
     })
       .then(function (res) {
-        if (res.status === 201) {
+        if (res.status === 201 || res.status === 200) {
           meldung("rueckgabe-meldung", "Entwurf „" + titel + "“ angelegt. Er ist noch keine geprüfte Quelle: in KLARWERK unter Erfassen prüfen und einreichen.", "ok");
         } else if (res.status === 403) {
           meldung("rueckgabe-meldung", "Dir fehlt das Recht, Entwürfe anzulegen (ko.create).");
@@ -981,7 +996,7 @@
         } else {
           meldung("rueckgabe-meldung", "Der Entwurf wurde nicht angelegt (HTTP " + res.status + ").");
         }
-      }, function () { meldung("rueckgabe-meldung", "KLARWERK ist nicht erreichbar; kein Entwurf angelegt."); })
+      }, function () { meldung("rueckgabe-meldung", "KLARWERK ist nicht erreichbar; der Ausgang ist unklar. Bitte erneut senden."); })
       .then(function () { z.beschaeftigt = false; kontrollen(); });
   }
 

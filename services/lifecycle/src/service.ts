@@ -139,7 +139,9 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     const ergebnis: Markierung[] = [];
     for (const { koId, assetRef } of eintraege) {
       const anlage = assetRef ?? payload.assetRef;
-      const koVersion = (await this.koService.get(koId))?.version;
+      const ko = await this.koService.get(koId);
+      if (ko?.mergedInto) continue;
+      const koVersion = ko?.version;
       const kern = {
         grund: payload.grund,
         ...(anlage !== undefined ? { assetRef: anlage } : {}),
@@ -373,7 +375,9 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     const pending = await this.repo.pending();
     const alive: string[] = [];
     for (const koId of pending) {
-      if (await this.koService.get(koId)) {
+      const ko = await this.koService.get(koId);
+      if (ko?.mergedInto) continue;
+      if (ko) {
         alive.push(koId);
       } else {
         await this.repo.clearPending(koId);

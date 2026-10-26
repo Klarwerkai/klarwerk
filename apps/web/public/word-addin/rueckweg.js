@@ -951,7 +951,19 @@
      * Liefert Word kein verwertbares HTML, greift der Klartext-Rueckfall (`selectionToBodyHtml`);
      * ein leerer Rumpf, den der Dienst als Loeschsignal lesen koennte, entsteht nicht.
      */
+    var rwVorgang = null;
+    function rwVorgangsKennung(aktion, html, text, version) {
+      var abdruck = JSON.stringify([rwIchId, rwZiel && rwZiel.id, aktion, version, html, text]);
+      if (!rwVorgang || rwVorgang.abdruck !== abdruck) {
+        var bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        rwVorgang = { abdruck: abdruck, id: "word-" + Array.prototype.map.call(bytes, function(b) { return ("0" + b.toString(16)).slice(-2); }).join("") };
+      }
+      return rwVorgang.id;
+    }
+
     function rwLadung(aktion, html, text, version) {
+      var operationId = rwVorgangsKennung(aktion, html, text, version);
       var statement = text.trim();
       var bauen = function (koerper) {
         if (aktion === "propose") {
@@ -959,6 +971,7 @@
           // Web-Flaeche (statement, bodyHtml, baseVersion, origin) — nicht mehr und nicht weniger.
           return JSON.stringify({
             action: "propose",
+            operationId: operationId,
             proposal: {
               statement: statement,
               bodyHtml: koerper,
@@ -970,6 +983,7 @@
         return JSON.stringify({
           // RUNDE 2: EINE Aktion fuer Fassung UND Freigabe (s. `rwUeberarbeiten`).
           action: "revise-release",
+          operationId: operationId,
           expectedVersion: version,
           changes: { bodyHtml: koerper, statement: statement }
         });

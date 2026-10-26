@@ -452,8 +452,15 @@ export class PgKoRepo implements KoRepo {
     }
   }
 
-  async findById(id: string): Promise<KnowledgeObject | undefined> {
-    const res = await this.pool.query<DataRow>("SELECT data FROM kos WHERE id=$1", [id]);
+  async findById(
+    id: string,
+    tx?: TxContext,
+    sperren = false,
+  ): Promise<KnowledgeObject | undefined> {
+    const res = await (tx ? pgQueryable(tx) : poolQueryable(this.pool)).query<DataRow>(
+      `SELECT data FROM kos WHERE id=$1${sperren && tx ? " FOR UPDATE" : ""}`,
+      [id],
+    );
     return res.rows[0]?.data;
   }
 
@@ -940,8 +947,8 @@ export class PgKoVersionRepo implements KoVersionRepo {
     await withPgTx(this.pool, (eigene) => lauf(pgQueryable(eigene)));
   }
 
-  async listByKo(koId: string): Promise<KoVersionSnapshot[]> {
-    const res = await this.pool.query<SnapshotRow>(
+  async listByKo(koId: string, tx?: TxContext): Promise<KoVersionSnapshot[]> {
+    const res = await (tx ? pgQueryable(tx) : poolQueryable(this.pool)).query<SnapshotRow>(
       "SELECT snapshot,version,at,author,note FROM ko_versions WHERE ko_id=$1 ORDER BY version",
       [koId],
     );

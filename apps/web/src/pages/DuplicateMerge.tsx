@@ -15,6 +15,7 @@
 // Erreichbar über das „···"-Menü der Dublettenkarte (`Duplicates.tsx`). Wer Autor einer Seite ist,
 // sieht hier, warum er nicht zusammenführt (R-0565); entschieden wird das am Server (403).
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
@@ -36,6 +37,7 @@ import { SourceLink } from "../components/ko/SourceEvidence";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenSatz } from "../components/pruefen/PruefenZustand";
 import { cx } from "../components/ui";
+import { type AnlageVorgang, anlageVorgangFuer } from "../lib/createOperation";
 import {
   ASSISTENT_SCHRITTE,
   type AssistentSchritt,
@@ -214,8 +216,14 @@ function Assistent({
   const { fuehrend, aufgehend } = rollenVon(auswahl.fuehrung, a, b);
   const index = ASSISTENT_SCHRITTE.indexOf(schritt);
 
+  const mergeVorgang = useRef<AnlageVorgang | null>(null);
   const freigabe = useMutation({
-    mutationFn: () => endpoints.duplicates.merge(entry.id, auftragAus(a, b, auswahl, vermerk)),
+    mutationFn: () => {
+      const auftrag = auftragAus(a, b, auswahl, vermerk);
+      const vorgang = anlageVorgangFuer(mergeVorgang.current, JSON.stringify(auftrag));
+      mergeVorgang.current = vorgang;
+      return endpoints.duplicates.merge(entry.id, { ...auftrag, operationId: vorgang.id });
+    },
     onSuccess: (daten) => {
       void qc.invalidateQueries({ queryKey: ["duplicates"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });

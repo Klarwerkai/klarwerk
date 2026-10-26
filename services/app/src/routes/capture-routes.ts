@@ -430,6 +430,7 @@ export interface DocxDraftRequest {
   confidentiality?: unknown;
   /** R-0169 (Nacharbeit 5): die im Word-Dokument gespeicherte Dokumentkennung, falls vorhanden. */
   dokumentId?: string;
+  operationId?: string;
 }
 
 // Der Bildzähler zählt EINZELNE eingebettete Bilder — `data:image/…;base64,` je `<img>`. Er zählt
@@ -1423,7 +1424,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           title,
           confidentiality,
           dokumentId: rohDokumentId,
+          operationId,
         } = request.body ?? ({} as DocxDraftRequest);
+        if (operationId !== undefined && typeof operationId !== "string") {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "operationId muss Text sein." });
+          return;
+        }
         if (typeof data !== "string" || data.length === 0) {
           reply
             .code(400)
@@ -1606,12 +1612,15 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           }
           // R-0169 (Nacharbeit 5): der neu angelegte Entwurf wird an die Fassung seines
           // Word-Dokuments gebunden (Akte neu, wenn das Dokument noch keine Kennung trägt).
-          const draft = await anWordDokumentBinden(
-            { capture, dokumente },
-            await capture.createDraft(payload, user.id),
-            dokumentId,
-            user.id,
-          );
+          const erzeugt = await capture.createDraftVorgang(payload, user.id, operationId);
+          const draft = erzeugt.draft.dokumentHerkunft
+            ? erzeugt.draft
+            : await anWordDokumentBinden(
+                { capture, dokumente },
+                erzeugt.draft,
+                dokumentId,
+                user.id,
+              );
           // JOB 2912 D1 — DIE BILANZ WIRD AUF DEM STAND GEZOGEN, DER WIRKLICH GESPEICHERT WURDE.
           //
           // GEMESSEN, nicht gelesen: `createDraft` säubert `bodyHtml` mit dem Allowlist-Sanitizer
@@ -1628,7 +1637,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // DAS BEHEBT DEN VERLUST NICHT — es macht ihn sichtbar. Die Rettung der EMF/WMF-Bilder
           // ist ein eigener Durchgang (JOB 2912 D2).
           const eingebettet = zaehleEingebetteteBilder(draft.payload.bodyHtml ?? "");
-          reply.code(201).send({
+          reply.code(erzeugt.angelegt ? 201 : 200).send({
             ...draft,
             // Die Bildbilanz reist mit der Antwort, nicht nur im Entwurf: das Panel meldet damit
             // „(n Bilder)", und ein Verlust ist an Ort und Stelle sichtbar.
@@ -2198,208 +2207,211 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         };
         // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): mit gewähltem Space hält der
         // Promote von der Vorlagenprüfung bis zur Zuordnung dieselbe Sperre wie die Spacelöschung.
-        let spaceSperreFrei: (() => void) | undefined;
-        try {
-          const body = request.body ?? {};
-          const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
-          // ------------------------------------------------------------------------------
-          // DER NACHSCHLAG STEHT VOR ALLEM VERÄNDERLICHEN — und das ist hier keine Feinheit,
-          // sondern der ganze Block: `requireVisibleDraft` unten antwortet nach einem gelungenen
-          // ersten Lauf mit 404, weil der Entwurf dann GELÖSCHT ist. Stünde der Nachschlag darunter,
-          // liefe die Adoptionsmechanik im echten Klickpfad ins Leere — genau der Fehler, den
-          // mega21 Block B auf dem Dokumentweg beseitigt hat.
-          // ------------------------------------------------------------------------------
-          let fingerprint = "";
-          if (operationId) {
-            fingerprint = createOperationFingerprint({
-              // AUFTRAG-mega22 Block C, hier ebenso: der Request VERBRAUCHT diesen Entwurf. Zwei
-              // Anfragen, die verschiedene Entwürfe verbrauchen, sind nicht derselbe Vorgang.
-              draftId: request.params.id,
-              // K8 (document-create.ts): die Schreibladung semantiktreu, `fehlt` ≠ `leer`.
-              inhalt: alsSchreibpatch(body.draftPayload ?? null),
-              reviewerIds: alsMenge(body.reviewerIds),
-              weg: "promote",
-            });
-            const replay = await ko.lookupDocumentCreate(operationId, {
-              actor: user.id,
-              fingerprint,
-            });
-            if (replay) {
-              // AUFNAHME gesamt-entwurf-einreichen (R-0036, R-0058) — KEIN GEISTER-ENTWURF UND
-              // KEIN OBJEKT OHNE PRÜFUNG. Anlage, Verbrauch und Nacharbeiten sind getrennte
-              // Schritte in verschiedenen Modulen; brach der erste Lauf nach der Anlage ab, stand
-              // das Objekt womöglich neben seinem Entwurf, ohne Prüfer und ohne Prüf-Job. Die
-              // Wiederholung DESSELBEN Vorgangs holt jeden fehlenden Schritt nach — jeder prüft
-              // seine eigene Wirkung (`nacharbeiten`), der Verbrauch greift bei einem schon
-              // entfernten Entwurf ins Leere, die Ablage ist ein Upsert. Nach einem vollständigen
-              // ersten Lauf bewirkt die Wiederholung deshalb nichts. Der Abdruck enthält `draftId`,
-              // ein fremder Entwurf wird also nie getroffen.
-              // (tests/entwurf-einreichen/kein-geister-entwurf.test.ts)
-              await capture.entwurfVerbraucht(request.params.id);
-              const nachgeholt = await nacharbeiten(replay.id, body.reviewerIds);
-              // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt.
-              reply.code(200).send(nachgeholt ?? replay);
-              // R-0658: ein Objekt in Schutzdaten-Quarantäne kommt nicht in die Ähnlichkeitsablage.
-              if (!inSchutzdatenQuarantaene(replay)) {
-                await indexKoForDuplicatePrefilter(replay, semanticPrefilter);
-              }
-              return;
-            }
-          }
-          // Pool-Auftrag (297afc57): Einreichen bleibt beim Autor, auch bei einem Pool-Entwurf —
-          // geprüft VOR jedem Schreiben, ein abgewiesener Aufruf ändert weder Entwurf noch Bestand.
-          if (
-            !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
-              nurAutor: true,
-            }))
-          ) {
-            return;
-          }
-          // RC1: vor jedem Clientmerge entscheiden. Ein alter Tab darf den entzogenen Wortlaut
-          // weder zurückschreiben noch in ein neues Wissensobjekt übertragen; der eigene Entwurf
-          // bleibt einschließlich belegter Eigenarbeit und voller gespeicherter Fassung erhalten.
-          if (
-            await chatVerarbeitungGesperrt(
-              await capture.getDraft(request.params.id),
-              user,
-              reply,
-              request,
-            )
-          )
-            return;
-          // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
-          // Vorgang, hinter dem Nachschlag. Damit braucht die Oberfläche kein vorgeschaltetes
-          // `PUT /api/drafts/:id` mehr, das nach einem gelungenen ersten Lauf mit 404 abfinge.
-          // Die Gestaltprüfung läuft am RAND (mega22 Block D) — ein Formfehler wird hier 400 und
-          // entsteht nicht in der Tiefe von `continueDraft`.
-          // JOB 2684 D1: derselbe Standvergleich wie beim Speichern — VOR jedem Schreiben und vor
-          // dem Wissensobjekt. Ein veralteter Tab bekommt 409 und legt nichts an.
-          const expectedUpdatedAt = erwarteterStand(body.expectedUpdatedAt);
-          if (body.draftPayload !== undefined) {
-            const gestalt = validateDraftPayloadShape(body.draftPayload);
-            if (!gestalt.ok) {
-              reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
-              return;
-            }
-            // JOB 2703 D2: der Einreichen-Weg schreibt den Stand mit — auch hier kanonisch gekuerzt,
-            // sonst kaeme die Rohaussage der Vordertuer beim Einreichen ins Wissensobjekt.
-            await capture.continueDraft(
-              request.params.id,
-              mitKanonischerAussage(gestalt.payload),
-              user.id,
-              {
-                expectedUpdatedAt,
-              },
-            );
-          } else if (expectedUpdatedAt !== undefined) {
-            await capture.requireFresh(request.params.id, expectedUpdatedAt);
-          }
-          // BPA-02: kein Wissensobjekt aus einer Quelle mit entzogenem Leserecht — vor jeder Anlage.
-          if (await entwurfGesperrt(await capture.getDraft(request.params.id))) {
-            sendeQuellsperre(reply);
-            return;
-          }
-          if (
-            await chatVerarbeitungGesperrt(
-              await capture.getDraft(request.params.id),
-              user,
-              reply,
-              request,
-            )
-          )
-            return;
-          const input = await capture.toKoInput(request.params.id);
-          // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,
-          // gegen den GESPEICHERTEN Vorlagenbezug (der mitgeschickte Stand ist oben schon gemischt).
-          // Scheitert sie, bleibt der Entwurf mit allen Werten stehen — es entsteht nichts.
-          const rohBezug = (await capture.getDraft(request.params.id))?.payload.vorlage;
-          spaceSperreFrei = await deps.vorlagenEinreichung?.halte(rohBezug);
-          const vorlagenEntscheid = await deps.vorlagenEinreichung?.pruefe(
-            rohBezug,
-            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
-            user,
-          );
-          if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
-            reply.code(vorlagenEntscheid.status).send({
-              error: vorlagenEntscheid.error,
-              message: vorlagenEntscheid.message,
-              ...(vorlagenEntscheid.befunde ? { befunde: vorlagenEntscheid.befunde } : {}),
-            });
-            return;
-          }
-          // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
-          // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
-          // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
-          // (Pedis Befund: Validierungskarte ohne „von …").
-          //
-          // AUFTRAG-mega22 Block H: der VORGANG reist mit, wenn einer mitgeschickt wurde — und der
-          // Eigentümer ist der EINREICHENDE Nutzer, nicht `input.author`. Das ist genau die Trennung
-          // aus mega21 Block A: ein Admin darf einen fremden Entwurf einreichen; das Wissensobjekt
-          // trägt dann den Originalautor, der VORGANG aber gehört dem Admin, der ihn gestartet hat.
-          const created = await ko.create(
-            { ...input, author: input.author.trim() ? input.author : user.id },
-            ...(operationId
-              ? ([{ id: operationId, actor: user.id, fingerprint }] as const)
-              : ([] as const)),
-          );
-          // JOB 3668 — HIER WIRD NICHT GELÖSCHT, HIER WIRD VERBRAUCHT. Der Entwurf ist gerade zum
-          // Wissensobjekt geworden; läge er danach im Papierkorb, liesse er sich wiederherstellen
-          // und stünde als Dublette neben dem Objekt aus ihm — mit Inhalt, aber ohne dessen
-          // Prüfung und Historie. Deshalb der eigene Weg `entwurfVerbraucht` (hart) und nicht
-          // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
-          // dazu führen, dass der Entwurf aus der Liste verschwindet.
-          // produkt:20261007:templates-default: Vorlage/Fassung vermerken, ggf. in den gewählten
-          // Space legen. Eine Nacharbeit: scheitert sie, steht das Objekt trotzdem, und die Antwort
-          // sagt es (`vorlagenVermerk`).
-          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
-          // Zuordnung — misslingt sie, ist die Anlage zurückgenommen, die Antwort 409, und der
-          // Entwurf bleibt bestehen (deshalb steht dieser Schritt VOR dem Verbrauch des Entwurfs).
-          let vorlagenVermerk: "fehlgeschlagen" | undefined;
-          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
-            try {
-              await deps.vorlagenEinreichung?.vermerke(created.id, vorlagenEntscheid.bezug, user);
-            } catch (fehlerWert) {
-              if (fehlerWert instanceof VorlagenSpaceFehler) {
-                reply.code(409).send({
-                  error: fehlerWert.code,
-                  message: VORLAGE_SPACE_KONFLIKT_TEXT,
-                });
+        return capture.withPromotionLock(request.params.id, async (promotion) => {
+          let spaceSperreFrei: (() => void) | undefined;
+          try {
+            const body = request.body ?? {};
+            const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
+            // ------------------------------------------------------------------------------
+            // DER NACHSCHLAG STEHT VOR ALLEM VERÄNDERLICHEN — und das ist hier keine Feinheit,
+            // sondern der ganze Block: `requireVisibleDraft` unten antwortet nach einem gelungenen
+            // ersten Lauf mit 404, weil der Entwurf dann GELÖSCHT ist. Stünde der Nachschlag darunter,
+            // liefe die Adoptionsmechanik im echten Klickpfad ins Leere — genau der Fehler, den
+            // mega21 Block B auf dem Dokumentweg beseitigt hat.
+            // ------------------------------------------------------------------------------
+            let fingerprint = "";
+            if (operationId) {
+              fingerprint = createOperationFingerprint({
+                // AUFTRAG-mega22 Block C, hier ebenso: der Request VERBRAUCHT diesen Entwurf. Zwei
+                // Anfragen, die verschiedene Entwürfe verbrauchen, sind nicht derselbe Vorgang.
+                draftId: request.params.id,
+                // K8 (document-create.ts): die Schreibladung semantiktreu, `fehlt` ≠ `leer`.
+                inhalt: alsSchreibpatch(body.draftPayload ?? null),
+                reviewerIds: alsMenge(body.reviewerIds),
+                weg: "promote",
+              });
+              const replay = await ko.lookupDocumentCreate(operationId, {
+                actor: user.id,
+                fingerprint,
+              });
+              if (replay) {
+                // AUFNAHME gesamt-entwurf-einreichen (R-0036, R-0058) — KEIN GEISTER-ENTWURF UND
+                // KEIN OBJEKT OHNE PRÜFUNG. Anlage, Verbrauch und Nacharbeiten sind getrennte
+                // Schritte in verschiedenen Modulen; brach der erste Lauf nach der Anlage ab, stand
+                // das Objekt womöglich neben seinem Entwurf, ohne Prüfer und ohne Prüf-Job. Die
+                // Wiederholung DESSELBEN Vorgangs holt jeden fehlenden Schritt nach — jeder prüft
+                // seine eigene Wirkung (`nacharbeiten`), der Verbrauch greift bei einem schon
+                // entfernten Entwurf ins Leere, die Ablage ist ein Upsert. Nach einem vollständigen
+                // ersten Lauf bewirkt die Wiederholung deshalb nichts. Der Abdruck enthält `draftId`,
+                // ein fremder Entwurf wird also nie getroffen.
+                // (tests/entwurf-einreichen/kein-geister-entwurf.test.ts)
+                await capture.entwurfVerbraucht(request.params.id);
+                const nachgeholt = await nacharbeiten(replay.id, body.reviewerIds);
+                // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt.
+                reply.code(200).send(nachgeholt ?? replay);
+                // R-0658: ein Objekt in Schutzdaten-Quarantäne kommt nicht in die Ähnlichkeitsablage.
+                if (!inSchutzdatenQuarantaene(replay)) {
+                  await indexKoForDuplicatePrefilter(replay, semanticPrefilter);
+                }
                 return;
               }
-              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
-              vorlagenVermerk = "fehlgeschlagen";
             }
+            // Pool-Auftrag (297afc57): Einreichen bleibt beim Autor, auch bei einem Pool-Entwurf —
+            // geprüft VOR jedem Schreiben, ein abgewiesener Aufruf ändert weder Entwurf noch Bestand.
+            if (
+              !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+                nurAutor: true,
+              }))
+            ) {
+              return;
+            }
+            // RC1: vor jedem Clientmerge entscheiden. Ein alter Tab darf den entzogenen Wortlaut
+            // weder zurückschreiben noch in ein neues Wissensobjekt übertragen; der eigene Entwurf
+            // bleibt einschließlich belegter Eigenarbeit und voller gespeicherter Fassung erhalten.
+            if (
+              await chatVerarbeitungGesperrt(
+                await capture.getDraft(request.params.id),
+                user,
+                reply,
+                request,
+              )
+            )
+              return;
+            // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
+            // Vorgang, hinter dem Nachschlag. Damit braucht die Oberfläche kein vorgeschaltetes
+            // `PUT /api/drafts/:id` mehr, das nach einem gelungenen ersten Lauf mit 404 abfinge.
+            // Die Gestaltprüfung läuft am RAND (mega22 Block D) — ein Formfehler wird hier 400 und
+            // entsteht nicht in der Tiefe von `continueDraft`.
+            // JOB 2684 D1: derselbe Standvergleich wie beim Speichern — VOR jedem Schreiben und vor
+            // dem Wissensobjekt. Ein veralteter Tab bekommt 409 und legt nichts an.
+            const expectedUpdatedAt = erwarteterStand(body.expectedUpdatedAt);
+            if (body.draftPayload !== undefined) {
+              const gestalt = validateDraftPayloadShape(body.draftPayload);
+              if (!gestalt.ok) {
+                reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
+                return;
+              }
+              // JOB 2703 D2: der Einreichen-Weg schreibt den Stand mit — auch hier kanonisch gekuerzt,
+              // sonst kaeme die Rohaussage der Vordertuer beim Einreichen ins Wissensobjekt.
+              await capture.continueDraft(
+                request.params.id,
+                mitKanonischerAussage(gestalt.payload),
+                user.id,
+                {
+                  expectedUpdatedAt,
+                  promotion,
+                },
+              );
+            } else if (expectedUpdatedAt !== undefined) {
+              await capture.requireFresh(request.params.id, expectedUpdatedAt);
+            }
+            // BPA-02: kein Wissensobjekt aus einer Quelle mit entzogenem Leserecht — vor jeder Anlage.
+            if (await entwurfGesperrt(await capture.getDraft(request.params.id))) {
+              sendeQuellsperre(reply);
+              return;
+            }
+            if (
+              await chatVerarbeitungGesperrt(
+                await capture.getDraft(request.params.id),
+                user,
+                reply,
+                request,
+              )
+            )
+              return;
+            const input = await capture.toKoInput(request.params.id);
+            // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,
+            // gegen den GESPEICHERTEN Vorlagenbezug (der mitgeschickte Stand ist oben schon gemischt).
+            // Scheitert sie, bleibt der Entwurf mit allen Werten stehen — es entsteht nichts.
+            const rohBezug = (await capture.getDraft(request.params.id))?.payload.vorlage;
+            spaceSperreFrei = await deps.vorlagenEinreichung?.halte(rohBezug);
+            const vorlagenEntscheid = await deps.vorlagenEinreichung?.pruefe(
+              rohBezug,
+              { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+              user,
+            );
+            if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
+              reply.code(vorlagenEntscheid.status).send({
+                error: vorlagenEntscheid.error,
+                message: vorlagenEntscheid.message,
+                ...(vorlagenEntscheid.befunde ? { befunde: vorlagenEntscheid.befunde } : {}),
+              });
+              return;
+            }
+            // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
+            // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
+            // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
+            // (Pedis Befund: Validierungskarte ohne „von …").
+            //
+            // AUFTRAG-mega22 Block H: der VORGANG reist mit, wenn einer mitgeschickt wurde — und der
+            // Eigentümer ist der EINREICHENDE Nutzer, nicht `input.author`. Das ist genau die Trennung
+            // aus mega21 Block A: ein Admin darf einen fremden Entwurf einreichen; das Wissensobjekt
+            // trägt dann den Originalautor, der VORGANG aber gehört dem Admin, der ihn gestartet hat.
+            const created = await ko.create(
+              { ...input, author: input.author.trim() ? input.author : user.id },
+              ...(operationId
+                ? ([{ id: operationId, actor: user.id, fingerprint }] as const)
+                : ([] as const)),
+            );
+            // JOB 3668 — HIER WIRD NICHT GELÖSCHT, HIER WIRD VERBRAUCHT. Der Entwurf ist gerade zum
+            // Wissensobjekt geworden; läge er danach im Papierkorb, liesse er sich wiederherstellen
+            // und stünde als Dublette neben dem Objekt aus ihm — mit Inhalt, aber ohne dessen
+            // Prüfung und Historie. Deshalb der eigene Weg `entwurfVerbraucht` (hart) und nicht
+            // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
+            // dazu führen, dass der Entwurf aus der Liste verschwindet.
+            // produkt:20261007:templates-default: Vorlage/Fassung vermerken, ggf. in den gewählten
+            // Space legen. Eine Nacharbeit: scheitert sie, steht das Objekt trotzdem, und die Antwort
+            // sagt es (`vorlagenVermerk`).
+            // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
+            // Zuordnung — misslingt sie, ist die Anlage zurückgenommen, die Antwort 409, und der
+            // Entwurf bleibt bestehen (deshalb steht dieser Schritt VOR dem Verbrauch des Entwurfs).
+            let vorlagenVermerk: "fehlgeschlagen" | undefined;
+            if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
+              try {
+                await deps.vorlagenEinreichung?.vermerke(created.id, vorlagenEntscheid.bezug, user);
+              } catch (fehlerWert) {
+                if (fehlerWert instanceof VorlagenSpaceFehler) {
+                  reply.code(409).send({
+                    error: fehlerWert.code,
+                    message: VORLAGE_SPACE_KONFLIKT_TEXT,
+                  });
+                  return;
+                }
+                request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+                vorlagenVermerk = "fehlgeschlagen";
+              }
+            }
+            // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
+            spaceSperreFrei?.();
+            await capture.entwurfVerbraucht(request.params.id);
+            // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung
+            // (`nacharbeiten`) noch in die Ähnlichkeitsablage (unten). Die Warnung reist als
+            // `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
+            const inQuarantaene = inSchutzdatenQuarantaene(created);
+            // Nur wenn der Vermerk den Space gesetzt hat, wird neu gelesen — sonst wie bisher.
+            const imSpace = vorlagenEntscheid?.ok && Boolean(vorlagenEntscheid.bezug?.spaceId);
+            const submitted =
+              (await nacharbeiten(created.id, body.reviewerIds)) ??
+              (imSpace ? await ko.get(created.id) : undefined) ??
+              created;
+            reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
+            // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
+            // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
+            // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
+            if (!inQuarantaene) {
+              await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+            }
+          } catch (error) {
+            // JOB 2684 D1: ein veralteter Stand ist ein Konflikt, kein Eingabefehler — 409, und es ist
+            // NICHTS entstanden (der Vergleich steht vor `continueDraft` und vor `ko.create`).
+            if (antwortBeiVeraltetemStand(reply, error)) {
+              return;
+            }
+            sendError(reply, error);
+          } finally {
+            spaceSperreFrei?.();
           }
-          // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
-          spaceSperreFrei?.();
-          await capture.entwurfVerbraucht(request.params.id);
-          // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung
-          // (`nacharbeiten`) noch in die Ähnlichkeitsablage (unten). Die Warnung reist als
-          // `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
-          const inQuarantaene = inSchutzdatenQuarantaene(created);
-          // Nur wenn der Vermerk den Space gesetzt hat, wird neu gelesen — sonst wie bisher.
-          const imSpace = vorlagenEntscheid?.ok && Boolean(vorlagenEntscheid.bezug?.spaceId);
-          const submitted =
-            (await nacharbeiten(created.id, body.reviewerIds)) ??
-            (imSpace ? await ko.get(created.id) : undefined) ??
-            created;
-          reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
-          // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
-          // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
-          // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
-          if (!inQuarantaene) {
-            await indexKoForDuplicatePrefilter(created, semanticPrefilter);
-          }
-        } catch (error) {
-          // JOB 2684 D1: ein veralteter Stand ist ein Konflikt, kein Eingabefehler — 409, und es ist
-          // NICHTS entstanden (der Vergleich steht vor `continueDraft` und vor `ko.create`).
-          if (antwortBeiVeraltetemStand(reply, error)) {
-            return;
-          }
-          sendError(reply, error);
-        } finally {
-          spaceSperreFrei?.();
-        }
+        });
       },
     );
   };

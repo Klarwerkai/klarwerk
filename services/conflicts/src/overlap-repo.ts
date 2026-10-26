@@ -16,9 +16,9 @@ export interface OverlapRepo {
   // und liefert genau EINEN Gewinner unter parallelen GC-Läufen. patch = die zu mergenden
   // Tombstone-Felder (status="geschlossen", resolution superseded/by=null, closedAt).
   supersedeIfOpen(id: string, patch: Partial<OverlapEntry>): Promise<boolean>;
-  findById(id: string): Promise<OverlapEntry | undefined>;
+  findById(id: string, _tx?: TxContext): Promise<OverlapEntry | undefined>;
   all(): Promise<OverlapEntry[]>;
-  update(entry: OverlapEntry): Promise<void>;
+  update(entry: OverlapEntry, _tx?: TxContext): Promise<void>;
   // ============================================================================================
   // JOB 3066 — DER AUFRÄUMWEG DER ENDLÖSCHUNG: EINE MENGENBASIERTE ANWEISUNG MIT OPAKEM tx.
   // ============================================================================================
@@ -100,7 +100,7 @@ export class InMemoryOverlapRepo implements OverlapRepo {
     return Promise.resolve(true);
   }
 
-  findById(id: string): Promise<OverlapEntry | undefined> {
+  findById(id: string, _tx?: TxContext): Promise<OverlapEntry | undefined> {
     return Promise.resolve(this.entries.get(id));
   }
 
@@ -108,7 +108,7 @@ export class InMemoryOverlapRepo implements OverlapRepo {
     return Promise.resolve([...this.entries.values()]);
   }
 
-  update(entry: OverlapEntry): Promise<void> {
+  update(entry: OverlapEntry, _tx?: TxContext): Promise<void> {
     this.entries.set(entry.id, entry);
     return Promise.resolve();
   }

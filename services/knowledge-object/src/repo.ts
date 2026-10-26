@@ -140,7 +140,7 @@ export interface KoRepo {
   // Erstanlage schreibt Objekt, Fassung, Suchprojektion, Belegkette und `ko.created` in EINER
   // Transaktion (`KoService.schreibeErstanlage`). Ohne tx wie bisher.
   insert(ko: KnowledgeObject, tx?: TxContext): Promise<void>;
-  findById(id: string): Promise<KnowledgeObject | undefined>;
+  findById(id: string, _tx?: TxContext, _sperren?: boolean): Promise<KnowledgeObject | undefined>;
   // AUFTRAG-mega20 Block A: GEZIELTER Nachschlag der Erzeugungs-Operationskennung. Bewusst eine
   // eigene Repo-Methode und kein `list({}).find(...)` wie beim Kandidaten-Anker: dieser Nachschlag
   // liegt auf dem HEISSEN Weg jeder Erstanlage aus Dokumenten (er läuft VOR den Toren, bei JEDEM
@@ -445,7 +445,7 @@ export class InMemoryKoRepo implements KoRepo {
     return Promise.resolve();
   }
 
-  findById(id: string): Promise<KnowledgeObject | undefined> {
+  findById(id: string, _tx?: TxContext, _sperren?: boolean): Promise<KnowledgeObject | undefined> {
     return Promise.resolve(this.items.get(id));
   }
 
@@ -744,7 +744,7 @@ export interface KoVersionRepo {
   // JOB 2704 D1 (R2-35): optionaler TxContext wie bei `KoRepo.update/delete` — der Snapshot entsteht
   // im Pg-Adapter auf dem Transaktionsclient von mutateKoTx. InMemory ignoriert ihn.
   append(snapshot: KoVersionSnapshot, tx?: TxContext): Promise<void>;
-  listByKo(koId: string): Promise<KoVersionSnapshot[]>;
+  listByKo(koId: string, _tx?: TxContext): Promise<KoVersionSnapshot[]>;
   // SCRUM-507 R3: entfernt einen (koId, version)-Snapshot — AUSSCHLIESSLICH für den kompensierenden
   // Rollback eines noch nicht committeten Mehrschritt-Mutations (mutateKoTx). Im Normalbetrieb bleibt
   // die Versionshistorie append-only; kein Live-Pfad ruft remove für eine committete Version auf.
@@ -840,7 +840,7 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
     return Promise.resolve();
   }
 
-  listByKo(koId: string): Promise<KoVersionSnapshot[]> {
+  listByKo(koId: string, _tx?: TxContext): Promise<KoVersionSnapshot[]> {
     const byVersion = this.items.get(koId);
     const list = byVersion ? [...byVersion.values()] : [];
     return Promise.resolve(list.sort((a, b) => a.version - b.version));

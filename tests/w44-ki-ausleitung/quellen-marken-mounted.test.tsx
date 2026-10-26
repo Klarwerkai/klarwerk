@@ -117,8 +117,8 @@ describe("W4.4 Kandidatenindex", () => {
         ["KO-B", 2],
         ["KO-C", 3],
       ]);
-      if (modus === "historisch" && gespeichert) {
-        gespeichert.quellenAngaben = gespeichert.quellenAngaben?.map((a) => ({
+      if (modus === "historisch" && gespeichert?.quellenAngaben) {
+        gespeichert.quellenAngaben = gespeichert.quellenAngaben.map((a) => ({
           koId: a.koId,
           titel: a.titel,
           fassung: a.fassung,

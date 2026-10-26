@@ -110,7 +110,7 @@ export class OutputService {
       // aufnahme:20260922:gesamt-leserechte / R-1175: ein Objekt, das der Betrachter nicht sehen
       // darf, gibt es für ihn nicht — dieselbe Antwort wie für eine unbekannte Kennung, damit weder
       // Status noch Stufe seine Existenz verraten.
-      if (!ko || typeof sichtbar !== "function" || sichtbar(ko) !== true) {
+      if (!ko || ko.mergedInto || typeof sichtbar !== "function" || sichtbar(ko) !== true) {
         throw new OutputError("UNKNOWN_KO", `Wissensobjekt nicht gefunden: ${id}.`);
       }
       if (ko.status !== "validiert") {

@@ -822,8 +822,10 @@ export class OverlapService {
     by: string,
     ergebnis: { survivorKoId: string; survivorVersion: number; retiredKoId: string },
     note?: string,
+    tx?: TxContext,
+    mergeOperation?: NonNullable<OverlapEntry["resolution"]>["mergeOperation"],
   ): Promise<OverlapEntry> {
-    const entry = await this.requireOpen(id);
+    const entry = await this.requireOpen(id, tx);
     const paar = [entry.koA, entry.koB];
     if (
       ergebnis.survivorKoId === ergebnis.retiredKoId ||
@@ -841,6 +843,7 @@ export class OverlapService {
       status: "geschlossen",
       resolution: {
         reason: "merged",
+        ...(mergeOperation ? { mergeOperation } : {}),
         by,
         note: note ?? null,
         at,
@@ -849,31 +852,41 @@ export class OverlapService {
       },
       closedAt: at,
     };
-    await this.repo.update(saved);
-    await this.audit?.record({
-      actor: by,
-      action: "overlap.merge-completed",
-      target: id,
-      payload: {
-        koIds: [entry.koA, entry.koB],
-        resolutionReason: "merged",
-        survivorKoId: ergebnis.survivorKoId,
-        survivorVersion: ergebnis.survivorVersion,
-        retiredKoId: ergebnis.retiredKoId,
-      },
-    });
-    const gegenstandslos = await this.repo.closeOpenForKo(ergebnis.retiredKoId, {
-      status: "geschlossen",
-      resolution: { reason: "superseded", by: null, note: null, at },
-      closedAt: at,
-    });
-    for (const rest of gegenstandslos) {
-      await this.audit?.record({
+    await this.repo.update(saved, tx);
+    await this.audit?.record(
+      {
         actor: by,
-        action: "overlap.superseded",
-        target: rest.id,
-        payload: { koId: ergebnis.retiredKoId, via: "merged", overlapId: id },
-      });
+        action: "overlap.merge-completed",
+        target: id,
+        payload: {
+          koIds: [entry.koA, entry.koB],
+          resolutionReason: "merged",
+          survivorKoId: ergebnis.survivorKoId,
+          survivorVersion: ergebnis.survivorVersion,
+          retiredKoId: ergebnis.retiredKoId,
+        },
+      },
+      tx,
+    );
+    const gegenstandslos = await this.repo.closeOpenForKo(
+      ergebnis.retiredKoId,
+      {
+        status: "geschlossen",
+        resolution: { reason: "superseded", by: null, note: null, at },
+        closedAt: at,
+      },
+      tx,
+    );
+    for (const rest of gegenstandslos) {
+      await this.audit?.record(
+        {
+          actor: by,
+          action: "overlap.superseded",
+          target: rest.id,
+          payload: { koId: ergebnis.retiredKoId, via: "merged", overlapId: id },
+        },
+        tx,
+      );
     }
     return saved;
   }
@@ -1132,6 +1145,11 @@ export class OverlapService {
   // bindung wird nicht mehr roh durchgereicht (Route ⇒ ehrliches 404), ein SICHER stale offener
   // Eintrag zusätzlich per Lese-GC geschlossen. GESCHLOSSENE Einträge bleiben abrufbar
   // (ehrlicher Grabstein — nie ein offener stale Eintrag).
+  /** Frische Befundlesung auf dem Client des gemeinsamen Paarvorgangs. */
+  async getImVorgang(id: string, tx: TxContext): Promise<OverlapEntry | undefined> {
+    return this.repo.findById(id, tx);
+  }
+
   async get(id: string): Promise<OverlapEntry | undefined> {
     const entry = await this.repo.findById(id);
     const lookup = this.currentVersion;
@@ -1181,8 +1199,8 @@ export class OverlapService {
     }, 0);
   }
 
-  private async requireOpen(id: string): Promise<OverlapEntry> {
-    const entry = await this.repo.findById(id);
+  private async requireOpen(id: string, tx?: TxContext): Promise<OverlapEntry> {
+    const entry = await this.repo.findById(id, tx);
     if (!entry) {
       throw new OverlapError("NOT_FOUND", "Überschneidung nicht gefunden.");
     }

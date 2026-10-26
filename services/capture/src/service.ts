@@ -694,6 +694,19 @@ export class CaptureService {
   // `protected`, nicht `private`: die Kalibrierung des Überlappungstests schaltet die Sperre in einer
   // Test-Unterklasse aus und zeigt, dass ohne sie beide Schreiber durchkommen — sonst wäre nicht
   // belegt, dass der Test die Überlappung überhaupt erreicht.
+  private readonly promotionen = new WeakMap<object, string>();
+  async withPromotionLock<T>(id: string, fn: (kontext: object) => Promise<T>): Promise<T> {
+    return this.withDraftLock(id, async () => {
+      const kontext = {};
+      this.promotionen.set(kontext, id);
+      try {
+        return await fn(kontext);
+      } finally {
+        this.promotionen.delete(kontext);
+      }
+    });
+  }
+
   protected async withDraftLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.draftWriteLocks.get(id) ?? Promise.resolve();
     const run = prev.catch(() => undefined).then(fn);
@@ -1269,7 +1282,7 @@ export class CaptureService {
     id: string,
     changes: DraftPayload,
     editor: string,
-    opts: { expectedUpdatedAt?: string | undefined } = {},
+    opts: { expectedUpdatedAt?: string | undefined; promotion?: object } = {},
   ): Promise<Draft> {
     // JOB 2684 D2: Lesen, Prüfen und Schreiben stehen unter EINER Sperre je Entwurf (s. Kopf) —
     // sie hält die Überlappung IM PROZESS ab und spart der Ablage die Wiederholung.
@@ -1283,7 +1296,7 @@ export class CaptureService {
     //     Altweg „letzter Schreiber gewinnt" bleibt, aber ohne verlorene Felder: neu lesen, neu
     //     mischen, neu versuchen (Deckel `CAS_VERSUCHE`). Bis D2 hätte ein zweiter Prozess hier den
     //     fremden Stand still überschrieben — das war der Befund.
-    return this.withDraftLock(id, async () => {
+    const schreiben = async () => {
       for (let versuch = 1; ; versuch += 1) {
         const draft = await this.require(id);
         // JOB 2684 D1: erst der Stand, dann der Merge — ein veralteter Stand schreibt nichts.
@@ -1334,7 +1347,13 @@ export class CaptureService {
           );
         }
       }
-    });
+    };
+    if (opts.promotion) {
+      if (this.promotionen.get(opts.promotion) !== id)
+        throw new Error("Ungültiger Entwurfsschreibkontext");
+      return schreiben();
+    }
+    return this.withDraftLock(id, schreiben);
   }
 
   // ==============================================================================================

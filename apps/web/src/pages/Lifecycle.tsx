@@ -125,7 +125,7 @@ export function Lifecycle(): JSX.Element {
       title: string;
       found: boolean;
       stand?: number;
-      fassung?: number;
+      fassung?: number | undefined;
     }) =>
       endpoints.ko.act(id, {
         action: "revalidate",
