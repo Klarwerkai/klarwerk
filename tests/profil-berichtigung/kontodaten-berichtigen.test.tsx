@@ -380,6 +380,23 @@ describe("B1 · Selbstberichtigung des Namens im Profil", () => {
 // ------------------------------------------------------------------------------------------------
 describe("B2 · Selbstberichtigung der E-Mail", () => {
   const NEU = "wanda.neu@verwaltung.test";
+  const MAILTEXTE: Record<string, { pending: string; confirm: string }> = {
+    de: {
+      pending:
+        "Bitte bestätigen Sie die neue Adresse über die E-Mail. Bis dahin bleibt Ihre bisherige Adresse gültig.",
+      confirm: "Neue E-Mail-Adresse bestätigen",
+    },
+    en: {
+      pending:
+        "Please confirm the new address using the email. Your previous address remains valid until then.",
+      confirm: "Confirm new email address",
+    },
+    nl: {
+      pending:
+        "Bevestig het nieuwe adres via de e-mail. Tot die tijd blijft je vorige adres geldig.",
+      confirm: "Nieuw e-mailadres bevestigen",
+    },
+  };
 
   it("falsches Passwort: abgelehnt, nichts geändert", async () => {
     await kontodatenKarte();
@@ -403,11 +420,17 @@ describe("B2 · Selbstberichtigung der E-Mail", () => {
     "Adresse erst nach echter Mail und Profil-Bestätigung geändert: %s",
     async (sprache) => {
       await i18n.changeLanguage(sprache);
+      const erwartet = MAILTEXTE[sprache];
+      if (!erwartet) throw new Error("Sprache fehlt");
+      expect(i18n.exists("prof.emailPending")).toBe(true);
+      expect(i18n.exists("prof.emailConfirm")).toBe(true);
+      expect(i18n.t("prof.emailPending")).toBe(erwartet.pending);
+      expect(i18n.t("prof.emailConfirm")).toBe(erwartet.confirm);
       await kontodatenKarte();
       await tippe(feld(t("adm.email")), NEU);
       await tippe(feld(t("prof.correctPassword")), WANDA.password);
       await klick(knopf(t("prof.correctSubmit")));
-      await warteBis(() => text().includes(t("prof.emailPending")), "Bestätigung steht aus");
+      await warteBis(() => text().includes(erwartet.pending), "echter übersetzter Hinweis");
       expect((await ich(wandaCookie)).email).toBe(WANDA.email);
       expect(await berichtigungen()).toEqual([]);
       expect(bestaetigungsMails).toHaveLength(1);
@@ -418,7 +441,8 @@ describe("B2 · Selbstberichtigung der E-Mail", () => {
       container.remove();
       await montiere(createElement(Profile), link.pathname + link.search);
       expect((await ich(wandaCookie)).email).toBe(WANDA.email);
-      await klick(knopf(t("prof.emailConfirm")));
+      expect(knopf(erwartet.confirm).textContent).toBe(erwartet.confirm);
+      await klick(knopf(erwartet.confirm));
       await warteBis(() => text().includes(t("prof.correctSaved")), "Mailadresse bestätigt");
       expect((await ich(wandaCookie)).email).toBe(NEU);
       expect((await anmelden(NEU, WANDA.password)).status, "neue Adresse").toBe(200);

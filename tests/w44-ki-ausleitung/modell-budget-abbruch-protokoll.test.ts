@@ -301,4 +301,58 @@ describe("W4.4 tatsächliche Modellübertragung", () => {
     finish();
     await w.idle();
   });
+  it("kooperativer Modelltransport endet auf das echte Worker-Signal; der Nachfolger startet erst danach", async () => {
+    let active = 0;
+    let max = 0;
+    const events: string[] = [];
+    const signals: AbortSignal[] = [];
+    const client = cappedModelClient(
+      {
+        name: "lokal:kooperativ",
+        complete: async (_s, _u, _c, _m, signal) => {
+          if (!signal) throw new Error("Abbruchsignal fehlt");
+          const id = signals.length + 1;
+          signals.push(signal);
+          active++;
+          max = Math.max(max, active);
+          events.push(`start-${id}`);
+          return new Promise<string>((_resolve, reject) =>
+            signal.addEventListener(
+              "abort",
+              () => {
+                active--;
+                events.push(`ende-${id}`);
+                reject(new DOMException("Abgebrochen", "AbortError"));
+              },
+              { once: true },
+            ),
+          );
+        },
+      },
+      { rejectsConfidential: false },
+    );
+    const ko = {
+      get: async () => undefined,
+      aktuellePruefbasis: async () => ({ quelle: "q", kontext: "k", bestand: "b" }),
+      resolveAiCheck: async () => true,
+      markAiCheckPending: async () => undefined,
+    };
+    const worker = createAiCheckWorker({
+      ko: ko as never,
+      jobTimeoutMs: 15,
+      log: () => {},
+      run: async () => {
+        await client.complete("s", "legitimer Text", false);
+        return { ok: true };
+      },
+    });
+    worker.enqueue("a", 1);
+    worker.enqueue("b", 1);
+    await worker.idle();
+    expect(events).toEqual(["start-1", "ende-1", "start-2", "ende-2"]);
+    expect(signals).toHaveLength(2);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(max).toBe(1);
+    expect(active).toBe(0);
+  });
 });
