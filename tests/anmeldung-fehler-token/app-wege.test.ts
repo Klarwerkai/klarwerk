@@ -197,6 +197,7 @@ describe("W4.3 strenge Rümpfe an den echten App-Routen", () => {
       5,
       {},
       { ...valid, statement: 5 },
+      { ...valid, category: 5 },
       { ...valid, bodyHtml: {} },
       { ...valid, tags: [5] },
       { ...valid, reviewerIds: "alle" },

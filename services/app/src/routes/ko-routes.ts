@@ -2118,10 +2118,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           return;
         }
         const felder = rumpf as Record<string, unknown>;
-        const falscherText = ["title", "statement", "type", "category"].some(
+        const falscherText = ["title", "statement", "type"].some(
           (k) => typeof felder[k] !== "string",
         );
         const falscherOptionalerText = [
+          "category",
           "bodyHtml",
           "asset",
           "domain",
