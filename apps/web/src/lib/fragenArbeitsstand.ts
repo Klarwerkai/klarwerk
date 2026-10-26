@@ -535,6 +535,7 @@ export function arbeitsstandLesen(
       antwort === null &&
       startadressen.length === 0 &&
       fragenFaden.length === 0 &&
+      !legacyEntzug &&
       !fragekontext &&
       !szenario
     ) {

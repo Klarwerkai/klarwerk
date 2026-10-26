@@ -469,39 +469,43 @@ describe("W4.6 dauerhafte Offlineannahme und Sitzungsende", () => {
   });
 });
 
-it("ein alter Rechtewechselmarker wird beim Lesen in eine gelöschte Kopie mit eigenem Fragefaden überführt", () => {
-  const konto = "legacy-entzug";
-  const key = `kw.fragen.arbeitsstand.v1:${konto}`;
-  localStorage.setItem(
-    key,
-    JSON.stringify({
-      entwurf: "Eigene neue Eingabe",
-      startadressen: [],
-      antwort: {
-        frage: "Eigene ältere Frage",
-        rechtepruefungAusstehend: true,
-        result: {
-          answered: true,
-          answer: "ALTER-ENTZOGENER-KLARTEXT",
-          sources: ["legacy-quelle"],
-          citedSources: ["legacy-quelle"],
-          steps: [],
+it.each(["Eigene neue Eingabe", ""])(
+  "ein alter Rechtewechselmarker löscht auch ohne neuen Entwurf die Kopie (%s)",
+  (entwurf) => {
+    const konto = "legacy-entzug";
+    bestaetigeNeueAntwort(konto); // unabhängiger erlaubter Ausgangsstand je Variante
+    const key = `kw.fragen.arbeitsstand.v1:${konto}`;
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        entwurf,
+        startadressen: [],
+        antwort: {
+          frage: "Eigene ältere Frage",
+          rechtepruefungAusstehend: true,
+          result: {
+            answered: true,
+            answer: "ALTER-ENTZOGENER-KLARTEXT",
+            sources: ["legacy-quelle"],
+            citedSources: ["legacy-quelle"],
+            steps: [],
+          },
+          receipt: "legacy",
+          verschlossen: [],
+          gapId: null,
+          angezeigtAm: new Date().toISOString(),
         },
-        receipt: "legacy",
-        verschlossen: [],
-        gapId: null,
-        angezeigtAm: new Date().toISOString(),
-      },
-    }),
-  );
-  expect(arbeitsstandLesen(localStorage, konto)).toMatchObject({
-    entwurf: "Eigene neue Eingabe",
-    fragenFaden: ["Eigene ältere Frage"],
-    antwort: null,
-  });
-  expect(localStorage.getItem(key)).not.toContain("ALTER-ENTZOGENER-KLARTEXT");
-  expect(localStorage.getItem(key)).not.toContain("legacy-quelle");
-});
+      }),
+    );
+    expect(arbeitsstandLesen(localStorage, konto)).toMatchObject({
+      entwurf,
+      fragenFaden: ["Eigene ältere Frage"],
+      antwort: null,
+    });
+    expect(localStorage.getItem(key)).not.toContain("ALTER-ENTZOGENER-KLARTEXT");
+    expect(localStorage.getItem(key)).not.toContain("legacy-quelle");
+  },
+);
 
 it("zwei gleichzeitige Änderungen desselben lokalen Vorgangs werden verglichen; der veraltete Schreiber wird ehrlich abgewiesen", async () => {
   await mount("edit-a");
