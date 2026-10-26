@@ -2,6 +2,7 @@
 // ASK-AW04-2-NH: nur eine neue direkt betroffene Rückmeldekante; alte sechs Fälle bleiben unverändert.
 // Nur der HTTP-Transport ist kontrolliert. Kein /api/ask, Modell, Provider oder Browser.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { bestaetigeNeueAntwort } from "../../apps/web/src/lib/fragenArbeitsstand";
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
   useRole: () => ({ role: "experte" }),
   useRoleOptional: () => ({ role: "experte" }),
@@ -103,6 +104,7 @@ beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   rechtekontextZuruecksetzen();
+  bestaetigeNeueAntwort(KONTO);
   stempel = "ask2-rechte-vorher";
   halten = false;
   quelleEntzogen = false;
@@ -268,6 +270,8 @@ it("ASK-AW04-2-NH: regulär geöffnete Rückmeldung verbirgt Quelle und sperrt B
   expect(container.querySelector("[data-testid=ask-nicht-hilfreich-weg]")).toBe(weg);
   expect(weg.value).toBe(EIGENER_WEG);
   expect(arbeitsstandLesen(localStorage, KONTO)?.entwurf).toBe(RUECKMELDUNG);
+  expect(arbeitsstandLesen(localStorage, KONTO)?.antwort).toBeNull();
+  expect(localStorage.getItem(`kw.fragen.arbeitsstand.v1:${KONTO}`)).not.toContain(MARKE);
   const bestaetigen = container.querySelector<HTMLButtonElement>(
     "[data-testid=ask-nicht-hilfreich-bestaetigen]",
   );

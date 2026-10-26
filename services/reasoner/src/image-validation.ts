@@ -1,3 +1,4 @@
+import { safeImageDimensions } from "./image-dimensions";
 // WP-BILD-1f (bens P3): STRIKTE, FRÜHE Validierung der describe-Bild-Daten an der Route — VOR
 // jedem Provider-/HTTP-Aufruf. Abgelehnt wird deterministisch und ehrlich:
 //  - "format":         keine data:image-URL der vier sicheren Rasterformate (SVG & Co. → raus)
@@ -11,7 +12,12 @@ import { parseImageDataUrl } from "./model-client";
 // Autoritative Grenze: DEKODIERTE Bytes des Bildes (die „max. 5 MB" der Nutzer-Meldung).
 export const MAX_DESCRIBE_IMAGE_BYTES = 5 * 1024 * 1024;
 
-export type DescribeImageRejection = "format" | "base64" | "too-large" | "magic-mismatch";
+export type DescribeImageRejection =
+  | "format"
+  | "base64"
+  | "too-large"
+  | "magic-mismatch"
+  | "dimensions";
 
 export type DescribeImageVerdict =
   | { ok: true; mediaType: string; bytes: number }
@@ -86,5 +92,6 @@ export function validateDescribeImageDataUrl(dataUrl: unknown): DescribeImageVer
   if (!magicMatches(parsed.mediaType, decoded)) {
     return { ok: false, code: "magic-mismatch" };
   }
+  if (!safeImageDimensions(decoded, parsed.mediaType)) return { ok: false, code: "dimensions" };
   return { ok: true, mediaType: parsed.mediaType, bytes };
 }

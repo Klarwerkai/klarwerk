@@ -23,6 +23,7 @@
 // `DraftStaleError`), echte Offline-Warteschlange mit echtem `localStorage` und echten
 // `online`/`offline`-Ereignissen, echter NavGuard.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mitOfflineLockPort } from "../support/offline-lock-port";
 
 const box = vi.hoisted(() => ({
   reset: (): void => {},
@@ -550,3 +551,5 @@ describe("JOB 4193 R6 · BEN R5 — ein Altvorgang ohne Stand schreibt auch dire
     expect((await box.lies(id)).statement).toBe("Nur vom Handy ergänzt");
   });
 });
+
+mitOfflineLockPort();

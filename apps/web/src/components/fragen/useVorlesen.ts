@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { diktatSprache } from "../../lib/speechDictation";
+import { sprecheLokal } from "../../lib/vorlesen";
 import { cleanForSpeech, pickVoice, vorlesenMoeglich } from "../../lib/vorlesen";
 
 // ================================================================================================
@@ -72,7 +73,7 @@ export function useVorlesen(): Vorlesen {
     u.onerror = beendet;
     lauf.current = u;
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
+    if (!sprecheLokal(u)) return;
     setLiest(true);
   };
 

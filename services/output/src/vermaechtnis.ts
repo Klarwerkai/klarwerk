@@ -1,3 +1,4 @@
+import { darfInFreieAusgabe } from "../../knowledge-object";
 // ================================================================================================
 // WISSENS-VERMÄCHTNIS-BUCH — die Beiträge EINER Person als Buch (R-1642 / R-2175).
 // ================================================================================================
@@ -110,7 +111,7 @@ export function erstelleVermaechtnisBuch(e: VermaechtnisEingabe): VermaechtnisBu
     }
     if (ko.deletedAt || ko.mergedInto) {
       ausgelassen.papierkorb += 1;
-    } else if (!e.darfSehen(ko)) {
+    } else if (!e.darfSehen(ko) || !darfInFreieAusgabe(ko)) {
       ausgelassen.nichtEinsehbar += 1;
     } else if (isConfidential(ko.confidentiality)) {
       ausgelassen.vertraulich += 1;

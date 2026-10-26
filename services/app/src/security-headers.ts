@@ -26,6 +26,7 @@ import { leseM365Mandanten, wordAddinFrameAncestors } from "./office-host";
 export const WORD_ADDIN_CSP_PATHS: readonly string[] = [
   "/word-addin/taskpane.html",
   "/word-addin/anmeldung.html",
+  "/word-addin/begleitung.html",
 ];
 
 // aufnahme:20260922:excel-erster-weg (KO-04-01): DAS AUFGABENFENSTER FÜR EXCEL UND POWERPOINT.

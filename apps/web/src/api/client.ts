@@ -1,4 +1,11 @@
 import i18n from "i18next";
+import {
+  SITZUNGSENDE_EVENT,
+  SITZUNGSENDE_KEY,
+  geschuetzteAnfragenGesperrt,
+  lokaleEreignisse,
+  lokaleSitzungEpoche,
+} from "../lib/lokaleSitzung";
 import { RECHTEKONTEXT_KOPF, anfrageEpoche, rechtekontextGesehen } from "../lib/rechtekontext";
 import { gespeicherteSprache } from "../lib/sprachwahl";
 
@@ -31,6 +38,24 @@ export class ApiError extends Error {
 const BASE = "/api";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  if (geschuetzteAnfragenGesperrt() && !path.startsWith("/auth/"))
+    throw new ApiError(
+      401,
+      "INVALID_CREDENTIALS",
+      "Die Sitzung ist beendet. Bitte erneut anmelden.",
+    );
+  const lokaleEpoche = lokaleSitzungEpoche();
+  const controller = new AbortController();
+  const abbrechen = () => controller.abort();
+  const storage = (e: Event) => {
+    if ((e as Event & { key?: string | null }).key === SITZUNGSENDE_KEY) abbrechen();
+  };
+  if (!path.startsWith("/auth/")) {
+    lokaleEreignisse.addEventListener?.(SITZUNGSENDE_EVENT, abbrechen);
+    lokaleEreignisse.addEventListener?.("storage", storage);
+  }
+  if (init?.signal?.aborted) controller.abort();
+  init?.signal?.addEventListener("abort", abbrechen, { once: true });
   const headers = new Headers(init?.headers);
   headers.set("Accept-Language", i18n.language || gespeicherteSprache());
   // Der Server unterdrückt Referer. Der Lernkern braucht deshalb den ausdrücklichen
@@ -41,7 +66,18 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   const beginn = anfrageEpoche();
-  const res = await fetch(`${BASE}${path}`, { credentials: "include", ...init, headers });
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: "include",
+    ...init,
+    headers,
+    signal: controller.signal,
+  }).finally(() => {
+    lokaleEreignisse.removeEventListener?.(SITZUNGSENDE_EVENT, abbrechen);
+    lokaleEreignisse.removeEventListener?.("storage", storage);
+    init?.signal?.removeEventListener("abort", abbrechen);
+  });
+  if (lokaleSitzungEpoche() !== lokaleEpoche)
+    throw new ApiError(401, "INVALID_CREDENTIALS", "Die Sitzung wurde inzwischen beendet.");
   // produkt:20261011:peter-p14 (K6/K7): der Rechtekontext dieser Antwort — ändert er sich, verwirft
   // `RechtekontextWache` alle Inhaltsabfragen. Antworten ohne Kopf zählen nicht.
   rechtekontextGesehen(
@@ -66,6 +102,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
+  if (lokaleSitzungEpoche() !== lokaleEpoche)
+    throw new ApiError(401, "INVALID_CREDENTIALS", "Die Sitzung wurde inzwischen beendet.");
   return data as T;
 }
 
@@ -142,6 +180,12 @@ export const api = {
   // Der Fehlerweg ist derselbe wie bei `apiFetch` — JSON `{ error, message, … }` wird zum ApiError,
   // die übrigen Felder (etwa `pruefung` einer blockierten Übergabe) reisen in `details` mit.
   postDatei: async (path: string, body: unknown): Promise<{ blob: Blob; dateiname: string }> => {
+    if (geschuetzteAnfragenGesperrt())
+      throw new ApiError(
+        401,
+        "INVALID_CREDENTIALS",
+        "Die Sitzung ist beendet. Bitte erneut anmelden.",
+      );
     const headers = new Headers({
       "Content-Type": "application/json",
       "Accept-Language": i18n.language || gespeicherteSprache(),

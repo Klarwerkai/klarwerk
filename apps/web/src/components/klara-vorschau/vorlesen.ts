@@ -12,6 +12,7 @@
 // Ausserhalb von React aus demselben Grund wie `zustand.ts`: die Hülle montiert Klara neu.
 import { useSyncExternalStore } from "react";
 import { diktatSprache } from "../../lib/speechDictation";
+import { sprecheLokal } from "../../lib/vorlesen";
 import { pickVoice, vorlesenMoeglich } from "../../lib/vorlesen";
 import { antwortFuersVorlesen } from "../fragen/useVorlesen";
 
@@ -126,7 +127,7 @@ export function vorlesen(id: string, text: string, sprache: string): boolean {
   u.onpause = () => spielt(false);
   u.onend = ende;
   u.onerror = ende;
-  window.speechSynthesis.speak(u);
+  if (!sprecheLokal(u)) return false;
   setze({ liest: id });
   return true;
 }

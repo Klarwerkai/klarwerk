@@ -377,6 +377,7 @@ import {
 import { mitOcrText, mitTranskript, transkriptZiel } from "../lib/transkriptUebernahme";
 import { maxRawAttachmentBytes } from "../lib/uploadLimits";
 import { useAiAvailable } from "../lib/useAiAvailable";
+import { sprecheLokal } from "../lib/vorlesen";
 
 type Mode = CaptureMode;
 
@@ -4599,7 +4600,7 @@ export function CaptureArbeitsraum({
     u.onend = () => setIvReading(false);
     u.onerror = () => setIvReading(false);
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
+    if (!sprecheLokal(u)) return;
     setIvReading(true);
   };
 

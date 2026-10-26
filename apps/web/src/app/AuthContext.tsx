@@ -1,9 +1,24 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { type SessionUser, authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { vergissEinrichtungSpaeter } from "../lib/assistenzProfil";
 import { verwerfeEigeninitiative } from "../lib/klaraEigeninitiative";
+import {
+  SITZUNGSENDE_EVENT,
+  SITZUNGSENDE_KEY,
+  beendeLokaleSitzung,
+  bestaetigeLokalesKonto,
+  sperreLokaleSitzung,
+} from "../lib/lokaleSitzung";
 import {
   SESSION_REFRESH_MS,
   type Sitzungslage,
@@ -245,10 +260,11 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   const einloesen = useCallback((): void => {
     void authApi
       .logout()
-      .then(() => {
+      .then(async () => {
         // Bestätigt. Erst löschen (das erreicht auch die anderen Tabs), dann frisch starten.
         abmeldeschuldLoeschen();
         setSignOutFailed(false);
+        if (letztesKonto.current) await beendeLokaleSitzung(letztesKonto.current);
         queryClient.clear();
         window.location.assign("/");
       })
@@ -329,7 +345,48 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   // SessionUser bindet (verhaltensgleich — resolveSessionUser normalisierte ?? null ohnehin).
   // JOB 4333: aus dem Objektliteral herausgezogen, weil die Lage darunter denselben Wert braucht —
   // ein zweiter Aufruf wäre eine zweite Ableitung derselben Tatsache.
-  const user = resolveSessionUser({ data: me.data ?? null, isError: me.isError });
+  const [lokalesEndeAm, setLokalesEndeAm] = useState(0);
+  const user =
+    me.dataUpdatedAt > lokalesEndeAm
+      ? resolveSessionUser({ data: me.data ?? null, isError: me.isError })
+      : null;
+  const letztesKonto = useRef<string | null>(null);
+  const beendet = useRef<string | null>(null);
+  useEffect(() => {
+    if (user) {
+      letztesKonto.current = user.id;
+      bestaetigeLokalesKonto(user.id, me.dataUpdatedAt);
+      beendet.current = null;
+    } else if (
+      letztesKonto.current &&
+      me.isError &&
+      me.error instanceof ApiError &&
+      (me.error.status === 401 || me.error.status === 403) &&
+      beendet.current !== letztesKonto.current
+    ) {
+      beendet.current = letztesKonto.current;
+      void beendeLokaleSitzung(letztesKonto.current).catch(() => {});
+    }
+  }, [user, me.dataUpdatedAt, me.isError, me.error]);
+  useEffect(() => {
+    const sperren = () => {
+      setLokalesEndeAm(Date.now());
+      sperreLokaleSitzung();
+      void queryClient.cancelQueries({ predicate: (q) => q.queryKey[0] !== "auth" });
+      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "auth" });
+      queryClient.setQueryData(["auth", "me"], null);
+    };
+    const storage = (e: StorageEvent) => {
+      if (e.key === SITZUNGSENDE_KEY) sperren();
+    };
+    window.addEventListener(SITZUNGSENDE_EVENT, sperren);
+    window.addEventListener("storage", storage);
+    return () => {
+      window.removeEventListener(SITZUNGSENDE_EVENT, sperren);
+      window.removeEventListener("storage", storage);
+    };
+  }, [queryClient]);
+
   // ==============================================================================================
   // JOB 4333 — DIE FRAGE IST ERST BEANTWORTET, WENN AUCH DIE ZWEITE ABFRAGE GEANTWORTET HAT.
   // ==============================================================================================
@@ -400,6 +457,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
         // die Sperre trotzdem wieder da.
         abmeldeschuldLoeschen();
         setSignOutFailed(false);
+        if (letztesKonto.current) await beendeLokaleSitzung(letztesKonto.current);
         queryClient.clear();
         vergissEinrichtungSpaeter();
         verwerfeEigeninitiative();
@@ -409,6 +467,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       try {
         await authApi.logout();
       } finally {
+        if (letztesKonto.current) await beendeLokaleSitzung(letztesKonto.current);
         queryClient.clear();
         // produkt:20261010:assistenz-name-avatar: „Später" der Ersteinrichtung gilt nur bis hier.
         vergissEinrichtungSpaeter();

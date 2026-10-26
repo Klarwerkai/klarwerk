@@ -15,7 +15,6 @@ import {
   X,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -691,12 +690,18 @@ export function Mobile(): JSX.Element {
     setKonflikt(null);
     const neu: DraftFormState = { ...meins, gesehenerStand: frisch.updatedAt };
     setForm(neu);
-    setBaseline(neu);
     setEditingId(id);
     if (op) {
-      queue.replace(op.id, formToPayload(neu), titelVon(neu), frisch.updatedAt);
+      if (await queue.replace(op.id, formToPayload(neu), titelVon(neu), frisch.updatedAt))
+        setBaseline(neu);
+      else
+        push(
+          "error",
+          "Die Änderung konnte lokal nicht sicher gespeichert werden. Die Eingabe bleibt erhalten.",
+        );
       return;
     }
+    setBaseline(neu);
     // Beim SPEICHERN heisst es: der fremde Schreiber hat etwas geändert, das dieses Formular gar
     // nicht führt (z. B. Schlagworte). Der partielle Merge lässt das stehen — also noch einmal
     // gegen den frischen Stand senden, statt den Menschen mit einer leeren Frage aufzuhalten.
@@ -770,8 +775,11 @@ export function Mobile(): JSX.Element {
       // als ungebundener Rest da, den niemand mehr senden darf. Steht das Konto nicht fest, wird
       // NICHT angenommen; der getippte Text bleibt im Feld stehen (kein `resetForm`), und der
       // Mensch erfährt den Grund. Nichts wird still weggeworfen.
-      if (!queue.enqueue(neuerVorgang(f))) {
-        push("error", t("mob.konto.speichernWartet"));
+      if (!(await queue.enqueue(neuerVorgang(f)))) {
+        push(
+          "error",
+          "Die Eingabe konnte lokal nicht sicher gespeichert werden. Sie bleibt im Formular. Bitte Speicher und Konto prüfen.",
+        );
         return;
       }
       push("info", t("mob.queued"));
@@ -826,12 +834,11 @@ export function Mobile(): JSX.Element {
           // JOB 4249: dieselbe Bedingung wie am Knopf, und sie wirkt hier STRENGER — wird der
           // Vorgang nicht angenommen, darf auch nicht gewechselt werden, sonst wäre der Text nach
           // dem Seitenwechsel weg. Der Grund reist im `NavGuardSaveError` mit (JOB 3572 R2).
-          let angenommen = false;
-          flushSync(() => {
-            angenommen = queue.enqueue(neuerVorgang(f));
-          });
+          const angenommen = await queue.enqueue(neuerVorgang(f));
           if (!angenommen) {
-            throw new NavGuardSaveError(t("mob.konto.speichernWartet"));
+            throw new NavGuardSaveError(
+              "Die Eingabe konnte lokal nicht sicher gespeichert werden. Sie bleibt im Formular. Bitte Speicher und Konto prüfen.",
+            );
           }
           push("info", t("mob.queued"));
           setBeiseite(null);
@@ -954,7 +961,7 @@ export function Mobile(): JSX.Element {
   };
 
   /** „Neuen Stand holen": der Serverstand kommt ins Feld — und die eigene Fassung bleibt sichtbar. */
-  const neuenStandHolen = (): void => {
+  const neuenStandHolen = async (): Promise<void> => {
     if (konflikt?.lage.art !== "unterschied") {
       return;
     }
@@ -962,17 +969,21 @@ export function Mobile(): JSX.Element {
     const meins = konflikt.offline ?? form;
     setBeiseite({ titel: meins.title, text: formText(meins) });
     const neu: DraftFormState = { ...server, gesehenerStand: serverStand };
+    if (
+      konflikt.opId &&
+      !(await queue.replace(konflikt.opId, formToPayload(neu), titelVon(neu), serverStand))
+    ) {
+      push("error", "Die Änderung konnte lokal nicht sicher gespeichert werden.");
+      return;
+    }
     setForm(neu);
     setBaseline(neu);
     setEditingId(konflikt.entwurfId);
-    if (konflikt.opId) {
-      queue.replace(konflikt.opId, formToPayload(neu), titelVon(neu), serverStand);
-    }
     setKonflikt(null);
   };
 
   /** „Meine Fassung behalten": erneut speichern — diesmal gegen den frisch geholten Stand. */
-  const meineFassungBehalten = (): void => {
+  const meineFassungBehalten = async (): Promise<void> => {
     if (konflikt?.lage.art !== "unterschied") {
       return;
     }
@@ -981,13 +992,19 @@ export function Mobile(): JSX.Element {
       ...(konflikt.offline ?? form),
       gesehenerStand: serverStand,
     };
+    if (
+      konflikt.opId &&
+      !(await queue.replace(konflikt.opId, formToPayload(neu), titelVon(neu), serverStand))
+    ) {
+      push("error", "Die Änderung konnte lokal nicht sicher gespeichert werden.");
+      return;
+    }
     setForm(neu);
     setKonflikt(null);
     if (konflikt.opId) {
       // Die Wahl ERSETZT den Vorgang in der Warteschlange (und seine Voraussetzung); gelöscht
       // wird er nie — nachgesendet wird er wie bisher, sobald Verbindung besteht.
       setBaseline(neu);
-      queue.replace(konflikt.opId, formToPayload(neu), titelVon(neu), serverStand);
       return;
     }
     save.mutate(neu);
@@ -1503,7 +1520,7 @@ export function Mobile(): JSX.Element {
                 abrufbar, steht der ehrliche Fehler da — und ausdrücklich keine negative Aussage
                 („keine fremden Vorgänge"), denn dafür fehlt die Grundlage. Gesendet wird in
                 beiden Lagen nichts; der Knopf ist dann auch gesperrt. */}
-            {queue.hatBestand || queue.queue.length > 0 ? (
+            {queue.hatBestand || queue.queue.length > 0 || queue.kontolage.art === "unbekannt" ? (
               <div
                 data-testid="mob-warteschlange"
                 className="mt-4 rounded-card border border-hairline p-2.5"

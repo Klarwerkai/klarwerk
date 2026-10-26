@@ -340,7 +340,9 @@ export function bildVerkleinerung(grenzen: Partial<Bildgrenzen> = {}): Bildverkl
       // dieses Bildes — kein zweiter Zähler, der auseinanderlaufen könnte.
       bericht.ausfaelle.push({ bildNummer: bericht.gesehen, grund });
     }
-    return src;
+    return istAusfall(grund)
+      ? "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+      : src;
   };
 
   const mapImage = async (src: string): Promise<string> => {
@@ -349,6 +351,8 @@ export function bildVerkleinerung(grenzen: Partial<Bildgrenzen> = {}): Bildverkl
     if (!treffer) {
       return behalten(src, "keine-data-quelle");
     }
+    if (((treffer[2] ?? "").length * 3) / 4 > BILD_MAX_EINGABE_BYTES + 2)
+      return behalten(src, "eingabe-zu-gross");
     const quelle = Buffer.from(treffer[2] ?? "", "base64");
     if (quelle.byteLength > BILD_MAX_EINGABE_BYTES) {
       return behalten(src, "eingabe-zu-gross");
@@ -360,10 +364,7 @@ export function bildVerkleinerung(grenzen: Partial<Bildgrenzen> = {}): Bildverkl
     if (typeof ausgang === "string") {
       return behalten(src, ausgang);
     }
-    if (ausgang.byteLength >= quelle.byteLength) {
-      return behalten(src, "ableitung-nicht-kleiner");
-    }
-    bericht.verkleinert += 1;
+    if (ausgang.byteLength < quelle.byteLength) bericht.verkleinert += 1;
     bericht.quellbytes += quelle.byteLength;
     bericht.ableitungsbytes += ausgang.byteLength;
     return `data:image/webp;base64,${ausgang.toString("base64")}`;
@@ -413,10 +414,10 @@ const EINGABE_MAX_MB = Math.round(BILD_MAX_EINGABE_BYTES / (1024 * 1024));
 
 const AUSFALL_HINWEIS: Record<Ausfallgrund, string> = {
   "nicht-dekodierbar":
-    "Dieses Bild konnte beim Import nicht gelesen werden — es ist beschädigt oder liegt in einem Format vor, das der Import nicht öffnen kann. Die Bildquelle wurde unverändert gelassen, nicht verkleinert und nicht ersetzt; möglicherweise wird an dieser Stelle kein Bild angezeigt.",
+    "Dieses Bild konnte beim Import nicht gelesen werden — es ist beschädigt oder liegt in einem Format vor, das der Import nicht öffnen kann. Das Bild wurde sicher entfernt; der übrige Inhalt bleibt erhalten.",
   zeitgrenze:
-    "Dieses Bild liess sich in der vorgesehenen Zeit nicht verkleinern. Die Bildquelle wurde unverändert gelassen.",
-  "eingabe-zu-gross": `Dieses Bild ist grösser als ${EINGABE_MAX_MB} MB und wurde deshalb nicht verkleinert. Die Bildquelle wurde unverändert gelassen.`,
+    "Dieses Bild liess sich in der vorgesehenen Zeit nicht verkleinern. Das Bild wurde sicher entfernt.",
+  "eingabe-zu-gross": `Dieses Bild ist grösser als ${EINGABE_MAX_MB} MB und wurde deshalb nicht verkleinert. Das Bild wurde sicher entfernt.`,
 };
 
 /** Dieselbe Bildmenge, die auch `wrapImagesInFigures` zählt: eingebettete `data:`-Bildquellen. */
@@ -438,7 +439,7 @@ export function bildausfaelleVermerken(html: string, ausfaelle: readonly Bildaus
     const grund = jeNummer.get(nummer);
     return grund === undefined
       ? bildTag
-      : `${bildTag}<div class="panel panel-warning"><p>${AUSFALL_HINWEIS[grund]}</p></div>`;
+      : `<div class="panel panel-warning"><p>${AUSFALL_HINWEIS[grund]}</p></div>`;
   });
 }
 
@@ -464,25 +465,8 @@ async function ableiten(quelle: Buffer): Promise<Buffer | Uebersprungsgrund> {
     if (breite === 0 || hoehe === 0) {
       return "nicht-dekodierbar";
     }
-    if (
-      breite <= BILD_MAX_KANTE &&
-      hoehe <= BILD_MAX_KANTE &&
-      quelle.byteLength <= BILD_KLEIN_GENUG_BYTES
-    ) {
-      // ERHALTENE BYTES BEWEISEN KEINE DARSTELLBARKEIT — der Fehler, den Runde 2 hier hatte
-      // (Prüfbefund BEN, 09.09.). `metadata()` liest nur den KOPF: ein PNG mit heilem IHDR und
-      // zerstörtem IDAT nennt dort brav „64×64" und ging als „schon klein genug" durch, ohne dass
-      // je jemand hineingesehen hätte — gemeldet wurde eine Grössenoptimierung, geliefert ein Bild,
-      // das kein Anzeigeprogramm öffnet. Deshalb wird auch das kleine Bild WIRKLICH dekodiert;
-      // verworfen wird nur das Ergebnis, nicht die Prüfung.
-      //
-      // Der Speicher dafür ist von der Bedingung darüber gedeckelt und nicht von gutem Willen:
-      // höchstens BILD_MAX_KANTE × BILD_MAX_KANTE Pixel (rund 6,5 MB roh), und die Quelle ist
-      // ohnehin kleiner als BILD_KLEIN_GENUG_BYTES. Der Lauf steht innerhalb derselben
-      // Warteschlange und derselben Zeitgrenze wie die Ableitung selbst.
-      await sharp(quelle, EINGABE).raw().toBuffer();
-      return "schon-klein-genug";
-    }
+    if (breite > 16_384 || hoehe > 16_384 || breite * hoehe > BILD_MAX_EINGABE_PIXEL)
+      return "eingabe-zu-gross";
     return await bild
       // Die Aufnahmedrehung aus den EXIF-Daten wird ANGEWANDT, nicht weitergereicht: die Ableitung
       // trägt danach keine Metadaten mehr (sharp gibt sie ohne `withMetadata` nicht weiter), und

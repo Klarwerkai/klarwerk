@@ -28,6 +28,12 @@ import type {
   ReferenzPruefung,
   VerschlossenHinweis,
 } from "../api/types";
+import {
+  SITZUNGSENDE_EVENT,
+  SITZUNGSENDE_KEY,
+  lokaleEreignisse,
+  lokalesKontoErlaubt,
+} from "./lokaleSitzung";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -36,6 +42,12 @@ const PRAEFIX = "kw.fragen.arbeitsstand.v1:";
 // Nur tatsächlich erkannte, noch nicht haltbar markierte Wechsel dieses laufenden Arbeitsstands.
 // Die Inhalte bleiben allein im bestehenden Kontoeintrag; ein Schreibfehler hebt die Sperre nicht auf.
 const ungespeicherteAntwortSperren = new Set<string>();
+// Nur eigene Eingaben puffern, falls ein volles/gestörtes Kontingent die bereinigte Fassung ablehnt.
+const antwortfreieStaende = new Map<string, FragenArbeitsstand>();
+lokaleEreignisse.addEventListener?.(SITZUNGSENDE_EVENT, () => antwortfreieStaende.clear());
+lokaleEreignisse.addEventListener?.("storage", (e: Event) => {
+  if ((e as Event & { key?: string | null }).key === SITZUNGSENDE_KEY) antwortfreieStaende.clear();
+});
 
 /** Die zuletzt angezeigte Antwort — genau das, was die Fläche zum Zeichnen braucht. */
 export interface GespeicherteAntwort {
@@ -156,6 +168,7 @@ function fragekontextAus(roh: unknown): Fragekontext | null | undefined {
 export interface FragenArbeitsstand {
   /** Der Text im Fragefeld, wie er zuletzt stand. Leer = kein Entwurf. */
   entwurf: string;
+  fragenFaden?: string[];
   antwort: GespeicherteAntwort | null;
   /**
    * Die Startadressen (`?q=`/`?ask=1` samt Navigationskennung), die dieser Stand schon übernommen
@@ -488,9 +501,11 @@ export function arbeitsstandLesen(
   storage: StorageLike | undefined,
   konto: string | null,
 ): FragenArbeitsstand | null {
-  if (!storage || !konto) {
+  if (!storage || !konto || !lokalesKontoErlaubt(konto)) {
     return null;
   }
+  const bereinigt = antwortfreieStaende.get(konto);
+  if (bereinigt) return bereinigt;
   try {
     const roh = storage.getItem(arbeitsstandSchluessel(konto));
     if (roh === null) {
@@ -501,22 +516,25 @@ export function arbeitsstandLesen(
       return null;
     }
     const gelesen = antwortAus(wert.antwort);
-    const antwort: GespeicherteAntwort | null =
-      gelesen && ungespeicherteAntwortSperren.has(konto)
-        ? { ...gelesen, rechtepruefungAusstehend: true }
-        : gelesen;
+    const antwort: GespeicherteAntwort | null = ungespeicherteAntwortSperren.has(konto)
+      ? null
+      : gelesen;
     // Runde-2-Einträge trugen EINE Marke unter `startfrage` — sie wird übernommen, nicht verloren.
     const startadressen = Array.isArray(wert.startadressen)
       ? wert.startadressen.filter((m): m is string => typeof m === "string")
       : typeof wert.startfrage === "string"
         ? [wert.startfrage]
         : [];
+    const fragenFaden = Array.isArray(wert.fragenFaden)
+      ? wert.fragenFaden.filter((f): f is string => typeof f === "string").slice(-3)
+      : [];
     const fragekontext = kontextAuswahlAus(wert.fragekontext);
     const szenario = szenarioAus(wert.szenario);
     if (
       wert.entwurf.trim() === "" &&
       antwort === null &&
       startadressen.length === 0 &&
+      fragenFaden.length === 0 &&
       !fragekontext &&
       !szenario
     ) {
@@ -526,6 +544,7 @@ export function arbeitsstandLesen(
       entwurf: wert.entwurf,
       antwort,
       startadressen,
+      ...(fragenFaden.length ? { fragenFaden } : {}),
       ...(fragekontext ? { fragekontext } : {}),
       ...(szenario ? { szenario } : {}),
     };
@@ -541,11 +560,12 @@ export function merkeAntwortRechtewechsel(
 ): void {
   if (konto === null) return;
   const stand = arbeitsstandLesen(storage, konto);
-  if (!stand?.antwort || stand.antwort.rechtepruefungAusstehend) return;
   ungespeicherteAntwortSperren.add(konto);
+  if (!stand) return;
   arbeitsstandSchreiben(storage, konto, {
     ...stand,
-    antwort: { ...stand.antwort, rechtepruefungAusstehend: true },
+    antwort: null,
+    fragenFaden: stand.fragenFaden ?? (stand.antwort?.frage ? [stand.antwort.frage] : []),
   });
 }
 
@@ -560,8 +580,17 @@ export function arbeitsstandSchreiben(
   konto: string | null,
   stand: FragenArbeitsstand,
 ): void {
-  if (schreibversuch(storage, konto, stand) && konto !== null)
-    ungespeicherteAntwortSperren.delete(konto);
+  if (konto === null || !lokalesKontoErlaubt(konto)) return;
+  const gesperrt = ungespeicherteAntwortSperren.has(konto);
+  const fragenFaden = stand.fragenFaden ?? (stand.antwort?.frage ? [stand.antwort.frage] : []);
+  const sauber = gesperrt
+    ? { ...stand, antwort: null, ...(fragenFaden.length ? { fragenFaden } : {}) }
+    : stand;
+  if (gesperrt) antwortfreieStaende.set(konto, sauber);
+  if (!schreibversuch(storage, konto, sauber) && gesperrt) {
+    // Ein alter Klartext darf nach dem Entzug auch bei einem Schreibfehler nicht liegen bleiben.
+    storage?.removeItem(arbeitsstandSchluessel(konto));
+  }
 }
 
 function schreibversuch(
@@ -581,6 +610,7 @@ function schreibversuch(
       rest.entwurf.trim() === "" &&
       rest.antwort === null &&
       rest.startadressen.length === 0 &&
+      (rest.fragenFaden?.length ?? 0) === 0 &&
       !mitKontext &&
       !mitSzenario
     ) {
@@ -702,4 +732,11 @@ export function belegNochGueltig(
   }
   const am = Date.parse(antwortAm);
   return !Number.isNaN(am) && jetztMs - am < BELEG_GUELTIG_MS;
+}
+
+export function bestaetigeNeueAntwort(konto: string | null): void {
+  if (konto !== null && lokalesKontoErlaubt(konto)) {
+    ungespeicherteAntwortSperren.delete(konto);
+    antwortfreieStaende.delete(konto);
+  }
 }

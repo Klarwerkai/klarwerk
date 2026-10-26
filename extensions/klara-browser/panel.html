@@ -94,6 +94,12 @@
             <label for="password" data-i18n="password"></label><input id="password" type="password" autocomplete="off" required maxlength="1024" />
             <button type="submit" id="login" data-i18n="login"></button>
           </form>
+          <div id="browser-login">
+            <a href="https://app.klarwerk.ai/profil?bereich=assistenz" target="_blank" rel="noopener noreferrer">Im Browser mit 2FA oder SSO anmelden</a>
+            <p>Im Profil unter Programme einen Verbindungscode erzeugen und hier einmalig einlösen.</p>
+            <label for="browser-code">Verbindungscode</label><input id="browser-code" type="password" autocomplete="off" maxlength="256" />
+            <button type="button" id="browser-redeem">Verbindungscode einlösen</button>
+          </div>
           <button type="button" id="logout" data-i18n="logout" hidden></button>
         </details>
         <!-- BPA-01: DIE KONTEXTKARTE. Welche Seite und welche Markierung Klara gerade kennt — und
