@@ -1,3 +1,5 @@
+import { PptxTooLargeError, type PptxUnzip, assertArchiveWithinBudget } from "./zipBudget";
+export * from "./zipBudget";
 // DOM-freier PowerPoint-Kern (WP-D5 / WP-D5b). Bewusst OHNE File/Image/document/FileReader — im Node-/
 // Root-Typecheck und in Tests mit kleinen XML-Fixtures prüfbar. Der Browser-Wrapper (fflate lazy,
 // selektiv + budgetiert) liegt in `files.ts`. Spiegelt strikt die DOCX/PDF-Architektur (docx.ts/pdf.ts):
@@ -16,6 +18,8 @@
 // xmlns-Deklarationen des Dokuments dynamisch aufgelöst (drawingml/presentationml/relationships-URI →
 // tatsächliches Präfix). Fällt der Namespace nicht deklariert an, greift ein präfix-tolerantes Muster.
 // Relationship-Parsing ist unabhängig von Attribut-Reihenfolge und Anführungszeichen-Art.
+
+import { xmlElements, xmlOpeningTags } from "./xmlElements";
 
 import {
   IMAGE_ID_PREFIX,
@@ -45,7 +49,6 @@ const NS_PACKAGE_RELS = "http://schemas.openxmlformats.org/package/2006/relation
 
 // Injizierter Entpack-Vertrag (Muster DocxEngine/PdfEngine): der Test nutzt einen Fake, der
 // Browser-Wrapper lädt fflate selektiv + budgetiert lazy. Rückgabe: Pfad → Rohbytes.
-export type PptxUnzip = (data: Uint8Array) => Record<string, Uint8Array>;
 
 // WP-D5: Folien-Cap als Sicherheitsnetz gegen Riesen-Decks (analog MAX_PDF_PAGES). Über dem Cap wird
 // der Rest NICHT still verschluckt, sondern ehrlich als `truncated` gemeldet.
@@ -60,11 +63,6 @@ export const MAX_PPTX_SLIDES = 300;
 //  - 2000 akzeptierte slideN.xml-Einträge (harter Abbruch → bounded Dekompression; ein normaler Deck
 //    liegt unter MAX_PPTX_SLIDES, ein 2000+-Folien-Archiv wird ehrlich abgelehnt statt still gekürzt);
 //  - Expansionsratio 100 je NICHTLEEREM akzeptiertem Eintrag.
-export const PPTX_MAX_ENTRIES = 5000; // Backstop-Cap für assertArchiveWithinBudget (gefilterte Menge)
-export const PPTX_MAX_TOTAL_DECOMPRESSED_BYTES = 64 * 1024 * 1024; // 64 MiB
-export const PPTX_MAX_ARCHIVE_ENTRIES = 4000;
-export const PPTX_MAX_SLIDE_ENTRIES = 2000;
-export const PPTX_MAX_ENTRY_EXPANSION_RATIO = 100;
 // WP-D5d (GELB-Härtung 3): Deckel für die Namespace-Präfix-Alternation — Anzahl gesammelter Präfixe je
 // Dokument und Länge je Präfix. Ein entartetes/böswilliges XML mit tausenden xmlns-Deklarationen soll die
 // Regex-Alternation nicht sprengen; Überschreitung → kontrollierter Importfehler.
@@ -74,10 +72,6 @@ export const PPTX_MAX_NS_PREFIX_LEN = 64;
 // WP-D9: zusätzlich die Folien-Rels (Bild-Auflösung rId → Target) und ppt/media/* (die Bild-Bytes) —
 // über DENSELBEN gebudgeteten Streaming-Unzip; die Ist-Byte-Zählung (pro Eintrag + kumuliert, 64 MiB)
 // gilt UNVERÄNDERT auch für Medien: kein zweiter Unzip-Pfad, kein Budget-Bypass, weiterhin fail-closed.
-export const PPTX_NEEDED_ENTRY_RE =
-  /^ppt\/(?:presentation\.xml|_rels\/presentation\.xml\.rels|slides\/slide\d+\.xml|slides\/_rels\/slide\d+\.xml\.rels|media\/[^/]+)$/;
-const PPTX_SLIDE_ENTRY_RE = /^ppt\/slides\/slide\d+\.xml$/;
-
 // WP-D9: Budget für EINGEBETTETE Bilder — bewusst GETRENNT vom harten Archiv-Budget (64 MiB, fail-closed
 // gegen Zip-Bomben). Abwägung: Bilder werden als base64-data-URLs in bodyHtml eingebettet (~4/3 Aufblähung)
 // und müssen durch Editor/Sanitizer/Persistenz — 5 MiB je Bild / 20 MiB gesamt halten das handhabbar.
@@ -100,23 +94,6 @@ const PPTX_IMAGE_MIME: Record<string, string> = {
 
 // WP-D5b: ehrlicher, kontrollierter Importfehler (statt UI-Freeze / stiller Teilimport). Der Aufrufer
 // (Capture) fängt ihn und zeigt eine spezifische DE/EN/NL-Meldung.
-export type PptxImportErrorReason =
-  | "file-too-large"
-  | "archive-too-large"
-  | "too-many-entries"
-  | "expansion-ratio"
-  // WP-D5d (GELB-Härtung 3): zu viele/zu lange Namespace-Präfixe (entartetes XML).
-  | "too-many-namespaces";
-
-export class PptxTooLargeError extends Error {
-  readonly reason: PptxImportErrorReason;
-  constructor(reason: PptxImportErrorReason) {
-    super(`PPTX_TOO_LARGE:${reason}`);
-    this.name = "PptxTooLargeError";
-    this.reason = reason;
-  }
-}
-
 export interface PptxRichResult {
   html: string; // strukturerhaltendes HTML (h2 je Folie, Absätze, Listen, Tabellen, WP-D9: figures)
   text: string; // Klartext — für die KI-Punkte-Extraktion
@@ -340,9 +317,12 @@ function bytesToBase64(bytes: Uint8Array): string {
 function blipEmbedRid(picXml: string, ns: DrawingNs): string | null {
   const blip = tagName(ns.a, "blip");
   const embedAttr = attrName(ns.r, "embed");
-  const re = new RegExp(`<${blip}[^>]*\\s${embedAttr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "u");
-  const m = re.exec(picXml);
-  return m ? (m[1] ?? m[2] ?? null) : null;
+  const re = new RegExp(`\\s${embedAttr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "u");
+  for (const tag of xmlOpeningTags(picXml, blip)) {
+    const match = re.exec(tag);
+    if (match) return match[1] ?? match[2] ?? null;
+  }
+  return null;
 }
 
 // WP-D9: figure exakt im Vertrag von wrapImagesInFigures (BILD-1a/1b): beidseitige data-image-id
@@ -361,16 +341,13 @@ function imageFigureHtml(src: string, id: string, _caption: string): string {
 function paragraphText(paragraphXml: string, ns: DrawingNs): string {
   const t = tagName(ns.a, "t");
   const br = tagName(ns.a, "br");
-  const re = new RegExp(`<${t}[^>]*>([\\s\\S]*?)<\\/${t}>|<${br}[^>]*\\/?>`, "gu");
   const out: string[] = [];
-  let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
-  while ((m = re.exec(paragraphXml)) !== null) {
-    if (m[1] !== undefined) {
-      out.push(unescapeXml(m[1]));
-    } else {
-      out.push(" "); // <a:br/> → Leerzeichen
-    }
+  for (const element of xmlElements(paragraphXml, `${t}|${br}`)) {
+    out.push(
+      element.name.split(":").at(-1) === "br"
+        ? " "
+        : unescapeXml(paragraphXml.slice(element.innerStart, element.innerEnd)),
+    );
   }
   return out.join("").replace(/\s+/g, " ").trim();
 }
@@ -383,16 +360,14 @@ function paragraphText(paragraphXml: string, ns: DrawingNs): string {
 // Slice; Best-Effort, kein stiller Datenverlust — der Text bleibt erhalten).
 function paragraphListKind(paragraphXml: string, ns: DrawingNs): ListKind {
   const pPr = tagName(ns.a, "pPr");
-  const block =
-    new RegExp(`<${pPr}[\\s\\S]*?(?:\\/>|<\\/${pPr}>)`, "u").exec(paragraphXml)?.[0] ?? "";
-  if (new RegExp(`<${tagName(ns.a, "buNone")}`, "u").test(block)) {
-    return "none";
-  }
-  if (new RegExp(`<${tagName(ns.a, "buAutoNum")}`, "u").test(block)) {
-    return "ol";
-  }
-  if (new RegExp(`<${tagName(ns.a, "buChar")}`, "u").test(block)) {
-    return "ul";
+  const element = xmlElements(paragraphXml, pPr).next().value;
+  const block = element ? paragraphXml.slice(element.start, element.end) : "";
+  for (const [name, kind] of [
+    ["buNone", "none"],
+    ["buAutoNum", "ol"],
+    ["buChar", "ul"],
+  ] as const) {
+    if (!xmlOpeningTags(block, tagName(ns.a, name)).next().done) return kind;
   }
   return "none";
 }
@@ -400,11 +375,8 @@ function paragraphListKind(paragraphXml: string, ns: DrawingNs): ListKind {
 function shapeParagraphs(shapeXml: string, ns: DrawingNs): SlidePara[] {
   const paras: SlidePara[] = [];
   const p = tagName(ns.a, "p");
-  const re = new RegExp(`<${p}[^>]*>([\\s\\S]*?)<\\/${p}>|<${p}[^>]*\\/>`, "gu");
-  let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
-  while ((m = re.exec(shapeXml)) !== null) {
-    const inner = m[1] ?? "";
+  for (const element of xmlElements(shapeXml, p)) {
+    const inner = shapeXml.slice(element.innerStart, element.innerEnd);
     const text = paragraphText(inner, ns);
     if (text.length === 0) {
       continue;
@@ -415,10 +387,11 @@ function shapeParagraphs(shapeXml: string, ns: DrawingNs): SlidePara[] {
 }
 
 function shapeIsTitle(shapeXml: string, ns: DrawingNs): boolean {
-  return new RegExp(
-    `<${tagName(ns.p, "ph")}[^>]*\\btype\\s*=\\s*(?:"(?:title|ctrTitle)"|'(?:title|ctrTitle)')`,
-    "u",
-  ).test(shapeXml);
+  for (const tag of xmlOpeningTags(shapeXml, tagName(ns.p, "ph"))) {
+    const type = attributeValue(tag, "type");
+    if (type === "title" || type === "ctrTitle") return true;
+  }
+  return false;
 }
 
 // WP-D5b (GELB-Fix 4): Tabelle (a:tbl) Best-Effort → einfache <table> (Zeilen a:tr, Zellen a:tc). Der
@@ -428,18 +401,16 @@ function tableFromGraphicFrame(
   frameXml: string,
   ns: DrawingNs,
 ): { html: string; text: string } | null {
-  const tblName = tagName(ns.a, "tbl");
-  const tbl = new RegExp(`<${tblName}[\\s\\S]*?<\\/${tblName}>`, "u").exec(frameXml)?.[0];
-  if (!tbl) {
-    return null;
-  }
-  const trName = tagName(ns.a, "tr");
-  const tcName = tagName(ns.a, "tc");
-  const rows = tbl.match(new RegExp(`<${trName}[\\s\\S]*?<\\/${trName}>`, "gu")) ?? [];
+  const element = xmlElements(frameXml, tagName(ns.a, "tbl")).next().value;
+  if (!element) return null;
+  const tbl = frameXml.slice(element.innerStart, element.innerEnd);
   const rowHtml: string[] = [];
   const rowText: string[] = [];
-  for (const row of rows) {
-    const cells = row.match(new RegExp(`<${tcName}[\\s\\S]*?<\\/${tcName}>`, "gu")) ?? [];
+  for (const rowElement of xmlElements(tbl, tagName(ns.a, "tr"))) {
+    const row = tbl.slice(rowElement.innerStart, rowElement.innerEnd);
+    const cells = [...xmlElements(row, tagName(ns.a, "tc"))].map((cell) =>
+      row.slice(cell.innerStart, cell.innerEnd),
+    );
     const cellTexts = cells.map((cell) =>
       shapeParagraphs(cell, ns)
         .map((p) => p.text)
@@ -513,22 +484,15 @@ export function slideToHtml(
   let title = "";
   const items: BodyItem[] = [];
   let tableCount = 0;
-  // Top-level Formen/Rahmen in Dokumentreihenfolge (sp = Text, graphicFrame = Tabelle, WP-D9: pic =
-  // Bild). Die drei verschachteln sich NICHT ineinander → das erste passende Schluss-Tag beendet den
-  // Block (kein Rückverweis nötig, der mit namespace-Alternation ohnehin nicht ginge). Gruppe 1 =
-  // getroffener Tag-Name (z. B. p:sp / graphicFrame / p:pic), um die Block-Arten zu unterscheiden.
+  // Formen, Rahmen und Bilder in Dokumentreihenfolge. Der Scanner läuft vorwärts, prüft
+  // die Namespace-QNames und hält höchstens einen offenen Block; fehlende Schlüsse starten
+  // keine wiederholte Suche über den Rest der Folie.
   const spName = tagName(ns.p, "sp");
   const gfName = tagName(ns.p, "graphicFrame");
   const picName = tagName(ns.p, "pic");
-  const blockRe = new RegExp(
-    `<(${spName}|${gfName}|${picName})[^>]*>[\\s\\S]*?<\\/(?:${spName}|${gfName}|${picName})>`,
-    "gu",
-  );
-  let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
-  while ((m = blockRe.exec(slideXml)) !== null) {
-    const block = m[0];
-    const elementName = m[1] ?? "";
+  for (const element of xmlElements(slideXml, `${spName}|${gfName}|${picName}`)) {
+    const block = slideXml.slice(element.start, element.end);
+    const elementName = element.name;
     if (/graphicFrame/.test(elementName)) {
       const table = tableFromGraphicFrame(block, ns);
       if (table) {
@@ -568,7 +532,8 @@ export function slideToHtml(
   }
   const heading = title.length > 0 ? title : `${opts.slideLabel} ${opts.slideNumber}`;
   const html = `<h2>${escapeHtml(heading)}</h2>${renderBodyItems(items)}`;
-  const imageCount = (slideXml.match(new RegExp(`<${tagName(ns.a, "blip")}`, "gu")) ?? []).length;
+  let imageCount = 0;
+  for (const _tag of xmlOpeningTags(slideXml, tagName(ns.a, "blip"))) imageCount += 1;
 
   // Klartext trägt NUR echten Inhalt (echter Titel + Textrahmen/Tabellen), NICHT die „Folie N"-Struktur-
   // Überschrift — sonst zählte eine reine Grafik-Folie fälschlich als „Text vorhanden".
@@ -620,12 +585,9 @@ function relationshipTargets(relsXml: string): Map<string, string> {
   }
   const relNs = collectNamespacePrefixSets(relsXml);
   const relName = tagName(relNs.get(NS_PACKAGE_RELS), "Relationship");
-  const relRe = new RegExp(`<${relName}[^>]*>`, "gu");
-  let rb: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
-  while ((rb = relRe.exec(relsXml)) !== null) {
-    const id = attributeValue(rb[0], "Id");
-    const target = attributeValue(rb[0], "Target");
+  for (const tag of xmlOpeningTags(relsXml, relName)) {
+    const id = attributeValue(tag, "Id");
+    const target = attributeValue(tag, "Target");
     if (id && target) {
       relMap.set(id, target);
     }
@@ -680,11 +642,11 @@ export function resolveSlideOrder(files: Record<string, Uint8Array>): string[] {
   const seen = new Set<string>();
   // \s (nicht \b) vor dem Attribut — \b ist ASCII-Wortgrenze und würde vor einem Unicode-Präfix versagen;
   // ein Whitespace vor dem Attributnamen trennt zuverlässig (und verhindert Teiltreffer wie „xr:id").
-  const idRe = new RegExp(`<${sldIdName}[^>]*\\s${ridAttr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "gu");
-  let im: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
-  while ((im = idRe.exec(presentation)) !== null) {
-    const rid = im[1] ?? im[2] ?? "";
+  const ridRe = new RegExp(`\\s${ridAttr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "u");
+  for (const tag of xmlOpeningTags(presentation, sldIdName)) {
+    const match = ridRe.exec(tag);
+    if (!match) continue;
+    const rid = match[1] ?? match[2] ?? "";
     const target = relMap.get(rid);
     if (!target) {
       continue;
@@ -707,282 +669,6 @@ export function resolveSlideOrder(files: Record<string, Uint8Array>): string[] {
 // WP-D5b (GELB-Fix 3): Backstop-Budget für die dem Kern übergebene Eintragsmenge — kontrollierter,
 // ehrlicher Abbruch statt UI-Freeze/OOM, falls die (im Browser bereits selektiv gefilterte) Menge doch
 // zu groß ist. Rein & testbar (der Test injiziert ein überdimensioniertes unzip-Ergebnis).
-export function assertArchiveWithinBudget(
-  files: Record<string, Uint8Array>,
-  limits: { maxEntries?: number | undefined; maxTotalBytes?: number | undefined } = {},
-): void {
-  const maxEntries = limits.maxEntries ?? PPTX_MAX_ENTRIES;
-  const maxTotalBytes = limits.maxTotalBytes ?? PPTX_MAX_TOTAL_DECOMPRESSED_BYTES;
-  const names = Object.keys(files);
-  if (names.length > maxEntries) {
-    throw new PptxTooLargeError("too-many-entries");
-  }
-  let total = 0;
-  for (const name of names) {
-    total += files[name]?.byteLength ?? 0;
-    if (total > maxTotalBytes) {
-      throw new PptxTooLargeError("archive-too-large");
-    }
-  }
-}
-
-// WP-D5c/WP-D5d (bens ROT-Fix 2): ZIP-Eintrags-Metadaten. size/originalSize sind DEKLARIERTE Angaben des
-// Archivs — bei Streaming-Entpacken können sie fehlen (undefined). Sie dienen nur als billiger Vorfilter;
-// die harte Garantie ist die Ist-Byte-Zählung (addOutputBytes).
-export interface PptxZipEntryMeta {
-  name: string;
-  compressedSize?: number | undefined;
-  originalSize?: number | undefined;
-}
-
-export interface PptxUnzipBudgetLimits {
-  maxArchiveEntries?: number;
-  maxSlideEntries?: number;
-  maxTotalDecompressedBytes?: number;
-  maxEntryExpansionRatio?: number;
-  // R-0179 (Excel-Import): dasselbe Budget für ein anderes OOXML-Archiv. `neededEntry` ersetzt die
-  // PPTX-Namensliste, `countedEntry` die Folien-Untermenge unter `maxSlideEntries`. Ohne Angabe gilt
-  // unverändert der PPTX-Vertrag.
-  neededEntry?: RegExp;
-  countedEntry?: RegExp;
-}
-
-// undefined = unbekannt (Streaming, keine Metadaten) → NICHT fail-closed; bad = vorhanden aber korrupt
-// (NaN/negativ) → fail-closed; sonst die Zahl.
-function sizeState(v: number | undefined): "unknown" | "bad" | number {
-  if (v === undefined) {
-    return "unknown";
-  }
-  if (!Number.isFinite(v) || v < 0) {
-    return "bad";
-  }
-  return v;
-}
-
-// WP-D5c/WP-D5d (bens ROT-Fix 2): zustandsbehaftetes Budget. `accept` läuft je Eintrag VOR der
-// Dekompression (Name-Caps + billige DEKLARIERTE-Größen-Sanity); `addOutputBytes` zählt die ECHTEN
-// dekomprimierten Bytes während des Streamings und bricht ab, sobald das Budget (pro Eintrag ODER
-// kumuliert) fällt — damit ist eine MANIPULIERTE originalSize egal, die reale Arbeit ist gedeckelt.
-// Durchgesetzt:
-//  - JEDER gesehene Eintrag zählt gegen den Archiv-Iterations-Cap;
-//  - nur benötigte Einträge (PPTX_NEEDED_ENTRY_RE) werden akzeptiert;
-//  - FAIL-CLOSED bei WIDERSPRÜCHLICHEN deklarierten Größen: NaN/negativ, oder Null-Denominator
-//    (originalSize>0 aber compressedSize<=0) → inkonsistente Metadaten; FEHLENDE Größen (Streaming) sind
-//    KEIN Fehler, weil die Ist-Byte-Zählung greift;
-//  - Expansionsratio-Prüfung für jeden nichtleeren Eintrag mit bekannten Größen;
-//  - deklariertes Vorab-Budget als Vorfilter; die harte Grenze ist addOutputBytes;
-//  - harter Cap auf akzeptierte slideN.xml-Einträge.
-export function createPptxUnzipBudget(limits: PptxUnzipBudgetLimits = {}): {
-  accept(entry: PptxZipEntryMeta): boolean;
-  beginEntry(): void;
-  addOutputBytes(n: number): void;
-  stats(): { seen: number; acceptedSlides: number; totalOriginal: number; totalReal: number };
-} {
-  const maxArchiveEntries = limits.maxArchiveEntries ?? PPTX_MAX_ARCHIVE_ENTRIES;
-  const maxSlideEntries = limits.maxSlideEntries ?? PPTX_MAX_SLIDE_ENTRIES;
-  const maxTotalBytes = limits.maxTotalDecompressedBytes ?? PPTX_MAX_TOTAL_DECOMPRESSED_BYTES;
-  const maxRatio = limits.maxEntryExpansionRatio ?? PPTX_MAX_ENTRY_EXPANSION_RATIO;
-  const neededEntry = limits.neededEntry ?? PPTX_NEEDED_ENTRY_RE;
-  const countedEntry = limits.countedEntry ?? PPTX_SLIDE_ENTRY_RE;
-  let seen = 0;
-  let acceptedSlides = 0;
-  let totalOriginal = 0;
-  let totalReal = 0;
-  let realEntry = 0;
-  return {
-    accept(entry: PptxZipEntryMeta): boolean {
-      seen += 1;
-      if (seen > maxArchiveEntries) {
-        throw new PptxTooLargeError("too-many-entries");
-      }
-      if (!neededEntry.test(entry.name)) {
-        return false;
-      }
-      const cs = sizeState(entry.compressedSize);
-      const os = sizeState(entry.originalSize);
-      // Korrupte deklarierte Größe (vorhanden aber NaN/negativ) → fail-closed.
-      if (cs === "bad" || os === "bad") {
-        throw new PptxTooLargeError("archive-too-large");
-      }
-      // Null-Denominator / inkonsistente Metadaten: originalSize>0 aber compressedSize<=0.
-      if (typeof os === "number" && os > 0 && typeof cs === "number" && cs <= 0) {
-        throw new PptxTooLargeError("archive-too-large");
-      }
-      // Ratio nur bei bekannten Größen und compressed>0 (billiger Vorfilter).
-      if (typeof cs === "number" && typeof os === "number" && cs > 0 && os / cs > maxRatio) {
-        throw new PptxTooLargeError("expansion-ratio");
-      }
-      if (typeof os === "number") {
-        totalOriginal += os;
-        if (totalOriginal > maxTotalBytes) {
-          throw new PptxTooLargeError("archive-too-large");
-        }
-      }
-      if (countedEntry.test(entry.name)) {
-        acceptedSlides += 1;
-        if (acceptedSlides > maxSlideEntries) {
-          throw new PptxTooLargeError("too-many-entries");
-        }
-      }
-      return true;
-    },
-    beginEntry(): void {
-      realEntry = 0;
-    },
-    addOutputBytes(n: number): void {
-      realEntry += n;
-      totalReal += n;
-      // Ist-Byte-Garantie: pro Eintrag UND kumuliert — unabhängig von der deklarierten Größe.
-      if (realEntry > maxTotalBytes || totalReal > maxTotalBytes) {
-        throw new PptxTooLargeError("archive-too-large");
-      }
-    },
-    stats() {
-      return { seen, acceptedSlides, totalOriginal, totalReal };
-    },
-  };
-}
-
-// WP-D5d (bens ROT-Fix 2): schmaler fflate-STREAMING-Vertrag (nur das Genutzte). Der Handler bekommt je
-// Datei einen Stream; `start()` beginnt die Dekompression, `ondata` liefert die ECHTEN Chunks, `terminate`
-// bricht ab. Die deklarierte originalSize ist damit irrelevant — gezählt werden die tatsächlichen Bytes.
-export interface FflateUnzipFileStream {
-  name: string;
-  size?: number;
-  originalSize?: number;
-  compression: number;
-  ondata: (err: Error | null, data: Uint8Array, final: boolean) => void;
-  start(): void;
-  terminate: () => void;
-}
-export interface FflateStreamingUnzip {
-  onfile: (file: FflateUnzipFileStream) => void;
-  register(decoder: unknown): void;
-  push(chunk: Uint8Array, final?: boolean): void;
-}
-export interface FflateStreaming {
-  Unzip: new () => FflateStreamingUnzip;
-  UnzipInflate: unknown;
-  UnzipPassThrough?: unknown; // für STORE-Einträge (Methode 0); PPTX-XML ist i. d. R. deflate.
-}
-
-// 16 KiB komprimiert je push — fflate dekomprimiert inkrementell, sodass die reale Ausgabe je Schritt
-// gedeckelt ist. WP-D5e (bens GELB-Auflage, ehrliche Abbruchsemantik): terminate()/das failure-Flag
-// unterbrechen NICHT die synchrone Dekompression des GERADE laufenden push(); der Abbruch wirkt erst ab dem
-// NÄCHSTEN push. Die Restarbeit eines laufenden Pushs ist durch diese Chunk-Größe (16 KiB komprimiert)
-// begrenzt; zusätzlich verwirft der ondata-Callback nach erkanntem failure den bisherigen Puffer und
-// konkateniert nicht weiter.
-const PPTX_STREAM_CHUNK_BYTES = 1 << 14;
-
-function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
-  if (chunks.length === 1) {
-    return chunks[0] ?? new Uint8Array(0);
-  }
-  let len = 0;
-  for (const c of chunks) {
-    len += c.length;
-  }
-  const out = new Uint8Array(len);
-  let pos = 0;
-  for (const c of chunks) {
-    out.set(c, pos);
-    pos += c.length;
-  }
-  return out;
-}
-
-// WP-D5d (bens ROT-Fix 2): budgetierter, selektiver STREAMING-Entpacker über ECHTES fflate (injiziert →
-// testbar mit fflate.zipSync-Fixtures). Der Name-Filter läuft VOR der Dekompression (unbenötigte Einträge
-// werden gar nicht erst gestartet); für akzeptierte Einträge zählt der ondata-Callback die ECHTEN Bytes
-// und bricht bei Budgetüberschreitung sofort ab (Stream terminieren). Eine untertriebene/lügende
-// originalSize ändert daran nichts — die Ist-Arbeit ist gedeckelt.
-export function budgetedPptxUnzip(
-  fflate: FflateStreaming,
-  limits?: PptxUnzipBudgetLimits,
-): PptxUnzip {
-  return (data) => {
-    const files: Record<string, Uint8Array> = {};
-    const budget = createPptxUnzipBudget(limits);
-    let failure: unknown = null;
-    const uz = new fflate.Unzip();
-    uz.register(fflate.UnzipInflate);
-    if (fflate.UnzipPassThrough) {
-      uz.register(fflate.UnzipPassThrough);
-    }
-    uz.onfile = (file) => {
-      if (failure) {
-        return;
-      }
-      let accepted = false;
-      try {
-        accepted = budget.accept({
-          name: file.name,
-          compressedSize: file.size,
-          originalSize: file.originalSize,
-        });
-      } catch (e) {
-        failure = e;
-        return;
-      }
-      if (!accepted) {
-        return; // nicht benötigt → start() NICHT aufrufen → keine Dekompression
-      }
-      const chunks: Uint8Array[] = [];
-      budget.beginEntry();
-      file.ondata = (err, chunk, final) => {
-        // WP-D5e (GELB): failure kann während EINES laufenden Pushs mehrfach ondata auslösen. Nach erkanntem
-        // failure den bisherigen Puffer verwerfen und NICHT weiter konkatenieren → Restarbeit minimiert.
-        if (failure) {
-          chunks.length = 0;
-          return;
-        }
-        if (err) {
-          failure = err;
-          chunks.length = 0;
-          return;
-        }
-        try {
-          budget.addOutputBytes(chunk.length);
-        } catch (e) {
-          failure = e;
-          chunks.length = 0;
-          try {
-            file.terminate();
-          } catch {
-            // terminate ist best-effort; der Abbruch erfolgt ohnehin über das failure-Flag.
-          }
-          return;
-        }
-        chunks.push(chunk);
-        if (final) {
-          files[file.name] = concatChunks(chunks);
-        }
-      };
-      try {
-        file.start();
-      } catch (e) {
-        failure = e;
-      }
-    };
-    try {
-      for (let off = 0; off < data.length && !failure; off += PPTX_STREAM_CHUNK_BYTES) {
-        const end = Math.min(off + PPTX_STREAM_CHUNK_BYTES, data.length);
-        uz.push(data.subarray(off, end), end >= data.length);
-      }
-    } catch (e) {
-      // Ein fflate-interner Fehler (z. B. Größen-/CRC-Mismatch eines manipulierten Archivs) wird ebenso
-      // als kontrollierter Importfehler behandelt — nie als unkontrollierter Absturz durchgereicht.
-      failure = failure ?? e;
-    }
-    if (failure) {
-      throw failure instanceof PptxTooLargeError
-        ? failure
-        : new PptxTooLargeError("archive-too-large");
-    }
-    return files;
-  };
-}
-
 // WP-D5/WP-D9: strukturerhaltende PPTX-Extraktion (HTML + Klartext) in EINEM Durchgang. Mit
 // imageCaptionPlaceholder werden Bilder als <figure> mit Fußnote eingebettet (DOCX-Vertrag, BILD-1a/1b);
 // ohne bleibt das Alt-Verhalten (nur gezählt). Teilverluste (Format/Bild-Budget) werden ehrlich beziffert.

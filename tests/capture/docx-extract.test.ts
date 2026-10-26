@@ -19,6 +19,7 @@ import {
   isDocxDocumentLike,
 } from "../../apps/web/src/lib/docx";
 import { sanitizeHtml } from "../../services/structure";
+import { docxTestBuffer } from "../fixtures/docx-test-buffer";
 
 // FR-CAP-06: DOCX wird client-seitig zu Klartext extrahiert (mammoth, lazy).
 const here = dirname(fileURLToPath(import.meta.url));
@@ -154,7 +155,7 @@ describe("JOB 1115 · A1 · Kalibrierung: die Vorrichtung misst wirklich den Imp
 
 describe("JOB 1115 · A2 · D-042: Rahmenzeilen sind kein Wissen mehr", () => {
   it("der Wissenskörper beginnt mit dem ersten echten Inhalt, nicht mit BAADER / Design guide / en", async () => {
-    const { html } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     const kopf = koerperVorErsterUeberschrift(html);
     for (const zeile of [...RAHMEN, KOPFZEILE]) {
       expect(
@@ -165,7 +166,7 @@ describe("JOB 1115 · A2 · D-042: Rahmenzeilen sind kein Wissen mehr", () => {
   });
 
   it("was entfernt wurde, ist im Quellenvermerk nachlesbar — nichts geht verloren", async () => {
-    const { html, frameLines } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html, frameLines } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     expect(frameLines, "Die entfernten Rahmenzeilen werden nicht berichtet").toEqual([
       ...RAHMEN,
       KOPFZEILE,
@@ -188,14 +189,14 @@ describe("JOB 1115 · A2 · D-042: Rahmenzeilen sind kein Wissen mehr", () => {
   });
 
   it("kein Satz mit Satzzeichen wird entfernt", async () => {
-    const { html } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     expect(html).toContain(SATZ);
   });
 
   it("die spätere Wiederkehr der Rahmenzeilen im Fließtext bleibt unangetastet", async () => {
     // Entfernt wird ausschliesslich der Block VOR der ersten Überschrift. Was weiter unten steht,
     // ist Fließtext und wird nicht angefasst — sonst schnitte der Schritt in echtes Wissen.
-    const { html } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     const nachUeberschrift = html.slice(html.indexOf("<h2>"));
     expect(nachUeberschrift).toContain("<p>BAADER</p>");
   });
@@ -203,7 +204,7 @@ describe("JOB 1115 · A2 · D-042: Rahmenzeilen sind kein Wissen mehr", () => {
 
 describe("JOB 1115 · A3 · D-043: das Inhaltsverzeichnis führt nicht mehr ins Leere", () => {
   it("kein Link mit #_Toc-Ziel und kein Link ohne Ziel überlebt", async () => {
-    const { html } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     expect(
       html.match(/href="#_Toc/gi) ?? [],
       "Word-interne Sprungmarken sind noch da — im Web zeigen sie auf nichts",
@@ -215,14 +216,14 @@ describe("JOB 1115 · A3 · D-043: das Inhaltsverzeichnis führt nicht mehr ins 
   });
 
   it("der Text des Inhaltsverzeichnisses bleibt vollständig lesbar, Seitenzahlen inklusive", async () => {
-    const { html } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     expect(html).toContain("1 Foreword information 5");
     expect(html).toContain("2 Scope 7");
     expect(html).toContain("3 Ohne Ziel 9");
   });
 
   it("externe Links bleiben anklickbar", async () => {
-    const { html } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     expect(html).toContain('<a href="https://example.org/norm">die Norm</a>');
   });
 
@@ -233,7 +234,7 @@ describe("JOB 1115 · A3 · D-043: das Inhaltsverzeichnis führt nicht mehr ins 
       `<h1>Titel</h1><p>Ein Satz.</p><img src="data:image/png;base64,QQ==">`,
       "Titel\nEin Satz.",
     );
-    const { html } = await extractDocxRich(new ArrayBuffer(4), {
+    const { html } = await extractDocxRich(docxTestBuffer(), {
       engine: mitBild,
       mapImage: async (s) => s,
       imageCaptionPlaceholder: "x",
@@ -249,7 +250,7 @@ describe("JOB 1115 · A4 · Ein Dokument ohne Rahmenzeilen bleibt zeichengleich"
     // NICHTS tun. `toBe` und nicht `toContain` — ein zusätzliches Leerzeichen wäre schon zu viel.
     const SAUBER =
       "<h2>Nur Wissen</h2><p>Ein vollständiger Satz mit Punkt.</p><ul><li>Schritt eins</li></ul>";
-    const { html, frameLines } = await extractDocxRich(new ArrayBuffer(4), {
+    const { html, frameLines } = await extractDocxRich(docxTestBuffer(), {
       engine: engineFuer(SAUBER, "Nur Wissen\nEin vollständiger Satz mit Punkt.\nSchritt eins"),
     });
     expect(html).toBe(SAUBER);
@@ -261,7 +262,7 @@ describe("JOB 1115 · A4 · Ein Dokument ohne Rahmenzeilen bleibt zeichengleich"
     // echten Zeile unterscheidet. Fehlt sie, bleibt der Absatz — lieber eine Kopfzeile zu viel
     // als ein Satz Wissen zu wenig (D-042, wörtlich).
     const EINMALIG = "<p>Nur einmal da</p><h2>Titel</h2><p>Ein Satz.</p>";
-    const { html, frameLines } = await extractDocxRich(new ArrayBuffer(4), {
+    const { html, frameLines } = await extractDocxRich(docxTestBuffer(), {
       engine: engineFuer(EINMALIG, "Nur einmal da\nTitel\nEin Satz."),
     });
     expect(html).toBe(EINMALIG);
@@ -271,7 +272,7 @@ describe("JOB 1115 · A4 · Ein Dokument ohne Rahmenzeilen bleibt zeichengleich"
 
 describe("JOB 1115 · A5 · am echten Produktpfad bis hinter den Server-Sanitizer", () => {
   it("der eingereichte Entwurf trägt die Kopfzeilen im Quellenvermerk, nicht im Wissen", async () => {
-    const { html, text } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html, text } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     const body = wholeDocumentBodyHtml({
       fileName: "design-guide.docx",
       text,
@@ -301,7 +302,7 @@ describe("JOB 1115 · A5 · am echten Produktpfad bis hinter den Server-Sanitize
   });
 
   it("der Entwurfs-Nutzlast-Weg liefert dasselbe — keine zweite Wahrheit", async () => {
-    const { html, text } = await extractDocxRich(new ArrayBuffer(4), { engine: wordEngine });
+    const { html, text } = await extractDocxRich(docxTestBuffer(), { engine: wordEngine });
     const payload = wholeDocumentDraftPayload({
       fileName: "design-guide.docx",
       text,
@@ -333,7 +334,7 @@ describe("JOB 3210 · M5c · die Beschriftungs-Stilkarte erreicht die Engine", (
       `<h1>Titel</h1><img src="data:image/png;base64,QQ==">`,
       "Titel",
     );
-    await extractDocxRich(new ArrayBuffer(4), {
+    await extractDocxRich(docxTestBuffer(), {
       engine,
       mapImage: async (s) => s,
       imageCaptionPlaceholder: "x",
@@ -349,7 +350,7 @@ describe("JOB 3210 · M5c · die Beschriftungs-Stilkarte erreicht die Engine", (
     // Die Gegenprobe. Ohne sie wäre der Fall darüber auch dann grün, wenn die Karte in JEDEM Lauf
     // mitginge — und die Erkennungsmarke landete in Rümpfen, aus denen sie niemand entfernt.
     const { engine, optionen } = mitschreibendeEngine("<p>Nur Text.</p>", "Nur Text.");
-    await extractDocxRich(new ArrayBuffer(4), { engine, mapImage: async (s) => s });
+    await extractDocxRich(docxTestBuffer(), { engine, mapImage: async (s) => s });
     expect(optionen[0], "Ein Lauf ohne Bild-Fussnoten bekam trotzdem eine Stilkarte").toBe(
       undefined,
     );
@@ -358,7 +359,7 @@ describe("JOB 3210 · M5c · die Beschriftungs-Stilkarte erreicht die Engine", (
   it("eine Engine ohne Options-Parameter läuft unverändert weiter", async () => {
     // Rückwärtskompatibilität des Vertrags: der zusätzliche Parameter ist optional, und jede
     // bestehende Attrappe (`engineFuer`, oben) ignoriert ihn folgenlos.
-    const { html } = await extractDocxRich(new ArrayBuffer(4), {
+    const { html } = await extractDocxRich(docxTestBuffer(), {
       engine: engineFuer("<p>Ein Satz mit Punkt.</p>", "Ein Satz mit Punkt."),
     });
     expect(html).toBe("<p>Ein Satz mit Punkt.</p>");

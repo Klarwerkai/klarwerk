@@ -9,6 +9,7 @@ import {
   extractDocxText,
   isDocxDocumentLike,
 } from "./docx";
+import { assertDocxFileSize } from "./docxArchive";
 import { detectFileKind } from "./extract";
 import { type OcrResult, recognizeImage } from "./ocr";
 import { type PdfDocumentText, type PdfEngine, extractPdfDocument } from "./pdf";
@@ -89,6 +90,7 @@ export function isWordDocument(file: File): boolean {
 
 // Browser-Wrapper: liest die Datei und extrahiert den Text über den DOM-freien Kern.
 export async function readDocxFile(file: File): Promise<string> {
+  assertDocxFileSize(file.size);
   return extractDocxText(await file.arrayBuffer());
 }
 
@@ -173,6 +175,7 @@ export async function readDocxRich(
   file: File,
   imageCaptionPlaceholder?: string,
 ): Promise<DocxRichResult> {
+  assertDocxFileSize(file.size);
   return extractDocxRich(await file.arrayBuffer(), {
     mapImage: (src) => downscaleImageDataUrl(src),
     imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,

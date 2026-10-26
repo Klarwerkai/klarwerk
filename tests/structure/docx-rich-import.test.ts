@@ -18,6 +18,7 @@ import {
   utf8ByteLength,
 } from "../../apps/web/src/lib/docx";
 import { sanitizeHtml } from "../../services/structure";
+import { docxTestBuffer } from "../fixtures/docx-test-buffer";
 
 const PNG_SRC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 
@@ -33,7 +34,7 @@ const engine: DocxEngine = {
 
 describe("WP-D1: extractDocxRich (DOM-freier Kern, injizierte Engine)", () => {
   it("liefert strukturerhaltendes HTML (h1→h2, h4→h3) UND weiterhin den Klartext", async () => {
-    const { html, text } = await extractDocxRich(new ArrayBuffer(4), { engine });
+    const { html, text } = await extractDocxRich(docxTestBuffer(), { engine });
     expect(html).toContain("<h2>Wartungsplan L4</h2>");
     expect(html).not.toContain("<h1");
     expect(html).toContain("<h3>Anhang</h3>");
@@ -45,7 +46,7 @@ describe("WP-D1: extractDocxRich (DOM-freier Kern, injizierte Engine)", () => {
   });
 
   it("mapImage-Hook skaliert eingebettete Bilder (src wird ersetzt)", async () => {
-    const { html } = await extractDocxRich(new ArrayBuffer(4), {
+    const { html } = await extractDocxRich(docxTestBuffer(), {
       engine,
       mapImage: async () => "data:image/jpeg;base64,SCALED",
     });
@@ -73,7 +74,7 @@ describe("WP-D1: extractDocxRich (DOM-freier Kern, injizierte Engine)", () => {
 
 describe("WP-D1/WP-D4: Ganzdokument-Entwurf mit DOCX-HTML durch den Server-Sanitizer", () => {
   it("Struktur, Tabelle, Fett und data:image überleben das Server-Sanitizing", async () => {
-    const { html, text } = await extractDocxRich(new ArrayBuffer(4), { engine });
+    const { html, text } = await extractDocxRich(docxTestBuffer(), { engine });
     const payload = wholeDocumentDraftPayload({
       fileName: "wartungsplan.docx",
       text,
@@ -284,7 +285,7 @@ describe("WP-D1d: extractDocxRich mit Byte-Budget", () => {
       convertToHtml: async () => ({ value: `${big("A")}${big("B")}`, messages: [] }),
       extractRawText: async () => ({ value: "text", messages: [] }),
     };
-    const res = await extractDocxRich(new ArrayBuffer(4), {
+    const res = await extractDocxRich(docxTestBuffer(), {
       engine,
       mapImage: async (src) => `${src}X`, // re-encodiert (verändert) → compressed zählt
       imageBudgetBytes: 10_000,
@@ -301,7 +302,7 @@ describe("WP-D1d: extractDocxRich mit Byte-Budget", () => {
       convertToHtml: async () => ({ value: `${big("A")}${big("B")}${big("C")}`, messages: [] }),
       extractRawText: async () => ({ value: "text", messages: [] }),
     };
-    const res = await extractDocxRich(new ArrayBuffer(4), {
+    const res = await extractDocxRich(docxTestBuffer(), {
       engine,
       mapImage: async (src) => src,
       imageBudgetBytes: 900,
@@ -318,7 +319,7 @@ describe("WP-D1d: extractDocxRich mit Byte-Budget", () => {
       }),
       extractRawText: async () => ({ value: "t", messages: [] }),
     };
-    const res = await extractDocxRich(new ArrayBuffer(4), { engine, mapImage: async (s) => s });
+    const res = await extractDocxRich(docxTestBuffer(), { engine, mapImage: async (s) => s });
     expect(res.droppedImages).toBe(0);
     expect(res.html).toContain("data:image/png;base64,AAAA");
   });

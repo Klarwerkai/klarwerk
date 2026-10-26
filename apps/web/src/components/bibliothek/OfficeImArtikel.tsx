@@ -52,6 +52,10 @@ interface Wechselwunsch {
 }
 
 export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | null {
+  return <OfficeArtikelInhalt key={ko.id} ko={ko} />;
+}
+
+function OfficeArtikelInhalt({ ko }: { ko: KnowledgeObject }): JSX.Element | null {
   const { t } = useTranslation();
   const [offen, setOffen] = useState<string | null>(null);
   const [editorAktiv, setEditorAktiv] = useState(false);
@@ -59,9 +63,15 @@ export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | 
   // Die Meldung einer Fläche, die beim Wechsel verschwindet — sie bleibt hier sichtbar stehen.
   const [letzteMeldung, setLetzteMeldung] = useState<Meldung | null>(null);
   const anhaenge = (ko.attachments ?? []).filter((a) => a.objectId && istOfficeAnhang(a.name));
-  if (anhaenge.length === 0) {
-    return null;
-  }
+  const anhangNochDa = offen === null || anhaenge.some((a) => a.id === offen);
+  useEffect(() => {
+    if (!anhangNochDa) {
+      setOffen(null);
+      setWunsch(null);
+      setEditorAktiv(false);
+    }
+  }, [anhangNochDa]);
+  if (anhaenge.length === 0) return null;
 
   // Nacharbeit 2 (bens Befund): bei laufendem Editor wechselt NICHTS sofort. Der Wunsch geht an den
   // Editor, der denselben Weg nimmt wie „Speichern und zurück" bzw. „Abbrechen"; erst wenn er
@@ -101,7 +111,7 @@ export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | 
             </li>
           ))}
         </ul>
-        {/* OCR-02 (L17): die eingebetteten Bilder der aktuellen Fassung werden ohne Klick gelesen. */}
+        {/* OCR-02 (L17): die eingebetteten Bilder werden erst auf ausdrückliche Anforderung gelesen. */}
         <OfficeBildBefunde
           anhaenge={anhaenge.map((a) => ({
             id: a.id,
@@ -114,7 +124,7 @@ export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | 
             {letzteMeldung.text}
           </output>
         ) : null}
-        {offen ? (
+        {offen && anhangNochDa ? (
           <OfficeAnhangFlaeche
             key={offen}
             ko={ko}

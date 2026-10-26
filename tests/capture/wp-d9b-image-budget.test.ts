@@ -32,6 +32,7 @@ import {
   type PptxUnzip,
   extractPptxRich,
 } from "../../apps/web/src/lib/pptx";
+import { docxTestBuffer } from "../fixtures/docx-test-buffer";
 
 const URI_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
 const URI_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -511,7 +512,7 @@ describe("JOB 513/D2: DOCX und PPTX liefern denselben Vertrag", () => {
   const IMG = (payload: string) => `<img src="data:image/png;base64,${payload}">`;
 
   it("DOCX: derselbe Vertrag mit derselben autoritativen Bytegrenze", async () => {
-    const res = await extractDocxRich(new ArrayBuffer(0), {
+    const res = await extractDocxRich(docxTestBuffer(), {
       engine: docxEngine(`<p>Text</p>${IMG("A".repeat(400))}`),
       mapImage: async (src) => src,
       imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
@@ -533,7 +534,7 @@ describe("JOB 513/D2: DOCX und PPTX liefern denselben Vertrag", () => {
 
   it("DOCX: budgetbedingter Drop wird identisch zu PPTX benannt", async () => {
     const html = `<p>Text</p>${IMG("A".repeat(4_000))}${IMG("B".repeat(4_000))}`;
-    const wide = await extractDocxRich(new ArrayBuffer(0), {
+    const wide = await extractDocxRich(docxTestBuffer(), {
       engine: docxEngine(html),
       mapImage: async (src) => src,
       imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
@@ -541,7 +542,7 @@ describe("JOB 513/D2: DOCX und PPTX liefern denselben Vertrag", () => {
       imageRunToken: "tokdocx2",
     });
     const full = utf8ByteLength(wide.html);
-    const res = await extractDocxRich(new ArrayBuffer(0), {
+    const res = await extractDocxRich(docxTestBuffer(), {
       engine: docxEngine(html),
       mapImage: async (src) => src,
       imageBudgetBytes: full - 1,
@@ -560,7 +561,7 @@ describe("JOB 513/D2: DOCX und PPTX liefern denselben Vertrag", () => {
   });
 
   it("DOCX ohne Bytebudget: ehrlich KEINE wirksame Grenze (null), kein erfundener Wert", async () => {
-    const res = await extractDocxRich(new ArrayBuffer(0), {
+    const res = await extractDocxRich(docxTestBuffer(), {
       engine: docxEngine(`<p>Text</p>${IMG("A".repeat(400))}`),
       mapImage: async (src) => src,
       imageCaptionPlaceholder: PLACEHOLDER,
@@ -576,7 +577,7 @@ describe("JOB 513/D2: DOCX und PPTX liefern denselben Vertrag", () => {
 
   it("JOB 513/D3B: DOCX meldet die Grenzart body-html mit realem Grenzwert", async () => {
     const html = `<p>Text</p>${IMG("A".repeat(4_000))}${IMG("B".repeat(4_000))}`;
-    const wide = await extractDocxRich(new ArrayBuffer(0), {
+    const wide = await extractDocxRich(docxTestBuffer(), {
       engine: docxEngine(html),
       mapImage: async (src) => src,
       imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
@@ -584,7 +585,7 @@ describe("JOB 513/D2: DOCX und PPTX liefern denselben Vertrag", () => {
       imageRunToken: "tokdocxk",
     });
     const full = utf8ByteLength(wide.html);
-    const res = await extractDocxRich(new ArrayBuffer(0), {
+    const res = await extractDocxRich(docxTestBuffer(), {
       engine: docxEngine(html),
       mapImage: async (src) => src,
       imageBudgetBytes: full - 1,

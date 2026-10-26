@@ -26,6 +26,7 @@ import {
   togglePoint,
 } from "../lib/captureFromFile";
 import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
+import { docxLesefehlerSatz } from "../lib/docxLesefehler";
 import {
   isImage,
   isPdfDocument,
@@ -278,6 +279,7 @@ export function BodyExtractPanel({
       // R-0138: eine zu grosse oder zu langsame PDF bekommt vorher ihren eigenen Satz mit Zahlen.
       setErr(
         pdfLesefehlerSatz(error, f.name, t) ??
+          docxLesefehlerSatz(error, f.name, t) ??
           honestParseErrorText(
             error,
             t(STALE_BUNDLE_KEY),

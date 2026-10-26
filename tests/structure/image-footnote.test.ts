@@ -27,6 +27,7 @@ import type { EditableElement } from "../../apps/web/src/lib/editorFigures";
 import { enhanceFiguresForEditing } from "../../apps/web/src/lib/editorFigures";
 import { sanitizeHtml as clientSanitize } from "../../apps/web/src/lib/richText";
 import { sanitizeHtml as serverSanitize } from "../../services/structure";
+import { docxTestBuffer } from "../fixtures/docx-test-buffer";
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 const PLACEHOLDER = "Noch keine Bildbeschreibung";
@@ -105,7 +106,7 @@ describe("WP-BILD-1a: wrapImagesInFigures", () => {
 
 describe("WP-BILD-1a: extractDocxRich erzeugt Bild-Fußnoten", () => {
   it("mit Platzhalter-Option → figure mit LEERER figcaption/data-image-id im bodyHtml; Zähler stimmen", async () => {
-    const { html, totalImages } = await extractDocxRich(new ArrayBuffer(4), {
+    const { html, totalImages } = await extractDocxRich(docxTestBuffer(), {
       engine: engineOf(`<p>Text</p><img src="${PNG}">`),
       mapImage: async (src) => src,
       imageBudgetBytes: 3_500_000,
@@ -122,7 +123,7 @@ describe("WP-BILD-1a: extractDocxRich erzeugt Bild-Fußnoten", () => {
   });
 
   it("ohne Platzhalter → rückwärtskompatibel bare <img> (keine figure)", async () => {
-    const { html } = await extractDocxRich(new ArrayBuffer(4), {
+    const { html } = await extractDocxRich(docxTestBuffer(), {
       engine: engineOf(`<img src="${PNG}">`),
       mapImage: async (src) => src,
       imageBudgetBytes: 3_500_000,

@@ -1,3 +1,5 @@
+import { assertDocxArchive } from "./docxArchive";
+export { DocxImportError } from "./docxArchive";
 // DOM-freier DOCX-Kern (FR-CAP-06, KW-W2-02/WP-D1).
 // Bewusst OHNE File/Image/document/FileReader, damit dieses Modul auch im
 // Node-/Root-Typecheck und in Tests ohne DOM-lib geprüft werden kann.
@@ -1120,6 +1122,7 @@ export async function extractDocxRich(
     imageRunToken?: string;
   } = {},
 ): Promise<DocxRichResult> {
+  await assertDocxArchive(buffer);
   const engine = opts.engine ?? (await defaultEngine());
   const input = mammothInput(buffer);
   // JOB 3210/M5c: Die Stilkarte wird GENAU DANN mitgegeben, wenn dieser Lauf auch Bild-Fussnoten
@@ -1256,6 +1259,7 @@ export async function extractDocxRich(
 // Reiner Klartext-Extraktionskern (ArrayBuffer → Klartext) — bestehender Vertrag für die
 // Punkte-/Text-Pfade (BodyExtractPanel, „Text aus Datei einfügen").
 export async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
+  await assertDocxArchive(buffer);
   const engine = await defaultEngine();
   const result = await engine.extractRawText(mammothInput(buffer));
   return result.value.trim();

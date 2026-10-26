@@ -251,6 +251,7 @@ import {
   applyInlineImageBudget,
   newImageRunToken,
 } from "../lib/docx";
+import { docxLesefehlerSatz } from "../lib/docxLesefehler";
 // AUFTRAG-mega7 Block A: eindeutige Leerwert-Semantik für den Body (Löschmarker beim Aktualisieren).
 import { draftBodyPatch } from "../lib/draftBody";
 import { adoptProposedKnowledgeType, draftTitle } from "../lib/draftForm";
@@ -5438,8 +5439,11 @@ export function CaptureArbeitsraum({
       // Parse-Fehler nennen die kurze Ursache (der lokale Dateiname steht ohnehin in der Meldung).
       // JOB 2700 D1: zu gross (Kante) und zu lange (Frist) sind eigene, ehrliche Meldungen.
       const pdfText = pdfFehlerText(error, f.name);
+      const docxText = docxLesefehlerSatz(error, f.name, t);
       if (pdfText !== null) {
         setFileImportMeldung(pdfText);
+      } else if (docxText !== null) {
+        setFileImportMeldung(docxText);
       } else if (error instanceof PptxTooLargeError) {
         setFileImportMeldung(t(CAPTURE_FILE_TEXT.pptxTooLarge, { name: f.name }));
       } else {

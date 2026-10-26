@@ -11,6 +11,8 @@ export default {
   praefix: "officeartikel.",
   legacySchluessel: [],
   de: {
+    "officeartikel.bilderLesen": "Bilder und Text lesen",
+    "officeartikel.bilderLaden": "Datei wird gelesen …",
     "officeartikel.titel": "Office-Dokumente im Artikel",
     "officeartikel.oeffnen": "Im Artikel öffnen",
     "officeartikel.zuklappen": "Zuklappen",
@@ -83,6 +85,8 @@ export default {
       "Der Editor hat das Speichern nicht bestätigt. Der Editor bleibt offen; es ist nichts verloren.",
   },
   en: {
+    "officeartikel.bilderLesen": "Read images and text",
+    "officeartikel.bilderLaden": "Reading file …",
     "officeartikel.titel": "Office documents in the article",
     "officeartikel.oeffnen": "Open in article",
     "officeartikel.zuklappen": "Collapse",
@@ -154,6 +158,8 @@ export default {
       "The editor did not confirm saving. The editor stays open; nothing is lost.",
   },
   nl: {
+    "officeartikel.bilderLesen": "Afbeeldingen en tekst lezen",
+    "officeartikel.bilderLaden": "Bestand wordt gelezen …",
     "officeartikel.titel": "Office-documenten in het artikel",
     "officeartikel.oeffnen": "In artikel openen",
     "officeartikel.zuklappen": "Inklappen",
