@@ -4110,6 +4110,7 @@ export function CaptureArbeitsraum({
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
   // „Entwurf speichern" sichert die manuelle Eingabe UND — falls vorhanden — ALLE offenen Datei-Funde
   // als separate Entwürfe (nichts geht verloren). Teilfehler halten den Dialog offen (kein Wechsel).
+// biome-ignore lint/correctness/useExhaustiveDependencies: Temporäre Lesespur darf die Guardregistrierung nicht verändern.
   useEffect(() => {
     setGuard({
       // JOB 4335 R4: DER ARBEITSRAUM IST DIE INNERE WACHE DIESER FLÄCHE und speichert deshalb
@@ -4208,6 +4209,25 @@ export function CaptureArbeitsraum({
         // DER RÜCKFALL BLEIBT UNGEFILTERT. Trägt die Datei in diesem Durchlauf niemand
         // (`dateiTraeger === null`), muss dieser Zweig einspringen — sonst wäre aus einer
         // vermiedenen Erfindung ein stiller Verlust geworden (Zusage aus JOB 3770 Runde 4).
+        // Temporäre CI-Guardspur: vor einer finalen Fixprüfung vollständig entfernen.
+        if (draftId !== null) {
+          console.info(
+            `[KLARWERK] erfassen-verwerfen C GUARDSPUR V2 ${JSON.stringify({
+              draftId,
+              nurTitelGeleert,
+              dateiTraegerArt: dateiTraeger?.art ?? null,
+              eintragBasisAbdruck,
+              eintragOhneTitelAbdruck,
+              titelLeer: (draft?.title ?? "").trim().length === 0,
+              hasUnsavedEntryOhneDatei,
+              hasUnsavedMeta,
+              ivStarted,
+              hatInterviewErgebnis: Boolean(ivResult),
+              hasUnsavedEntry,
+              speicherTorErlaubt: speicherTor.erlaubt,
+            })}`,
+          );
+        }
         if (
           (!nurTitelGeleert &&
             (hasUnsavedEntryOhneDatei || hasUnsavedMeta || ivStarted || Boolean(ivResult))) ||
