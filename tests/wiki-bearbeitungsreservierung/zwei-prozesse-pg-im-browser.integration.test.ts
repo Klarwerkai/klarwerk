@@ -322,9 +322,10 @@ async function brichBewusstAb(
   await seite.keyboard.press("Enter");
   await warte(seite, FEHLT, `${marke}: Dialog ist nach der Entscheidung beendet`, dialog);
   await warte(seite, FEHLT, `${marke}: Bearbeitungsformular ist beendet`, AUSSAGE);
-  expect(await stehtAmPool(pool, koId), "Verwerfen verändert den gespeicherten Stand nicht").toEqual(
-    stand,
-  );
+  expect(
+    await stehtAmPool(pool, koId),
+    "Verwerfen verändert den gespeicherten Stand nicht",
+  ).toEqual(stand);
   return schritte;
 }
 
