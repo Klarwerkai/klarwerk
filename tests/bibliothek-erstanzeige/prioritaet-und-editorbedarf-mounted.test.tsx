@@ -158,7 +158,7 @@ async function text(selector: string, value: string) {
 }
 
 it("Bibliothekssuche erhält high; Default und Sitzungsende bleiben erhalten", async () => {
-  const rufe: { url: string; init?: RequestInit }[] = [];
+  const rufe: { url: string; init: RequestInit | undefined }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((input: unknown, init?: RequestInit) => {
