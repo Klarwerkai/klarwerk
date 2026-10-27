@@ -784,7 +784,10 @@ export function registriereDienstneustartFaelle(gruppe: Gruppe): void {
 
           // Ablage wieder da: der nächste Takt setzt fort — gescheiterte Läufe legen ihren Bericht an,
           // Teilberichte werden IM SELBEN Bericht vervollständigt, Handlungsmeldungen nicht verdoppelt.
-          await naechsterTakt(b, new Date().toISOString());
+          // Sechs Einzelläufe brauchen bei fünf je Konto zwei Fortsetzungstakte.
+          const erster = await naechsterTakt(b, new Date().toISOString());
+          expect(erster.ende).toBeTypeOf("string");
+          await naechsterTakt(b, String(erster.ende));
           const ausfall = await sicht(b, r4.ausfall);
           expect(ausfall.laeufe.every((l) => l.status === "zugestellt")).toBe(true);
           for (const t of termine) {
