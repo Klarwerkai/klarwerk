@@ -104,11 +104,28 @@ describe("mega45 H · die Filterschiene der Validierung", () => {
   });
 
   it("H-2: keine neue Datenabhaengigkeit — die Schiene bringt keine zweite Abfrage mit", () => {
-    // Konfliktlage waere die naheliegende dritte Facette und ist BEWUSST nicht gebaut: sie braeuchte
-    // `useConflicts` und damit eine zweite Lade-/Fehlerquelle auf dem Pruef-Board. Steht im Bericht.
-    expect(VALIDATION).not.toMatch(/useConflicts/);
-    // Es bleibt bei der einen Board-Abfrage.
+    // Die Seite hat eine eigene Konfliktabfrage. Die Facetten leiten ihre Werte dagegen aus
+    // vorhandenen Board-Zeilen ab; weder Wertermittlung noch Gruppenbildung fragen Daten nach.
+    for (const modul of [
+      "validationFacets",
+      "libraryFacets",
+      "libraryMaturity",
+      "reviewSignals",
+      "facetRail",
+      "facetFilter",
+      "facets",
+    ]) {
+      const quelle = readFileSync(join(WURZEL, `apps/web/src/lib/${modul}.ts`), "utf8");
+      expect(quelle, modul).not.toMatch(
+        /(?:from\s*|import\s*\()\s*["'](?:@tanstack\/react-query|(?:\.\.\/)+api\/(?:hooks|client|endpoints))["']/,
+      );
+      expect(quelle, modul).not.toMatch(
+        /\b(?:fetch|useQuery|useQueries|useMutation|useQueryClient)\s*(?:<[^>]*>)?\(/,
+      );
+    }
+    expect(VALIDATION).toContain("nachFokus.map(validationFacetValues)");
     expect(VALIDATION.match(/useValidationBoard\(/g)?.length).toBe(1);
+    expect(VALIDATION.match(/useConflicts\(/g)?.length).toBe(1);
   });
 
   it("H-2: die Pruef-Aktionen und die vorhandenen Filter sind unberuehrt", () => {
