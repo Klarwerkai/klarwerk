@@ -9,6 +9,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import { BibliothekFlaeche } from "../../apps/web/src/components/bibliothek/BibliothekFlaeche";
+import i18n from "../../apps/web/src/i18n";
 
 const lesen = vi.hoisted(() => ({
   starts: 0,
@@ -118,15 +119,21 @@ let root: ReturnType<typeof createRoot> | undefined;
 let host: HTMLDivElement | undefined;
 let qc: QueryClient | undefined;
 afterEach(async () => {
-  lesen.freigeben?.();
-  await act(async () => root?.unmount());
-  qc?.clear();
+  await act(async () => {
+    lesen.freigeben?.();
+    await vi.dynamicImportSettled();
+    root?.unmount();
+    qc?.clear();
+  });
   host?.remove();
   localStorage.clear();
   sessionStorage.clear();
 });
 
 it("Liste startet vor der Leserladung und öffnet danach die aktuelle Wahl", async () => {
+  await act(async () => {
+    await i18n.changeLanguage("de");
+  });
   lesen.bereit = new Promise<void>((resolve) => {
     lesen.freigeben = resolve;
   });
@@ -152,7 +159,11 @@ it("Liste startet vor der Leserladung und öffnet danach die aktuelle Wahl", asy
 
   await act(async () => {
     netz.antworten?.([ko("ko-1", "Ventil prüfen"), ko("ko-2", "Pumpe entlüften")]);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => {
+      if (qc?.isFetching({ queryKey: ["library", "search"] })) {
+        throw new Error("Die echte Suchabfrage läuft noch.");
+      }
+    });
   });
   await vi.waitFor(() => expect(lesen.starts).toBe(1));
   expect(host.querySelectorAll('[data-testid="bib-zeile"]')).toHaveLength(2);
@@ -167,7 +178,7 @@ it("Liste startet vor der Leserladung und öffnet danach die aktuelle Wahl", asy
 
   await act(async () => {
     lesen.freigeben?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.dynamicImportSettled();
   });
   await vi.waitFor(() => {
     const id = host?.querySelector('[data-testid="lese-port"]')?.getAttribute("data-ko-id");
