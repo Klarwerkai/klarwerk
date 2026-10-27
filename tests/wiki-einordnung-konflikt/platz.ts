@@ -68,6 +68,7 @@ import {
   tabBisZu,
   warte,
 } from "../gast-nutzerweg/browserweg";
+import { productionWebBuildEnv } from "../support/productionWebBuild";
 import { AUSGANG } from "./speicherquittung";
 
 export const JOB = "[KLARWERK] JOB 4334";
@@ -263,6 +264,7 @@ export function flaecheBereitstellen(): string {
   const begonnen = Date.now();
   execFileSync("npx", ["vite", "build"], {
     cwd: join(resolve(process.cwd()), "apps/web"),
+    env: productionWebBuildEnv(process.env),
     stdio: "pipe",
     timeout: 600_000,
   });
