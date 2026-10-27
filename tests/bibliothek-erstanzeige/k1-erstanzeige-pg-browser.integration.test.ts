@@ -200,6 +200,32 @@ const ERSTANZEIGE_SKRIPT = `(() => {
   requestAnimationFrame(pruefe);
 })();`;
 
+// Rein lesende Ergänzung: keine Marken, DOM-Eingriffe oder Änderung des Erstanzeige-Beobachters.
+const PHASENDIAGNOSE_SKRIPT = `(() => {
+  const diagnose = { unterstuetzt: false, grund: null, eintraege: [] };
+  window.__k1Longtasks = diagnose;
+  if (typeof PerformanceObserver !== "function") {
+    diagnose.grund = "PerformanceObserver fehlt";
+    return;
+  }
+  if (!PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
+    diagnose.grund = "longtask wird nicht unterstützt";
+    return;
+  }
+  try {
+    const beobachter = new PerformanceObserver((liste) => {
+      for (const eintrag of liste.getEntries()) {
+        diagnose.eintraege.push({ startMs: eintrag.startTime, dauerMs: eintrag.duration });
+      }
+    });
+    beobachter.observe({ type: "longtask", buffered: true });
+    window.__k1LongtaskBeobachter = beobachter;
+    diagnose.unterstuetzt = true;
+  } catch (fehler) {
+    diagnose.grund = String(fehler);
+  }
+})();`;
+
 interface Erstanzeige {
   /** Navigationsbeginn → erstes Bild, in dem Fuss und erstes Fenster stimmten. */
   zustandMs: number;
@@ -214,7 +240,22 @@ interface Erstanzeige {
    * Resource-Timing-Schnittstelle des Browsers (nur gelesen), damit eine Überschreitung zeigt, WO
    * die Zeit liegt: im Laden, in der Antwort oder im Rechnen danach.
    */
-  ressourcen: { pfad: string; startMs: number; endeMs: number; bytes: number }[];
+  ressourcen: {
+    pfad: string;
+    startMs: number;
+    endeMs: number;
+    bytes: number;
+    requestStartMs: number | null;
+    responseStartMs: number | null;
+    responseEndMs: number | null;
+    transferSize: number | null;
+    decodedBodySize: number | null;
+  }[];
+  longtasks: {
+    unterstuetzt: boolean;
+    grund: string | null;
+    eintraege: { startMs: number; dauerMs: number }[];
+  };
 }
 
 /**
@@ -232,6 +273,7 @@ async function erstanzeigeMessen(
   expect(herkunft, `${K}: Erstanzeige — Marke auf der Herkunft der Instanz`).toBe(
     new URL(basis).origin,
   );
+  await k.addInitScript(PHASENDIAGNOSE_SKRIPT);
   await k.addInitScript(ERSTANZEIGE_SKRIPT);
   const soll = { zahl: gesamt, fenster: Math.min(gesamt, LIBRARY_RESULT_LIMIT) };
   await s.evaluate<void>(fn("([k, wert]) => { sessionStorage.setItem(k, wert); }"), [
@@ -245,12 +287,27 @@ async function erstanzeigeMessen(
     fn(`() => {
       const m = window.__k1k10Erstanzeige;
       const n = performance.getEntriesByType("navigation")[0];
+      const diagnose = window.__k1Longtasks || {
+        unterstuetzt: false, grund: "Longtask-Initdaten fehlen", eintraege: [],
+      };
+      const beobachter = window.__k1LongtaskBeobachter;
+      if (beobachter) {
+        for (const eintrag of beobachter.takeRecords()) {
+          diagnose.eintraege.push({ startMs: eintrag.startTime, dauerMs: eintrag.duration });
+        }
+      }
+      const zahl = (wert) => typeof wert === "number" && Number.isFinite(wert) ? wert : null;
       return {
         zustandMs: m.zustandMs,
         bildMs: m.bildMs,
         fuss: m.fuss,
         ids: m.ids,
         bilder: m.bilder,
+        longtasks: {
+          unterstuetzt: diagnose.unterstuetzt,
+          grund: diagnose.grund,
+          eintraege: diagnose.eintraege.filter((e) => e.startMs <= m.bildMs),
+        },
         navigation: {
           responseEndMs: n ? n.responseEnd : -1,
           domContentLoadedMs: n ? n.domContentLoadedEventEnd : -1,
@@ -264,6 +321,11 @@ async function erstanzeigeMessen(
             startMs: Math.round(r.startTime),
             endeMs: Math.round(r.responseEnd),
             bytes: r.encodedBodySize || 0,
+            requestStartMs: zahl(r.requestStart),
+            responseStartMs: zahl(r.responseStart),
+            responseEndMs: zahl(r.responseEnd),
+            transferSize: zahl(r.transferSize),
+            decodedBodySize: zahl(r.decodedBodySize),
           }))
           .filter((r) => r.pfad.startsWith("/api/") || r.pfad.endsWith(".js")),
       };
