@@ -266,7 +266,17 @@ it("Lesen ohne Editorladung; Bearbeiten erhält Daten und Studioinstanz", async 
       createElement(
         QueryClientProvider,
         { client: qc as QueryClient },
-        createElement(MemoryRouter, null, createElement(BibliothekLesen, { koId: ko.id })),
+        createElement(
+          MemoryRouter,
+          null,
+          createElement(BibliothekLesen, {
+            koId: ko.id,
+            suchtext: "",
+            treffer: [],
+            onGeloescht: () => {},
+            hinweisSchonGesagt: false,
+          }),
+        ),
       ),
     );
   });
