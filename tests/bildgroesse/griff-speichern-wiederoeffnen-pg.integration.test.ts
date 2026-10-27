@@ -924,6 +924,7 @@ describe("Bildgröße an Griffen · K1–K4 · Chromium → Fastify → PostgreS
       const soll = brauche(vorDemSpeichern, "K4");
       const sollMessung = brauche(messungVorDemSpeichern, "K4");
       let id = "";
+      let speicherstand: Figur[] = [];
       await mitBefund("K2 · Speichern", async (s) => {
         const gespeichert = s.waitForResponse(
           (a) =>
@@ -941,6 +942,47 @@ describe("Bildgröße an Griffen · K1–K4 · Chromium → Fastify → PostgreS
         const antwort = await gespeichert;
         expect(antwort.status(), "Speichern über den Socket").toBeLessThan(300);
         const gesichert = (await antwort.json()) as { id?: unknown };
+        // W4.6: Die echte Speicherantwort bindet die erlaubte Bildableitung vor SQL.
+        const rumpfAntwort = rumpfAus(gesichert);
+        expect(rumpfAntwort, "die Speicherantwort trägt bodyHtml").not.toBeNull();
+        speicherstand = await seiteAusfuehren<Figur[]>(s, lageAus(JSON.stringify(rumpfAntwort)));
+        expect(speicherstand, "Speicherantwort: beide Vorkommen").toHaveLength(2);
+        const ohneQuelle = (figuren: Figur[]) =>
+          figuren.map((f) => ({
+            huelleId: f.huelleId ?? f.bildId,
+            bildId: f.bildId,
+            unterschriftId: f.unterschriftId,
+            text: f.text,
+            width: f.width,
+            stufe: f.stufe,
+          }));
+        expect(
+          ohneQuelle(speicherstand),
+          "Speicherantwort: Identität, Zuordnung, Fußnoten und exakte Größen",
+        ).toEqual(ohneQuelle(soll));
+        expect(speicherstand[0]?.src, "beide Vorkommen haben dieselbe Bildquelle").toBe(
+          speicherstand[1]?.src,
+        );
+        const masse = await s.evaluate<Array<{ breite: number; hoehe: number }>>(
+          fn(`async (quellen) => Promise.all(quellen.map(async (src) => {
+            const bild = new Image();
+            bild.src = src;
+            await bild.decode();
+            const breite = bild.naturalWidth;
+            const hoehe = bild.naturalHeight;
+            if (!bild.complete || breite <= 0 || hoehe <= 0) {
+              throw new Error("K2-Bild ungültig dekodiert: " + breite + "x" + hoehe);
+            }
+            return { breite, hoehe };
+          }))`),
+          soll.concat(speicherstand).map((f) => f.src),
+        );
+        expect(masse, "beide Editor- und Speicherantwortbilder sind gültig 800×100").toEqual([
+          { breite: 800, hoehe: 100 },
+          { breite: 800, hoehe: 100 },
+          { breite: 800, hoehe: 100 },
+          { breite: 800, hoehe: 100 },
+        ]);
         id = typeof gesichert.id === "string" ? gesichert.id : "";
         expect(
           id,
@@ -993,11 +1035,11 @@ describe("Bildgröße an Griffen · K1–K4 · Chromium → Fastify → PostgreS
           ["GET /api/drafts/:id", ausGet],
           ["Editor nach dem Wiederöffnen", nachher],
         ] as const) {
-          pruefeIdentitaet(lage, soll, wo);
+          pruefeIdentitaet(lage, speicherstand, wo);
           expect(
             lage.map((f) => [f.width, f.stufe]),
             `${wo}: Größenangaben`,
-          ).toEqual(soll.map((f) => [f.width, f.stufe]));
+          ).toEqual(speicherstand.map((f) => [f.width, f.stufe]));
         }
 
         // Die Darstellung im wiedergeöffneten Editor — erneut im Browser gemessen.
