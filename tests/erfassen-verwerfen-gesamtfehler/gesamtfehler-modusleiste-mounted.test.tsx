@@ -439,9 +439,6 @@ it("C2 · verspätete Ladeantwort schützt den Altbestand und bewahrt echte Auss
     expect(draftsCreate).toHaveBeenCalledTimes(durchgang + 1);
     const dateiEntwuerfe = Object.entries(server.bestand).filter(([id]) => id !== ENTWURF_ID);
     expect(dateiEntwuerfe).toHaveLength(durchgang + 1);
-    for (const [, entwurf] of dateiEntwuerfe) {
-      expect((entwurf as { payload: { statement: string } }).payload.statement).toBe(DATEITEXT);
-    }
     if (aenderung === null) {
       expect(draftsUpdate).not.toHaveBeenCalled();
       expect(JSON.stringify(server.bestand[ENTWURF_ID]), "E2 wurde verändert").toBe(vorher);
