@@ -191,6 +191,16 @@ export function pruefeTextmodule(
     }
     const modul = roh as Textmodul;
     const erlaubtAlt = new Set(modul.legacySchluessel);
+    // Blockprüfung einmal je Sprache/Aufruf; Reihenfolge und Mehrfachnennungen bleiben.
+    const sprachbloecke = new Map<string, Readonly<Record<string, string>>>();
+    const sprachenMitBlock = sprachen.map((sprache) => {
+      let inhalt = sprachbloecke.get(sprache);
+      if (inhalt === undefined) {
+        inhalt = block(modul, sprache);
+        sprachbloecke.set(sprache, inhalt);
+      }
+      return { sprache, inhalt };
+    });
 
     for (const schluessel of Object.keys(modul.de).sort()) {
       // (2) Namensraum — oder ausdrücklich eingetragener Altname.
@@ -200,8 +210,8 @@ export function pruefeTextmodule(
         );
       }
       // (4) Alle angemeldeten Sprachen — je Sprache gemeldet, nicht als Sammelmeldung.
-      for (const sprache of sprachen) {
-        if (!(schluessel in block(modul, sprache))) {
+      for (const { sprache, inhalt } of sprachenMitBlock) {
+        if (!(schluessel in inhalt)) {
           fehler.push(`${pfad}: Schlüssel "${schluessel}" fehlt in der Sprache "${sprache}".`);
         }
       }
@@ -221,8 +231,8 @@ export function pruefeTextmodule(
     }
 
     // Schlüssel, die NUR in einer anderen Sprache stehen: dieselbe Lücke, andere Richtung.
-    for (const sprache of sprachen) {
-      for (const schluessel of Object.keys(block(modul, sprache)).sort()) {
+    for (const { sprache, inhalt } of sprachenMitBlock) {
+      for (const schluessel of Object.keys(inhalt).sort()) {
         if (!(schluessel in modul.de)) {
           fehler.push(
             `${pfad}: Schlüssel "${schluessel}" steht in "${sprache}", fehlt aber in der Sprache "de".`,
