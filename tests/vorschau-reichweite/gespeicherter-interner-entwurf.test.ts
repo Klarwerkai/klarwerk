@@ -118,6 +118,10 @@ it("gespeichertes intern prüft; fehlender oder unbekannter Draft-Anker sperrt",
 
 it("geschützte Draft- und KO-Stufen bleiben trotz Body-intern gesperrt", async () => {
   const a = await aufbauen();
+  const eigenerKo = await a.services.ko.get(a.koId);
+  if (!eigenerKo) {
+    throw new Error("Der über die authentifizierte Route angelegte Kandidat fehlt.");
+  }
   const internId = await speichern(a, "intern");
   let ohneStufe = "";
   for (const level of ["vertraulich", "streng_vertraulich", undefined] as const) {
@@ -147,6 +151,7 @@ it("geschützte Draft- und KO-Stufen bleiben trotz Body-intern gesperrt", async 
   for (const level of ["vertraulich", "streng_vertraulich", undefined] as const) {
     const ko = await a.services.ko.create({
       title: `Geschützter Altbestand ${level ?? "ohne Stufe"}`,
+      author: eigenerKo.author,
       statement: "Andere Arbeitsanweisung im Archiv.",
       type: "best_practice",
       category: "Archiv",
