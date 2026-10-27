@@ -97,7 +97,6 @@ import {
 } from "../ux19-speichern-oeffnen-reload/ux19-buehne";
 
 const KENNUNG = "[KLARWERK] erfassen-verwerfen C";
-const GUARDSPUR_PRAEFIX = "[KLARWERK] erfassen-verwerfen C GUARDSPUR V2 ";
 const KONTO = "erfassen-verwerfen@aufnahme.test";
 const FENSTER = { width: 1280, height: 800 };
 
@@ -247,19 +246,8 @@ async function gehe(s: SeiteMitDialogUndRoute, pfad: string): Promise<void> {
   await aufZustandWarten(s, SELEKTOR_DA, `das Blatt steht nach dem Laden von ${pfad}`, BLATT);
 }
 
-interface SeiteMitGuardspur extends SeiteMitDialogUndRoute {
-  on(ereignis: "console", leser: (nachricht: { text(): string }) => void): void;
-}
-
 async function frischeSeite(kontext: Kontext): Promise<SeiteMitDialogUndRoute> {
-  const seite = (await kontext.newPage()) as unknown as SeiteMitGuardspur;
-  seite.on("console", (nachricht) => {
-    const text = nachricht.text();
-    if (text.startsWith(GUARDSPUR_PRAEFIX)) {
-      process.stderr.write(`${text}\n`);
-    }
-  });
-  return seite;
+  return (await kontext.newPage()) as unknown as SeiteMitDialogUndRoute;
 }
 
 interface AngelegterEntwurf {

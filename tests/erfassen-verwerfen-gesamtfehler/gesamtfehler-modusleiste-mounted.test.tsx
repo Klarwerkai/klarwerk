@@ -41,12 +41,14 @@ vi.mock("../../apps/web/src/api/endpoints", async () =>
   (await import("../entwurf-verlassen/attrappen")).endpointsAttrappe(),
 );
 
+import { act } from "../../apps/web/node_modules/react";
 import i18n from "../../apps/web/src/i18n";
 import {
   anlageversucheJeTitel,
   attrappenZuruecksetzen,
   bestandJeTitel,
   draftsCreate,
+  draftsGet,
   draftsRemove,
   draftsUpdate,
   extrakt,
@@ -63,6 +65,7 @@ import {
   dateiAblegen,
   feld,
   flaeche,
+  flush,
   fundzeilen,
   grundImDialog,
   hauptnavigationErfassen,
@@ -374,4 +377,83 @@ describe("N-0061 · Verwerfen bzw. Speichern und wechseln über „Erfassen“ a
     expect(server.bestand).toEqual({});
     expect(draftsCreate).not.toHaveBeenCalled();
   });
+});
+
+it("C2 · verspätete Ladeantwort schützt den Altbestand und bewahrt echte Aussageänderungen", async () => {
+  const e2 = {
+    id: ENTWURF_ID,
+    updatedAt: "2026-09-22T09:00:00.000Z",
+    payload: { title: "Entwurf C2", statement: "Entwurf C2", origin: "expert" },
+  };
+  server.bestand = { [ENTWURF_ID]: e2 };
+  const vorher = JSON.stringify(server.bestand[ENTWURF_ID]);
+  const holeEntwurf = draftsGet.getMockImplementation();
+  if (!holeEntwurf) {
+    throw new Error("Der normale GET des Testservers fehlt.");
+  }
+  const neueAussage = "Die Aussage wurde nach dem Laden bewusst geändert.";
+
+  for (const [durchgang, aenderung] of [null, neueAussage].entries()) {
+    await seiteOeffnen(ADRESSE);
+    // Erst die echte Blattansicht laden; verzögert wird der GET des neu geöffneten Formulars.
+    const antwort: { freigeben: () => void } = { freigeben: () => undefined };
+    const ausstehend = new Promise<void>((freigeben) => {
+      antwort.freigeben = freigeben;
+    });
+    const getVorher = draftsGet.mock.calls.length;
+    draftsGet.mockImplementationOnce(async (id) => {
+      expect(id).toBe(ENTWURF_ID);
+      await ausstehend;
+      return holeEntwurf(id);
+    });
+
+    await modusUeberLeiste("erfassen.weg.formular");
+    expect(draftsGet).toHaveBeenCalledTimes(getVorher + 1);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe("");
+    expect(feld(i18n.t("capture.fStatement")).value).toBe("");
+    expect(verlassenKnopf()).toBeNull();
+
+    // Die Antwort trifft nach dem bereits committeten leeren Formular ein.
+    await act(async () => {
+      antwort.freigeben();
+      await ausstehend;
+      await flush();
+    });
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(e2.payload.title);
+    expect(feld(i18n.t("capture.fStatement")).value).toBe(e2.payload.statement);
+    expect(verlassenKnopf()).not.toBeNull();
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "");
+    if (aenderung !== null) {
+      await tippe(feld(i18n.t("capture.fStatement")), aenderung);
+    }
+    await modusUeberLeiste("erfassen.weg.datei");
+    await klick(knopf(i18n.t("capture.file.importMode.whole")));
+    await dateiAblegen(new File([DATEITEXT], DATEI, { type: "text/plain" }));
+    expect(sichtbar()).toContain(DATEI);
+
+    await verlassenUndSpeichern();
+
+    expect(wacheDialoge()).toBe(0);
+    expect(adresse().pfad).toBe("/start");
+    expect(sichtbar()).toContain(GESPEICHERT());
+    expect(draftsCreate).toHaveBeenCalledTimes(durchgang + 1);
+    const dateiEntwuerfe = Object.entries(server.bestand).filter(([id]) => id !== ENTWURF_ID);
+    expect(dateiEntwuerfe).toHaveLength(durchgang + 1);
+    for (const [, entwurf] of dateiEntwuerfe) {
+      expect((entwurf as { payload: { statement: string } }).payload.statement).toBe(DATEITEXT);
+    }
+    if (aenderung === null) {
+      expect(draftsUpdate).not.toHaveBeenCalled();
+      expect(JSON.stringify(server.bestand[ENTWURF_ID]), "E2 wurde verändert").toBe(vorher);
+    } else {
+      expect(draftsUpdate).toHaveBeenCalledTimes(1);
+      expect(draftsUpdate.mock.calls[0]?.[0]).toBe(ENTWURF_ID);
+      expect(
+        (server.bestand[ENTWURF_ID] as { payload: { statement: string } }).payload.statement,
+        "die bewusst geänderte Aussage ist nicht im Bestand",
+      ).toBe(neueAussage);
+    }
+    expect(draftsRemove).not.toHaveBeenCalled();
+    abbauen();
+  }
 });
