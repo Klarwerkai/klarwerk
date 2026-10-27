@@ -26,10 +26,11 @@
 //   K5  jede dieser Aussagen ist ZEICHENGENAU sichtbar (nichts abgeschnitten, nichts seitlich aus
 //       dem Fenster) — bei 320 px und am Desktop, in DE/EN/NL.
 //
-// KEINE PRODUKTDATEI WIRD BERÜHRT. Einzige Beobachtung im Browser: `window.open` wird im Profil
+// KEINE PRODUKTDATEI WIRD BERÜHRT. Für den Originalweg wird `window.open` im Profil
 // MITGESCHRIEBEN statt einen zweiten Tab zu öffnen; die mitgeschriebene Adresse wird danach mit den
 // Keksen desselben Profils abgerufen, und ihre Bytes werden gegen die hochgeladene Datei verglichen.
 import type { FastifyInstance } from "fastify";
+import type { ConsoleMessage, Page, Request, Response } from "playwright-core";
 import { expect } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { anmelden, mitTaste, zuElement } from "../fassungsrueckholung-echter-browser/weg";
@@ -45,6 +46,112 @@ import { type Sitzung, type Strecke, mussGelingen } from "../gast-nutzerweg/stre
 import { type Aussage, SCHLUESSEL, type Sprache, verstoesse, zaehlerVerstoesse } from "./bedeutung";
 
 const WER = "UX-26 Beleg/Original";
+
+/**
+ * Nur Ursachenmessung für den vorhandenen PG-Ladefehler, kein Fix: öffentliche Page-Ereignisse.
+ * Es werden ausschließlich technische Importfragmente und öffentliche Assetadressen ohne
+ * Nutzerinfo/Query/Fragment erfasst, keine Konsolenobjekte, Inhalte, Cookies oder Header.
+ */
+function beobachteLadefehler(seite: Seite, durchgang: string) {
+  // `profil` liefert die echte Playwright-Page; die gemeinsame Seite-Typhülle bleibt unverändert.
+  const page = seite as unknown as Pick<Page, "on" | "off">;
+  const fehler: Record<string, unknown>[] = [];
+  const antworten = new Map<string, number>();
+  let ausgelassen = 0;
+  const adresse = (roh: string): string | null => {
+    try {
+      const url = new URL(roh.replace(/[),.;]+$/u, ""));
+      if (
+        !/^https?:$/u.test(url.protocol) ||
+        !/^\/(?:assets\/.*|[^/]+\.(?:m?js|css))$/u.test(url.pathname)
+      ) {
+        return null;
+      }
+      return `${url.origin}${url.pathname}`.slice(0, 500);
+    } catch {
+      return null;
+    }
+  };
+  const technik = (roh: string) => ({
+    meldungen: [
+      ...roh.matchAll(
+        /failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed|unable to preload(?: CSS)?|failed to load module script|failed to load resource|refused to (?:load|execute|apply)|content security policy|MIME type|ChunkLoadError|preloadError|net::ERR_[A-Z0-9_]+|NS_ERROR_[A-Z_]+/giu,
+      ),
+    ].map((m) => m[0]).slice(0, 8),
+    adressen: [
+      ...new Set(
+        [...roh.matchAll(/https?:\/\/[^\s"'<>]+/gu)]
+          .map((m) => adresse(m[0]))
+          .filter((wert): wert is string => wert !== null),
+      ),
+    ].slice(0, 4),
+  });
+  const merke = (ereignis: Record<string, unknown>): void => {
+    if (fehler.length < 16) fehler.push(ereignis);
+    else ausgelassen += 1;
+  };
+  const konsole = (meldung: ConsoleMessage): void => {
+    if (!["error", "warning"].includes(meldung.type())) return;
+    const beobachtet = technik(meldung.text());
+    const ort = adresse(meldung.location().url);
+    if (beobachtet.meldungen.length === 0 && beobachtet.adressen.length === 0) return;
+    if (
+      beobachtet.meldungen.every((m) => /failed to load resource/iu.test(m)) &&
+      !ort &&
+      beobachtet.adressen.length === 0
+    ) {
+      return;
+    }
+    merke({ art: "console", typ: meldung.type(), ort, ...beobachtet });
+  };
+  const seitenfehler = (fehler: Error): void => {
+    const bekannteNamen =
+      /^(?:Error|TypeError|SyntaxError|ReferenceError|RangeError|ChunkLoadError|preloadError)$/u;
+    const name = bekannteNamen.test(fehler.name) ? fehler.name : "anderer Fehlertyp";
+    merke({ art: "pageerror", name, ...technik(fehler.message) });
+  };
+  const antwort = (response: Response): void => {
+    const url = adresse(response.url());
+    if (!url) return;
+    antworten.delete(url);
+    antworten.set(url, response.status());
+    if (antworten.size > 24) {
+      const erste = antworten.keys().next().value;
+      if (erste !== undefined) antworten.delete(erste);
+    }
+    if (response.status() >= 400) {
+      merke({ art: "asset-response", adresse: url, status: response.status() });
+    }
+  };
+  const abbruch = (request: Request): void => {
+    const url = adresse(request.url());
+    if (url) {
+      merke({ art: "requestfailed", adresse: url, ...technik(request.failure()?.errorText ?? "") });
+    }
+  };
+  page.on("console", konsole);
+  page.on("pageerror", seitenfehler);
+  page.on("response", antwort);
+  page.on("requestfailed", abbruch);
+  return {
+    ausgeben: (): void => {
+      process.stderr.write(
+        `${WER} LADEDIAGNOSE (Ursachenmessung, kein Fix): ${JSON.stringify({
+          durchgang,
+          fehler,
+          ausgelassen,
+          assetAntworten: [...antworten].map(([adresse, status]) => ({ adresse, status })),
+        })}\n`,
+      );
+    },
+    schliessen: (): void => {
+      page.off("console", konsole);
+      page.off("pageerror", seitenfehler);
+      page.off("response", antwort);
+      page.off("requestfailed", abbruch);
+    },
+  };
+}
 
 export const SCHMAL = { width: 320, height: 800 };
 export const DESKTOP = { width: 1280, height: 900 };
@@ -495,6 +602,7 @@ export async function fahreDurchgang(a: {
   email: string;
   sprache: Sprache;
   fenster: { width: number; height: number };
+  ladefehlerDiagnose?: boolean;
 }): Promise<Durchgangsbefund> {
   const { sprache, bestand } = a;
   const t = Tx(sprache);
@@ -504,6 +612,7 @@ export async function fahreDurchgang(a: {
   const { kontext, seite } = await profil(a.browser, a.fenster, sprache);
   await kontext.addInitScript(OEFFNEN_MITSCHREIBEN);
   await kontext.addInitScript(STUFE2_AN);
+  const ladefehler = a.ladefehlerDiagnose ? beobachteLadefehler(seite, name) : undefined;
   try {
     await anmelden(seite, basis, a.email, `${sprache}_anmeldung`, tastatur);
 
@@ -701,7 +810,11 @@ export async function fahreDurchgang(a: {
       t("ko.evFresh.current"),
     );
     return { tastatur, geoeffnet, originalInhalt: inhalt, neueQuelle, textNachNeuladen };
+  } catch (fehler) {
+    ladefehler?.ausgeben();
+    throw fehler;
   } finally {
+    ladefehler?.schliessen();
     await kontext.close();
   }
 }
@@ -731,10 +844,14 @@ export async function fahreLeser(a: {
   bestand: Bestand;
   email: string;
   sprache: Sprache;
+  ladefehlerDiagnose?: boolean;
 }): Promise<{ wegDa: boolean; knoepfe: string[] }> {
   const t = Tx(a.sprache);
   const tastatur: Record<string, number> = {};
   const { kontext, seite } = await profil(a.browser, SCHMAL, a.sprache);
+  const ladefehler = a.ladefehlerDiagnose
+    ? beobachteLadefehler(seite, `${a.sprache}-leser`)
+    : undefined;
   try {
     await anmelden(seite, a.strecke.basis, a.email, `${a.sprache}_leser`, tastatur);
     await belegeOeffnen(
@@ -763,7 +880,11 @@ export async function fahreLeser(a: {
         (b) => b.getAttribute("data-bib-nachladen") !== null ? "nachladen" : (b.textContent || "").trim())`),
     );
     return { wegDa, knoepfe };
+  } catch (fehler) {
+    ladefehler?.ausgeben();
+    throw fehler;
   } finally {
+    ladefehler?.schliessen();
     await kontext.close();
   }
 }
