@@ -35,9 +35,12 @@ export class ApiError extends Error {
   }
 }
 
+type ApiGetOptions = { priority: "auto" | "high" | "low" };
+type ApiRequestInit = RequestInit & Partial<ApiGetOptions>;
+
 const BASE = "/api";
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function apiFetch<T>(path: string, init?: ApiRequestInit): Promise<T> {
   if (geschuetzteAnfragenGesperrt() && !path.startsWith("/auth/"))
     throw new ApiError(
       401,
@@ -143,7 +146,7 @@ function mitFrist<T>(path: string, init: RequestInit, timeoutMs: number): Promis
 }
 
 export const api = {
-  get: <T>(path: string, options?: Pick<RequestInit, "priority">): Promise<T> =>
+  get: <T>(path: string, options?: ApiGetOptions): Promise<T> =>
     apiFetch<T>(path, options ? { priority: options.priority } : undefined),
   // JOB 3782: derselbe Abruf wie `get`, nur mit Frist. Er steht NEBEN `get` und ersetzt ihn nicht:
   // eine Frist für JEDEN Lesezugriff wäre eine Entscheidung über Wege, die dieser Auftrag nicht
