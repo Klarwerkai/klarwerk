@@ -17,9 +17,10 @@
 //       · frische Seite `/erfassen?draft=<id>` → „Datei ▾" → „Formular": die Fläche holt den
 //         Entwurf über ihren echten `GET /api/drafts/:id` (Capture.tsx, JOB 3414) — dessen Antwort
 //         wird mitgelesen, und der Editor zeigt das Geladene.
-//     An allen vier Stellen (Editor vorher · SQL · GET · Editor nachher) dieselbe Struktur: zwei
-//     Hüllen, zwei verschiedene Anker, je figure/img/figcaption mit DEMSELBEN Anker, gleiche Quelle,
-//     gleiche Textstelle davor und danach.
+//     An allen fünf Stellen (Editor vorher · Speicherantwort · SQL · GET · Editor nachher):
+//     dieselbe Struktur, zwei verschiedene Anker, je figure/img/figcaption mit DEMSELBEN Anker,
+//     gleiche Textstelle davor und danach. Editor → Speicherantwort darf verlustbehaftet neu
+//     kodieren; beide Bilder bleiben gültig 1×1. Ab Speicherantwort sind alle Quellenbytes exakt.
 //
 // KEINE ATTRAPPEN: kein API-/DB-Mock, kein Modellaufruf, keine Nachbearbeitung des DOM.
 //
@@ -381,6 +382,29 @@ function pruefeLage(lage: Figur[], wo: string, soll?: Figur[]): void {
   }
 }
 
+interface K2Bildmasse {
+  breite: number;
+  hoehe: number;
+}
+
+/** K2-Bilder unabhängig gültig dekodieren und ihre ganzen Maße lesen. */
+async function k2Bildmasse(seite: Buehne, quellen: readonly string[]): Promise<K2Bildmasse[]> {
+  return seite.evaluate<K2Bildmasse[]>(
+    fn(`async (quellen) => Promise.all(quellen.map(async (src) => {
+      const bild = new Image();
+      bild.src = src;
+      await bild.decode();
+      const breite = bild.naturalWidth;
+      const hoehe = bild.naturalHeight;
+      if (!bild.complete || breite <= 0 || hoehe <= 0) {
+        throw new Error("K2-Bild ungültig dekodiert: " + breite + "x" + hoehe);
+      }
+      return { breite, hoehe };
+    }))`),
+    quellen,
+  );
+}
+
 async function anmelden(roh: Seite): Promise<void> {
   const basis = brauche(strecke, "die Messstrecke").basis;
   await roh.goto(`${basis}/`, { waitUntil: "domcontentloaded" });
@@ -465,6 +489,7 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
       const seite = (await brauche(kontext, "die Sitzung").newPage()) as unknown as Buehne;
       let id = "";
       let vorher: Figur[] = [];
+      let rumpfSpeicherantwort: string | null = null;
       try {
         await seite.goto(`${basis}/erfassen`, {
           waitUntil: "load",
@@ -492,15 +517,13 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
           "Bildauswahl in erweiterten Details offen",
         );
 
-        const label = await mitte(
-          seite,
-          `[...document.querySelectorAll("label")].find((l) => (l.textContent || "").trim().startsWith(${JSON.stringify(t("capture.imagesUpload"))}) && l.querySelector('input[type="file"][accept="image/*"]'))`,
-        );
-        const wahl = seite.waitForEvent("filechooser", {
-          timeout: wartebudget("aufFlaechensatzWarten"),
-        });
-        await seite.mouse.click(label.x, label.y);
-        await (await wahl).setFiles({ name: BILD_NAME, mimeType: "image/png", buffer: BILD_PNG });
+        const [wahl] = await Promise.all([
+          seite.waitForEvent("filechooser", {
+            timeout: wartebudget("aufFlaechensatzWarten"),
+          }),
+          seite.click('label:has(input[type="file"][accept="image/*"]):visible', { strict: true }),
+        ]);
+        await wahl.setFiles({ name: BILD_NAME, mimeType: "image/png", buffer: BILD_PNG });
         // onImages liest und konvertiert die Datei asynchron. Erst das fertige Vorschaubild
         // belegt, dass der Upload im Produktzustand angekommen ist; setFiles allein tut das nicht.
         await warteBis(
@@ -546,6 +569,8 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         const antwort = await gespeichert;
         expect(antwort.status(), "Speichern über den Socket").toBeLessThan(300);
         const gesichert = (await antwort.json()) as { id?: unknown };
+        rumpfSpeicherantwort = rumpfAus(gesichert);
+        expect(rumpfSpeicherantwort, "die Speicherantwort trägt bodyHtml").not.toBeNull();
         id = typeof gesichert.id === "string" ? gesichert.id : "";
         expect(
           id,
@@ -558,15 +583,47 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         await seite.close({ runBeforeUnload: false }).catch(() => undefined);
       }
 
-      // Die Zeile in PostgreSQL.
-      const zeile = await entwurfszeile(db, id);
-      expect(zeile, `keine drafts-Zeile ${id}`).not.toBeNull();
-      const rumpfSql = rumpfAus(JSON.parse(zeile as string));
-      expect(rumpfSql, "die drafts-Zeile trägt keinen bodyHtml").not.toBeNull();
-
-      // Wiederöffnen auf einer frischen Seite — der echte GET wird mitgelesen.
+      // Frische Seite: zuerst die echte Speicherantwort binden, noch vor SQL und GET.
       const neu = (await brauche(kontext, "die Sitzung").newPage()) as unknown as Buehne;
       try {
+        const kanonisch = await seiteAusfuehren<Figur[]>(
+          neu,
+          lageAus(JSON.stringify(rumpfSpeicherantwort)),
+        );
+        pruefeLage(kanonisch, "POST/PUT-Speicherantwort");
+        // Die optionale Hüllenspiegelung bleibt erlaubt; alle Nicht-SRC-Felder bleiben gleich.
+        const ohneQuelle = (lage: Figur[]) =>
+          lage.map((f) => ({
+            huelleId: f.huelleId ?? f.bildId,
+            bildId: f.bildId,
+            unterschriftId: f.unterschriftId,
+            davor: f.davor,
+            danach: f.danach,
+          }));
+        expect(ohneQuelle(kanonisch), "Speicherantwort: Anker, Zuordnung und Position").toEqual(
+          ohneQuelle(vorher),
+        );
+        const masseVorher = await k2Bildmasse(
+          neu,
+          vorher.map((f) => f.src),
+        );
+        const masseAntwort = await k2Bildmasse(
+          neu,
+          kanonisch.map((f) => f.src),
+        );
+        expect(masseVorher, "beide Editorbilder gültig und genau 1×1").toEqual([
+          { breite: 1, hoehe: 1 },
+          { breite: 1, hoehe: 1 },
+        ]);
+        expect(masseAntwort, "beide Speicherantwortbilder behalten die Maße").toEqual(masseVorher);
+
+        // Erst nach der unabhängigen Speicherantwortbindung die Zeile in PostgreSQL lesen.
+        const zeile = await entwurfszeile(db, id);
+        expect(zeile, `keine drafts-Zeile ${id}`).not.toBeNull();
+        const rumpfSql = rumpfAus(JSON.parse(zeile as string));
+        expect(rumpfSql, "die drafts-Zeile trägt keinen bodyHtml").not.toBeNull();
+
+        // Wiederöffnen auf derselben frischen Seite — der echte GET wird mitgelesen.
         const geholt: Antwort[] = [];
         neu.on("response", (a) => {
           if (a.request().method() === "GET" && new URL(a.url()).pathname === `/api/drafts/${id}`) {
@@ -589,9 +646,10 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         const ausSql = await seiteAusfuehren<Figur[]>(neu, lageAus(JSON.stringify(rumpfSql)));
         const ausGet = await seiteAusfuehren<Figur[]>(neu, lageAus(JSON.stringify(rumpfGet)));
         const nachher = await seiteAusfuehren<Figur[]>(neu, lageAus(`${FELD}.innerHTML`));
-        pruefeLage(ausSql, "drafts-Zeile (SQL)", vorher);
-        pruefeLage(ausGet, "GET /api/drafts/:id", vorher);
-        pruefeLage(nachher, "Editor nach dem Wiederöffnen", vorher);
+        // Der zuvor gebundene HTTP-Speicherstand bleibt vollständig und bytegenau erhalten.
+        pruefeLage(ausSql, "drafts-Zeile (SQL)", kanonisch);
+        pruefeLage(ausGet, "GET /api/drafts/:id", kanonisch);
+        pruefeLage(nachher, "Editor nach dem Wiederöffnen", kanonisch);
         process.stderr.write(
           `${KENNZEICHEN} GRÜN · Entwurf ${id} · Anker ${vorher.map((f) => f.bildId).join(", ")}\n`,
         );
