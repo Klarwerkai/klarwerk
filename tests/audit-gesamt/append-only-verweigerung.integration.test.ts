@@ -293,9 +293,8 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
 
   // Runde 3 (BEN-L5-B2): jeder Löschweg muss WIRKLICH löschen, sonst belegt der Erhalt der
   // Auditzeilen nichts. Deshalb je Weg: Bestand vorher anlegen, Wirkung nachher in der Datenbank
-  // messen, erst dann die früheren Auditzeilen vergleichen. Das Demo-Objekt entsteht über den
-  // gewöhnlichen Produktweg (Anlegen + Schlagwort `pilot-demo`) — das Laden des Demo-Sets ist hinter
-  // dem Schalter `demodaten` gesperrt, der Entfernen-Weg erkennt das Schlagwort ausdrücklich.
+  // messen, erst dann die früheren Auditzeilen vergleichen. Das System-Demo trägt den internen
+  // demoSeed-Merker; das nur nutzergetaggte Objekt bleibt als unveränderte Gegenprobe erhalten.
   it("Produktwege mit Löschung (Papierkorb, Endlöschung, Demodaten, Nutzer) löschen wirklich und lassen jeden früheren Eintrag bitgleich", async (ctx) => {
     const { a, p, s } = bereit(ctx);
     const neuesObjekt = async (titel: string): Promise<string> => {
@@ -319,20 +318,44 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
         .rows[0];
 
     const id = await neuesObjekt("Wird gelöscht");
-    const demoId = await neuesObjekt("Demo-Objekt");
+    const getaggtesId = await neuesObjekt("Demo-Objekt");
     const getaggt = await a.inject({
       method: "PUT",
-      url: `/api/kos/${demoId}`,
+      url: `/api/kos/${getaggtesId}`,
       headers,
       payload: { action: "tags", tags: ["pilot-demo"] },
     });
     expect(getaggt.statusCode, getaggt.body).toBe(200);
+    const systemDemo = await s.ko.create({
+      confidentiality: "intern",
+      demoSeed: true,
+      title: "System-Demo-Objekt",
+      statement: "Dieses System-Demo wird gelöscht.",
+      type: "best_practice",
+      category: "Instandhaltung",
+      author: adminId,
+    });
+    const demoId = systemDemo.id;
+    expect((await koZeile(demoId))?.data).toMatchObject({
+      demoSeed: true,
+      author: adminId,
+      confidentiality: "intern",
+    });
     const nutzer = await s.auth.register({
       name: "Wird gelöscht",
       email: "l5-weg@x.de",
       password: "secret123",
     });
     expect((await p.query("SELECT 1 FROM users WHERE id=$1", [nutzer.id])).rowCount).toBe(1);
+    // Der Hintergrundschreiber muss vor der strengen Baseline abgeschlossen sein.
+    await s.aiCheckWorker?.idle();
+    const getaggterBestand = (
+      await p.query("SELECT to_jsonb(k) AS zeile FROM kos k WHERE id=$1", [getaggtesId])
+    ).rows;
+    expect(getaggterBestand).toHaveLength(1);
+    expect(getaggterBestand[0]?.zeile.data.aiCheck?.status, "KI-Prüfung abgeschlossen").not.toBe(
+      "pending",
+    );
 
     const wege: Array<{ url: string; wirkung: (body: unknown) => Promise<void> }> = [
       {
@@ -355,6 +378,13 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
           expect(ergebnis.kos).toBe(ergebnis.gefunden.kos);
           expect(ergebnis.fehler).toEqual([]);
           expect(await koZeile(demoId), "Demo-Objekt gelöscht").toBeUndefined();
+          const getaggtNachher = (
+            await p.query("SELECT to_jsonb(k) AS zeile FROM kos k WHERE id=$1", [getaggtesId])
+          ).rows;
+          expect(
+            getaggtNachher,
+            "Nutzerobjekt mit pilot-demo bleibt vollständig unverändert",
+          ).toEqual(getaggterBestand);
         },
       },
       {
