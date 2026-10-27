@@ -710,8 +710,12 @@ async function abnahmeNachAbmeldung(
   );
   expect(sicht.status, `${wann}: GET /api/drafts: ${sicht.rumpf.slice(0, 300)}`).toBe(200);
   expect(JSON.parse(sicht.rumpf) as unknown[], `${wann}: unerwartete Entwürfe`).toEqual([]);
-  expect(await warteschlange(seite), `${wann}: gelöschte Queue wurde wiederhergestellt`).toEqual([]);
-  expect(await offlineFotos(seite), `${wann}: gelöschte Fotos wurden wiederhergestellt`).toEqual([]);
+  expect(await warteschlange(seite), `${wann}: gelöschte Queue wurde wiederhergestellt`).toEqual(
+    [],
+  );
+  expect(await offlineFotos(seite), `${wann}: gelöschte Fotos wurden wiederhergestellt`).toEqual(
+    [],
+  );
   const text = await seite.evaluate<string>(fn("() => document.body.innerText"));
   expect(text, `${wann}: der gelöschte Titel ist sichtbar`).not.toContain(a.titelA);
   await meldungDarfNichtKommen(
