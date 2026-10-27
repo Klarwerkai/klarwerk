@@ -46,7 +46,7 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import type { Page } from "playwright-core";
+import type { CDPSession, Page } from "playwright-core";
 import { expect } from "vitest";
 import { registerWebStatic } from "../../services/app/src/web-static";
 import { MELDUNGEN, type Sprache } from "../../services/auth/src/meldungen";
@@ -96,6 +96,7 @@ export interface Seite {
   url(): string;
 }
 export interface Kontext {
+  newCDPSession?(page: Seite): Promise<CDPSession>;
   newPage(): Promise<Seite>;
   addInitScript(script: string): Promise<void>;
   cookies(): Promise<{ name: string; value: string }[]>;

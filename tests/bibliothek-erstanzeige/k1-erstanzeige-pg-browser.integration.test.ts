@@ -348,6 +348,219 @@ function erstanzeigePruefen(
   expect(fremd, `${K}: ${was} — Kennungen ausserhalb des Seeds`).toEqual([]);
 }
 
+// Öffentliche CPU-Sampling-Diagnose; verändert weder Anzeige noch Messkriterium.
+type CpuSitzung = Awaited<ReturnType<NonNullable<Kontext["newCDPSession"]>>>;
+interface CpuFrame {
+  functionName: string;
+  scriptId: string;
+  url: string;
+  lineNumber: number;
+  columnNumber: number;
+}
+interface CpuLauf {
+  sitzung: CpuSitzung;
+  laeuft: boolean;
+  herkunft: string;
+  diagnose: Record<string, unknown>;
+}
+
+async function cpuStarten(k: Kontext, s: Seite, basis: string): Promise<CpuLauf | undefined> {
+  const diagnose: Record<string, unknown> = {
+    status: "nicht_gestartet",
+    angefordertesIntervallUs: 1000,
+    fenster: "unveränderter erstanzeigeMessen-Aufruf einschließlich Auslesen",
+    hinweis: "Sampling verursacht Aufwand; Samplegewichte sind keine isolierten Laufzeiten.",
+  };
+  bericht.cpuProfil = diagnose;
+  let sitzung: CpuSitzung | undefined;
+  let gestartet = false;
+  let schritt = "newCDPSession";
+  try {
+    if (!k.newCDPSession) {
+      diagnose.status = "nicht_unterstuetzt";
+      diagnose.grund = "Öffentlicher CDP-Port fehlt am eigenen Kontext";
+      return;
+    }
+    const herkunft = new URL(basis).origin;
+    sitzung = await k.newCDPSession(s);
+    schritt = "Profiler.enable";
+    await sitzung.send("Profiler.enable");
+    schritt = "Profiler.setSamplingInterval";
+    await sitzung.send("Profiler.setSamplingInterval", { interval: 1000 });
+    diagnose.konfiguriertesIntervallUs = 1000;
+    schritt = "Profiler.start";
+    await sitzung.send("Profiler.start");
+    gestartet = true;
+    diagnose.status = "laeuft";
+    return { sitzung, laeuft: true, herkunft, diagnose };
+  } catch (fehler) {
+    diagnose.status = "beobachtungsfehler";
+    diagnose.fehler = { schritt, grund: String(fehler) };
+    return;
+  } finally {
+    if (sitzung && !gestartet) {
+      try {
+        await sitzung.detach();
+        diagnose.sessionGetrennt = true;
+      } catch (fehler) {
+        diagnose.trennfehler = String(fehler);
+      }
+    }
+  }
+}
+
+function cpuAssetPfad(frame: CpuFrame, herkunft: string): string | undefined {
+  try {
+    const url = new URL(frame.url);
+    if (url.origin === herkunft && url.pathname.startsWith("/assets/")) return url.pathname;
+  } catch {
+    // Leere, native oder fremde Frames erhalten keinen Quelltextabruf.
+  }
+  return;
+}
+
+async function cpuQuellausschnitte(lauf: CpuLauf, frames: CpuFrame[]): Promise<void> {
+  if (frames.length === 0) {
+    lauf.diagnose.quellzuordnung = "Keine teuren eigenen Frames mit kurzem/minifiziertem Namen";
+    return;
+  }
+  let aktiv = false;
+  const ausschnitte: Record<string, unknown>[] = [];
+  const quellen = new Map<string, string>();
+  try {
+    // Erst nach Profiler.stop und dem unveränderten Messende, niemals Pause oder Ausführung.
+    await lauf.sitzung.send("Debugger.enable");
+    aktiv = true;
+    for (const frame of frames.slice(0, 15)) {
+      try {
+        let quelle = quellen.get(frame.scriptId);
+        if (quelle === undefined) {
+          const antwort = await lauf.sitzung.send("Debugger.getScriptSource", {
+            scriptId: frame.scriptId,
+          });
+          quelle = antwort.scriptSource;
+          quellen.set(frame.scriptId, quelle);
+        }
+        const zeile = quelle.split("\n")[frame.lineNumber];
+        if (zeile === undefined || frame.columnNumber > zeile.length) {
+          ausschnitte.push({ frame, grund: "Beobachtete Quellposition nicht verfügbar" });
+          continue;
+        }
+        const von = Math.max(0, frame.columnNumber - 180);
+        ausschnitte.push({
+          frame,
+          pfad: cpuAssetPfad(frame, lauf.herkunft),
+          positionenAbNull: true,
+          ausschnittSpalteAb: von,
+          ausschnitt: zeile.slice(von, frame.columnNumber + 300),
+        });
+      } catch (fehler) {
+        ausschnitte.push({ frame, grund: String(fehler) });
+      }
+    }
+    lauf.diagnose.quellausschnitte = ausschnitte;
+  } catch (fehler) {
+    lauf.diagnose.quellzuordnungFehler = String(fehler);
+  } finally {
+    if (aktiv) {
+      try {
+        await lauf.sitzung.send("Debugger.disable");
+      } catch (fehler) {
+        lauf.diagnose.debuggerAbschlussfehler = String(fehler);
+      }
+    }
+  }
+}
+
+async function cpuStoppen(
+  lauf: CpuLauf | undefined,
+  messaufrufAbgeschlossen: boolean,
+): Promise<void> {
+  if (!lauf?.laeuft) return;
+  lauf.laeuft = false;
+  try {
+    const { profile } = await lauf.sitzung.send("Profiler.stop");
+    lauf.diagnose.status = "gestoppt";
+    lauf.diagnose.messaufrufAbgeschlossen = messaufrufAbgeschlossen;
+    lauf.diagnose.rohprofil = profile;
+    const { samples, timeDeltas } = profile;
+    if (!samples || !timeDeltas || samples.length !== timeDeltas.length) {
+      lauf.diagnose.auswertung = "Samples/Zeitdeltas fehlen oder haben verschiedene Längen";
+      return;
+    }
+    const knoten = new Map(profile.nodes.map((knoten) => [knoten.id, knoten]));
+    const eltern = new Map<number, number[]>();
+    for (const knoten of profile.nodes) {
+      for (const kind of knoten.children ?? []) {
+        const ids = eltern.get(kind) ?? [];
+        ids.push(knoten.id);
+        eltern.set(kind, ids);
+      }
+    }
+    const gewichte = new Map<number, { samples: number; sampleGewichtUs: number }>();
+    for (const [i, id] of samples.entries()) {
+      const delta = timeDeltas[i];
+      if (typeof delta !== "number" || !Number.isFinite(delta) || delta < 0 || !knoten.has(id)) {
+        lauf.diagnose.auswertung = "Ungültiges Sample, Zeitdelta oder unbekannte Knotenkennung";
+        return;
+      }
+      const gewicht = gewichte.get(id) ?? { samples: 0, sampleGewichtUs: 0 };
+      gewicht.samples += 1;
+      gewicht.sampleGewichtUs += delta;
+      gewichte.set(id, gewicht);
+    }
+    const sortiert = [...gewichte.entries()].sort(
+      ([, a], [, b]) => b.sampleGewichtUs - a.sampleGewichtUs,
+    );
+    lauf.diagnose.auswertung = {
+      regel: "timeDeltas[i] dem Blatt samples[i] zugeordnet; keine isolierte Funktionslaufzeit",
+      samples: samples.length,
+      sampleGewichtUs: timeDeltas.reduce((summe, delta) => summe + delta, 0),
+      topSelf: sortiert.slice(0, 15).map(([id, gewicht]) => ({
+        id,
+        ...gewicht,
+        callFrame: knoten.get(id)?.callFrame,
+        aufruferAnzahl: eltern.get(id)?.length ?? 0,
+        aufrufer: (eltern.get(id) ?? []).slice(0, 15).map((elternId) => ({
+          id: elternId,
+          callFrame: knoten.get(elternId)?.callFrame,
+        })),
+      })),
+    };
+    if (messaufrufAbgeschlossen) {
+      const frames = sortiert.flatMap(([id, gewicht]) => {
+        const frame = knoten.get(id)?.callFrame;
+        if (!frame || gewicht.sampleGewichtUs <= 0) return [];
+        if (!cpuAssetPfad(frame, lauf.herkunft)) return [];
+        if (!Number.isInteger(frame.lineNumber) || frame.lineNumber < 0) return [];
+        if (!Number.isInteger(frame.columnNumber) || frame.columnNumber < 0) return [];
+        if (frame.functionName === "" || /^[A-Za-z_$][\w$]{0,3}$/.test(frame.functionName)) {
+          return [frame];
+        }
+        return [];
+      });
+      await cpuQuellausschnitte(lauf, frames.slice(0, 15));
+    }
+  } catch (fehler) {
+    lauf.diagnose.status = "beobachtungsfehler";
+    lauf.diagnose.stopOderAuswertungsfehler = String(fehler);
+  }
+}
+
+async function cpuAufraeumen(lauf: CpuLauf | undefined): Promise<void> {
+  if (!lauf) return;
+  try {
+    if (lauf.laeuft) await cpuStoppen(lauf, false);
+  } finally {
+    try {
+      await lauf.sitzung.detach();
+      lauf.diagnose.sessionGetrennt = true;
+    } catch (fehler) {
+      lauf.diagnose.trennfehler = String(fehler);
+    }
+  }
+}
+
 let platz: Pruefplatz | undefined;
 let instanz: Instanz | undefined;
 let browser: Awaited<ReturnType<typeof starteChromium>> | undefined;
@@ -440,11 +653,17 @@ it("K1: 10.001 KOs und 200 Zeilen ab Dokumentbeginn unter 1000 ms", async (ctx) 
     return;
   }
   expect(LIBRARY_RESULT_LIMIT).toBe(200);
-  const erstanzeige = await erstanzeigeMessen(kontext, seite, instanz.basis, GESAMT);
-  bericht.erstanzeigeMs = { ...erstanzeige, grenzeMs: 1000 };
-  erstanzeigePruefen(erstanzeige, alle, GESAMT, "Erstanzeige 10.001");
-  expect(
-    erstanzeige.bildMs,
-    `${K}: Erstanzeige ${Math.round(erstanzeige.bildMs)} ms (NFR-PERF-01 < 1000 ms)`,
-  ).toBeLessThan(1000);
+  const cpu = await cpuStarten(kontext, seite, instanz.basis);
+  try {
+    const erstanzeige = await erstanzeigeMessen(kontext, seite, instanz.basis, GESAMT);
+    await cpuStoppen(cpu, true);
+    bericht.erstanzeigeMs = { ...erstanzeige, grenzeMs: 1000 };
+    erstanzeigePruefen(erstanzeige, alle, GESAMT, "Erstanzeige 10.001");
+    expect(
+      erstanzeige.bildMs,
+      `${K}: Erstanzeige ${Math.round(erstanzeige.bildMs)} ms (NFR-PERF-01 < 1000 ms)`,
+    ).toBeLessThan(1000);
+  } finally {
+    await cpuAufraeumen(cpu);
+  }
 }, 60_000);
