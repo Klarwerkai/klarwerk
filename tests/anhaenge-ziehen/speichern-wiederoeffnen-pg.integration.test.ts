@@ -18,8 +18,9 @@
 //         Entwurf über ihren echten `GET /api/drafts/:id` (Capture.tsx, JOB 3414) — dessen Antwort
 //         wird mitgelesen, und der Editor zeigt das Geladene.
 //     An allen vier Stellen (Editor vorher · SQL · GET · Editor nachher) dieselbe Struktur: zwei
-//     Hüllen, zwei verschiedene Anker, je figure/img/figcaption mit DEMSELBEN Anker, gleiche Quelle,
-//     gleiche Textstelle davor und danach.
+//     Hüllen, zwei verschiedene Anker, je figure/img/figcaption mit DEMSELBEN Anker,
+//     gleiche Textstelle davor und danach. Editor → SQL darf metadatenfrei neu kodieren:
+//     ganze 1×1-Maße/RGBA unabhängig und exakt; ab SQL auch die vollständigen Quellenbytes exakt.
 //
 // KEINE ATTRAPPEN: kein API-/DB-Mock, kein Modellaufruf, keine Nachbearbeitung des DOM.
 //
@@ -381,6 +382,34 @@ function pruefeLage(lage: Figur[], wo: string, soll?: Figur[]): void {
   }
 }
 
+interface K2Bildpixel {
+  breite: number;
+  hoehe: number;
+  rgba: number[];
+}
+
+/** Ganze K2-Bilder unabhängig im Browser dekodieren; keine Produktableitung als Soll. */
+async function k2Bildpixel(seite: Buehne, quellen: readonly string[]): Promise<K2Bildpixel[]> {
+  return seite.evaluate<K2Bildpixel[]>(
+    fn(`async (quellen) => Promise.all(quellen.map(async (src) => {
+      const bild = new Image();
+      bild.src = src;
+      await bild.decode();
+      const breite = bild.naturalWidth;
+      const hoehe = bild.naturalHeight;
+      if (!bild.complete || breite <= 0 || hoehe <= 0) {
+        throw new Error("K2-Bild ungültig dekodiert: " + breite + "x" + hoehe);
+      }
+      const canvas = new OffscreenCanvas(breite, hoehe);
+      const kontext = canvas.getContext("2d");
+      if (!kontext) { throw new Error("K2-Bilddecoder: kein 2D-Kontext"); }
+      kontext.drawImage(bild, 0, 0);
+      return { breite, hoehe, rgba: Array.from(kontext.getImageData(0, 0, breite, hoehe).data) };
+    }))`),
+    quellen,
+  );
+}
+
 async function anmelden(roh: Seite): Promise<void> {
   const basis = brauche(strecke, "die Messstrecke").basis;
   await roh.goto(`${basis}/`, { waitUntil: "domcontentloaded" });
@@ -587,9 +616,38 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         const ausSql = await seiteAusfuehren<Figur[]>(neu, lageAus(JSON.stringify(rumpfSql)));
         const ausGet = await seiteAusfuehren<Figur[]>(neu, lageAus(JSON.stringify(rumpfGet)));
         const nachher = await seiteAusfuehren<Figur[]>(neu, lageAus(`${FELD}.innerHTML`));
-        pruefeLage(ausSql, "drafts-Zeile (SQL)", vorher);
-        pruefeLage(ausGet, "GET /api/drafts/:id", vorher);
-        pruefeLage(nachher, "Editor nach dem Wiederöffnen", vorher);
+        // Editor → SQL ist die erlaubte metadatenfreie Bildableitung (W4.6 OCR-1/2).
+        pruefeLage(ausSql, "drafts-Zeile (SQL)");
+        // Wie bisher darf die Hülle den Bildanker spiegeln; alle Nicht-SRC-Felder bleiben gleich.
+        const ohneQuelle = (lage: Figur[]) =>
+          lage.map((f) => ({
+            huelleId: f.huelleId ?? f.bildId,
+            bildId: f.bildId,
+            unterschriftId: f.unterschriftId,
+            davor: f.davor,
+            danach: f.danach,
+          }));
+        expect(ohneQuelle(ausSql), "SQL: Anker, Zuordnung und Position unverändert").toEqual(
+          ohneQuelle(vorher),
+        );
+        const pixelVorher = await k2Bildpixel(
+          neu,
+          vorher.map((f) => f.src),
+        );
+        const pixelSql = await k2Bildpixel(
+          neu,
+          ausSql.map((f) => f.src),
+        );
+        for (let i = 0; i < 2; i += 1) {
+          const v = pixelVorher[i] as K2Bildpixel;
+          expect(v.breite, "K2-Originalbild: genau ein Pixel breit").toBe(1);
+          expect(v.hoehe, "K2-Originalbild: genau ein Pixel hoch").toBe(1);
+          expect(v.rgba, "K2-Originalbild: sämtliche vier RGBA-Bytes").toHaveLength(4);
+          expect(pixelSql[i], `SQL-Bild ${i + 1}: ganze Maße und RGBA exakt`).toEqual(v);
+        }
+        // Ab der unabhängig gebundenen SQL-Ableitung bleiben sämtliche SRC-Bytes exakt.
+        pruefeLage(ausGet, "GET /api/drafts/:id", ausSql);
+        pruefeLage(nachher, "Editor nach dem Wiederöffnen", ausSql);
         process.stderr.write(
           `${KENNZEICHEN} GRÜN · Entwurf ${id} · Anker ${vorher.map((f) => f.bildId).join(", ")}\n`,
         );
