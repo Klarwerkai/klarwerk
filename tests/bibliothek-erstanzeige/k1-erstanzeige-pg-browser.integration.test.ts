@@ -305,7 +305,7 @@ beforeAll(async () => {
   }
   platz = ergebnis.platz;
   flaecheBereitstellen();
-  const db = await platz.wegwerfdatenbank("k1-erstanzeige");
+  const db = await platz.wegwerfdatenbank("k1_erstanzeige");
   instanz = await instanzStarten(db.pool);
   const admin = await adminAnlegen(instanz.app, "k1-erstanzeige");
   await instanz.schliessen();
