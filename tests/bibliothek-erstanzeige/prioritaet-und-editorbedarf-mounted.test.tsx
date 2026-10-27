@@ -11,10 +11,7 @@ import { api } from "../../apps/web/src/api/client";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { BibliothekLesen } from "../../apps/web/src/components/bibliothek/BibliothekLesen";
 import i18n from "../../apps/web/src/i18n";
-import {
-  beendeLokaleSitzung,
-  bestaetigeLokalesKonto,
-} from "../../apps/web/src/lib/lokaleSitzung";
+import { beendeLokaleSitzung, bestaetigeLokalesKonto } from "../../apps/web/src/lib/lokaleSitzung";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 
 const konto = vi.hoisted(() => ({ id: "" }));
