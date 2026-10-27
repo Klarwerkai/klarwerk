@@ -1,6 +1,6 @@
 import { type UseQueryResult, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -135,7 +135,6 @@ import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { ANTWORT_MINDESTLAENGE, BibliothekAntwort } from "./BibliothekAntwort";
-import { BibliothekLesen } from "./BibliothekLesen";
 import {
   BIB_ANSICHTEN,
   type BibListenPosten,
@@ -150,6 +149,12 @@ import {
   passtZuSegment,
   zustandsTon,
 } from "./zustand";
+
+// Die Liste braucht den Leser samt Editor erst bei einer Kennung. Seine Modul-Ladezeit
+// bleibt auf die Lesespalte begrenzt; Suche und Trefferliste können vorher arbeiten.
+const BibliothekLesen = lazy(() =>
+  import("./BibliothekLesen").then((modul) => ({ default: modul.BibliothekLesen })),
+);
 
 // Der Umschalter in der Adresse — kurz und lesbar, weil der Link geteilt wird.
 const SEGMENT_PARAM = "zustand";
@@ -2845,40 +2850,42 @@ export function BibliothekFlaeche({
               </output>
             ) : null}
             {gewaehltEffektiv ? (
-              <BibliothekLesen
-                key={gewaehltEffektiv}
-                koId={gewaehltEffektiv}
-                suchtext={trimmedQ}
-                treffer={trefferFelder}
-                // Steht der Satz schon auf der Fläche — an der Liste oder, schmal, gleich hier
-                // darüber (`hinweisKnoten`) —, schweigt die Lesefläche dazu. Die Bedingung ist
-                // unverändert `standQuelle`: WO er steht, hat sich geändert, DASS er genau einmal
-                // steht, nicht.
-                hinweisSchonGesagt={standQuelle !== null}
-                // JOB 3362: dieselbe Regel eine Zeile tiefer, für die übersetzte Lesart. Auf
-                // `/wissen/:id` — und nur dort ist `vorgewaehlt` gesetzt — steht sie seit JOB 3326
-                // schon über dieser Fläche (`pages/KnowledgeDetail.tsx`); dann schweigt die
-                // Lesefläche dazu und fragt sie auch nicht ein zweites Mal ab. Auf `/bibliothek`
-                // gibt es diese Karte nicht, und die Lesefläche trägt die Übersetzung selbst.
-                lesevarianteSchonGesagt={vorgewaehlt !== undefined}
-                nachDemInhalt={gewaehltEffektiv === vorgewaehlt ? nachDemInhalt : undefined}
-                onBearbeiten={setLeseBearbeitet}
-                // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
-                // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
-                // Eintrag ließ sich nicht laden.". Wer selbst gelöscht hat, weiß, was er getan hat;
-                // ihm gehört der Normalzustand, nicht der Fehlersatz.
-                onGeloescht={() => {
-                  setParams(
-                    (prev) => {
-                      const p = new URLSearchParams(prev);
-                      p.delete(EINTRAG_PARAM);
-                      return p;
-                    },
-                    { replace: true },
-                  );
-                  beiLoeschung?.();
-                }}
-              />
+              <Suspense fallback={null}>
+                <BibliothekLesen
+                  key={gewaehltEffektiv}
+                  koId={gewaehltEffektiv}
+                  suchtext={trimmedQ}
+                  treffer={trefferFelder}
+                  // Steht der Satz schon auf der Fläche — an der Liste oder, schmal, gleich hier
+                  // darüber (`hinweisKnoten`) —, schweigt die Lesefläche dazu. Die Bedingung ist
+                  // unverändert `standQuelle`: WO er steht, hat sich geändert, DASS er genau einmal
+                  // steht, nicht.
+                  hinweisSchonGesagt={standQuelle !== null}
+                  // JOB 3362: dieselbe Regel eine Zeile tiefer, für die übersetzte Lesart. Auf
+                  // `/wissen/:id` — und nur dort ist `vorgewaehlt` gesetzt — steht sie seit JOB 3326
+                  // schon über dieser Fläche (`pages/KnowledgeDetail.tsx`); dann schweigt die
+                  // Lesefläche dazu und fragt sie auch nicht ein zweites Mal ab. Auf `/bibliothek`
+                  // gibt es diese Karte nicht, und die Lesefläche trägt die Übersetzung selbst.
+                  lesevarianteSchonGesagt={vorgewaehlt !== undefined}
+                  nachDemInhalt={gewaehltEffektiv === vorgewaehlt ? nachDemInhalt : undefined}
+                  onBearbeiten={setLeseBearbeitet}
+                  // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
+                  // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
+                  // Eintrag ließ sich nicht laden.". Wer selbst gelöscht hat, weiß, was er getan hat;
+                  // ihm gehört der Normalzustand, nicht der Fehlersatz.
+                  onGeloescht={() => {
+                    setParams(
+                      (prev) => {
+                        const p = new URLSearchParams(prev);
+                        p.delete(EINTRAG_PARAM);
+                        return p;
+                      },
+                      { replace: true },
+                    );
+                    beiLoeschung?.();
+                  }}
+                />
+              </Suspense>
             ) : null}
           </div>
         </div>
