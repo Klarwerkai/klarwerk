@@ -20,8 +20,8 @@
 //       liest also die Datenbank, nicht sein Gedächtnis); Annas nächste Erneuerung setzt sie wieder.
 //   P3  Paralleles Speichern: Anna und Bernd bearbeiten, beide drücken im selben Augenblick
 //       „Speichern" — genau eine Fassung gewinnt, die andere bekommt den Konflikt und behält ihren
-//       Text; am Pool steht nur der Gewinner, die Fassung stieg um genau eins. Abbrechen nimmt den
-//       Hinweis des Verlierers, der Gewinner sieht das Ende.
+//       Text; am Pool steht nur der Gewinner, die Fassung stieg um genau eins. Erst das bestätigte
+//       Verwerfen nach Abbrechen nimmt den Hinweis des Verlierers, der Gewinner sieht das Ende.
 //   P4  Ablauf: Annas Verbindung reisst ab (Profil offline). Ihre Fläche sagt es, ihr Text bleibt;
 //       Bernd sieht den Hinweis nach Ablauf (Serverzeit, 120 s) verschwinden. Verbindung zurück:
 //       Anna meldet sich neu an, ihr Text steht noch da, Bernd sieht sie wieder.
@@ -279,6 +279,53 @@ async function stehtAmPool(
     throw new Error(`${JOB}: der Eintrag ${koId} steht nicht am Pool.`);
   }
   return { statement: d.statement, version: d.version };
+}
+
+/** Abbrechen schützt die ganze Eingabe bis zur bewussten Verwerfentscheidung im echten Dialog. */
+async function brichBewusstAb(
+  seite: Seite,
+  pool: Pool,
+  koId: string,
+  sprache: "de" | "en",
+  marke: string,
+  tastatur: Record<string, number>,
+): Promise<number> {
+  const eingabe = await wert(seite, AUSSAGE);
+  expect(eingabe, "ganze Eingabe vor Abbrechen").toBeTypeOf("string");
+  const stand = await stehtAmPool(pool, koId);
+  const schritte = await mitTaste(seite, ABBRECHEN, marke, tastatur);
+  const dialog = "[data-navguard-dialog]";
+  await warte(
+    seite,
+    `(sel) => {
+      const e = document.querySelector(sel);
+      if (!e) return false;
+      const stil = getComputedStyle(e);
+      return e.getClientRects().length > 0 && stil.visibility !== "hidden" && Number(stil.opacity) > 0;
+    }`,
+    `${marke}: Verwerfentscheidung ist sichtbar`,
+    dialog,
+  );
+  // Beide bestehenden Dialogzweige haben Verwerfen als zweiten Knopf ihrer Aktionszeile.
+  const verwerfen = `${dialog} button:nth-of-type(2)`;
+  const beschriftung = T[sprache]("nav.guard.discard");
+  expect(await text(seite, verwerfen), "tatsächlich gerenderter Verwerfen-Knopf").toBe(
+    beschriftung,
+  );
+  tastatur[`${marke}_verwerfen`] = await zuElement(seite, verwerfen, beschriftung);
+  expect(await wert(seite, AUSSAGE), "ganze Eingabe bis unmittelbar vor der Entscheidung").toBe(
+    eingabe,
+  );
+  expect(await stehtAmPool(pool, koId), "SQL-Fassung und Aussage vor der Entscheidung").toEqual(
+    stand,
+  );
+  await seite.keyboard.press("Enter");
+  await warte(seite, FEHLT, `${marke}: Dialog ist nach der Entscheidung beendet`, dialog);
+  await warte(seite, FEHLT, `${marke}: Bearbeitungsformular ist beendet`, AUSSAGE);
+  expect(await stehtAmPool(pool, koId), "Verwerfen verändert den gespeicherten Stand nicht").toEqual(
+    stand,
+  );
+  return schritte;
 }
 
 type Laufzustand = { gelaufen: true; quelle: string } | { gelaufen: false; grund: string };
@@ -564,9 +611,11 @@ describe("K6 · Bearbeitungshinweis mit zwei echten Browsern, zwei App-Prozessen
           interval: 100,
         })
         .toEqual([verliererName]);
-      tastatur.verlierer_abbrechen = await mitTaste(
+      tastatur.verlierer_abbrechen = await brichBewusstAb(
         verlierer.seite,
-        ABBRECHEN,
+        pool,
+        koId,
+        verlierer === a ? "de" : "en",
         "Abbrechen (Verlierer)",
         tastatur,
       );
@@ -642,7 +691,7 @@ describe("K6 · Bearbeitungshinweis mit zwei echten Browsern, zwei App-Prozessen
         [FREMD, ANNA.name],
         20_000,
       );
-      await mitTaste(a.seite, ABBRECHEN, "anna2_abbrechen", tastatur);
+      await brichBewusstAb(a.seite, pool, koId, "de", "anna2_abbrechen", tastatur);
       protokoll.push(
         "P4 · Abbruch gesagt, Ablauf nach Serverzeit, Rückkehr mit erhaltenem Text — gemessen",
       );
