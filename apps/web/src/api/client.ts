@@ -143,7 +143,8 @@ function mitFrist<T>(path: string, init: RequestInit, timeoutMs: number): Promis
 }
 
 export const api = {
-  get: <T>(path: string): Promise<T> => apiFetch<T>(path),
+  get: <T>(path: string, options?: Pick<RequestInit, "priority">): Promise<T> =>
+    apiFetch<T>(path, options ? { priority: options.priority } : undefined),
   // JOB 3782: derselbe Abruf wie `get`, nur mit Frist. Er steht NEBEN `get` und ersetzt ihn nicht:
   // eine Frist für JEDEN Lesezugriff wäre eine Entscheidung über Wege, die dieser Auftrag nicht
   // gemessen hat. Wer ihn nimmt, muss die Zahl begründen können — s. `DRAFT_LOAD_TIMEOUT_MS`.

@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Image as ImageIcon, Paperclip, Sparkles } from "lucide-react";
 import {
   type ReactNode,
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useId,
@@ -113,11 +115,9 @@ import { BodyTemplateChooser } from "../BodyTemplateChooser";
 import { EditorAttachmentContext } from "../EditorAttachmentContext";
 import { EditorContentQuality } from "../EditorContentQuality";
 import { HelpTip } from "../HelpTip";
-import { KnowledgeInputStudio } from "../KnowledgeInputStudio";
 import { KoRevisionSummary } from "../KoRevisionSummary";
 import { LesevarianteHinweis } from "../LesevarianteHinweis";
 import { Modal } from "../Modal";
-import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
 import { WissensbeziehungenBereich } from "../WissensbeziehungenBereich";
@@ -153,6 +153,17 @@ import {
 import { Wissensempfehlung } from "./Wissensempfehlung";
 import { fragenHref } from "./fragen";
 import { type ZustandsTon, zustandsTon } from "./zustand";
+
+// Bearbeitungsports werden erst im bestehenden Edit-Zweig gebraucht. Ihre Instanzen bleiben
+// dort auch bei geschlossenem Studio erhalten; die Lesefassung lädt diese Module nicht mit.
+const KnowledgeInputStudio = lazy(async () => {
+  const modul = await import("../KnowledgeInputStudio");
+  return { default: modul.KnowledgeInputStudio };
+});
+const RichTextEditor = lazy(async () => {
+  const modul = await import("../RichTextEditor");
+  return { default: modul.RichTextEditor };
+});
 
 // ==================================================================================================
 // JOB 3063 · H4 — DIE LESEFLÄCHE. SIE IST JETZT AUCH DAS WISSENSOBJEKT-DETAIL.
@@ -3412,22 +3423,24 @@ export function BibliothekLesen({
               >
                 <Sparkles size={14} /> {t("studio.open")}
               </button>
-              <KnowledgeInputStudio
-                open={studioOpen}
-                onClose={() => setStudioOpen(false)}
-                bodyHtml={edit.bodyHtml}
-                documentTitle={edit.title}
-                onApply={(bodyHtml) => {
-                  setEdit(mitNeuemInhalt(edit, bodyHtml));
-                  setStudioApplied(true);
-                }}
-                runAssist={runAssist}
-                images={(ko.attachments ?? [])
-                  .filter((a) => a.objectId && a.mime.startsWith("image/"))
-                  .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
-                files={editorFilesFromAttachments(ko.attachments ?? [])}
-                attachments={ko.attachments ?? []}
-              />
+              <Suspense fallback={null}>
+                <KnowledgeInputStudio
+                  open={studioOpen}
+                  onClose={() => setStudioOpen(false)}
+                  bodyHtml={edit.bodyHtml}
+                  documentTitle={edit.title}
+                  onApply={(bodyHtml) => {
+                    setEdit(mitNeuemInhalt(edit, bodyHtml));
+                    setStudioApplied(true);
+                  }}
+                  runAssist={runAssist}
+                  images={(ko.attachments ?? [])
+                    .filter((a) => a.objectId && a.mime.startsWith("image/"))
+                    .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
+                  files={editorFilesFromAttachments(ko.attachments ?? [])}
+                  attachments={ko.attachments ?? []}
+                />
+              </Suspense>
               {studioApplied ? (
                 <p className="mb-2 rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">
                   {t("studio.applied")}
@@ -3439,17 +3452,19 @@ export function BibliothekLesen({
                 bodyHtml={edit.bodyHtml}
                 onApply={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
               />
-              <RichTextEditor
-                value={edit.bodyHtml}
-                onChange={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
-                images={(ko.attachments ?? [])
-                  .filter((a) => a.objectId && a.mime.startsWith("image/"))
-                  .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
-                files={editorFilesFromAttachments(ko.attachments ?? [])}
-                documentTitle={edit.title}
-                captionFormRequest={captionRequest ?? undefined}
-                onTitelVorschlag={(titel) => setEdit({ ...edit, title: titel })}
-              />
+              <Suspense fallback={null}>
+                <RichTextEditor
+                  value={edit.bodyHtml}
+                  onChange={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
+                  images={(ko.attachments ?? [])
+                    .filter((a) => a.objectId && a.mime.startsWith("image/"))
+                    .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
+                  files={editorFilesFromAttachments(ko.attachments ?? [])}
+                  documentTitle={edit.title}
+                  captionFormRequest={captionRequest ?? undefined}
+                  onTitelVorschlag={(titel) => setEdit({ ...edit, title: titel })}
+                />
+              </Suspense>
               <AiAssistBox
                 text={bodyTextForAssist(edit.bodyHtml)}
                 runAssist={runAssist}
