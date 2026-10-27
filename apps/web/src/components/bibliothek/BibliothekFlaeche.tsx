@@ -48,7 +48,6 @@ import {
   type FacetRailGroupView,
   type FacetRailUiState,
   type FacetRange,
-  facetRailGroups,
   facetRangeFromParams,
   isFacetRangeActive,
   matchesFacetRange,
@@ -122,6 +121,7 @@ import {
   writeFacetSelectionToParams,
 } from "../../lib/libraryUrlFilters";
 import { useAuthorName } from "../../lib/useAuthorName";
+import { useFacetRailGroups } from "../../lib/useFacetRailGroups";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../../lib/useDebouncedValue";
 import { usePersistentEnum } from "../../lib/usePersistentValue";
 import { useReadiness } from "../../lib/useReadiness";
@@ -889,7 +889,7 @@ export function BibliothekFlaeche({
     () => ranked.map((item) => facetBase.get(item.ko.id) ?? {}),
     [ranked, facetBase],
   );
-  const groups = facetRailGroups(
+  const groups = useFacetRailGroups(
     facetItems,
     LIBRARY_FILTER_CONFIGS,
     wirksameAuswahl,

@@ -157,7 +157,23 @@ export function facetRailGroups(
   labelForValue: (key: string, value: string) => string,
   dependencies: readonly FacetDependency[] = [],
 ): FacetRailGroupView[] {
-  const groups = buildFacetGroups(items, configs, selection, Number.MAX_SAFE_INTEGER);
+  return facetRailGroupsFromViews(
+    buildFacetGroups(items, configs, selection, Number.MAX_SAFE_INTEGER),
+    selection,
+    ui,
+    labelForValue,
+    dependencies,
+  );
+}
+
+/** Die Schienenanzeige aus vorhandenen Zählern; aktuelle Labels und Menüsuche bleiben frisch. */
+export function facetRailGroupsFromViews(
+  groups: readonly FacetGroupView[],
+  selection: FacetSelection,
+  ui: FacetRailUiState,
+  labelForValue: (key: string, value: string) => string,
+  dependencies: readonly FacetDependency[] = [],
+): FacetRailGroupView[] {
   const restrictedChildren = new Set(
     dependencies.filter((d) => parentActive(selection, d.parent)).map((d) => d.child),
   );

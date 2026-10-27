@@ -64,7 +64,7 @@ export interface NavBadge {
 // Aufrufer entscheidet es aus der Rolle (`shell/KopfbandPunkte.tsx`); ohne Angabe gibt es die Quelle
 // nicht. Dieses Modul liest selbst keinen React-Kontext (Node-Prüfungen, TS6142).
 export function useNavBadges(verwaltung = false): Record<string, NavBadge> {
-  const board = useValidationBoard();
+  const board = useValidationBoard(undefined, { countOnly: true });
   const conflicts = useConflicts();
   const duplicates = useDuplicates();
   const gaps = useGapsSummary();

@@ -58,7 +58,16 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    validation: { board: d.board.fn },
+    validation: {
+      board: d.board.fn,
+      boardCount: async () => {
+        const rows = await d.board.fn();
+        if (!Array.isArray(rows)) {
+          throw new Error("Die gesteuerte Board-Antwort muss eine Liste sein.");
+        }
+        return { length: rows.length };
+      },
+    },
     conflicts: { list: d.conflicts.fn },
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },

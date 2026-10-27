@@ -1204,8 +1204,17 @@ export class ValidationService {
   // Zuweisungen erscheinen NICHT → ein KO fällt aus der persönlichen Linse, sobald die Person es
   // bewertet hat. Reine Lese-Anreicherung des vorhandenen Felds, kein neues Datenmodell, keine
   // Persistenz. KOs ohne offene Zuweisung bleiben unverändert (assignments wie vom KO-Service geliefert).
+  private boardKos(filter: BoardFilter = {}): Promise<KnowledgeObject[]> {
+    return this.koService.list({ ...filter, status: "offen" });
+  }
+
+  /** Dieselbe offene Grundmenge wie das Board, ohne Stimmen- und Zuweisungsanreicherung. */
+  async boardCount(sichtbar: (ko: KnowledgeObject) => boolean): Promise<number> {
+    return (await this.boardKos()).filter(sichtbar).length;
+  }
+
   async board(filter: BoardFilter = {}): Promise<KnowledgeObject[]> {
-    const kos = await this.koService.list({ ...filter, status: "offen" });
+    const kos = await this.boardKos(filter);
     // JOB 3043: die Gruppierung steht in `offeneZuweisungenJeKo` — dieselbe, die beide
     // Pruefstandswege lesen. Vorher stand sie hier als eigene Schleife; die Lesart war identisch,
     // die Stelle war es nicht.

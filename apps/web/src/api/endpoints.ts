@@ -856,6 +856,7 @@ export const endpoints = {
     // Herkunft samt Beleglage (services/validation/src/board-herkunft.ts:122-135). Der Typ sagt das
     // jetzt; vorher las die Oberfläche eine Auskunft, von der ihr Vertrag nichts wusste.
     board: (f?: KoFilter) => api.get<ValidationBoardKo[]>(`/validation/board${qs(f)}`),
+    boardCount: () => api.get<{ length: number }>("/validation/board/count"),
     overview: () => api.get<AssignmentSummary[]>("/validation/overview"),
     // R-0265: wer ein neues Objekt dieses Themas prüfen sollte (Autorenschaft, frühere Prüfungen,
     // Netznähe). Liest nur; zugewiesen wird erst mit dem Einreichen.

@@ -50,7 +50,10 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    validation: { board: d.board },
+    validation: {
+      board: d.board,
+      boardCount: async () => ({ length: (await d.board()).length }),
+    },
     conflicts: { list: vi.fn(async () => []) },
     duplicates: { list: vi.fn(async () => []) },
     gaps: {

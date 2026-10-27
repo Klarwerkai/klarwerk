@@ -26,6 +26,7 @@ const d = vi.hoisted(() => {
   const sofortLeer = () => ({ fn: vi.fn(async () => [] as string[]) });
   return {
     board: mk(),
+    count: mk(),
     remove: mk(),
     conflicts: mk(),
     duplicates: mk(),
@@ -46,7 +47,7 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    validation: { board: d.board.fn },
+    validation: { board: d.board.fn, boardCount: d.count.fn },
     ko: { remove: d.remove.fn },
     directory: { list: vi.fn(async () => []) },
     conflicts: { list: d.conflicts.fn },
@@ -201,10 +202,31 @@ function ko(id: string): KnowledgeObject {
   };
 }
 
+// Vollliste und textfreier Zähler haben unabhängige echte Query-Schlüssel.
+// Die Serverkulisse beantwortet beide mit derselben gesteuerten Bestandslage.
+function boardBeantworten(rows: KnowledgeObject[]): void {
+  d.board.resolve(rows);
+  d.count.resolve({ length: rows.length });
+}
+
+function boardAblehnen(error: Error): void {
+  d.board.reject(error);
+  d.count.reject(error);
+}
+
+function boardAntwort(): (rows: KnowledgeObject[]) => void {
+  const full = d.board.antwort();
+  const count = d.count.antwort();
+  return (rows) => {
+    full(rows);
+    count({ length: rows.length });
+  };
+}
+
 async function start(alter: number): Promise<number> {
   await mount();
   await act(async () => {
-    d.board.resolve([ko("a"), ko("b"), ko("c")]);
+    boardBeantworten([ko("a"), ko("b"), ko("c")]);
     d.conflicts.resolve([]);
     d.duplicates.resolve([]);
     d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
@@ -314,7 +336,7 @@ describe.each([
       reiter("gedaempft", zeilen().length);
       await act(async () => {
         // Server meldet zusätzlich einen neuen Eintrag: die Zahl darf nicht lokal 3 - 1 sein.
-        d.board.resolve([ko("b"), ko("c"), ko("d"), ko("e")]);
+        boardBeantworten([ko("b"), ko("c"), ko("d"), ko("e")]);
         await flush();
       });
       expect(qc.getQueryState(boardKey)?.fetchStatus).toBe("idle");
@@ -332,7 +354,7 @@ describe.each([
       await loeschenBestaetigen(weg);
       keineZahl();
       await act(async () => {
-        d.board.reject(new Error("Auffrischung fehlgeschlagen"));
+        boardAblehnen(new Error("Auffrischung fehlgeschlagen"));
         await flush();
       });
       expect(qc.getQueryState(boardKey)?.status).toBe("error");
@@ -353,7 +375,7 @@ describe.each([
       await start(alter);
       await loeschenBestaetigen(weg);
       await act(async () => {
-        d.board.reject(new Error("Auffrischung fehlgeschlagen"));
+        boardAblehnen(new Error("Auffrischung fehlgeschlagen"));
         await flush();
       });
       expect(qc.getQueryState(boardKey)?.status).toBe("error");
@@ -374,7 +396,7 @@ describe.each([
       // Der vorherige Abruffehler gilt weiter, bis eine neue Antwort gelingt.
       reiter("unbekannt");
       await act(async () => {
-        d.board.reject(new Error("Weiterhin offline"));
+        boardAblehnen(new Error("Weiterhin offline"));
         await flush();
       });
       expect(zeilen()).toEqual(["Eintrag b", "Eintrag c"]);
@@ -392,7 +414,7 @@ describe.each([
     await start(alter);
     await loeschenBestaetigen("erfolg");
     keineZahl();
-    const ersteAntwort = d.board.antwort();
+    const ersteAntwort = boardAntwort();
     await loeschenBestaetigen("erfolg", "b");
     keineZahl();
     reiter("gedaempft", 1);
@@ -409,7 +431,7 @@ describe.each([
     keineZahl();
     await act(async () => {
       // Zwei neue Einträge: nicht die örtlich berechnete Restzahl 1.
-      d.board.resolve([ko("c"), ko("d"), ko("e")]);
+      boardBeantworten([ko("c"), ko("d"), ko("e")]);
       await flush();
     });
     expect(qc.getQueryState(boardKey)?.fetchStatus).toBe("idle");
@@ -422,7 +444,7 @@ describe.each([
     await start(alter);
     await loeschenBestaetigen("erfolg");
     await act(async () => {
-      d.board.resolve([]);
+      boardBeantworten([]);
       await flush();
     });
     expect(qc.getQueryState(boardKey)?.status).toBe("success");
@@ -469,7 +491,7 @@ it("Alias-unabhängig: Löschweg entwertet Prüfen und die geteilte Aufgaben-Zä
   keineZahl();
   expect(aufgaben(), "auch die geteilte Aufgaben-Zahl ist unbestätigt").toBeNull();
   await act(async () => {
-    d.board.resolve([ko("b"), ko("c"), ko("d"), ko("e")]);
+    boardBeantworten([ko("b"), ko("c"), ko("d"), ko("e")]);
     await flush();
   });
   expect(badge()?.textContent).toBe("4");

@@ -55,7 +55,16 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    validation: { board: d.board.fn },
+    validation: {
+      board: d.board.fn,
+      boardCount: async () => {
+        const rows = await d.board.fn();
+        if (!Array.isArray(rows)) {
+          throw new Error("Die gesteuerte Board-Antwort muss eine Liste sein.");
+        }
+        return { length: rows.length };
+      },
+    },
     conflicts: { list: d.conflicts.fn },
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
@@ -350,8 +359,8 @@ describe("JOB 3113 H1b: die Zahl im Kopfband verschwindet, wenn sie niemand mehr
 
     const vorEingriff = d.board.fn.mock.calls.length;
     await act(async () => {
-      qc.setQueriesData<{ id: string }[]>({ queryKey: ["validation", "board"] }, (items) =>
-        items?.filter((k) => k.id !== "a"),
+      qc.setQueriesData<{ length: number }>({ queryKey: ["validation", "board"] }, (count) =>
+        count ? { length: count.length - 1 } : count,
       );
       await flush();
     });

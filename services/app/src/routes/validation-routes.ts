@@ -209,6 +209,16 @@ export function validationRoutes(
   vorschlag?: PrueferVorschlagDeps,
 ): FastifyPluginAsync {
   return async (app) => {
+    // Die Hülle braucht nur dieselbe sichtbare Anzahl, weder KO-Texte noch KI-Neueinreihung.
+    app.get("/api/validation/board/count", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const length = await validation.boardCount(sichtbarkeitsfilterFuer(user));
+      reply.code(200).send({ length });
+    });
+
     app.get<{ Querystring: BoardFilter }>("/api/validation/board", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {

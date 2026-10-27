@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // JOB 577: die kanonische Normalisierung von „nicht vorhanden / nicht sichtbar" (404) in den
 // Datenzustand `null`. Sie steht in einer eigenen Datei, weil sie ein VERTRAG ist und keine
 // Hilfszeile — die Begründung, warum 403 und 5xx ausdrücklich NICHT dazugehören, gehört an genau
@@ -203,8 +203,21 @@ export const useKoEvidence = (id: string) =>
     queryFn: () => endpoints.ko.evidence(id),
     enabled: id.length > 0,
   });
-export const useValidationBoard = (f?: KoFilter) =>
-  useQuery({ queryKey: ["validation", "board", f], queryFn: () => endpoints.validation.board(f) });
+type ValidationBoard = Awaited<ReturnType<typeof endpoints.validation.board>>;
+
+export function useValidationBoard(f?: KoFilter): UseQueryResult<ValidationBoard>;
+export function useValidationBoard(
+  f: undefined,
+  options: { countOnly: true },
+): UseQueryResult<{ length: number }>;
+export function useValidationBoard(f?: KoFilter, options?: { countOnly: true }) {
+  // Beide Formen bleiben unter demselben Invalidierungs- und Nachladepräfix.
+  return useQuery<ValidationBoard | { length: number }>({
+    queryKey: options?.countOnly ? ["validation", "board", "count"] : ["validation", "board", f],
+    queryFn: () =>
+      options?.countOnly ? endpoints.validation.boardCount() : endpoints.validation.board(f),
+  });
+}
 // FR-VAL-06: LAZY wie `useConflicts` — die Übersicht hängt jetzt auch in der Management-Sicht, und
 // eine Fläche, deren Endpunktgrenze sie nicht kennt, darf daran nicht schon beim Rendern reißen.
 // R-0756: der Adminbereich zeigt die Zahlen je Person ebenfalls.

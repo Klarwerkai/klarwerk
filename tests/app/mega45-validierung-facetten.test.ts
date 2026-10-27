@@ -96,7 +96,10 @@ describe("mega45 H · die Filterschiene der Validierung", () => {
     // Die Bibliothek filtert weiter über DIESELBE Logik (`lib/facetRail.ts`), nur über Menüs —
     // kein zweiter Filterweg, keine zweite Wertermittlung.
     expect(BIBLIOTHEK).toMatch(/from\s*"\.\.\/\.\.\/lib\/facetRail"/);
-    expect(BIBLIOTHEK).toContain("facetRailGroups(");
+    expect(BIBLIOTHEK).toContain("useFacetRailGroups(");
+    const hook = readFileSync("apps/web/src/lib/useFacetRailGroups.ts", "utf8");
+    expect(hook).toContain("buildFacetGroups(");
+    expect(hook).toContain("facetRailGroupsFromViews(");
     expect(BIBLIOTHEK).not.toContain("<FacetFilter");
   });
 

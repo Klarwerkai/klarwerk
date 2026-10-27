@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client";
 
 export function withoutKoById<T extends { id: string }>(
@@ -31,4 +32,22 @@ export function withDeletedKoId(ids: ReadonlySet<string>, id: string): ReadonlyS
 
 export function isStaleKoDeleteError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
+}
+
+// Eine Löschquittung bestätigt keine neue Gesamtzahl. Listen werden bereinigt, der textfreie
+// Zähler bleibt bis zum erfolgreichen Nachladen ausdrücklich unbestätigt.
+export function removeDeletedBoardKoFromCaches<T extends { id: string }>(
+  qc: QueryClient,
+  id: string,
+): void {
+  qc.setQueriesData<T[]>(
+    { queryKey: ["validation", "board"], predicate: (q) => q.queryKey[2] !== "count" },
+    (items) => withoutKoById(items, id),
+    { updatedAt: 0 },
+  );
+  qc.setQueriesData<{ length: number }>(
+    { queryKey: ["validation", "board"], predicate: (q) => q.queryKey[2] === "count" },
+    (count) => count,
+    { updatedAt: 0 },
+  );
 }
