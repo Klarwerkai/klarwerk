@@ -347,10 +347,16 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
       password: "secret123",
     });
     expect((await p.query("SELECT 1 FROM users WHERE id=$1", [nutzer.id])).rowCount).toBe(1);
+    // Der Hintergrundschreiber muss vor der strengen Baseline abgeschlossen sein.
+    await s.aiCheckWorker?.idle();
     const getaggterBestand = (
       await p.query("SELECT to_jsonb(k) AS zeile FROM kos k WHERE id=$1", [getaggtesId])
     ).rows;
     expect(getaggterBestand).toHaveLength(1);
+    expect(
+      getaggterBestand[0]?.zeile.data.aiCheck?.status,
+      "KI-Prüfung abgeschlossen",
+    ).not.toBe("pending");
 
     const wege: Array<{ url: string; wirkung: (body: unknown) => Promise<void> }> = [
       {
