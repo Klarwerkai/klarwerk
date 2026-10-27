@@ -152,8 +152,35 @@ describe("Belegbedarf und Nulltreffer gegen echtes PostgreSQL", () => {
     const konten = await erste.services.auth.listUsers();
     const annaId = konten.find((k) => k.email === "anna@luecken-pg.test")?.id ?? "";
     expect(annaId, "KALIBRIERUNG: das Konto existiert").not.toBe("");
+    // Fehlende Einstufung bleibt geschützt, auch für Inhalts- und Stufenhinweise.
+    const unklassifiziert = await erste.services.ko.create({
+      title: "Kartuschenreinigung HalleOmega",
+      statement: "Kartuschenreinigung in HalleOmega erfolgt mit Werkzeug OmegaSpezial.",
+      type: "best_practice",
+      category: "Reinigung",
+      author: annaId,
+    } as never);
+    expect(unklassifiziert.confidentiality, "KALIBRIERUNG: Quelle ohne Einstufung").toBeUndefined();
+    const ohneStufe = await erste.services.ask.ask(
+      "Wie erfolgt die Kartuschenreinigung in HalleOmega?",
+      annaId,
+      "de",
+      {
+        ungeprueftSichtbarFuer: (ko) => ko.author === annaId,
+        verschlossenSichtbarFuer: (ko) => ko.author === annaId,
+      },
+    );
+    expect(ohneStufe.result.answered).toBe(false);
+    expect(ohneStufe.gap?.belegbedarf).toEqual(["wissensobjekt"]);
+    expect(ohneStufe.result.sources).toEqual([]);
+    expect(ohneStufe.ungeprueft).toEqual([]);
+    expect(ohneStufe.verschlossen).toEqual([]);
+    expect(JSON.stringify(ohneStufe.result)).not.toContain(unklassifiziert.statement);
+
+    // Nur ausdrücklich interne Quellen passieren das Ask-Tor; Freigabe und Volltext fehlen.
     await erste.services.ko.create({
       title: TITEL,
+      confidentiality: "intern",
       statement: "Zustaendigkeit liegt beim Schichtleiter.",
       type: "best_practice",
       category: "Wartung",
@@ -165,7 +192,7 @@ describe("Belegbedarf und Nulltreffer gegen echtes PostgreSQL", () => {
     expect(leer.gap?.belegbedarf).toEqual(["wissensobjekt"]);
     const tore = await erste.services.ask.ask(FRAGE_TORE, annaId, "de");
     expect(tore.result.answered).toBe(false);
-    expect(tore.gap?.belegbedarf).toEqual(["freigabe", "stufe", "volltext"]);
+    expect(tore.gap?.belegbedarf).toEqual(["freigabe", "volltext"]);
     // Zusammenführen: dieselbe Frage in anderer Schreibung zählt hoch (ON CONFLICT … jsonb_set).
     const nochmal = await erste.services.ask.ask(`${FRAGE_TORE.toUpperCase()}!!`, annaId, "de");
     expect(nochmal.gap?.id, "KALIBRIERUNG: zusammengeführt").toBe(tore.gap?.id);
@@ -182,14 +209,14 @@ describe("Belegbedarf und Nulltreffer gegen echtes PostgreSQL", () => {
     expect(zusammengefuehrt?.askCount).toBe(2);
     expect(zusammengefuehrt?.assignee).toBe(annaId);
     expect(zusammengefuehrt?.priority).toBe("hoch");
-    expect(zusammengefuehrt?.belegbedarf).toEqual(["freigabe", "stufe", "volltext"]);
+    expect(zusammengefuehrt?.belegbedarf).toEqual(["freigabe", "volltext"]);
     expect(offene.find((g) => g.id === leer.gap?.id)?.belegbedarf).toEqual(["wissensobjekt"]);
     // Und über die Route: die berechtigte Sicht trägt den Befund, die fremde nicht.
     const anna = await anmelden(zweite.app, "anna@luecken-pg.test");
     const bert = await anmelden(zweite.app, "bert@luecken-pg.test");
     const eigene = (await lesen(zweite.app, "/api/gaps", anna)) as Sicht[];
     const eigeneSicht = eigene.find((g) => g.id === id);
-    expect(eigeneSicht?.belegbedarf).toEqual(["freigabe", "stufe", "volltext"]);
+    expect(eigeneSicht?.belegbedarf).toEqual(["freigabe", "volltext"]);
     expect(eigeneSicht?.askCount).toBe(2);
     const fuerBert = (await lesen(zweite.app, "/api/gaps", bert)) as Sicht[];
     const fremd = fuerBert.find((g) => g.id === id);
