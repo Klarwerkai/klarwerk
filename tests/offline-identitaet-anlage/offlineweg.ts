@@ -1,54 +1,19 @@
 // ================================================================================================
-// JOB 4322 · DER OFFLINE-WEG ALS EINE STRECKE — PostgreSQL → Socket → gebaute Fläche → Chromium.
+// JOB 4322 · OFFLINE-WIEDERHOLUNG UND BEWUSSTE ABMELDUNG — ZWEI AKTUELLE VERTRAGSGRENZEN.
 // ================================================================================================
 //
-// WARUM ES DIESE DATEI GIBT. JOB 4249 hat die Zusage gebaut („offline erfassen, Konto wechseln,
-// genau einmal anlegen") und sie auf ZWEI Ebenen gemessen: die Kette in jsdom mit einer
-// Transportbrücke auf `app.inject` (`kontowechsel-und-anlage-mounted.test.tsx:1`, `:12-13`) und den
-// Serverriegel über `app.inject`. Der Prüfer hat die verbleibende Lücke selbst benannt
-// (`archiv/4249/runde-8/ben.md:25`): „Der vollständige Chromium-/PostgreSQL-/HTTP-Nutzerweg bleibt
-// in der Rückgabe offen." Genau dieser Weg steht hier — EINMAL, damit der Hauptfall und die
-// Kalibrierungen nicht zwei Abläufe messen, die nur heute übereinstimmen (dieselbe Begründung wie
-// im Kopf von `tests/gast-nutzerweg/browserweg.ts`).
+// O1 trägt EINEN Vorgang durch Offline-Erfassung, Neuladen ohne Netz, Wiederverbindung desselben
+// angemeldeten Kontos, verlorene Antwort NACH SQL-Commit und manuellen Retry. Kein Abmelden in O1.
+// O2 prüft die Löschgrenze: echte Abmeldung entfernt As lokale Arbeit samt Foto;
+// weder Folgekonto B noch erneut angemeldetes A sehen, übertragen oder restaurieren diese Arbeit.
+// W4.6 Punkt 2 ist jünger als die alte Erwartung, dass A nach Abmelden seine Queue wiederfindet.
+// Beide Wege verwenden echte Masken, Socket/SQL, Browsernetz und öffentliche Speicherbeobachtung.
 //
-// WAS HIER NICHT MEHR NACHGEBILDET IST — die Liste der Annahmen, die JOB 4249 noch machen musste:
-//   · KEIN `app.inject`. Jede Anfrage läuft über einen echten Socket (`starteStrecke`), mit echten
-//     Keksen eines echten Browserprofils.
-//   · KEINE Speicherablage. `buildPgServices(pool)` — die Entwürfe landen in der Tabelle `drafts`
-//     einer echten PostgreSQL, und dort wird nachgezählt.
-//   · KEIN gemountetes Bauteil. Gemessen wird das GEBAUTE Bündel (`apps/web/dist`), ausgeliefert
-//     von derselben `registerWebStatic`, die auch `server.ts` benutzt — einschliesslich des
-//     Dienstarbeiters `apps/web/public/sw.js`, ohne den es kein Neuladen ohne Netz gäbe.
-//   · KEIN gefälschtes `fetch` und kein gestellter Verbindungsmerker. Die Verbindung wird am
-//     BrowserContext geschaltet (`Kontext.setOffline`, JOB 4322 additiv in `browserweg.ts`).
-//
-// ================================================================================================
-// STATION (b) STEHT SO DA, WIE DER AUFTRAG SIE VERLANGT — auch wenn sie daran rot wird (R2).
-// ================================================================================================
-//
-// RUNDE 1 HAT HIER DEN FEHLER GEMACHT, den BEN wörtlich benannt hat: „Erwartungen dürfen nicht auf
-// das beobachtete Fehlverhalten umgestellt werden." Sie mass an Station (b) die ABWESENHEIT des
-// Zählers und war damit grün — der Auftrag (§5 Lieferung 2(b)) verlangt aber seine SICHTBARKEIT
-// („mob.queue · 1" nach dem Neuladen ohne Netz). Die Zusage steht ab R2 unverändert da; scheitert
-// sie am unveränderten Produkt, ist der Fall ROT. Das ist das gewollte Messergebnis (Auftrag §4,
-// §9) und keine Reparaturaufforderung: an Produktdateien wird nichts angefasst.
-//
-// WO DIE ZUSICHERUNG STEHT UND WARUM NICHT HIER. Der Befund wird in dieser Strecke GEMESSEN
-// (Zähler, Anmeldemaske, Seitentext) und im Ergebnis zurückgegeben; zugesichert wird er in
-// `offline-weg-pg-im-browser.integration.test.ts`. Zwei Gründe, beide zwingend:
-//   1. Würfe die Strecke hier, liefen die Stationen (c) bis (e) in KEINEM Lauf mehr — die drei
-//      Korrekturpflichten der Runde 1 wären damit unmessbar geworden. So wird der ganze Weg
-//      gefahren, und der Fall endet trotzdem rot an genau dieser Zusage.
-//   2. Die Kalibrierungen (`offline-weg-kalibrierung.integration.test.ts`) fahren dieselbe Strecke
-//      und müssen an IHRER verstellten Station scheitern. Ein Wurf an (b) brächte sie alle an
-//      derselben Stelle zu Fall, und der Kalibrierungsbeleg wäre wertlos.
-//
-// WAS DAS PRODUKT AN DIESER STELLE TUT, gemessen und nicht vermutet: `App.tsx:85` zeigt ohne
-// bestätigte Sitzung die ANMELDEMASKE, und ohne Netz kann `/api/auth/me` nicht beantwortet werden —
-// der Dienstarbeiter reicht API-Wege ausdrücklich durch und legt sie nicht in den Zwischenspeicher
-// (`apps/web/public/sw.js:36`, `isApi(url) → return`). Die jsdom-Kette konnte das nicht sehen, weil
-// sie `Mobile` OHNE dieses Tor montiert (`kontowechsel-und-anlage-mounted.test.tsx:291-356`) — sie
-// misst die Fläche, nicht die Anwendung.
+// Station (b) bleibt streng: nach Neuladen OHNE Netz muss „mob.queue · 1“ sichtbar sein.
+// Gemessen wird hier; zugesichert wird im Hauptfall. Sichtbarkeit und zeitlich NEUE manuelle
+// Rückmeldung bleiben Pflicht. Kein Consent-/Purge-/Produktpatch.
+// Der optionale Kalibrierungs-Caller bleibt bytegleich. Seine überholten K1/K4-Anforderungen werden
+// als nicht anwendbar abgewiesen; kein Kalibrierungs-Erfolg. K5/K6 greifen jetzt am Retry von A.
 import type { Pool } from "pg";
 import { expect } from "vitest";
 import i18n from "../../apps/web/src/i18n";
@@ -105,6 +70,7 @@ export interface Vorgang {
   title: string;
   eigentuemer?: string;
   payload: { title?: string };
+  offlineFotos?: Record<string, string>;
 }
 
 /**
@@ -288,7 +254,7 @@ async function meldungMussKommen(seite: Seite, text: string, was: string): Promi
 //
 // ZWEI UNABHÄNGIGE MERKMALE, und beide müssen stimmen:
 //   · die ZAHL der Rückmeldungen mit diesem Satz ist gestiegen (es ist eine NEUE, nicht die von
-//     vorhin — bei Station (c) lag der gleiche Satz aus dem automatischen Lauf schon da), und
+//     vorhin; auch eine Rückmeldung eines anderen Sendelaufs genügt nicht), und
 //   · ihr Zeitstempel liegt NACH dem Klick (HINWEIS der Steuerung: „Zeitstempel > Klickzeit").
 // Die Frist ist bewusst knapp (20 s): ein Handgriff, dessen Ergebnis erst eine Minute später
 // eintrifft, ist für den Menschen am Gerät kein Ergebnis dieses Klicks mehr. Ein unterdrückter und
@@ -630,17 +596,17 @@ async function ausblenden(seite: Seite, selektor: string): Promise<void> {
 }
 
 export interface Verstellung {
-  /** Der Eigentümer des liegenden Vorgangs wird vor Station (c) auf Bs Kennung gefälscht. */
+  /** Alt-K1 ist seit der bewussten W4.6-Löschgrenze hier nicht mehr anwendbar. */
   eigentuemerAufB?: boolean;
   /** Station (d) erwartet absichtlich eine falsche Zeilenzahl nach der belegten Anlage. */
   erwarteteZeilenNachAnlage?: number;
   /** Vor Station (a) ausgeblendet (CSS-Selektor) — prüft die Sichtbarkeitszusage selbst. */
   ausblendenVorA?: string;
-  /** Vor Station (c) ausgeblendet (CSS-Selektor). */
+  /** Alt-K4 über eine nach Abmelden erhaltene Fremdzeile ist nicht mehr anwendbar. */
   ausblendenVorC?: string;
-  /** Bs manueller Klick wird verschluckt (K5, BENs eigene Probe der Runde 1). */
+  /** As manueller Retry wird verschluckt (K5); neue Rückmeldung bleibt Pflicht. */
   klickUnterdruecken?: boolean;
-  /** Bs manueller Klick wirkt erst nach dieser Zeit (K6). */
+  /** As manueller Retry wirkt erst nach dieser Zeit (K6), weiterhin 20-s-Nachweisfrist. */
   klickVerzoegernMs?: number;
 }
 
@@ -690,7 +656,7 @@ interface Versuch {
 /**
  * A und B als echte Konten anlegen — über den Weg des Betreibers (`POST /api/users`), mit der
  * Rolle `experte`: sie brauchen `ko.create` und sehen nur ihre eigenen Entwürfe. Ein Administrator
- * sähe jeden Entwurf, und Station (c) wäre aus dem falschen Grund grün.
+ * sähe jeden Entwurf; die Prüfung des privaten Lesewegs wäre dann nicht aussagekräftig.
  */
 export async function kontenAnlegen(
   chef: Sitzung,
@@ -723,60 +689,48 @@ export async function kontenAnlegen(
   return kennungen;
 }
 
-/**
- * Die Abnahme der Station (c) — dreimal unabhängig, und einmal davon ohne jede Fläche.
- *
- * Sie steht in einer eigenen Funktion, weil sie ZWEIMAL gilt: nach dem automatischen Lauf und nach
- * dem manuellen. Zwei abgeschriebene Blöcke wären zwei Aussagen, von denen eines Tages nur eine
- * nachgeführt würde.
- */
-async function abnahmeVonC(
+/** Nach bewusster Abmeldung: SQL, bestätigtes Konto, eigener Leseweg, lokaler Bestand und Anzeige. */
+async function abnahmeNachAbmeldung(
   seite: Seite,
   a: OfflineWegAufbau,
   vorgangA: string,
+  konto: string,
   wann: string,
 ): Promise<void> {
-  // 1. DIE TABELLE. Das ist die Zahl, an der dieser Auftrag hängt — sie kommt zuerst, damit eine
-  //    verstellte Voraussetzung HIER scheitert und nicht erst an einer Anzeige.
-  expect(await zeilen(a.pool), `Station (c) ${wann}: As Vorgang wurde als B angelegt`).toBe(0);
-  // 2. DER EIGENE LESEWEG VON B, mit Bs echten Keksen, aus der Seite heraus — kein Blick des
-  //    Prüfstands, sondern der Blick, den B selbst hat.
-  const bSicht = await seite.evaluate<{ status: number; rumpf: string }>(
+  expect(await zeilen(a.pool), `${wann}: gelöschte Offlinearbeit wurde angelegt`).toBe(0);
+  expect(await zeilenFuerVorgang(a.pool, vorgangA)).toBe(0);
+  const wer = await seite.evaluate<{ id?: string }>(
+    fn('() => fetch("/api/auth/me", { credentials: "include" }).then((r) => r.json())'),
+  );
+  expect(wer.id, `${wann}: das erwartete Konto ist nicht bestätigt`).toBe(konto);
+  const sicht = await seite.evaluate<{ status: number; rumpf: string }>(
     fn(`() => fetch("/api/drafts", { credentials: "include" })
       .then((r) => r.text().then((t) => ({ status: r.status, rumpf: t })))
       .catch((e) => ({ status: -1, rumpf: String(e) }))`),
   );
-  expect(
-    bSicht.status,
-    `Station (c) ${wann}: GET /api/drafts als B antwortete ${bSicht.rumpf.slice(0, 300)}`,
-  ).toBe(200);
-  expect(
-    JSON.parse(bSicht.rumpf) as unknown[],
-    `Station (c) ${wann}: B sieht Entwürfe, obwohl keiner angelegt sein darf`,
-  ).toEqual([]);
-  // 3. UND NICHTS WURDE STILL WEGGEWORFEN: As Vorgang liegt unverändert da, mit A als Eigentümer.
-  const nachB = await warteschlange(seite);
-  expect(
-    nachB.map((v) => ({ id: v.id, eigentuemer: v.eigentuemer })),
-    `Station (c) ${wann}: As Vorgang wurde gelöscht oder umgehängt`,
-  ).toEqual([{ id: vorgangA, eigentuemer: a.aId }]);
-  const bText = await seite.evaluate<string>(fn("() => document.body.innerText"));
-  expect(bText, `Station (c) ${wann}: B sieht den Entwurfstitel von A`).not.toContain(a.titelA);
-  // 4. UND NICHTS WURDE ALS ERFOLG GEMELDET. Ein „synchronisiert (1)" in Bs Sitzung hiesse, dass
-  //    doch etwas hinausgegangen ist — die Zahlen oben sagten es dann zwar auch, aber der Mensch
-  //    liest zuerst diesen Satz.
+  expect(sicht.status, `${wann}: GET /api/drafts: ${sicht.rumpf.slice(0, 300)}`).toBe(200);
+  expect(JSON.parse(sicht.rumpf) as unknown[], `${wann}: unerwartete Entwürfe`).toEqual([]);
+  expect(await warteschlange(seite), `${wann}: gelöschte Queue wurde wiederhergestellt`).toEqual([]);
+  expect(await offlineFotos(seite), `${wann}: gelöschte Fotos wurden wiederhergestellt`).toEqual([]);
+  const text = await seite.evaluate<string>(fn("() => document.body.innerText"));
+  expect(text, `${wann}: der gelöschte Titel ist sichtbar`).not.toContain(a.titelA);
   await meldungDarfNichtKommen(
     seite,
     i18n.t("mob.syncOk"),
-    `Station (c) ${wann}: B wurde ein erfolgreicher Versand gemeldet`,
+    `${wann}: gelöschte Arbeit wurde als erfolgreich übertragen gemeldet`,
   );
 }
 
 // ================================================================================================
-// DER GANZE WEG — (a) bis (e), in EINEM Browserprofil, an EINER Instanz, gegen EINE Datenbank.
+// O1 — (a), (b), (d), (e): EIN Vorgang desselben angemeldeten A, ohne Abmeldung.
 // ================================================================================================
 export async function fahreDenOfflineWeg(a: OfflineWegAufbau): Promise<OfflineWegBefund> {
   const verstellen = a.verstellen ?? {};
+  if (verstellen.eigentuemerAufB || verstellen.ausblendenVorC) {
+    throw new Error(
+      "Alt-K1/K4 sind seit W4.6 Punkt 2 nicht anwendbar: Abmelden löscht As Queue. Kein Kalibrierungsbefund.",
+    );
+  }
   const basis = a.strecke.basis;
   const { kontext: rohKontext, seite } = await profil(a.browser, SCHMAL, "de");
   const kontext = rohKontext as KontextMitNetz;
@@ -871,123 +825,9 @@ export async function fahreDenOfflineWeg(a: OfflineWegAufbau): Promise<OfflineWe
         .slice(0, 300),
     };
 
-    // ══ (c) A meldet sich ab, B meldet sich an — dasselbe Browserprofil, unveränderter Speicher. ═
-    //
-    // ZUERST WEG VON `/mobile`, DANN ERST DAS NETZ. Abmelden braucht eine Verbindung; käme sie,
-    // während `Mobile` montiert ist, sendete A seinen eigenen Vorgang sofort selbst (F-0027), und
-    // der ganze folgende Fall wäre aus dem falschen Grund grün. Der Weg ist deshalb genau der, den
-    // der Fall beschreibt: A legt das Gerät aus der Hand, und erst danach ist wieder Netz da.
-    await seite.goto(`${basis}${STARTSEITE}`, { waitUntil: "domcontentloaded" });
-    await netz(kontext, seite, true);
-    expect(
-      (await warteschlange(seite)).length,
-      "Station (c): der Vorgang ging schon vor dem Kontowechsel hinaus",
-    ).toBe(1);
-    expect(
-      await zeilen(a.pool),
-      "Station (c): vor dem Kontowechsel ist etwas angelegt worden",
-    ).toBe(0);
-
-    if (verstellen.eigentuemerAufB) {
-      // KALIBRIERUNG (Lieferung 3): Hätte der liegende Vorgang Bs Kennung, hätte der Riegel nichts
-      // mehr zu greifen — Station (c) MUSS daran scheitern.
-      await seite.evaluate<boolean>(
-        fn(`([k, b]) => {
-          const liste = JSON.parse(localStorage.getItem(k) || "[]");
-          for (const op of liste) { op.eigentuemer = b; }
-          localStorage.setItem(k, JSON.stringify(liste));
-          return true;
-        }`),
-        [SCHLUESSEL, a.bId],
-      );
-    }
-
-    await abmelden(seite, basis, "A");
-    await anmelden(seite, basis, a.bEmail, "B");
-    await zurMobilflaeche(seite, basis, "B");
-    if (verstellen.ausblendenVorC) {
-      await ausblenden(seite, verstellen.ausblendenVorC);
-    }
-    // ── (c1) DER AUTOMATISCHE LAUF. ─────────────────────────────────────────────────────────────
-    //
-    // Er ist mit dem Aufbau dieser Fläche schon losgelaufen (Aufbau-Anlauf, F-0027). Gewartet wird
-    // deshalb auf seine MELDUNG und nicht auf eine geratene Zeitspanne: erst wenn er sich geäussert
-    // hat, sagt „null Zeilen" etwas — vorher wäre es nur die Ausgangslage.
-    //
-    // UND DIE SACHLICHE ABNAHME KOMMT VOR DER ANZEIGE. Sonst brächte eine verstellte Voraussetzung
-    // den Fall an einem Knopf zu Fall („steht nicht bereit") statt an der Zusage („As Vorgang wurde
-    // als B angelegt") — gemessen in Kalibrierung K1, Arbeitsprüfung 2f9229b3ab71.
-    await warte(
-      seite,
-      "() => (window.__kwMeldungen || []).length > 0",
-      "Station (c): der automatische Sendelauf hat sich gemeldet",
-      undefined,
-      45_000,
-    );
-    await abnahmeVonC(seite, a, vorgangA, "nach dem AUTOMATISCHEN Lauf");
-    // Die Fläche sagt B, dass hier etwas Fremdes liegt — eine ZAHL, kein fremder Titel.
-    await mussSichtbarSein(
-      seite,
-      '[data-testid="mob-fremde-vorgaenge"]',
-      `${i18n.t("mob.konto.fremdeWarten")} (1)`,
-      "Station (c): die Zeile über fremde Vorgänge",
-    );
-    await meldungMussKommen(
-      seite,
-      `${i18n.t("mob.konto.fremdeNichtGesendet")} (1)`,
-      "Station (c): die Auskunft, warum nichts hinausging",
-    );
-
-    // ── (c2) UND DER MANUELLE LAUF — derselbe Knopf, den ein Mensch drückt. ──────────────────────
-    //
-    // ER IST ERST DANN GELAUFEN, WENN ER SICH NEU GEMELDET HAT. `syncNow().then(notifySync)`
-    // (`Mobile.tsx:989`) meldet Bs Lauf mit demselben Satz wie der automatische — deshalb zählt
-    // nicht sein Vorhandensein, sondern dass eine WEITERE Meldung dieses Satzes dazugekommen ist,
-    // nach dem Zeitpunkt des Klicks. Erst danach sagen Tabelle, Leseweg und Speicher etwas über
-    // DIESEN Lauf (BEN, Korrekturpflicht 2; K5/K6 belegen, dass ein ausgefallener oder verspäteter
-    // Klick hier rot wird).
-    const manuell = await manuellSynchronisieren(
-      seite,
-      `${i18n.t("mob.konto.fremdeNichtGesendet")} (1)`,
-      "Station (c): Bs manueller Lauf",
-      verstellen,
-    );
-    expect(
-      manuell.zeit,
-      "Station (c): die Rückmeldung des manuellen Laufs trägt keinen Zeitstempel",
-    ).toBeGreaterThan(0);
-    await abnahmeVonC(seite, a, vorgangA, "nach dem MANUELLEN Lauf");
-
-    // ══ (d) + (e) B ab, A an, online — DERSELBE Vorgang aus (a) geht hinaus, genau einmal. ═════
-    //
-    // ================================================================================================
-    // EIN VORGANG DURCH ALLE STATIONEN — die dritte Korrekturpflicht der Runde 1.
-    // ================================================================================================
-    //
-    // RUNDE 1 HAT (e) AN EINEM ZWEITEN, NEU ERFASSTEN VORGANG GEMESSEN. BEN wörtlich: „Der Vorgang
-    // mit Kontowechsel ist bereits erfolgreich abgeschlossen. Gemessen werden zwei Zeilen, statt
-    // derselbe Vorgang durch Kontowechsel, Antwortverlust und Wiederholung mit insgesamt einer
-    // Zeile." Damit war die Wiederholungssicherheit an einem Vorgang gemessen, der den Kontowechsel
-    // nie gesehen hatte — also nicht an der Zusage des Auftrags (§1: „der Entwurf wird genau einmal
-    // angelegt, auch wenn die erste Serverantwort verloren geht; in der Datenbank steht eine Zeile").
-    //
-    // AB R2 IST ES EIN EINZIGER VORGANGSSCHLÜSSEL, `vorgangA`, von (a) bis hierher: offline erfasst,
-    // über das Neuladen getragen, durch den Kontowechsel liegen geblieben, jetzt angelegt — und die
-    // Antwort darauf geht verloren, NACHDEM der Server geschrieben hat. Die Endzahl in `drafts` ist
-    // 1 und nicht 2.
-    //
-    // DIE WEICHE STEHT VOR AS RÜCKKEHR, denn der Sendelauf beginnt mit dem Aufbau der Fläche
-    // (F-0027). Sie greift nur an POST; Bs Leseweg und As Bestandsabfragen laufen durch.
-    //
-    // WAS DER AUFTRAG AN (d) WÖRTLICH NOCH VERLANGT — „die Fläche zeigt den Erfolg (kein
-    // mob.syncFail)" — gilt hier für den ABSCHLUSS und nicht für den ersten Versuch: Eine Antwort,
-    // die absichtlich weggeworfen wird, MUSS der Mensch als Fehlversuch angezeigt bekommen, sonst
-    // verschwiege die Fläche einen unbekannten Ausgang. Gemessen wird deshalb beides: in As
-    // zurückgekehrter Sitzung genau EIN Fehlervermerk — der herbeigeführte — und die sichtbare
-    // Erfolgsmeldung am Ende. (Der Meldungsbeobachter beginnt mit jedem Dokument neu, die Zählung
-    // gilt also für das Dokument, in dem beide Versuche stattfinden.)
-    // Die Zusammenlegung ist die Anweisung der Steuerung (HINWEIS Punkt 3) und in der Rückgabe als
-    // Abweichung vom Wortlaut des Auftrags benannt.
+    // ══ (d) Derselbe A kommt online; die erste Antwort geht NACH SQL-Commit verloren. ═
+    // Die Weiche steht VOR der Wiederverbindung: der normale Online-Anlauf sendet selbst.
+    // Keine Abmeldung und keine neue Erfassung zwischen (a) und dem Retry.
     let abwerfen = true;
     await kontext.route("**/api/drafts", async (weiche) => {
       if (weiche.request().method().toUpperCase() !== "POST") {
@@ -1015,9 +855,7 @@ export async function fahreDenOfflineWeg(a: OfflineWegAufbau): Promise<OfflineWe
       await weiche.fulfill({ response: antwort });
     });
 
-    await abmelden(seite, basis, "B");
-    await anmelden(seite, basis, a.aEmail, "A");
-    await zurMobilflaeche(seite, basis, "A");
+    await netz(kontext, seite, true);
 
     // ── (d) DER ERSTE VERSUCH: der Server legt an, die Antwort geht auf dem Rückweg verloren. ────
     //
@@ -1043,7 +881,7 @@ export async function fahreDenOfflineWeg(a: OfflineWegAufbau): Promise<OfflineWe
       "Station (d): die Zeile war beim Abwurf der Antwort NICHT in der Datenbank — dann prüft die Wiederholung nichts",
     ).toBe(1);
     // DIE KLAMMER UM DEN GANZEN WEG: es ist der Vorgang aus (a), derselbe Schlüssel, der den
-    // Kontowechsel überstanden hat — und er trägt As Kennung als Voraussetzung mit.
+    // das Neuladen ohne Netz überstanden hat — und er trägt As Kennung als Voraussetzung mit.
     expect(
       versuche[0]?.operationId,
       "Station (d): der Anlageversuch trug NICHT den Vorgangsschlüssel aus (a)",
@@ -1071,6 +909,7 @@ export async function fahreDenOfflineWeg(a: OfflineWegAufbau): Promise<OfflineWe
       seite,
       `${i18n.t("mob.syncOk")} (1)`,
       "Station (e): die Wiederholung",
+      verstellen,
     );
     expect(
       wiederholung.zeit,
@@ -1113,7 +952,7 @@ export async function fahreDenOfflineWeg(a: OfflineWegAufbau): Promise<OfflineWe
       (await meldungen(seite))
         .filter((m) => m.text.includes(i18n.t("mob.syncFail")))
         .map((m) => m.text),
-      "Station (e): in As zurückgekehrter Sitzung gab es nicht genau den EINEN herbeigeführten Fehlervermerk",
+      "Station (e): in As wiederverbundener Sitzung gab es nicht genau den EINEN herbeigeführten Fehlervermerk",
     ).toEqual([`${i18n.t("mob.syncFail")} (1)`]);
 
     // ══ Die Protokollzeile (Lieferung 5) — alles, was diesen Lauf belegt, in EINER Zeile. ══════
@@ -1135,6 +974,116 @@ export async function fahreDenOfflineWeg(a: OfflineWegAufbau): Promise<OfflineWe
     process.stderr.write(`${protokoll}\n`);
 
     return { protokoll, vorgangA, zeilenAmEnde, versuche, stationB };
+  } finally {
+    await kontext.unroute("**/api/drafts").catch(() => undefined);
+    await kontext.close();
+  }
+}
+
+interface SeiteMitFoto extends Seite {
+  waitForEvent(
+    name: "filechooser",
+    opts: { timeout: number },
+  ): Promise<{
+    setFiles(dateien: { name: string; mimeType: string; buffer: Buffer }[]): Promise<void>;
+  }>;
+}
+
+async function offlineFotos(seite: Seite): Promise<{ schluessel: string; bild: boolean }[]> {
+  return seite.evaluate(
+    fn(`() => Object.keys(localStorage).filter((k) => k.startsWith("kw.offlinePhoto.v1:"))
+      .sort().map((k) => ({ schluessel: k, bild: (localStorage.getItem(k) || "").startsWith("data:image/") }))`),
+  );
+}
+
+export interface AbmeldeBefund {
+  vorgangA: string;
+  fotosVorAbmeldung: number;
+  anlageversuche: number;
+  zeilenAmEnde: number;
+}
+
+/** O2: echte Offlineeingabe samt Foto und bewusste Abmeldung; B und erneut A bleiben leer. */
+export async function fahreDenAbmeldeWeg(a: OfflineWegAufbau): Promise<AbmeldeBefund> {
+  const basis = a.strecke.basis;
+  const { kontext: rohKontext, seite } = await profil(a.browser, SCHMAL, "de");
+  const kontext = rohKontext as KontextMitNetz;
+  await kontext.addInitScript(MELDUNGSBEOBACHTER);
+  let anlageversuche = 0;
+  try {
+    expect(await zeilen(a.pool)).toBe(0);
+    await anmelden(seite, basis, a.aEmail, "A");
+    await zurMobilflaeche(seite, basis, "A");
+    await warteAufDienstarbeiter(seite);
+    await netz(kontext, seite, false);
+    const fotoSeite = seite as SeiteMitFoto;
+    const [waehler] = await Promise.all([
+      fotoSeite.waitForEvent("filechooser", { timeout: 45_000 }),
+      seite.click(`[data-testid="mob-fotos"] button:has-text("${i18n.t("mob.foto.mediathek")}")`),
+    ]);
+    // Fiktives gültiges 1×1-RGBA-PNG über den echten Dateiwähler, keine Speicherinjektion.
+    await waehler.setFiles([
+      {
+        name: "offline-a.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQSDjwHwAEJAJA6qdhxgAAAABJRU5ErkJggg==",
+          "base64",
+        ),
+      },
+    ]);
+    await warte(
+      seite,
+      `() => {
+        const bild = document.querySelector('[data-testid="mob-fotos"] img');
+        return !!bild && bild.complete && bild.naturalWidth > 0 &&
+          bild.getBoundingClientRect().width > 0 &&
+          !document.querySelector('[data-testid="mob-foto-in-arbeit"]');
+      }`,
+      "O2: das gewählte Offlinefoto steht bereit",
+    );
+    await erfassen(seite, a.titelA, "Offlinearbeit mit Foto vor bewusster Abmeldung.");
+    await meldungMussKommen(seite, i18n.t("mob.queued"), "O2: offline vorgemerkt");
+    const queue = await warteschlange(seite);
+    expect(queue).toHaveLength(1);
+    const vorgangA = String(queue[0]?.id ?? "");
+    expect(vorgangA).not.toBe("");
+    expect(queue[0]?.eigentuemer).toBe(a.aId);
+    expect(queue[0]?.payload.title).toBe(a.titelA);
+    const fotos = await offlineFotos(seite);
+    expect(fotos).toHaveLength(1);
+    expect(fotos[0]?.bild).toBe(true);
+    expect(
+      Object.values(queue[0]?.offlineFotos ?? {}).map((id) => `kw.offlinePhoto.v1:${id}`),
+    ).toEqual(fotos.map((f) => f.schluessel));
+
+    await kontext.route("**/api/drafts", async (weiche) => {
+      if (weiche.request().method().toUpperCase() === "POST") anlageversuche += 1;
+      await weiche.continue();
+    });
+    // Der Queue-Anlauf ist beim Verlassen von /mobile abgebaut, bevor Netz zum Abmelden nötig ist.
+    await seite.goto(`${basis}${STARTSEITE}`, { waitUntil: "domcontentloaded" });
+    await netz(kontext, seite, true);
+    expect(await warteschlange(seite)).toEqual(queue);
+    expect(await zeilen(a.pool)).toBe(0);
+    await abmelden(seite, basis, "A");
+    expect(await warteschlange(seite), "O2: Abmelden hat As Queue behalten").toEqual([]);
+    expect(await offlineFotos(seite), "O2: Abmelden hat As Foto behalten").toEqual([]);
+
+    await anmelden(seite, basis, a.bEmail, "B");
+    await zurMobilflaeche(seite, basis, "B");
+    await abnahmeNachAbmeldung(seite, a, vorgangA, a.bId, "O2: Folgekonto B");
+    await abmelden(seite, basis, "B");
+    await anmelden(seite, basis, a.aEmail, "A erneut");
+    await zurMobilflaeche(seite, basis, "A erneut");
+    await abnahmeNachAbmeldung(seite, a, vorgangA, a.aId, "O2: erneut angemeldetes A");
+    expect(anlageversuche, "O2: gelöschte Offlinearbeit wurde übertragen").toBe(0);
+    const zeilenAmEnde = await zeilen(a.pool);
+    expect(zeilenAmEnde).toBe(0);
+    process.stderr.write(
+      `${JOB} O2 ABMELDEGRENZE · A-Foto vor Abmeldung1 · danach leer · B/erneut A leer · POST0 · SQL0\n`,
+    );
+    return { vorgangA, fotosVorAbmeldung: fotos.length, anlageversuche, zeilenAmEnde };
   } finally {
     await kontext.unroute("**/api/drafts").catch(() => undefined);
     await kontext.close();

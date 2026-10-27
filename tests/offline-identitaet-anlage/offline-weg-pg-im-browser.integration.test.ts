@@ -1,32 +1,14 @@
 // ================================================================================================
-// JOB 4322 · DER OFFLINE-WEG GEGEN ECHTES POSTGRESQL, IM ECHTEN CHROMIUM — EIN LAUF, FÜNF STATIONEN.
+// JOB 4322 · ECHTER CHROMIUM/POSTGRESQL-WEG: WIEDERHOLUNG UND BEWUSSTE ABMELDUNG.
 // ================================================================================================
-//
-// DIE LÜCKE, DIE DIESE DATEI SCHLIESST, hat der Prüfer zu JOB 4249 selbst benannt
-// (`archiv/4249/runde-8/ben.md:25`, Prüfpunkt 4): „Der vollständige Chromium-/PostgreSQL-/
-// HTTP-Nutzerweg bleibt in der Rückgabe offen." Die Funktion ist LIVE (`1.0.0-beta.1.569`), die
-// Kette war auf zwei Ebenen gemessen — in jsdom mit einer Brücke auf `app.inject`
-// (`kontowechsel-und-anlage-mounted.test.tsx:12-13`) und am Serverriegel ebenfalls über
-// `app.inject`. Zwischen beiden lag genau die Annahme, gegen die dieser Auftrag steht: dass ein
-// echter Browser, ein echter Socket und eine echte Tabelle sich ebenso verhalten.
-//
-// DIE KETTE, die hier in EINEM Lauf steht:
-//
-//     PostgreSQL-Zeile → PgDraftRepo/CaptureService → HTTP-Route über einen echten Socket →
-//     die GEBAUTE Fläche (`apps/web/dist`, ausgeliefert von `registerWebStatic`) → Chromium mit
-//     EINEM Browserprofil, offline und online, mit Kontowechsel → und zurück in die Tabelle
-//     `drafts`.
-//
-// Der Ablauf selbst steht GENAU EINMAL, in `offlineweg.ts` — dieselbe Begründung, mit der
-// `tests/gast-nutzerweg/browserweg.ts` seinen einen Weg begründet: zwei ausgeschriebene Abläufe
-// wären zwei Aussagen, die nur heute übereinstimmen. Diese Datei fährt ihn am unveränderten
-// Produkt; `offline-weg-kalibrierung.integration.test.ts` fährt denselben Ablauf mit gezielt
-// verstellten Voraussetzungen und muss daran SCHEITERN.
-//
-// PRÜFGRENZE, LAUT GEMELDET (Lehre 12.09., JOB 3668): Ohne echte PostgreSQL wird der Grund SICHTBAR
-// auf stderr gemeldet und übersprungen. Ein stiller Skip sähe aus wie ein bestandener Lauf.
+// O1: derselbe angemeldete A, Offline-Erfassung/Neuladen/Antwortverlust nach Commit/manueller Retry.
+// O2: ausdrückliches Abmelden löscht As lokale Arbeit samt Foto; B und erneut A bleiben leer.
+// Die frühere Erhaltung von As Queue ÜBER Abmelden widerspricht dem jüngeren W4.6-Punkt 2.
+// Ursprüngliche SQL-/Vorgangs-/Urheber-/Sichtbarkeits-/Zeitprüfungen gelten weiter, wo sie diese
+// Grenze nicht übergehen. Optionale Alt-Kalibrierung bleibt unverändert und wird nicht mitgefahren.
+// Ohne echte PostgreSQL bleibt die bestehende sichtbare Prüfgrenze bestehen.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { fahreDenOfflineWeg } from "./offlineweg";
+import { fahreDenAbmeldeWeg, fahreDenOfflineWeg } from "./offlineweg";
 import {
   A_MAIL,
   B_MAIL,
@@ -49,7 +31,7 @@ describe("JOB 4322 · der Offline-Weg im echten Chromium gegen echtes PostgreSQL
     await pruefstandAbbauen(stand);
   }, 120_000);
 
-  it("O1 — offline erfassen · neu laden · Konto wechseln · zurückkommen · genau einmal anlegen", async (ctx) => {
+  it("O1 — derselbe Nutzer: offline · Reload · Antwortverlust · Retry", async (ctx) => {
     if (!stand?.verfuegbar) {
       ctx.skip();
       return;
@@ -71,7 +53,7 @@ describe("JOB 4322 · der Offline-Weg im echten Chromium gegen echtes PostgreSQL
 
     // Die Abnahme noch einmal am Befund, damit sie in EINER Zusicherung steht und nicht nur
     // verstreut in den Stationen: ZWEI Anlageversuche mit DEMSELBEN Vorgangsschlüssel — und zwar
-    // dem aus Station (a), der den Kontowechsel überstanden hat —, der erste angelegt (201) und um
+    // dem aus Station (a), der das Offline-Neuladen überstanden hat —, der erste angelegt (201) und um
     // seine Antwort gebracht, der zweite als Wiederholung erkannt (200), und am Ende GENAU EINE
     // Zeile in `drafts`. Das ist die Zusage aus §1, in Zahlen.
     expect({
@@ -110,11 +92,36 @@ describe("JOB 4322 · der Offline-Weg im echten Chromium gegen echtes PostgreSQL
     const b = befund.stationB;
     expect(
       { da: b.zaehler.da, sichtbar: b.zaehler.sichtbar },
-      `Station (b): der Warteschlangenzähler „${b.sollText}" ist nach dem Neuladen OHNE Netz nicht sichtbar — ${b.zaehler.grund}. Stattdessen: Anmeldemaske ${b.anmeldemaske ? "sichtbar" : "nicht da"}; Seitentext: „${b.seitentext}". Ursache im unveränderten Produkt: apps/web/src/App.tsx:85 zeigt ohne bestätigte Sitzung die Anmeldemaske, und apps/web/public/sw.js:36 nimmt /api/auth/me ausdrücklich NICHT in den Zwischenspeicher — ohne Netz kann die Sitzung deshalb nicht bestätigt werden. KEINE Produktänderung in diesem Auftrag.`,
+      `Station (b): der Warteschlangenzähler „${b.sollText}" ist nach dem Neuladen OHNE Netz nicht sichtbar — ${b.zaehler.grund}. Stattdessen: Anmeldemaske ${b.anmeldemaske ? "sichtbar" : "nicht da"}; Seitentext: „${b.seitentext}". Der Zähler muss auch bei noch unbeantworteter Sitzungsfrage sichtbar bleiben; eine Anmeldemaske ersetzt diese Zusage nicht. Keine Produktänderung in diesem Auftrag.`,
     ).toEqual({ da: true, sichtbar: true });
     expect(
       b.zaehler.text.replace(/\s+/g, " "),
       "Station (b): der Zähler steht sichtbar da, trägt aber nicht den erwarteten Stand",
     ).toContain(b.sollText);
+  }, 900_000);
+
+  it("O2 — Abmelden löscht A; B und erneutes A stellen nichts wieder her", async (ctx) => {
+    if (!stand?.verfuegbar) {
+      ctx.skip();
+      return;
+    }
+    const befund = await inFrischerDatenbank(stand, "O2", async (welt) =>
+      fahreDenAbmeldeWeg({
+        browser: welt.browser,
+        strecke: welt.strecke,
+        pool: welt.pool,
+        aEmail: A_MAIL,
+        bEmail: B_MAIL,
+        aId: welt.aId,
+        bId: welt.bId,
+        titelA: TITEL_A,
+      }),
+    );
+    expect(befund.vorgangA).not.toBe("");
+    expect({
+      fotosVorAbmeldung: befund.fotosVorAbmeldung,
+      anlageversuche: befund.anlageversuche,
+      zeilen: befund.zeilenAmEnde,
+    }).toEqual({ fotosVorAbmeldung: 1, anlageversuche: 0, zeilen: 0 });
   }, 900_000);
 });
