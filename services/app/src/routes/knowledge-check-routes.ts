@@ -75,14 +75,13 @@ async function resolveDraftConfidential(
     const entwurf = await capture.getDraft(body.draftId);
     if (entwurf !== undefined) {
       const gespeichert = entwurf.payload.confidentiality ?? null;
-      // ER HEBT, ER SENKT NIE: nur eine vertrauliche gespeicherte Stufe verändert die STUFE des
-      // Backstops. Eine Rangordnung zwischen „vertraulich" und „streng_vertraulich" braucht es hier
-      // nicht — die Regel liest den Backstop ausschliesslich über `isConfidential`, und beide sperren
-      // gleich. Der FUND dagegen zählt immer: ein aufgelöster interner Entwurf ist ein aufgelöster
-      // Anker (dieselbe Buchführung wie `reasoner-routes.ts:281-286`).
+      // Ohne gefundenen KO übernimmt der aufgelöste Entwurf seine gespeicherte Stufe.
+      // Ein bereits gefundener KO bleibt schützend, auch bei ungeklärter Stufe.
+      // Vertrauliche, fehlende und ungültige Draftstufen schützen weiterhin.
       backstop = {
         found: true,
-        level: isConfidential(gespeichert) ? gespeichert : (backstop.level ?? null),
+        level:
+          !backstop.found || isConfidential(gespeichert) ? gespeichert : (backstop.level ?? null),
       };
     }
   }

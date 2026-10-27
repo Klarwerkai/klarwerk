@@ -375,6 +375,7 @@ async function blattOeffnen(seite: Seite, adresse: string): Promise<void> {
   );
 }
 
+// Der explizit intern gespeicherte Draft muss ohne KO-Backstop seine gespeicherte Stufe behalten.
 async function entwurfAnlegen(admin: Sitzung, text: string, marke: string): Promise<string> {
   const entwurf = await admin.sende("POST", "/api/drafts", {
     title: `Vorschau ${marke}`,
