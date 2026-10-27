@@ -173,6 +173,7 @@ export async function starteKlarwerk(opts: {
         EXTERNAL_SEARCH: "off",
         DATABASE_URL: opts.datenbankUrl,
         APP_BASE_URL: "https://wiederanlauf.beziehungen.test",
+        KLARWERK_TRUST_PROXY: "127.0.0.1/32",
         PORT: String(port),
         ...(opts.zusatz?.env ?? {}),
       },

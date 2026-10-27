@@ -1,5 +1,7 @@
 // ================================================================================================
 // JOB 4275 · F-BEZIEHUNGEN-RESTORE — DIE BEZIEHUNGEN SIND NACH DEM ECHTEN PRODUKT-RESTORE WIRKLICH DA.
+// Der isolierte Produktionsstart setzt den expliziten Loopback-Proxy
+// `KLARWERK_TRUST_PROXY=127.0.0.1/32`; diese PG-Strecke nutzt ihn für den echten Produkt-Restore.
 // ================================================================================================
 //
 // DIE FRAGE, DIE HIER BEANTWORTET WIRD, ist die eines Teams am Tag nach dem Datenverlust: *Ich habe
