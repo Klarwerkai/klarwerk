@@ -232,7 +232,7 @@ describe("Klara 10 · Erinnerungen gegen echtes PostgreSQL", () => {
     await container?.stop();
   });
 
-  it("P1 · fünf Prozesse gleichzeitig über zehn fällige Termine: zehn Läufe, zehn Meldungen", async () => {
+  it("P1 · fünf Prozesse in zwei Taktrunden: zehn Läufe, zehn Meldungen", async () => {
     uhr = Date.parse("2026-10-12T08:00:00.000Z");
     const a = prozess("anlage-a");
     for (let i = 0; i < 10; i++) {
@@ -244,10 +244,21 @@ describe("Klara 10 · Erinnerungen gegen echtes PostgreSQL", () => {
       });
     }
     uhr = um("2026-10-13", "09:00") + 5_000;
-    const berichte = await Promise.all(
-      ["p-1", "p-2", "p-3", "p-4", "p-5"].map((name) => prozess(name).steuerung.lauf()),
-    );
-    expect(berichte.reduce((s, b) => s + b.zugestellt, 0)).toBe(10);
+    const ausfuehrer = ["p-1", "p-2", "p-3", "p-4", "p-5"].map((name) => prozess(name));
+    let zugestellt = 0;
+    // Je Konto und Takt höchstens fünf Einträge. Dieselben fünf Steuerungen laufen in
+    // genau zwei vollständig abgewarteten Runden; ihre Übernahmen dürfen sich verteilen.
+    for (let runde = 0; runde < 2; runde++) {
+      const berichte = await Promise.all(ausfuehrer.map((p) => p.steuerung.lauf()));
+      for (const bericht of berichte) {
+        expect(bericht.zugestellt).toBeLessThanOrEqual(5);
+      }
+      zugestellt += berichte.reduce((s, b) => s + b.zugestellt, 0);
+      expect(zugestellt).toBeLessThanOrEqual(10);
+      expect(await zahl("klara_erinnerung_laeufe", ANNA)).toBe(zugestellt);
+      expect(await zahl("klara_erinnerung_meldungen", ANNA)).toBe(zugestellt);
+    }
+    expect(zugestellt).toBe(10);
     expect(await zahl("klara_erinnerung_laeufe", ANNA)).toBe(10);
     expect(await zahl("klara_erinnerung_meldungen", ANNA)).toBe(10);
     // Ein weiterer Takt irgendeines Prozesses ändert nichts.
