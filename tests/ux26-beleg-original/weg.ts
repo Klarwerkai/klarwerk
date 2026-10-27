@@ -77,7 +77,9 @@ function beobachteLadefehler(seite: Seite, durchgang: string) {
       ...roh.matchAll(
         /failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed|unable to preload(?: CSS)?|failed to load module script|failed to load resource|refused to (?:load|execute|apply)|content security policy|MIME type|ChunkLoadError|preloadError|net::ERR_[A-Z0-9_]+|NS_ERROR_[A-Z_]+/giu,
       ),
-    ].map((m) => m[0]).slice(0, 8),
+    ]
+      .map((m) => m[0])
+      .slice(0, 8),
     adressen: [
       ...new Set(
         [...roh.matchAll(/https?:\/\/[^\s"'<>]+/gu)]
