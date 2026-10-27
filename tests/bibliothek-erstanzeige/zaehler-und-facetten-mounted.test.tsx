@@ -76,7 +76,9 @@ afterEach(async () => {
 });
 
 it("Hüllenzähler erhält Fehler, Frische und Lösch-Nachladen", async () => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } },
+  });
   clients.push(qc);
   let badges: ReturnType<typeof useNavBadges> = {};
   function Sonde() {
