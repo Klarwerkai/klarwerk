@@ -1210,7 +1210,8 @@ export class ValidationService {
 
   /** Dieselbe offene Grundmenge wie das Board, ohne Stimmen- und Zuweisungsanreicherung. */
   async boardCount(sichtbar: (ko: KnowledgeObject) => boolean): Promise<number> {
-    return (await this.boardKos()).filter(sichtbar).length;
+    // Dieselbe offene Grundmenge und Sichtbarkeitsfelder, ohne den hier ungelesenen Objektkörper.
+    return (await this.koService.listForSearch({ status: "offen" })).filter(sichtbar).length;
   }
 
   async board(filter: BoardFilter = {}): Promise<KnowledgeObject[]> {
