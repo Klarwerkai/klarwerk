@@ -22,6 +22,9 @@
 // JEDER MODUSWECHSEL GEHT ÜBER DAS MENÜ „Datei ▾" des Blatts — derselbe Griff wie
 // `dateiwegOeffnen` (`ux19-buehne.ts`) und der Formularweg in P2 der Nachbarstrecke.
 //
+// Vor dem ersten Leeren bindet der Helfer ID, Titel und Aussage aus der echten POST-Antwort.
+// Der asynchrone Formular-Ladeweg muss genau diese sichtbaren Werte zeigen.
+//
 // DER FEHLER KOMMT AM NETZ, NICHT IM PRODUKT: die Weiche weist die Anlage und die
 // Aktualisierung von E1 mit 500 im Fehlerschema von `services/app/src/http.ts` zurueck.
 // Sie bleibt auf POST <basis>/api/drafts und PUT <basis>/api/drafts/<e1> beschraenkt;
@@ -247,6 +250,14 @@ async function frischeSeite(kontext: Kontext): Promise<SeiteMitDialogUndRoute> {
   return (await kontext.newPage()) as unknown as SeiteMitDialogUndRoute;
 }
 
+interface AngelegterEntwurf {
+  id: string;
+  title: string;
+  statement: string;
+}
+
+const angelegteAntworten = new Map<string, AngelegterEntwurf>();
+
 /** Ein Ausgangsentwurf über die echte Route — die Nutzlast, die `saveDraft` ohne Eingabe schreibt. */
 async function entwurfAnlegen(titel: string): Promise<string> {
   const api = brauche(adminApi, "die API-Sitzung des Betreibers");
@@ -258,7 +269,24 @@ async function entwurfAnlegen(titel: string): Promise<string> {
   expect([200, 201], `${titel} anlegen: ${antwort.status} ${antwort.text.slice(0, 400)}`).toContain(
     antwort.status,
   );
-  return (antwort.json as { id: string }).id;
+  const angelegt = antwort.json as {
+    id?: unknown;
+    payload?: { title?: unknown; statement?: unknown };
+  };
+  if (
+    typeof angelegt?.id !== "string" ||
+    angelegt.id.length === 0 ||
+    typeof angelegt.payload?.title !== "string" ||
+    typeof angelegt.payload?.statement !== "string"
+  ) {
+    throw new Error("Die bestätigte Anlageantwort enthält nicht ID, Titel und Aussage.");
+  }
+  angelegteAntworten.set(angelegt.id, {
+    id: angelegt.id,
+    title: angelegt.payload.title,
+    statement: angelegt.payload.statement,
+  });
+  return angelegt.id;
 }
 
 /**
@@ -267,6 +295,10 @@ async function entwurfAnlegen(titel: string): Promise<string> {
  * importieren" → „Ganzes Dokument" → reale DOCX über den sichtbaren Dateiwähler.
  */
 async function bisZurGeladenenDatei(s: SeiteMitDialogUndRoute, entwurfId: string): Promise<void> {
+  const erwartet = brauche(
+    angelegteAntworten.get(entwurfId),
+    "der tatsächliche POST-Antwortstand des zu öffnenden Entwurfs",
+  );
   await gehe(s, `/erfassen?draft=${encodeURIComponent(entwurfId)}`);
   expect(
     await klickKnopf(s, satz("erfassen.werkzeug.datei")),
@@ -279,6 +311,34 @@ async function bisZurGeladenenDatei(s: SeiteMitDialogUndRoute, entwurfId: string
     SELEKTOR_DA,
     "der Verlassen-Knopf des geöffneten Entwurfs steht (der Entwurf ist im Formular offen)",
     VERLASSEN_KNOPF,
+  );
+  await aufZustandWarten(
+    s,
+    `(erwartung) => {
+      if (new URL(location.href).searchParams.get("draft") !== erwartung.id) { return false; }
+      const raum = document.querySelector('[data-testid="blatt-arbeitsraum"]');
+      if (!raum) { return false; }
+      const feld = (name) => {
+        for (const label of raum.querySelectorAll("label")) {
+          const span = label.querySelector(":scope > span");
+          if (!span || (span.textContent || "").replace(/\\s+/g, " ").trim() !== name) { continue; }
+          const eingabe = label.querySelector("input, textarea");
+          if (eingabe && eingabe.getClientRects().length > 0 &&
+              getComputedStyle(eingabe).visibility !== "hidden") { return eingabe; }
+        }
+        return null;
+      };
+      const titel = feld(erwartung.titelLabel);
+      const aussage = feld(erwartung.aussageLabel);
+      return !!titel && !!aussage &&
+        titel.value === erwartung.title && aussage.value === erwartung.statement;
+    }`,
+    "der angelegte Entwurf zeigt Titel und Aussage aus seiner bestätigten POST-Antwort",
+    {
+      ...erwartet,
+      titelLabel: satz("capture.wizard.titleLabel"),
+      aussageLabel: satz("capture.fStatement"),
+    },
   );
   expect(
     await s.evaluate<boolean>(fn(TITELFELD_MARKIEREN), satz("capture.wizard.titleLabel")),
