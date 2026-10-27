@@ -128,10 +128,9 @@ export function registriereDienstneustartFaelle(gruppe: Gruppe): void {
 
     async function beende(i: Instanz): Promise<void> {
       await i.beende();
-      expect(
-        prozessLebt(i.pid),
-        `PID ${i.pid} lebt noch — dann wäre das kein Neustart`,
-      ).toBe(false);
+      expect(prozessLebt(i.pid), `PID ${i.pid} lebt noch — dann wäre das kein Neustart`).toBe(
+        false,
+      );
       instanz = undefined;
     }
 
@@ -958,12 +957,12 @@ export function registriereDienstneustartFaelle(gruppe: Gruppe): void {
         try {
           await ersterTakt(normal);
           expect(readFileSync(probe, "utf8").trim()).toBe("assistText");
-          const summary = await sicht(normal, ids[0]!);
+          const summary = await sicht(normal, ids[0] as string);
           expect(summary.laeufe[0]).toMatchObject({
             status: "zugestellt",
             ergebnis: { zusammenfassung: { status: "erstellt" } },
           });
-          const routine = await sicht(normal, ids[1]!);
+          const routine = await sicht(normal, ids[1] as string);
           expect(routine.laeufe[0]).toMatchObject({
             status: "zugestellt",
             ergebnis: { routine: { status: "erstellt" } },
