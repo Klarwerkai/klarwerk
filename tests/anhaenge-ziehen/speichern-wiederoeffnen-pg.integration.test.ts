@@ -492,15 +492,13 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
           "Bildauswahl in erweiterten Details offen",
         );
 
-        const label = await mitte(
-          seite,
-          `[...document.querySelectorAll("label")].find((l) => (l.textContent || "").trim().startsWith(${JSON.stringify(t("capture.imagesUpload"))}) && l.querySelector('input[type="file"][accept="image/*"]'))`,
-        );
-        const wahl = seite.waitForEvent("filechooser", {
-          timeout: wartebudget("aufFlaechensatzWarten"),
-        });
-        await seite.mouse.click(label.x, label.y);
-        await (await wahl).setFiles({ name: BILD_NAME, mimeType: "image/png", buffer: BILD_PNG });
+        const [wahl] = await Promise.all([
+          seite.waitForEvent("filechooser", {
+            timeout: wartebudget("aufFlaechensatzWarten"),
+          }),
+          seite.click('label:has(input[type="file"][accept="image/*"]):visible', { strict: true }),
+        ]);
+        await wahl.setFiles({ name: BILD_NAME, mimeType: "image/png", buffer: BILD_PNG });
         // onImages liest und konvertiert die Datei asynchron. Erst das fertige Vorschaubild
         // belegt, dass der Upload im Produktzustand angekommen ist; setFiles allein tut das nicht.
         await warteBis(
