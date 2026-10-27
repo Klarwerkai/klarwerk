@@ -128,6 +128,7 @@ describe("UX-26 · Beleg und Original im Browser, gegen echtes PostgreSQL", () =
             email: ADMIN,
             sprache,
             fenster,
+            ladefehlerDiagnose: true,
           });
           expect(befund.originalInhalt, name).toBe(INHALT.zwei);
           // (b) DER GESPEICHERTE BELEG, am Pool gelesen.
@@ -140,7 +141,14 @@ describe("UX-26 · Beleg und Original im Browser, gegen echtes PostgreSQL", () =
             { kind: "source", label: befund.neueQuelle },
           ]);
         }
-        const l = await fahreLeser({ browser, strecke, bestand, email: LESER, sprache });
+        const l = await fahreLeser({
+          browser,
+          strecke,
+          bestand,
+          email: LESER,
+          sprache,
+          ladefehlerDiagnose: true,
+        });
         expect(l.wegDa, `Leser ${sprache}: „Quelle anlegen“ wird angeboten`).toBe(false);
         expect(l.knoepfe, `Leser ${sprache}: eine Aktion im Belegabschnitt`).toEqual(["nachladen"]);
       }
