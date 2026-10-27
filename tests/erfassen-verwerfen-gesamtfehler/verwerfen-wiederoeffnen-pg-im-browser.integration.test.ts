@@ -256,8 +256,7 @@ async function frischeSeite(kontext: Kontext): Promise<SeiteMitDialogUndRoute> {
   seite.on("console", (nachricht) => {
     const text = nachricht.text();
     if (text.startsWith(GUARDSPUR_PRAEFIX)) {
-      process.stderr.write(`${text}
-`);
+      process.stderr.write(`${text}\n`);
     }
   });
   return seite;

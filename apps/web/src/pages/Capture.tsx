@@ -4110,7 +4110,7 @@ export function CaptureArbeitsraum({
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
   // „Entwurf speichern" sichert die manuelle Eingabe UND — falls vorhanden — ALLE offenen Datei-Funde
   // als separate Entwürfe (nichts geht verloren). Teilfehler halten den Dialog offen (kein Wechsel).
-// biome-ignore lint/correctness/useExhaustiveDependencies: Temporäre Lesespur darf die Guardregistrierung nicht verändern.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Temporäre Lesespur darf die Guardregistrierung nicht verändern.
   useEffect(() => {
     setGuard({
       // JOB 4335 R4: DER ARBEITSRAUM IST DIE INNERE WACHE DIESER FLÄCHE und speichert deshalb
