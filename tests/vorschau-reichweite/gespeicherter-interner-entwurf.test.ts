@@ -169,4 +169,3 @@ it("geschützte Draft- und KO-Stufen bleiben trotz Body-intern gesperrt", async 
     expect(a.judge).not.toHaveBeenCalled();
   }
 });
-
