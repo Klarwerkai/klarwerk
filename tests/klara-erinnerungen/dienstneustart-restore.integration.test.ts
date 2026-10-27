@@ -316,71 +316,92 @@ describe("Klara 10 · Erinnerungen über echten Dienstneustart und echten Restor
     }
 
     const nachher = await starte(quellDb, "Wiederanlauf nach dem Stillstand");
-    expect(pids[1]).not.toBe(pids[0]);
-    const bericht = await ersterTakt(nachher);
-    expect(bericht).toMatchObject({
-      nachgeholt: 4,
-      verpasstGemeldet: 5,
-      zusammengefasst: 4,
-      uebersprungen: 4,
-      zugestellt: 1,
-      fehlgeschlagen: 0,
-      dedupliziert: 0,
-    });
+    try {
+      expect(pids[1]).not.toBe(pids[0]);
+      const erster = await ersterTakt(nachher);
+      expect(erster.ende).toBeTypeOf("string");
+      const zweiter = await naechsterTakt(nachher, String(erster.ende));
+      // Sechs Erinnerungen benötigen bei fünf je Konto zwei reguläre Takte.
+      const bericht = Object.fromEntries(
+        [
+          "nachgeholt",
+          "verpasstGemeldet",
+          "zusammengefasst",
+          "uebersprungen",
+          "zugestellt",
+          "fehlgeschlagen",
+          "dedupliziert",
+        ].map((feld) => {
+          expect(erster[feld], `erster Takt: ${feld}`).toBeTypeOf("number");
+          expect(zweiter[feld], `zweiter Takt: ${feld}`).toBeTypeOf("number");
+          return [feld, (erster[feld] as number) + (zweiter[feld] as number)] as const;
+        }),
+      );
+      expect(bericht).toMatchObject({
+        nachgeholt: 4,
+        verpasstGemeldet: 5,
+        zusammengefasst: 4,
+        uebersprungen: 4,
+        zugestellt: 1,
+        fehlgeschlagen: 0,
+        dedupliziert: 0,
+      });
 
-    const termine = verpassteTermine();
-    const zeilen = await meldungen(quellDb);
-    const von = (id: string) => zeilen.filter((z) => z.erinnerung_id === id);
-    const nachholen = serie.get("nachholen") ?? "";
-    const melden = serie.get("nur_melden") ?? "";
-    const sammeln = serie.get("zusammenfassen") ?? "";
-    const springen = serie.get("ueberspringen") ?? "";
-    // Nachholen: jeder Termin einzeln, als nachgeholte Erinnerung.
-    expect(von(nachholen).map((z) => [z.id, z.art, z.nachgeholt])).toEqual(
-      termine.map((t) => [`ke-${nachholen}@${t}`, "erinnerung", true]),
-    );
-    // Nur melden: jeder Termin einzeln, als „verpasst“.
-    expect(von(melden).map((z) => [z.id, z.art])).toEqual(
-      termine.map((t) => [`ke-${melden}@${t}`, "verpasst"]),
-    );
-    // Zusammenfassen und Überspringen: EINE Meldung über alle vier Termine.
-    for (const [id, art, praefix] of [
-      [sammeln, "zusammenfassung", "ke-sammel"],
-      [springen, "uebersprungen", "ke-uebersprungen"],
-    ] as const) {
-      const [m, ...rest] = von(id);
-      expect(rest).toEqual([]);
-      expect(m).toMatchObject({ id: `${praefix}-${id}@${termine[0]}`, art });
-      expect(m?.vorkommen).toHaveLength(4);
+      const termine = verpassteTermine();
+      const zeilen = await meldungen(quellDb);
+      const von = (id: string) => zeilen.filter((z) => z.erinnerung_id === id);
+      const nachholen = serie.get("nachholen") ?? "";
+      const melden = serie.get("nur_melden") ?? "";
+      const sammeln = serie.get("zusammenfassen") ?? "";
+      const springen = serie.get("ueberspringen") ?? "";
+      // Nachholen: jeder Termin einzeln, als nachgeholte Erinnerung.
+      expect(von(nachholen).map((z) => [z.id, z.art, z.nachgeholt])).toEqual(
+        termine.map((t) => [`ke-${nachholen}@${t}`, "erinnerung", true]),
+      );
+      // Nur melden: jeder Termin einzeln, als „verpasst“.
+      expect(von(melden).map((z) => [z.id, z.art])).toEqual(
+        termine.map((t) => [`ke-${melden}@${t}`, "verpasst"]),
+      );
+      // Zusammenfassen und Überspringen: EINE Meldung über alle vier Termine.
+      for (const [id, art, praefix] of [
+        [sammeln, "zusammenfassung", "ke-sammel"],
+        [springen, "uebersprungen", "ke-uebersprungen"],
+      ] as const) {
+        const [m, ...rest] = von(id);
+        expect(rest).toEqual([]);
+        expect(m).toMatchObject({ id: `${praefix}-${id}@${termine[0]}`, art });
+        expect(m?.vorkommen).toHaveLength(4);
+      }
+      // Grenzzeit: 20 Minuten nach dem Termin pünktlich, 40 Minuten danach verpasst (Grenze 30).
+      expect(von(puenktlich).map((z) => [z.id, z.art, z.nachgeholt])).toEqual([
+        [`ke-${puenktlich}@${schluessel(puenktlichAm)}`, "erinnerung", false],
+      ]);
+      expect(von(knapp).map((z) => [z.id, z.art])).toEqual([
+        [`ke-${knapp}@${schluessel(knappAm)}`, "verpasst"],
+      ]);
+
+      // Die Läufe tragen dieselben Termine, je einer, mit ihrem Ergebnis.
+      const status = async (id: string) =>
+        (await laeufe(nachher, id)).map((l) => [l.vorkommenId, l.status, l.versuch]).sort();
+      const erwartet = (id: string, s: string) => termine.map((t) => [`${id}@${t}`, s, 1]).sort();
+      expect(await status(nachholen)).toEqual(erwartet(nachholen, "zugestellt"));
+      expect(await status(melden)).toEqual(erwartet(melden, "verpasst_gemeldet"));
+      expect(await status(sammeln)).toEqual(erwartet(sammeln, "zusammengefasst"));
+      expect(await status(springen)).toEqual(erwartet(springen, "uebersprungen"));
+
+      // Und die Person sieht genau diese Meldungen in IHRER Glocke.
+      const glocke = await sende(nachher.basis, "GET", "/api/notifications", noraToken);
+      expect(glocke.status, glocke.text).toBe(200);
+      const inGlocke = (glocke.json as { id: string; kind: string }[])
+        .filter((n) => n.kind === "erinnerung")
+        .map((n) => n.id)
+        .sort();
+      kennungenNachR1 = zeilen.map((z) => z.id).sort();
+      expect(inGlocke).toEqual(kennungenNachR1);
+      expect(kennungenNachR1).toHaveLength(4 + 4 + 1 + 1 + 1 + 1);
+    } finally {
+      await beende(nachher);
     }
-    // Grenzzeit: 20 Minuten nach dem Termin pünktlich, 40 Minuten danach verpasst (Grenze 30).
-    expect(von(puenktlich).map((z) => [z.id, z.art, z.nachgeholt])).toEqual([
-      [`ke-${puenktlich}@${schluessel(puenktlichAm)}`, "erinnerung", false],
-    ]);
-    expect(von(knapp).map((z) => [z.id, z.art])).toEqual([
-      [`ke-${knapp}@${schluessel(knappAm)}`, "verpasst"],
-    ]);
-
-    // Die Läufe tragen dieselben Termine, je einer, mit ihrem Ergebnis.
-    const status = async (id: string) =>
-      (await laeufe(nachher, id)).map((l) => [l.vorkommenId, l.status, l.versuch]).sort();
-    const erwartet = (id: string, s: string) => termine.map((t) => [`${id}@${t}`, s, 1]).sort();
-    expect(await status(nachholen)).toEqual(erwartet(nachholen, "zugestellt"));
-    expect(await status(melden)).toEqual(erwartet(melden, "verpasst_gemeldet"));
-    expect(await status(sammeln)).toEqual(erwartet(sammeln, "zusammengefasst"));
-    expect(await status(springen)).toEqual(erwartet(springen, "uebersprungen"));
-
-    // Und die Person sieht genau diese Meldungen in IHRER Glocke.
-    const glocke = await sende(nachher.basis, "GET", "/api/notifications", noraToken);
-    expect(glocke.status, glocke.text).toBe(200);
-    const inGlocke = (glocke.json as { id: string; kind: string }[])
-      .filter((n) => n.kind === "erinnerung")
-      .map((n) => n.id)
-      .sort();
-    kennungenNachR1 = zeilen.map((z) => z.id).sort();
-    expect(inGlocke).toEqual(kennungenNachR1);
-    expect(kennungenNachR1).toHaveLength(4 + 4 + 1 + 1 + 1 + 1);
-    await beende(nachher);
   }, 900_000);
 
   it("R2 · ein dritter Prozess auf demselben Bestand: dieselben Kennungen, nichts doppelt", async () => {
