@@ -93,6 +93,8 @@ async function starteAnlage(datenbankUrl: string, appBaseUrl: string): Promise<S
         EXTERNAL_SEARCH: "off",
         DATABASE_URL: datenbankUrl,
         APP_BASE_URL: appBaseUrl,
+        // Prüfserver und Clients kommunizieren über die lokale Prüfadresse.
+        KLARWERK_TRUST_PROXY: "127.0.0.1/32",
         PORT: String(port),
       },
     },

@@ -134,7 +134,7 @@ export function stelleFlaecheBereit(): string {
  * Dieselbe Regel wie in `tests/neuinstallation/erstinstallation.integration.test.ts:673-692` (Fall
  * N3): eine geerbte `KLARWERK_SELF_REGISTRATION` aus `tests/setup-env.ts` brächte die Messung still
  * zum Schweigen, und ein geerbtes `DATABASE_URL` liesse den Prozess gegen eine fremde Datenbank
- * fahren. `NODE_ENV=production` samt beider Pflichtwerte des Startvertrags
+ * fahren. `NODE_ENV=production` samt der Pflichtwerte des Startvertrags
  * (`services/app/src/start-vertrag.ts`) ist die Lage, in der eine Kundeninstanz wirklich läuft.
  */
 export function serverUmgebung(url: string, port: number): NodeJS.ProcessEnv {
@@ -147,6 +147,8 @@ export function serverUmgebung(url: string, port: number): NodeJS.ProcessEnv {
     NODE_ENV: "production",
     DATABASE_URL: url,
     APP_BASE_URL: "https://wissen.kunde.test",
+    // Prüfserver und Clients kommunizieren über die lokale Prüfadresse.
+    KLARWERK_TRUST_PROXY: "127.0.0.1/32",
     PORT: String(port),
   };
 }
