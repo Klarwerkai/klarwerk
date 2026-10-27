@@ -25,19 +25,14 @@
 //   als bestanden.
 //
 // ------------------------------------------------------------------------------------------------
-// JOB 4332 — DER BEFUND VON JOB 4315 IST BEHOBEN, UND DIESE DATEI SETZT KEINEN WERT MEHR DAZU
+// JOB 4332 / W4.3 — PAKETVORGABEN UND AUSDRÜCKLICHE PROXY-KONFIGURATION
 // ------------------------------------------------------------------------------------------------
-//   Bis JOB 4332 startete jeder Fall dieser Datei das Paket mit zwei Werten, die der Startbefehl
-//   nicht selbst setzte (`APP_BASE_URL`, `KLARWERK_ALLOW_INMEMORY_PROD=1`), und Fall B1 pinnte den
-//   Abbruch OHNE sie. Der Startbefehl setzt beide jetzt selbst (`release-texte.mjs`,
-//   `startBefehlText`): die Adresse als Vorgabewert aus dem verwendeten `PORT`, die
-//   Persistenz-Ausnahme AUSSCHLIESSLICH im Journalzweig. B1 ist damit der POSITIVE Nachweis.
-//
-//   DIE REGEL, DIE DARAUS FOLGT UND FÜR JEDEN NEUEN FALL HIER GILT: `starteInsel` bekommt ausser
-//   `KLARWERK_SHARED_ROOT` (dem Zielverzeichnis, das auf dem Mac Studio der Betreiber stellt) KEINEN
-//   Umgebungswert mehr. Wer hier einen dazusetzt, misst nicht mehr das Paket, das beim Betreiber
-//   startet. Die EINE Ausnahme ist Fall B2 — dort ist das von aussen gesetzte `APP_BASE_URL` der
-//   Gegenstand der Messung.
+//   Der Startbefehl setzt APP_BASE_URL aus PORT und die Persistenzausnahme im Journalzweig weiter
+//   selbst. Seit W4.3 verlangt der Produktionsstart zusätzlich eine ausdrückliche Proxy-IP/CIDR.
+//   Diese isolierte Probe spricht HTTP über 127.0.0.1 an und setzt deshalb den Loopbackwert an
+//   jedem positiven oder anderweitig kalibrierenden Start selbst, nicht im gemeinsamen Helfer.
+//   B1 misst zuerst den tatsächlichen Abbruch ohne Proxywert und danach den vollen Paketstart.
+//   B2 prüft weiterhin den ausdrücklichen APP_BASE_URL-Override.
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -294,8 +289,11 @@ beforeAll(async () => {
 
   port = await freierPort();
   const startBeginn = Date.now();
-  // OHNE jeden Zusatzwert: genau der Start, den der Betreiber fährt (s. Kopfkommentar, JOB 4332).
-  start = starteInsel(paket, port, { KLARWERK_SHARED_ROOT: leeresZielverzeichnis() });
+  // Explizite Loopbackkonfiguration der isolierten Probe nach W4.3; Paketvorgaben bleiben aktiv.
+  start = starteInsel(paket, port, {
+    KLARWERK_SHARED_ROOT: leeresZielverzeichnis(),
+    KLARWERK_TRUST_PROXY: "127.0.0.1/32",
+  });
   gesund = await warteAufGesundheit(start, GESUNDHEITSFRIST_MS);
   startMs = Date.now() - startBeginn;
 }, 2_400_000);
@@ -453,6 +451,7 @@ describe("JOB 4315 · das echt gebaute Inselpaket startet wirklich", () => {
     const kalibrierPort = await freierPort();
     const kalibrierung = starteInsel(paket, kalibrierPort, {
       KLARWERK_SHARED_ROOT: leeresZielverzeichnis(),
+      KLARWERK_TRUST_PROXY: "127.0.0.1/32",
     });
     try {
       const befund = await warteAufGesundheit(kalibrierung, 60_000);
@@ -483,6 +482,7 @@ describe("JOB 4315 · das echt gebaute Inselpaket startet wirklich", () => {
     const kalibrierPort = await freierPort();
     const kalibrierung = starteInsel(paket, kalibrierPort, {
       KLARWERK_SHARED_ROOT: leeresZielverzeichnis(),
+      KLARWERK_TRUST_PROXY: "127.0.0.1/32",
     });
     try {
       const befund = await warteAufGesundheit(kalibrierung, 60_000);
@@ -510,20 +510,36 @@ describe("JOB 4315 · das echt gebaute Inselpaket startet wirklich", () => {
   // B1 · JOB 4332 LIEFERUNG 4 — das Paket startet mit seinem EIGENEN Startbefehl.
   // ==============================================================================================
   //
-  // DER FALL, UM DEN ES IN DIESEM AUFTRAG GEHT, und er misst genau eine Lage: den Start OHNE einen
-  // einzigen testseitigen Zusatzwert. Bis JOB 4332 pinnte er hier den Abbruch („Serverstart
-  // fehlgeschlagen … APP_BASE_URL, DATABASE_URL"); seit der Startbefehl beide Pflichten selbst
-  // erfüllt, ist er der positive Nachweis. Fällt eine der zwei Zeilen aus `startBefehlText` wieder
-  // weg, ist dieser Fall rot — mit dem fehlenden Namen in der zitierten Prozessausgabe.
+  // W4.3 verlangt eine ausdrückliche Proxy-IP/CIDR. Zuerst muss das echte Paket ohne diesen
+  // Pflichtwert mit benanntem Startvertragsfehler enden. Danach bleibt der volle positive Nachweis
+  // erhalten: eigene Startvorgaben für Adresse und Journal, Paketversion, Oberfläche und Warnung.
   //
   // UND ER MISST DIE EHRLICHKEIT MIT: die laute Warnung des Speicherwächters
   // (`storage-guard.ts:88-93`) MUSS in der Prozessausgabe stehen. Ein Start, der sie los wäre,
   // wäre kein bestandener Fall, sondern ein Paket, das über seine Datenhaltung schweigt.
-  it("B1 · ohne jeden Zusatzwert: /health 200 mit der Paketversion, Marker in der Oberfläche, Warnung laut", async () => {
+  it("B1 · fehlender Proxy bricht ab; expliziter Loopback startet das Paket", async () => {
     expect(paket, "kein Paket zum Starten — S0 ist rot").not.toBe("");
+    const ohneProxyPort = await freierPort();
+    expect(await portBelegt(ohneProxyPort), "Gegenprobe: Port ist schon belegt").toBe(false);
+    const ohneProxy = starteInsel(paket, ohneProxyPort, {
+      KLARWERK_SHARED_ROOT: leeresZielverzeichnis(),
+    });
+    try {
+      const abbruch = await warteAufGesundheit(ohneProxy, GESUNDHEITSFRIST_MS);
+      expect(abbruch.erreicht, "ohne Proxywert darf das Paket nicht gesund starten").toBe(false);
+      expect(ohneProxy.lebt(), "Startabbruch muss den Prozess tatsächlich beenden").toBe(false);
+      expect(ohneProxy.ausgabe()).toContain("StartvertragError");
+      expect(ohneProxy.ausgabe()).toContain("KLARWERK_TRUST_PROXY");
+    } finally {
+      await ohneProxy.beenden();
+    }
+
     const eigenPort = await freierPort();
     expect(await portBelegt(eigenPort), "auf dem Port antwortet schon etwas").toBe(false);
-    const lauf = starteInsel(paket, eigenPort, { KLARWERK_SHARED_ROOT: leeresZielverzeichnis() });
+    const lauf = starteInsel(paket, eigenPort, {
+      KLARWERK_SHARED_ROOT: leeresZielverzeichnis(),
+      KLARWERK_TRUST_PROXY: "127.0.0.1/32",
+    });
     try {
       const befund = await warteAufGesundheit(lauf, GESUNDHEITSFRIST_MS);
       expect(
@@ -571,6 +587,7 @@ describe("JOB 4315 · das echt gebaute Inselpaket startet wirklich", () => {
     const eigeneAdresse = "https://insel.beispiel.invalid";
     const lauf = starteInsel(paket, eigenPort, {
       KLARWERK_SHARED_ROOT: leeresZielverzeichnis(),
+      KLARWERK_TRUST_PROXY: "127.0.0.1/32",
       APP_BASE_URL: eigeneAdresse,
     });
     try {
@@ -600,7 +617,10 @@ describe("JOB 4315 · das echt gebaute Inselpaket startet wirklich", () => {
     const journal = join(gemeinsam, "data", "state.jsonl");
 
     const portEins = await freierPort();
-    const ersterLauf = starteInsel(paket, portEins, { KLARWERK_SHARED_ROOT: gemeinsam });
+    const ersterLauf = starteInsel(paket, portEins, {
+      KLARWERK_SHARED_ROOT: gemeinsam,
+      KLARWERK_TRUST_PROXY: "127.0.0.1/32",
+    });
     let entwurfId = "";
     try {
       const gesundEins = await warteAufGesundheit(ersterLauf, GESUNDHEITSFRIST_MS);
@@ -645,7 +665,10 @@ describe("JOB 4315 · das echt gebaute Inselpaket startet wirklich", () => {
     }
 
     const portZwei = await freierPort();
-    const zweiterLauf = starteInsel(paket, portZwei, { KLARWERK_SHARED_ROOT: gemeinsam });
+    const zweiterLauf = starteInsel(paket, portZwei, {
+      KLARWERK_SHARED_ROOT: gemeinsam,
+      KLARWERK_TRUST_PROXY: "127.0.0.1/32",
+    });
     try {
       const gesundZwei = await warteAufGesundheit(zweiterLauf, GESUNDHEITSFRIST_MS);
       expect(
@@ -686,7 +709,10 @@ describe("JOB 4315 · das echt gebaute Inselpaket startet wirklich", () => {
     writeFileSync(akte.journal, "", "utf8");
 
     const port = await freierPort();
-    const lauf = starteInsel(paket, port, { KLARWERK_SHARED_ROOT: akte.gemeinsam });
+    const lauf = starteInsel(paket, port, {
+      KLARWERK_SHARED_ROOT: akte.gemeinsam,
+      KLARWERK_TRUST_PROXY: "127.0.0.1/32",
+    });
     try {
       const gesund = await warteAufGesundheit(lauf, GESUNDHEITSFRIST_MS);
       expect(gesund.erreicht, `Start misslungen:\n${lauf.ausgabe().slice(-6000)}`).toBe(true);
