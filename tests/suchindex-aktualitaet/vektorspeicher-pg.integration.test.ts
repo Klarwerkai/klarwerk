@@ -29,6 +29,7 @@ const EINGABE = {
   type: "best_practice" as const,
   category: "Wartung",
   author: "anna",
+  confidentiality: "intern" as const,
 };
 
 describe("R-0470 · dauerhafter Vektorspeicher gegen echtes PostgreSQL", () => {

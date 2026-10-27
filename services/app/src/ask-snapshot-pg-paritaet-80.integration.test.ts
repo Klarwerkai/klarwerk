@@ -114,6 +114,7 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
     });
   }, 180_000);
 
