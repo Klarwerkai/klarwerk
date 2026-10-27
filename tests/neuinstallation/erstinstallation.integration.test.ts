@@ -621,6 +621,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
         HOME: process.env.HOME ?? "",
         TMPDIR: process.env.TMPDIR ?? "/tmp",
         POSTGRES_PASSWORD: "nur-fuer-diese-messung",
+        KLARWERK_TRUST_PROXY: "127.0.0.1/32",
       },
     });
     const ausgabe = `${lauf.stdout ?? ""}${lauf.stderr ?? ""}`;
@@ -644,6 +645,7 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
         HOME: process.env.HOME ?? "",
         TMPDIR: process.env.TMPDIR ?? "/tmp",
         POSTGRES_PASSWORD: "nur-fuer-diese-messung",
+        KLARWERK_TRUST_PROXY: "127.0.0.1/32",
         APP_BASE_URL: "https://wissen.kunde.test",
       },
     });
@@ -693,12 +695,13 @@ describe("JOB 4201 · eine leere Kundeninstanz aufsetzen, befuellen und neu star
           TMPDIR: process.env.TMPDIR ?? "/tmp",
           KLARWERK_SKIP_KEYCHAIN: "1",
           KLARWERK_LOG_LEVEL: "warn",
-          // Die Produktionslage, in der die Kundeninstanz wirklich laeuft — samt beider
+          // Die Produktionslage, in der die Kundeninstanz wirklich laeuft — samt der verlangten
           // Pflichtwerte des Startvertrags. Fehlte einer, kaeme dieser Prozess gar nicht hoch,
           // und genau das ist anderswo schon belegt (echter-serverstart.test.ts F1/F2).
           NODE_ENV: "production",
           DATABASE_URL: url,
           APP_BASE_URL: "https://wissen.kunde.test",
+          KLARWERK_TRUST_PROXY: "127.0.0.1/32",
           PORT: String(port),
         },
       });
