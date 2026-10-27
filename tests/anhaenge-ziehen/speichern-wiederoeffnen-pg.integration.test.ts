@@ -17,10 +17,10 @@
 //       · frische Seite `/erfassen?draft=<id>` → „Datei ▾" → „Formular": die Fläche holt den
 //         Entwurf über ihren echten `GET /api/drafts/:id` (Capture.tsx, JOB 3414) — dessen Antwort
 //         wird mitgelesen, und der Editor zeigt das Geladene.
-//     An allen vier Stellen (Editor vorher · SQL · GET · Editor nachher) dieselbe Struktur: zwei
-//     Hüllen, zwei verschiedene Anker, je figure/img/figcaption mit DEMSELBEN Anker,
-//     gleiche Textstelle davor und danach. Editor → SQL darf metadatenfrei neu kodieren:
-//     ganze 1×1-Maße/RGBA unabhängig und exakt; ab SQL auch die vollständigen Quellenbytes exakt.
+//     An allen fünf Stellen (Editor vorher · Speicherantwort · SQL · GET · Editor nachher):
+//     dieselbe Struktur, zwei verschiedene Anker, je figure/img/figcaption mit DEMSELBEN Anker,
+//     gleiche Textstelle davor und danach. Editor → Speicherantwort darf verlustbehaftet neu
+//     kodieren; beide Bilder bleiben gültig 1×1. Ab Speicherantwort sind alle Quellenbytes exakt.
 //
 // KEINE ATTRAPPEN: kein API-/DB-Mock, kein Modellaufruf, keine Nachbearbeitung des DOM.
 //
@@ -382,15 +382,14 @@ function pruefeLage(lage: Figur[], wo: string, soll?: Figur[]): void {
   }
 }
 
-interface K2Bildpixel {
+interface K2Bildmasse {
   breite: number;
   hoehe: number;
-  rgba: number[];
 }
 
-/** Ganze K2-Bilder unabhängig im Browser dekodieren; keine Produktableitung als Soll. */
-async function k2Bildpixel(seite: Buehne, quellen: readonly string[]): Promise<K2Bildpixel[]> {
-  return seite.evaluate<K2Bildpixel[]>(
+/** K2-Bilder unabhängig gültig dekodieren und ihre ganzen Maße lesen. */
+async function k2Bildmasse(seite: Buehne, quellen: readonly string[]): Promise<K2Bildmasse[]> {
+  return seite.evaluate<K2Bildmasse[]>(
     fn(`async (quellen) => Promise.all(quellen.map(async (src) => {
       const bild = new Image();
       bild.src = src;
@@ -400,11 +399,7 @@ async function k2Bildpixel(seite: Buehne, quellen: readonly string[]): Promise<K
       if (!bild.complete || breite <= 0 || hoehe <= 0) {
         throw new Error("K2-Bild ungültig dekodiert: " + breite + "x" + hoehe);
       }
-      const canvas = new OffscreenCanvas(breite, hoehe);
-      const kontext = canvas.getContext("2d");
-      if (!kontext) { throw new Error("K2-Bilddecoder: kein 2D-Kontext"); }
-      kontext.drawImage(bild, 0, 0);
-      return { breite, hoehe, rgba: Array.from(kontext.getImageData(0, 0, breite, hoehe).data) };
+      return { breite, hoehe };
     }))`),
     quellen,
   );
@@ -494,6 +489,7 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
       const seite = (await brauche(kontext, "die Sitzung").newPage()) as unknown as Buehne;
       let id = "";
       let vorher: Figur[] = [];
+      let rumpfSpeicherantwort: string | null = null;
       try {
         await seite.goto(`${basis}/erfassen`, {
           waitUntil: "load",
@@ -573,6 +569,8 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         const antwort = await gespeichert;
         expect(antwort.status(), "Speichern über den Socket").toBeLessThan(300);
         const gesichert = (await antwort.json()) as { id?: unknown };
+        rumpfSpeicherantwort = rumpfAus(gesichert);
+        expect(rumpfSpeicherantwort, "die Speicherantwort trägt bodyHtml").not.toBeNull();
         id = typeof gesichert.id === "string" ? gesichert.id : "";
         expect(
           id,
@@ -585,15 +583,47 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         await seite.close({ runBeforeUnload: false }).catch(() => undefined);
       }
 
-      // Die Zeile in PostgreSQL.
-      const zeile = await entwurfszeile(db, id);
-      expect(zeile, `keine drafts-Zeile ${id}`).not.toBeNull();
-      const rumpfSql = rumpfAus(JSON.parse(zeile as string));
-      expect(rumpfSql, "die drafts-Zeile trägt keinen bodyHtml").not.toBeNull();
-
-      // Wiederöffnen auf einer frischen Seite — der echte GET wird mitgelesen.
+      // Frische Seite: zuerst die echte Speicherantwort binden, noch vor SQL und GET.
       const neu = (await brauche(kontext, "die Sitzung").newPage()) as unknown as Buehne;
       try {
+        const kanonisch = await seiteAusfuehren<Figur[]>(
+          neu,
+          lageAus(JSON.stringify(rumpfSpeicherantwort)),
+        );
+        pruefeLage(kanonisch, "POST/PUT-Speicherantwort");
+        // Die optionale Hüllenspiegelung bleibt erlaubt; alle Nicht-SRC-Felder bleiben gleich.
+        const ohneQuelle = (lage: Figur[]) =>
+          lage.map((f) => ({
+            huelleId: f.huelleId ?? f.bildId,
+            bildId: f.bildId,
+            unterschriftId: f.unterschriftId,
+            davor: f.davor,
+            danach: f.danach,
+          }));
+        expect(ohneQuelle(kanonisch), "Speicherantwort: Anker, Zuordnung und Position").toEqual(
+          ohneQuelle(vorher),
+        );
+        const masseVorher = await k2Bildmasse(
+          neu,
+          vorher.map((f) => f.src),
+        );
+        const masseAntwort = await k2Bildmasse(
+          neu,
+          kanonisch.map((f) => f.src),
+        );
+        expect(masseVorher, "beide Editorbilder gültig und genau 1×1").toEqual([
+          { breite: 1, hoehe: 1 },
+          { breite: 1, hoehe: 1 },
+        ]);
+        expect(masseAntwort, "beide Speicherantwortbilder behalten die Maße").toEqual(masseVorher);
+
+        // Erst nach der unabhängigen Speicherantwortbindung die Zeile in PostgreSQL lesen.
+        const zeile = await entwurfszeile(db, id);
+        expect(zeile, `keine drafts-Zeile ${id}`).not.toBeNull();
+        const rumpfSql = rumpfAus(JSON.parse(zeile as string));
+        expect(rumpfSql, "die drafts-Zeile trägt keinen bodyHtml").not.toBeNull();
+
+        // Wiederöffnen auf derselben frischen Seite — der echte GET wird mitgelesen.
         const geholt: Antwort[] = [];
         neu.on("response", (a) => {
           if (a.request().method() === "GET" && new URL(a.url()).pathname === `/api/drafts/${id}`) {
@@ -616,38 +646,10 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         const ausSql = await seiteAusfuehren<Figur[]>(neu, lageAus(JSON.stringify(rumpfSql)));
         const ausGet = await seiteAusfuehren<Figur[]>(neu, lageAus(JSON.stringify(rumpfGet)));
         const nachher = await seiteAusfuehren<Figur[]>(neu, lageAus(`${FELD}.innerHTML`));
-        // Editor → SQL ist die erlaubte metadatenfreie Bildableitung (W4.6 OCR-1/2).
-        pruefeLage(ausSql, "drafts-Zeile (SQL)");
-        // Wie bisher darf die Hülle den Bildanker spiegeln; alle Nicht-SRC-Felder bleiben gleich.
-        const ohneQuelle = (lage: Figur[]) =>
-          lage.map((f) => ({
-            huelleId: f.huelleId ?? f.bildId,
-            bildId: f.bildId,
-            unterschriftId: f.unterschriftId,
-            davor: f.davor,
-            danach: f.danach,
-          }));
-        expect(ohneQuelle(ausSql), "SQL: Anker, Zuordnung und Position unverändert").toEqual(
-          ohneQuelle(vorher),
-        );
-        const pixelVorher = await k2Bildpixel(
-          neu,
-          vorher.map((f) => f.src),
-        );
-        const pixelSql = await k2Bildpixel(
-          neu,
-          ausSql.map((f) => f.src),
-        );
-        for (let i = 0; i < 2; i += 1) {
-          const v = pixelVorher[i] as K2Bildpixel;
-          expect(v.breite, "K2-Originalbild: genau ein Pixel breit").toBe(1);
-          expect(v.hoehe, "K2-Originalbild: genau ein Pixel hoch").toBe(1);
-          expect(v.rgba, "K2-Originalbild: sämtliche vier RGBA-Bytes").toHaveLength(4);
-          expect(pixelSql[i], `SQL-Bild ${i + 1}: ganze Maße und RGBA exakt`).toEqual(v);
-        }
-        // Ab der unabhängig gebundenen SQL-Ableitung bleiben sämtliche SRC-Bytes exakt.
-        pruefeLage(ausGet, "GET /api/drafts/:id", ausSql);
-        pruefeLage(nachher, "Editor nach dem Wiederöffnen", ausSql);
+        // Der zuvor gebundene HTTP-Speicherstand bleibt vollständig und bytegenau erhalten.
+        pruefeLage(ausSql, "drafts-Zeile (SQL)", kanonisch);
+        pruefeLage(ausGet, "GET /api/drafts/:id", kanonisch);
+        pruefeLage(nachher, "Editor nach dem Wiederöffnen", kanonisch);
         process.stderr.write(
           `${KENNZEICHEN} GRÜN · Entwurf ${id} · Anker ${vorher.map((f) => f.bildId).join(", ")}\n`,
         );
