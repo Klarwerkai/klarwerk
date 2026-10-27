@@ -5,14 +5,15 @@
 // JOB 4269 hat den historischen Beleg über `POST`/`GET /api/drafts` geschickt — gegen den
 // Entwurfsspeicher im ARBEITSSPEICHER (`archiv/4269/runde-1/RUECKGABE.md`, NICHT GEMESSEN: „Kein
 // PostgreSQL-Abnahmelauf … ausdrücklich KEIN Beleg für produktive Persistenz"). Hier läuft derselbe
-// Weg gegen eine echte Datenbank, und zwar über ZWEI App-Instanzen: was die erste speichert, liest
-// die zweite zurück. Ein Wert, der nur im Prozess überlebt, fällt damit auf.
+// Weg gegen eine echte Datenbank über DREI App-Instanzen: was die erste annimmt, liest die zweite
+// als Entwurf und die dritte nach dem Einreichen zurück. Reines Prozessgedächtnis genügt nicht.
 //
 //   1. Historischer Beleg (alter Wortlaut, vor dem 16.09.2026) → POST → neue Instanz → GET: Zeichen
 //      für Zeichen derselbe Rumpf, auch direkt in der Zeile `drafts` → Annahme → neue Instanz →
 //      GET /api/kos/:id: der alte Beleg steht unverändert am Eintrag, keine Bilanz nachgetragen.
-//   2. Zwillingsdeck (identische und ausgeblendete Bilder, ein Verlust) → derselbe Weg: Bilanz und
-//      Bildbytes stimmen an Entwurf und Eintrag mit den UNABHÄNGIGEN Originaldaten überein.
+//   2. Zwillingsdeck (identische und ausgeblendete Bilder, ein Verlust): VOR POST gelten die
+//      unabhängigen Originalbytes. W4.6 leitet beim Speichern sichere WebP-Bilder ab. Der ganze
+//      angenommene POST-Rumpf bleibt danach in SQL und über beide frischen App-Instanzen bytegleich.
 //
 // Datenbank nach Hausform (`services/app/src/build-app.integration.test.ts`): lokale URL über die
 // GELB-Sicherung mit Vorrang, sonst Testcontainers, sonst SICHTBARER Skip mit Grund auf stderr. Ein
@@ -25,6 +26,7 @@ import { wholeDocumentDraftPayload } from "../../apps/web/src/lib/captureFromFil
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { validateDescribeImageDataUrl } from "../../services/reasoner/src/image-validation";
 import { stelleTrigrammErweiterungSicher } from "../office-pg-abnahme/rueckweg-erwartung";
 import {
   ZWILLINGSDECK,
@@ -73,6 +75,36 @@ async function zwillingsEntwurf(): Promise<DraftPayload> {
     }),
     confidentiality: "intern",
   } as DraftPayload;
+}
+
+type PostAnnahme = { id: string; payload: DraftPayload };
+
+/** Prüft die Annahme, bevor irgendein SQL- oder GET-Rücklesen die Erwartung liefern könnte. */
+function pruefeZwillingsAnnahme(rumpf: string, original: string): void {
+  const quellen = [...rumpf.matchAll(/<img\b[^>]*\bsrc="([^"]*)"[^>]*>/gu)].map((m) => m[1] ?? "");
+  expect(quellen, "fünf einzeln eingebettete Bilder einschließlich der Zwillinge").toHaveLength(5);
+  for (const quelle of quellen) {
+    expect(validateDescribeImageDataUrl(quelle), "gültige sichere Bildableitung").toMatchObject({
+      ok: true,
+      mediaType: "image/webp",
+    });
+  }
+  // Der bestehende Speicherweg ergänzt den Rahmenanker aus der unveränderten Bildkennung.
+  const mitRahmenankern = original.replace(
+    /<figure><img data-image-id="([^"]+)"/gu,
+    '<figure data-image-id="$1"><img data-image-id="$1"',
+  );
+  const ohneBildquellen = (html: string): string =>
+    html.replace(
+      /(<img\b[^>]*\bsrc=")data:image\/(?:png|webp);base64,[^"]*(")/gu,
+      "$1[angenommene Bildquelle]$2",
+    );
+  expect(ohneBildquellen(rumpf), "Text, Reihenfolge und sämtliche übrigen Bildattribute").toBe(
+    ohneBildquellen(mitRahmenankern),
+  );
+  expect(belegText(rumpf), "unveränderter Quellenbeleg mit fünf Bildern und einem Verlust").toBe(
+    belegText(original),
+  );
 }
 
 describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () => {
@@ -160,17 +192,18 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
     return { app, headers };
   }
 
-  it("speichern → neue Instanz → neu laden → annehmen → neue Instanz: Altbeleg unverändert, Bilanz und Bilder wie im Original", async (ctx) => {
+  it("speichern → neue Instanz → neu laden → annehmen → neue Instanz: Altbeleg unverändert, angenommene Bildableitung bytegleich", async (ctx) => {
     if (!pool) {
       ctx.skip();
       return;
     }
     const alt = historischerEntwurf();
     const zwilling = await zwillingsEntwurf();
+    expect(rumpfBefunde(zwilling.bodyHtml ?? "", "de", ZWILLINGSDECK), "PPTX vor POST").toEqual([]);
 
     // ---- Instanz 1: speichern ----------------------------------------------------------------
     const eins = await instanz(pool, true);
-    const ids: string[] = [];
+    const annahmen: PostAnnahme[] = [];
     for (const entwurf of [alt, zwilling]) {
       const res = await eins.app.inject({
         method: "POST",
@@ -179,10 +212,23 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
         payload: entwurf,
       });
       expect(res.statusCode, res.body).toBeLessThan(300);
-      ids.push((res.json() as { id: string }).id);
+      const angenommen = res.json() as PostAnnahme;
+      expect(angenommen.payload.bodyHtml, "ganzer Rumpf in der POST-Annahme").toBeTypeOf("string");
+      const rumpf = angenommen.payload.bodyHtml as string;
+      if (entwurf === alt) {
+        expect(rumpf, "Altbeleg bereits in der POST-Annahme unverändert").toBe(alt.bodyHtml);
+      } else {
+        pruefeZwillingsAnnahme(rumpf, zwilling.bodyHtml ?? "");
+        expect(angenommen.payload.sourceImageCount).toBe(zwilling.sourceImageCount);
+      }
+      annahmen.push(angenommen);
     }
     await eins.app.close();
-    const [altId, zwillingId] = ids as [string, string];
+    const [altAnnahme, zwillingsAnnahme] = annahmen as [PostAnnahme, PostAnnahme];
+    const altId = altAnnahme.id;
+    const zwillingId = zwillingsAnnahme.id;
+    // Diese Erwartung stammt ausschließlich aus der vollständigen POST-Antwort der ersten App.
+    const angenommenerZwilling = zwillingsAnnahme.payload.bodyHtml as string;
 
     // ---- Die Zeile in der Datenbank selbst — kein Prozessgedächtnis dazwischen ----------------
     const zeile = await pool.query<{ rumpf: string }>(
@@ -190,6 +236,13 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
       [altId],
     );
     expect(zeile.rows[0]?.rumpf, "Altbeleg in der Zeile drafts").toBe(alt.bodyHtml);
+    const zwillingsZeile = await pool.query<{ rumpf: string }>(
+      "SELECT data->'payload'->>'bodyHtml' AS rumpf FROM drafts WHERE id = $1",
+      [zwillingId],
+    );
+    expect(zwillingsZeile.rows[0]?.rumpf, "ganzer angenommener Zwillingsrumpf in drafts").toBe(
+      angenommenerZwilling,
+    );
 
     // ---- Instanz 2: neu laden, dann annehmen ---------------------------------------------------
     const zwei = await instanz(pool, false);
@@ -207,8 +260,8 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
           alt.bodyHtml,
         );
       } else {
-        expect(rumpfBefunde(rumpf, "de", ZWILLINGSDECK), "Zwillingsentwurf neu geladen").toEqual(
-          [],
+        expect(rumpf, "ganzer angenommener Zwillingsrumpf in der zweiten App").toBe(
+          angenommenerZwilling,
         );
       }
       const angenommen = await zwei.app.inject({
@@ -221,6 +274,14 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
     }
     await zwei.app.close();
     const [altKo, zwillingKo] = koIds as [string, string];
+    // PgKoRepo speichert den ganzen Eintrag als JSON in kos.data.
+    const zwillingsKoZeile = await pool.query<{ rumpf: string }>(
+      "SELECT data->>'bodyHtml' AS rumpf FROM kos WHERE id = $1",
+      [zwillingKo],
+    );
+    expect(zwillingsKoZeile.rows[0]?.rumpf, "ganzer angenommener Zwillingsrumpf in kos").toBe(
+      angenommenerZwilling,
+    );
 
     // ---- Instanz 3: der angenommene Eintrag, erneut geöffnet -----------------------------------
     const drei = await instanz(pool, false);
@@ -234,13 +295,14 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
       return (res.json() as { bodyHtml?: string }).bodyHtml ?? "";
     };
     const altAmEintrag = await lies(altKo);
+    expect(altAmEintrag, "ganzer historischer Rumpf am Eintrag unverändert").toBe(alt.bodyHtml);
     expect(belegText(altAmEintrag), "der Altbeleg am Eintrag").toBe(
       `Quelle: altes-deck.pptx, gesamtes Dokument ${ALTER_WORTLAUT}`,
     );
     expect(altAmEintrag).not.toContain(VORBEHALT.de);
     expect(altAmEintrag).not.toContain(BILANZ_PRAEFIX.de);
-    expect(rumpfBefunde(await lies(zwillingKo), "de", ZWILLINGSDECK), "Zwillingseintrag").toEqual(
-      [],
+    expect(await lies(zwillingKo), "ganzer angenommener Zwillingsrumpf in der dritten App").toBe(
+      angenommenerZwilling,
     );
     await drei.app.close();
   });
