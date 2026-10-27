@@ -595,7 +595,9 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
         return;
       }
       bestaetigungAngefordertRef.current = true;
-      void qc.invalidateQueries({ queryKey: KONTO_ABFRAGE });
+      // AuthContext aktiviert me erst nach status. Nach Offline-Reload braucht die Bestätigung
+      // deshalb beide vorhandenen Abfragen, wie AuthContext.refresh.
+      void qc.invalidateQueries({ queryKey: ["auth"] });
     },
     [qc],
   );

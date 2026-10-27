@@ -921,3 +921,125 @@ describe("JOB 4333: Neuladen ohne Netz — die eigene Arbeit bleibt sichtbar", (
     }
   });
 });
+
+it("F11 · Netzrückkehr bestätigt status vor me und Offlineversand", async () => {
+  localStorage.setItem(OFFLINE_WARTESCHLANGE_SCHLUESSEL, JSON.stringify([VORGANG]));
+  lage = "transportfehler";
+  // Beim bereits offline geladenen Modul beginnt der öffentliche OnlineManager trotzdem mit true.
+  onlineManager.setOnline(true);
+  expect(navigator.onLine).toBe(false);
+  const urspruenglicheLocks = Object.getOwnPropertyDescriptor(navigator, "locks");
+  let lockEnde = Promise.resolve();
+  // jsdom-Port für den vorhandenen Web-Lock; konkurrierende Queueanlässe laufen seriell.
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request<T>(_name: string, arbeit: () => T | Promise<T>): Promise<T> {
+        const lauf = lockEnde.then(arbeit);
+        lockEnde = lauf.then(
+          () => undefined,
+          () => undefined,
+        );
+        return lauf;
+      },
+    },
+  });
+  const meAntwort: { freigeben: () => void } = { freigeben: () => undefined };
+  const meFreigegeben = new Promise<void>((freigeben) => {
+    meAntwort.freigeben = freigeben;
+  });
+  const schritte: string[] = [];
+  const posts: { operationId?: string; expectedOwner?: string; bestaetigt: boolean }[] = [];
+  let kontoBestaetigt = false;
+  const brueckenFetch = globalThis.fetch;
+  globalThis.fetch = async (eingabe, optionen) => {
+    const url = String(eingabe);
+    if (url.endsWith("/api/auth/status")) {
+      try {
+        const result = await brueckenFetch(eingabe, optionen);
+        schritte.push("status bestätigt");
+        return result;
+      } catch (fehler) {
+        schritte.push("status Transportfehler");
+        throw fehler;
+      }
+    }
+    if (url.endsWith("/api/auth/me")) {
+      schritte.push("me angefragt");
+      await meFreigegeben;
+      const result = await brueckenFetch(eingabe, optionen);
+      kontoBestaetigt = result.ok;
+      schritte.push("me bestätigt");
+      return result;
+    }
+    if (url.endsWith("/api/drafts") && optionen?.method === "POST") {
+      const { operationId, expectedOwner, ...payload } = JSON.parse(String(optionen.body)) as {
+        operationId?: string;
+        expectedOwner?: string;
+        [key: string]: unknown;
+      };
+      posts.push({ operationId, expectedOwner, bestaetigt: kontoBestaetigt });
+      schritte.push("POST");
+      return antwort(201, { id: "draft-f11", payload }) as Response;
+    }
+    return brueckenFetch(eingabe, optionen);
+  };
+
+  try {
+    await mount("/mobile");
+    const client = qc;
+    if (!client) {
+      throw new Error("Der echte QueryClient fehlt.");
+    }
+    expect(onlineManager.isOnline()).toBe(true);
+    expect(client.getQueryState(["auth", "status"])?.status).toBe("error");
+    expect(client.getQueryState(["auth", "me"])?.status).toBe("pending");
+    expect(client.getQueryState(["auth", "me"])?.fetchStatus).toBe("idle");
+    expect(schritte).toEqual(["status Transportfehler"]);
+    expect(posts).toEqual([]);
+    expect(warteschlangeImSpeicher()).toEqual([VORGANG]);
+    expect(sichtbarerText(erfassungFlaeche())).toContain(`${i18n.t("mob.queue")} · 1`);
+    expect(flaechentext()).not.toContain(SERVER_ENTWURF_TITEL);
+    expect(flaechentext()).not.toContain(SERVER_TREFFER_TITEL);
+
+    // Nur das wirkliche Browserereignis: kein Querygriff, Fokus, Reload oder zweites setOnline.
+    lage = "angemeldet";
+    await act(async () => {
+      Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+      globalThis.dispatchEvent(new Event("online"));
+      await flush();
+    });
+    expect(onlineManager.isOnline()).toBe(true);
+    expect(schritte).toEqual(["status Transportfehler", "status bestätigt", "me angefragt"]);
+    expect(client.getQueryState(["auth", "status"])?.status).toBe("success");
+    expect(client.getQueryState(["auth", "me"])?.fetchStatus).toBe("fetching");
+    expect(posts).toEqual([]);
+    expect(warteschlangeImSpeicher()).toEqual([VORGANG]);
+
+    await act(async () => {
+      meAntwort.freigeben();
+      await flush();
+    });
+    await beruhigen('[data-testid="mob-statement"]');
+    expect(schritte).toEqual([
+      "status Transportfehler",
+      "status bestätigt",
+      "me angefragt",
+      "me bestätigt",
+      "POST",
+    ]);
+    expect(posts).toEqual([
+      { operationId: VORGANG.id, expectedOwner: VORGANG.eigentuemer, bestaetigt: true },
+    ]);
+    expect(warteschlangeImSpeicher()).toEqual([]);
+    expect(client.getQueryData<{ id: string }>(["auth", "me"])?.id).toBe("konto-a");
+  } finally {
+    meAntwort.freigeben();
+    abbauen();
+    if (urspruenglicheLocks) {
+      Object.defineProperty(navigator, "locks", urspruenglicheLocks);
+    } else {
+      Reflect.deleteProperty(navigator, "locks");
+    }
+  }
+});

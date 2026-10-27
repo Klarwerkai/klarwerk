@@ -358,6 +358,14 @@ async function anmelden(seite: Seite, basis: string, email: string, marke: strin
  * Kopfband. Nebenbei ist es genau die Reihenfolge, die dieser Fall braucht — solange `Mobile`
  * montiert ist, läuft der Sendeweg mit (`useOfflineQueue` wohnt allein dort).
  */
+interface SeiteMitAbmeldenavigation extends Seite {
+  waitForNavigation(opts: {
+    url: string;
+    waitUntil: "domcontentloaded";
+    timeout: number;
+  }): Promise<unknown>;
+}
+
 async function abmelden(seite: Seite, basis: string, marke: string): Promise<void> {
   await seite.goto(`${basis}${STARTSEITE}`, { waitUntil: "domcontentloaded" });
   await warte(
@@ -373,7 +381,12 @@ async function abmelden(seite: Seite, basis: string, marke: string): Promise<voi
     `() => !!document.querySelector('[data-testid="konto-abmelden"]')`,
     `der Abmelde-Eintrag im Schubfach von ${marke}`,
   );
-  await seite.click('[data-testid="konto-abmelden"]');
+  const navigation = (seite as SeiteMitAbmeldenavigation).waitForNavigation({
+    url: `${basis}/`,
+    waitUntil: "domcontentloaded",
+    timeout: 45_000,
+  });
+  await Promise.all([navigation, seite.click('[data-testid="konto-abmelden"]')]);
   await warte(
     seite,
     `() => !!document.querySelector("#auth-email")`,
