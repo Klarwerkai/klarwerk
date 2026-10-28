@@ -192,6 +192,7 @@ describe("JOB 4012 · der Startbefehl im Release wirft die Datenbank nicht mehr 
       `#!/usr/bin/env bash
 printf 'DATABASE_URL=[%s]\\nKLARWERK_DEV_PERSIST=[%s]\\nKLARWERK_DEV_PERSIST_FILE=[%s]\\n' \\
   "\${DATABASE_URL-}" "\${KLARWERK_DEV_PERSIST-}" "\${KLARWERK_DEV_PERSIST_FILE-}"
+printf 'KLARWERK_TRUST_PROXY=[%s]\\n' "\${KLARWERK_TRUST_PROXY-}"
 `,
       { mode: 0o755 },
     );
@@ -209,6 +210,7 @@ printf 'DATABASE_URL=[%s]\\nKLARWERK_DEV_PERSIST=[%s]\\nKLARWERK_DEV_PERSIST_FIL
 
     expect(lauf.code, lauf.gemeldet).toBe(0);
     expect(lauf.gemeldet).toContain("DATABASE_URL=[]");
+    expect(lauf.gemeldet).toContain("KLARWERK_TRUST_PROXY=[none]");
     expect(lauf.gemeldet).toContain("KLARWERK_DEV_PERSIST=[1]");
     expect(lauf.gemeldet).toContain(`KLARWERK_DEV_PERSIST_FILE=[${insel.daten}/state.jsonl]`);
   });
@@ -242,4 +244,14 @@ printf 'DATABASE_URL=[%s]\\nKLARWERK_DEV_PERSIST=[%s]\\nKLARWERK_DEV_PERSIST_FIL
     );
     expect(lauf.gemeldet).toContain("KLARWERK_DEV_PERSIST=[]");
   });
+
+  it.each(["192.0.2.10", "198.51.100.0/24,2001:db8::/64", "none", "", " ", "true", "1"])(
+    "S4 · eine gesetzte Proxy-Auswahl bleibt exakt erhalten: %s",
+    async (trustProxy) => {
+      insel = await legeInselAn();
+      const lauf = starte({ KLARWERK_TRUST_PROXY: trustProxy });
+      expect(lauf.code, lauf.gemeldet).toBe(0);
+      expect(lauf.gemeldet).toContain(`KLARWERK_TRUST_PROXY=[${trustProxy}]`);
+    },
+  );
 });

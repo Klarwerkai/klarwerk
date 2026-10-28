@@ -108,6 +108,9 @@ mkdir -p "$SHARED_ROOT/data" "$SHARED_ROOT/logs"
 
 export PORT
 export NODE_ENV=production
+# Direktbetrieb ohne vorgeschalteten Proxy: Forwarding-Koepfe bleiben unvertraut.
+# Nur eine fehlende Variable ergaenzen; gesetzte Betreiberwerte bleiben beim Startvertrag.
+export KLARWERK_TRUST_PROXY="\${KLARWERK_TRUST_PROXY-none}"
 # R-0664: Die Datei, in die insel-betrieb.sh (>>) bzw. der launchd-Agent die Ausgabe schreibt. Die App
 # rotiert sie taeglich und loescht Protokolle im Ordner nach 14 Tagen (services/app/src/protokoll-frist.ts).
 export KLARWERK_LOG_DATEI="\${KLARWERK_LOG_DATEI:-$SHARED_ROOT/logs/server-$PORT.log}"

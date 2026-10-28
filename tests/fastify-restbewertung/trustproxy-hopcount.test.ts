@@ -151,6 +151,49 @@ describe("GHSA-3m5p-2c4r-xxw2 · K2/K3: Konfiguration, direkter Zugriff am Proxy
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "10.0.0.5" })).toEqual(["10.0.0.5"]);
   });
 
+  it("Direktbetrieb none: gefälschte Header umgehen die Auth-IP-Drossel nicht", async () => {
+    process.env.KLARWERK_TRUST_PROXY = "none";
+    const app = buildApp(buildServices());
+    const ips: string[] = [];
+    app.addHook("onRequest", async (request) => {
+      ips.push(request.ip);
+    });
+    try {
+      for (let i = 0; i < 6; i++) {
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          remoteAddress: DIREKTER_CLIENT,
+          headers: {
+            "content-type": "application/json",
+            "x-forwarded-for": `203.0.113.${i + 1}`,
+            forwarded: `for=203.0.113.${i + 1};proto=https`,
+          },
+          payload: JSON.stringify({ email: "direkt@example.test", password: "falsch" }),
+        });
+        expect(res.statusCode, res.body).toBe(i < 5 ? 401 : 429);
+        if (i === 5) expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+      }
+      expect(ips).toEqual(Array<string>(6).fill(DIREKTER_CLIENT));
+      const andererSocket = "198.51.100.201";
+      const anderer = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        remoteAddress: andererSocket,
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": DIREKTER_CLIENT,
+          forwarded: `for=${DIREKTER_CLIENT}`,
+        },
+        payload: JSON.stringify({ email: "direkt@example.test", password: "falsch" }),
+      });
+      expect(anderer.statusCode, anderer.body).toBe(401);
+      expect(ips.at(-1)).toBe(andererSocket);
+    } finally {
+      await app.close();
+    }
+  });
+
   // KALIBRIERUNG AUF 5.8.5 — HISTORISCH. Solange 5.8.5 gebunden war, stand hier ein Fall mit nackter
   // Fastify-Instanz und `trustProxy: 1`: ein NICHT vertrauter, direkt verbundener Client bestimmte
   // mit seinem eigenen X-Forwarded-For `request.ip` (Ergebnis 203.0.113.66). Bestanden im Kandidaten

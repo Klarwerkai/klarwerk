@@ -200,6 +200,9 @@ describe("W4.3 Produktions-Startvertrag mit bestätigter ausdrücklicher Proxy-L
     "192.0.2.10,true",
     "192.0.2.10,",
     "192.0.2.10,::/0",
+    "none,192.0.2.10",
+    "none,",
+    "NONE",
   ])("verwirft %s ohne Abschwächung", (raw) => {
     const env = { ...base, KLARWERK_TRUST_PROXY: raw };
     expect(hasExplicitTrustProxy(env)).toBe(false);
@@ -214,6 +217,16 @@ describe("W4.3 Produktions-Startvertrag mit bestätigter ausdrücklicher Proxy-L
       expect(fehlendePflichtwerte(env)).toEqual([]);
       expect(() => pruefeStartvertrag(env)).not.toThrow();
       expect(resolveTrustProxy(env)).toEqual(raw.split(","));
+    },
+  );
+  it.each(["none", " none "])(
+    "akzeptiert die ausdrückliche direkte Wahl %s ohne Proxy-Vertrauen",
+    (raw) => {
+      const env = { ...base, KLARWERK_TRUST_PROXY: raw };
+      expect(hasExplicitTrustProxy(env)).toBe(true);
+      expect(fehlendePflichtwerte(env)).toEqual([]);
+      expect(() => pruefeStartvertrag(env)).not.toThrow();
+      expect(resolveTrustProxy(env)).toBe(false);
     },
   );
   it("Test/Entwicklung braucht keine Proxy-Angabe", () => {

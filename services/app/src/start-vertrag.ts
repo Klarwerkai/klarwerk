@@ -21,9 +21,9 @@
 // ------------------------------------------------------------------------------------------------
 //
 // 1. In Produktion sind DATABASE_URL, APP_BASE_URL und KLARWERK_TRUST_PROXY Pflicht.
-//    Die Proxy-Liste muss vollständig aus gültigen konkreten IP/CIDR-Werten bestehen. Fehlende
+//    Die Wahl muss eine gültige konkrete IP/CIDR-Liste oder none für Direktbetrieb sein. Fehlende
 //    oder pauschale Werte brechen den Start ab. Vor einem Update muss die tatsächliche Zuleitung
-//    bestätigt und konfiguriert sein; ein erfundener Vorgabewert würde die IP-Drosseln entwerten.
+//    bestätigt und konfiguriert sein; none vertraut keinem Forwarding-Kopf.
 //
 //    WARUM NICHT MEHR. Ein Wert, dessen Fehlen die Anwendung heute EHRLICH meldet, gehört nicht in
 //    die Pflicht. Der Confluence-Zugang ist der ausdrückliche Präzedenzfall: Pedis Entscheidung vom
@@ -489,7 +489,8 @@ const GRUNDWERTE: readonly Startwert[] = [
     bereich: "Betrieb",
     pflicht: { art: "produktion" },
     geheim: false,
-    vorgabe: "außerhalb Produktion aus; in Produktion konkrete Proxy-IP/CIDR-Liste erforderlich",
+    vorgabe:
+      "außerhalb Produktion aus; in Produktion konkrete Proxy-IP/CIDR-Liste oder none für Direktbetrieb erforderlich",
     wofuer: "Der bekannte Proxy-Sprung, hinter dem die echte Client-IP steht.",
     ohneIhn:
       "Alle Drosseln zählen gegen die Proxy-IP statt gegen den Anfragenden — hinter einem Proxy teilen sich damit alle Nutzer ein Kontingent.",

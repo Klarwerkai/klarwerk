@@ -154,6 +154,7 @@ export function isAddonEndpointPath(rawUrl: string | undefined): boolean {
 // SCRUM-490 R3 (B2, Fix 4): trustProxy GEZIELT — request.ip soll die ECHTE Client-IP sein, aber NIE
 // blanket (sonst wird X-Forwarded-For spoofbar → die IP-Drossel wertlos). KLARWERK_TRUST_PROXY:
 //  - IP/Subnetz(e) → vertraue NUR diesen Adressen (komma-separiert), z. B. dem Traefik-/Coolify-Hop.
+//  - "none" -> ausdruecklicher Direktbetrieb, KEIN Vertrauen in Forwarding-Koepfe.
 //  - unset / "true"/"false"/"*" → KEIN Vertrauen (konservativ; request.ip = Socket-Peer). Blanket-Werte
 //    werden BEWUSST als „kein Vertrauen" behandelt — XFF wird nie blind geglaubt.
 //  - Zahl N (Hop-Anzahl) → ebenfalls KEIN Vertrauen (s. GHSA-3m5p-2c4r-xxw2 unten).
@@ -168,7 +169,7 @@ export function resolveTrustProxy(
   env: Record<string, string | undefined> = process.env,
 ): boolean | string[] {
   const raw = env.KLARWERK_TRUST_PROXY?.trim();
-  if (!raw) {
+  if (!raw || raw === "none") {
     return false;
   }
   const lowered = raw.toLowerCase();
@@ -193,9 +194,10 @@ export function resolveTrustProxy(
   return list.length > 0 ? list : false;
 }
 
-/** In Produktion muss JEDER Eintrag eine konkrete gültige IP oder ein begrenztes CIDR sein. */
+/** In Produktion gilt entweder none (direkt) oder eine konkrete gültige IP/CIDR-Liste. */
 export function hasExplicitTrustProxy(env: Record<string, string | undefined>): boolean {
   const raw = env.KLARWERK_TRUST_PROXY?.trim();
+  if (raw === "none") return true;
   if (!raw) return false;
   return raw
     .split(",")

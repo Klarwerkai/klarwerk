@@ -173,6 +173,18 @@ gilt das nicht mehr: dann liefe dieses eine Update ohne die Sperren aus Exit 3/4
 `tests/insel-auslieferung/` (K1a) prüft den Übergang am echten Paket und wird schon bei jeder
 nicht additiven neuen Stufe rot.
 
+## Release direkt starten
+
+Das erzeugte `start.command` im Release startet die Anwendung ohne vorgeschalteten Proxy mit
+`KLARWERK_TRUST_PROXY=none`, sofern die Variable noch nicht gesetzt ist. Damit gelten
+`Forwarded` und `X-Forwarded-For` nicht als vertrauenswürdig; die Socket-IP bleibt die Quelle
+für die IP-Drosseln.
+
+Eine bereits gesetzte Proxy-Einstellung bleibt unverändert. Hinter einem Proxy muss der Betreiber
+dessen tatsächlich bestätigte IP/CIDR-Liste angeben. Leere, ungültige, pauschale oder numerische
+Hop-Angaben bleiben Produktionsstartfehler. Bei einem direkten Produktionseinstieg außerhalb des
+generierten Startbefehls ist `KLARWERK_TRUST_PROXY=none` ausdrücklich zu setzen.
+
 ## App starten
 
 ```bash
