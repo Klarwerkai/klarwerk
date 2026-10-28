@@ -482,7 +482,7 @@ export class ValidationService {
     // W3-C (Pedi 03.08.) — DIE ENTSCHEIDUNG WIRD AM OBJEKT FESTGEHALTEN, und zwar in DERSELBEN
     // Klammer wie Zustand und Beleg (`setValidationStateMitBeleg`): mit der bewerteten Version als
     // Compare-and-Set; ein zwischenzeitliches `revise` erbt den Verweis nicht.
-    const { geschrieben, ref } = await this.koService.setValidationStateMitBeleg(
+    const { ko: gespeichert, geschrieben, ref } = await this.koService.setValidationStateMitBeleg(
       koId,
       async (aktuell) => {
         rueckwaerts.length = 0;
@@ -502,6 +502,9 @@ export class ValidationService {
         }
       },
     );
+    if (!geschrieben) {
+      throw veralteteFassung(gespeichert.version, ratedVersion);
+    }
     // JOB 557: eine ABGESCHLOSSENE Validierung schreibt fort, WER sie getragen hat. Nicht die
     // Bewertung allein — erst der Übergang nach „validiert" ist die Entscheidung. Getragen haben
     // ihn die grünen Stimmen DIESER Fassung; wer `warn`/`down` gestimmt hat, hat nicht validiert.
