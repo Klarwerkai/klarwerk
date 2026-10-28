@@ -3682,8 +3682,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
-            await validation.assign(id, body.userIds ?? [], user.id);
-            await notifyAssignment?.(id, body.userIds ?? []); // FR-VAL-07
+            const userIds = body.userIds === undefined ? [] : body.userIds;
+            if (!Array.isArray(userIds) || userIds.some((userId) => typeof userId !== "string")) {
+              return badRequest("userIds muss eine Liste von Nutzerkennungen sein.");
+            }
+            for (const userId of userIds) {
+              if (
+                typeof konten?.kontoBesteht !== "function" ||
+                !(await konten.kontoBesteht(userId))
+              ) {
+                return badRequest("Die angegebenen Prüferkonten konnten nicht bestätigt werden.");
+              }
+            }
+            await validation.assign(id, userIds, user.id);
+            await notifyAssignment?.(id, userIds); // FR-VAL-07
             reply.code(204).send();
             return;
           }
