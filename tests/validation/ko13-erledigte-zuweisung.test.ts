@@ -152,9 +152,10 @@ it("KO13: manuelles Ergänzen erhält die ganze offene Verzeichniszuweisung", as
     const id = await anlegen(w);
     const [erster, neuer] = w.pruefer;
     if (!erster || !neuer) throw new Error("Die echten Prüferkonten fehlen");
-    expect(
-      await w.services.validation.verzeichnisAbgleichen(id, [erster.id], w.autor.id),
-    ).toEqual({ neu: [erster.id], entzogen: [] });
+    expect(await w.services.validation.verzeichnisAbgleichen(id, [erster.id], w.autor.id)).toEqual({
+      neu: [erster.id],
+      entzogen: [],
+    });
     await w.services.validation.benachrichtigungErledigt(id, erster.id);
     const vorher = structuredClone(await w.services.validation.zuweisungenZu([id]));
     expect(vorher).toHaveLength(1);
