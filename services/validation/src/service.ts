@@ -1614,7 +1614,7 @@ export class ValidationService {
     }
     const zugewiesenAm = new Date(this.now()).toISOString();
     for (const userId of userIds) {
-      await this.assignments.create({
+      await this.legeAnWennFrei({
         koId,
         userId,
         status: "open",
