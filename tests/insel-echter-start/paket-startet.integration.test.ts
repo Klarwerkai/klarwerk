@@ -28,10 +28,10 @@
 // JOB 4332 / W4.3 — PAKETVORGABEN UND AUSDRÜCKLICHE PROXY-KONFIGURATION
 // ------------------------------------------------------------------------------------------------
 //   Der Startbefehl setzt APP_BASE_URL aus PORT und die Persistenzausnahme im Journalzweig weiter
-//   selbst. Seit W4.3 verlangt der Produktionsstart zusätzlich eine ausdrückliche Proxy-IP/CIDR.
+//   selbst. Seit .1053 gilt bei fehlendem Proxywert none; explizit leer bleibt ungültig.
 //   Diese isolierte Probe spricht HTTP über 127.0.0.1 an und setzt deshalb den Loopbackwert an
 //   jedem positiven oder anderweitig kalibrierenden Start selbst, nicht im gemeinsamen Helfer.
-//   B1 misst zuerst den tatsächlichen Abbruch ohne Proxywert und danach den vollen Paketstart.
+//   B1 misst zuerst den Abbruch mit explizit leerem Proxywert und danach den vollen Paketstart.
 //   B2 prüft weiterhin den ausdrücklichen APP_BASE_URL-Override.
 import { spawnSync } from "node:child_process";
 import {
@@ -510,28 +510,29 @@ describe("JOB 4315 · das echt gebaute Inselpaket startet wirklich", () => {
   // B1 · JOB 4332 LIEFERUNG 4 — das Paket startet mit seinem EIGENEN Startbefehl.
   // ==============================================================================================
   //
-  // W4.3 verlangt eine ausdrückliche Proxy-IP/CIDR. Zuerst muss das echte Paket ohne diesen
-  // Pflichtwert mit benanntem Startvertragsfehler enden. Danach bleibt der volle positive Nachweis
-  // erhalten: eigene Startvorgaben für Adresse und Journal, Paketversion, Oberfläche und Warnung.
+  // Seit .1053 setzt der Paketstart einen fehlenden Proxywert auf none. Ein ausdrücklich leerer Wert
+  // bleibt ungültig und muss mit benanntem Startvertragsfehler enden. Der volle positive Nachweis
+  // bleibt erhalten: eigene Startvorgaben für Adresse und Journal, Paketversion, Oberfläche und Warnung.
   //
   // UND ER MISST DIE EHRLICHKEIT MIT: die laute Warnung des Speicherwächters
   // (`storage-guard.ts:88-93`) MUSS in der Prozessausgabe stehen. Ein Start, der sie los wäre,
   // wäre kein bestandener Fall, sondern ein Paket, das über seine Datenhaltung schweigt.
-  it("B1 · fehlender Proxy bricht ab; expliziter Loopback startet das Paket", async () => {
+  it("B1 · explizit leerer Proxy bricht ab; expliziter Loopback startet das Paket", async () => {
     expect(paket, "kein Paket zum Starten — S0 ist rot").not.toBe("");
-    const ohneProxyPort = await freierPort();
-    expect(await portBelegt(ohneProxyPort), "Gegenprobe: Port ist schon belegt").toBe(false);
-    const ohneProxy = starteInsel(paket, ohneProxyPort, {
+    const leererProxyPort = await freierPort();
+    expect(await portBelegt(leererProxyPort), "Gegenprobe: Port ist schon belegt").toBe(false);
+    const leererProxy = starteInsel(paket, leererProxyPort, {
       KLARWERK_SHARED_ROOT: leeresZielverzeichnis(),
+      KLARWERK_TRUST_PROXY: "",
     });
     try {
-      const abbruch = await warteAufGesundheit(ohneProxy, GESUNDHEITSFRIST_MS);
-      expect(abbruch.erreicht, "ohne Proxywert darf das Paket nicht gesund starten").toBe(false);
-      expect(ohneProxy.lebt(), "Startabbruch muss den Prozess tatsächlich beenden").toBe(false);
-      expect(ohneProxy.ausgabe()).toContain("StartvertragError");
-      expect(ohneProxy.ausgabe()).toContain("KLARWERK_TRUST_PROXY");
+      const abbruch = await warteAufGesundheit(leererProxy, GESUNDHEITSFRIST_MS);
+      expect(abbruch.erreicht, "explizit leerer Proxywert muss den Start abbrechen").toBe(false);
+      expect(leererProxy.lebt(), "Startabbruch muss den Prozess tatsächlich beenden").toBe(false);
+      expect(leererProxy.ausgabe()).toContain("StartvertragError");
+      expect(leererProxy.ausgabe()).toContain("KLARWERK_TRUST_PROXY");
     } finally {
-      await ohneProxy.beenden();
+      await leererProxy.beenden();
     }
 
     const eigenPort = await freierPort();
