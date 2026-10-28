@@ -183,13 +183,16 @@ describe("P14 · Firmenfilter: SQL-Prädikat und App-Regel liefern dieselbe Meng
         .start();
       basis = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     }
-    verwaltung = createPool(basis);
     const name = `klarwerk_firmenfilter_test_${process.pid}_${Date.now()}`;
+    const teile = /^(postgres(?:ql)?:\/\/[^/?#]*\/)[^?#]*([?#].*)?$/i.exec(basis);
+    if (!teile) {
+      throw new Error("PG-Test-URL lässt sich keiner eigenen Datenbank zuordnen");
+    }
+    const ziel = `${teile[1]}${name}${teile[2] ?? ""}`;
+    verwaltung = createPool(basis);
     await verwaltung.query(`CREATE DATABASE "${name}"`);
     datenbank = name;
-    const ziel = new URL(basis);
-    ziel.pathname = `/${datenbank}`;
-    url = ziel.toString();
+    url = ziel;
     const pool = createPool(url);
     try {
       await migrate(pool);
