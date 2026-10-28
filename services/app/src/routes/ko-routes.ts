@@ -3539,6 +3539,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.verdict) {
               return badRequest("verdict fehlt.");
             }
+            if (
+              body.verdict !== "up" &&
+              body.verdict !== "warn" &&
+              body.verdict !== "down"
+            ) {
+              return badRequest("verdict muss up, warn oder down sein.");
+            }
             // ADMIN-09: Mehr-Augen-Prinzip, Prüferkreis und geprüfte Fassung — vor allem anderen.
             const freigabe = await freigabeUrteil(user, "rate");
             if (!freigabe) {
