@@ -31,6 +31,7 @@
 // Datenbankfall NACH NEUEM VERBINDUNGSAUFBAU in
 // `services/conflicts/src/repo-pg.integration.test.ts` (JOB 3914, „der menschliche Vermerk nach
 // einem neuen Verbindungsaufbau"), der nur unter `npm run test:integration` fährt.
+import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 import {
@@ -137,13 +138,18 @@ function jsonbDoppelgaenger() {
     // Teilfeld-Form derselben Gestalt laufen hier durch DIESELBE Auswertung — der Doppelgänger
     // kennt keine Sonderbehandlung für „das erwartete" Statement.
     const aktualisierung =
-      /^UPDATE conflicts SET data ?= ?(.+?) WHERE id=\$1(?: AND data->>'status'='([a-z]+)')?(?: RETURNING (id|data))?$/.exec(
+      /^UPDATE conflicts SET data ?= ?(.+?) WHERE id=\$1(?: AND data->>'status'='([a-z]+)')?(?: AND data=\$(\d+)::jsonb)?(?: RETURNING (id|data))?$/.exec(
         norm,
       );
     if (aktualisierung) {
       const id = String(params[0]);
       const vorher = lies(id);
-      if (!vorher || (aktualisierung[2] !== undefined && vorher.status !== aktualisierung[2])) {
+      if (
+        !vorher ||
+        (aktualisierung[2] !== undefined && vorher.status !== aktualisierung[2]) ||
+        (aktualisierung[3] !== undefined &&
+          !isDeepStrictEqual(vorher, JSON.parse(String(params[Number(aktualisierung[3]) - 1]))))
+      ) {
         return { rows: [], rowCount: 0 };
       }
       const neu: Record<string, unknown> = {};
@@ -152,9 +158,9 @@ function jsonbDoppelgaenger() {
       }
       tabelle.set(id, JSON.stringify(neu));
       const rueckgabe =
-        aktualisierung[3] === "data"
+        aktualisierung[4] === "data"
           ? [{ data: lies(id) }]
-          : aktualisierung[3] === "id"
+          : aktualisierung[4] === "id"
             ? [{ id }]
             : [];
       return { rows: rueckgabe, rowCount: 1 };
@@ -285,9 +291,11 @@ describe("JOB 3914 · L2: das Schreibstatement selbst wird gemessen", () => {
     const geschriebenMit = schreibend[0] as Aufzeichnung;
     // Wörtlich das Statement aus `repo-pg.ts:108-113` — kein Teilfeld-Merge, kein zweiter Weg.
     expect(geschriebenMit.sql.replace(/\s+/g, " ").trim()).toBe(
-      "UPDATE conflicts SET data=$2 WHERE id=$1",
+      "UPDATE conflicts SET data=$2 WHERE id=$1 AND data=$3::jsonb",
     );
     expect(geschriebenMit.params[0]).toBe(angelegt.id);
+    expect(geschriebenMit.params).toHaveLength(3);
+    expect(JSON.parse(String(geschriebenMit.params[2]))).toEqual(angelegt);
 
     // Das serialisierte `data` trägt ALLE VIER Felder: der Vermerk geht nicht erst beim Lesen
     // verloren, er steht schon im abgesetzten Statement.
@@ -296,6 +304,12 @@ describe("JOB 3914 · L2: das Schreibstatement selbst wird gemessen", () => {
     expect(data.decidedBy).toBe(ENTSCHEIDER);
     expect(data.decision).toBe(NOTIZ);
     expect(data.resolutionReason).toBe("dismissed");
+
+    // Der echte Adapter muss einen inzwischen veralteten Erwartungsstand abweisen.
+    await expect(
+      ablage.repo.update({ ...angelegt, description: "Veralteter Wiederholungsstand." }, angelegt),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await ablage.repo.findById(angelegt.id)).toEqual(data);
   });
 });
 

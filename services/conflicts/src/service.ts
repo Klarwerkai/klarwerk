@@ -246,13 +246,16 @@ export class ConflictService {
   // (meist automatisch erkannten) Konflikt bewusst als falsch-positiv. Kein Auto-Effekt an den KOs.
   async dismiss(id: string, by: string, note?: string): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
-    const saved = await this.save({
-      ...conflict,
-      status: "geloest",
-      decidedBy: by,
-      decision: note ?? null,
-      resolutionReason: "dismissed",
-    });
+    const saved = await this.save(
+      {
+        ...conflict,
+        status: "geloest",
+        decidedBy: by,
+        decision: note ?? null,
+        resolutionReason: "dismissed",
+      },
+      conflict,
+    );
     await this.audit?.record({
       actor: by,
       action: "conflict.dismissed",
@@ -266,14 +269,14 @@ export class ConflictService {
 
   // FR-CON-02: nur Wahrheitskonflikte eskalieren an einen Menschen.
   async escalate(id: string, actor = "system"): Promise<Conflict> {
-    const conflict = await this.require(id);
+    const conflict = await this.requireOpen(id);
     if (conflict.type !== "truth") {
       throw new ConflictError(
         "NOT_ESCALATABLE",
         "Nur Wahrheitskonflikte werden an einen Menschen eskaliert.",
       );
     }
-    const saved = await this.save({ ...conflict, status: "eskaliert" });
+    const saved = await this.save({ ...conflict, status: "eskaliert" }, conflict);
     await this.audit?.record({
       actor,
       action: "conflict.escalated",
@@ -294,7 +297,7 @@ export class ConflictService {
     if (!isConflictWorkKind(arbeitsart)) {
       throw new ConflictError("VALIDATION", "Arbeitsart muss regel, sache oder version sein.");
     }
-    const saved = await this.save({ ...conflict, arbeitsart });
+    const saved = await this.save({ ...conflict, arbeitsart }, conflict);
     await this.audit?.record({
       actor,
       action: "conflict.classified",
@@ -308,7 +311,10 @@ export class ConflictService {
   async secondOpinion(id: string, opinion: string, actor = "system"): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
     this.requireEscalatedIfTruth(conflict);
-    const saved = await this.save({ ...conflict, status: "zweitmeinung", secondOpinion: opinion });
+    const saved = await this.save(
+      { ...conflict, status: "zweitmeinung", secondOpinion: opinion },
+      conflict,
+    );
     await this.audit?.record({ actor, action: "conflict.second-opinion", target: id });
     return saved;
   }
@@ -334,14 +340,17 @@ export class ConflictService {
     // Ein früherer Vorrang (erneut eskalierter Befund) gilt nicht weiter, wenn die neue Entscheidung
     // keinen festlegt — „Beide gelten" heisst: kein Vorrang.
     const { vorrang: _frueher, ...ohneVorrang } = conflict;
-    const saved = await this.save({
-      ...ohneVorrang,
-      status: "geloest",
-      decidedBy,
-      decision,
-      resolutionReason: "decided",
-      ...(abgelegt ? { vorrang: abgelegt } : {}),
-    });
+    const saved = await this.save(
+      {
+        ...ohneVorrang,
+        status: "geloest",
+        decidedBy,
+        decision,
+        resolutionReason: "decided",
+        ...(abgelegt ? { vorrang: abgelegt } : {}),
+      },
+      conflict,
+    );
     await this.audit?.record({
       actor: decidedBy,
       action: "conflict.resolved",
@@ -1045,8 +1054,12 @@ export class ConflictService {
   // JOB 3066: OHNE tx — der einzige Weg, der zu einem fremden Vorgang gehört (`onKoRemoved`),
   // schliesst mengenbasiert über `repo.closeOpenForKo` und läuft nicht mehr hier durch. Ein
   // tx-Parameter ohne Aufrufer wäre eine Atomaritätszusage, die niemand einlöst.
-  private async save(conflict: Conflict): Promise<Conflict> {
-    await this.repo.update(conflict);
+  private async save(conflict: Conflict, expected?: Conflict): Promise<Conflict> {
+    if (expected === undefined) {
+      await this.repo.update(conflict);
+    } else {
+      await this.repo.update(conflict, expected);
+    }
     return conflict;
   }
 

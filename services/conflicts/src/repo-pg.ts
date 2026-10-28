@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { ConflictRepo, IsKoVersionCurrent } from "./repo";
-import type { Conflict } from "./types";
+import { type Conflict, ConflictError } from "./types";
 
 // JOB 3066 (bens Korrekturpflicht 4 zu R3): die zwei Ausdrucks-Indizes zum Prädikat des
 // Aufräumwegs (`closeOpenForKo` sucht über `data->>'koA'`/`data->>'koB'`) — Begründung, Bauform
@@ -125,11 +125,20 @@ export class PgConflictRepo implements ConflictRepo {
     return tx ? pgQueryable(tx) : poolQueryable(this.pool);
   }
 
-  async update(conflict: Conflict): Promise<void> {
-    await this.pool.query("UPDATE conflicts SET data=$2 WHERE id=$1", [
-      conflict.id,
-      JSON.stringify(conflict),
-    ]);
+  async update(conflict: Conflict, expected?: Conflict): Promise<void> {
+    const params = [conflict.id, JSON.stringify(conflict)];
+    const res = await this.pool.query(
+      expected === undefined
+        ? "UPDATE conflicts SET data=$2 WHERE id=$1"
+        : "UPDATE conflicts SET data=$2 WHERE id=$1 AND data=$3::jsonb",
+      expected === undefined ? params : [...params, JSON.stringify(expected)],
+    );
+    if (expected !== undefined && (res.rowCount ?? 0) !== 1) {
+      throw new ConflictError(
+        "CONFLICT",
+        "Der Konflikt wurde inzwischen geändert. Bitte neu laden.",
+      );
+    }
   }
 
   // Der mengenbasierte Schliess-Schritt, Bauform und Begründung wie PgOverlapRepo.closeOpenForKo

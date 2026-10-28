@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { guardedLocalPgTestUrl } from "../../db-tx";
 import { OVERLAP_SCHEMA, PgOverlapRepo } from "./overlap-repo-pg";
 import type { OverlapEntry } from "./overlap-types";
@@ -440,5 +441,124 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
     expect(gelesen.mit?.decision).toBe("Quelle B gilt.");
     expect(gelesen.mit?.decidedBy).toBe("controller-1");
     expect(gelesen.mit?.resolutionReason).toBe("decided");
+  });
+
+  it("KO14: echte parallele PG-Entscheidungen haben einen Gewinner", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    await mitNeuemPool(p, async (repoA) => {
+      await mitNeuemPool(p, async (repoB) => {
+        const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+        const memory = new PgConflictMemoryRepo(p);
+        const a = new ConflictService({ repo: repoA, audit, memory });
+        const b = new ConflictService({ repo: repoB, audit, memory });
+        const c = await a.create({
+          koA: "a",
+          koB: "b",
+          type: "truth",
+          description: "KO14: gemeinsame gelesene Basis.",
+        });
+        await a.escalate(c.id, "controller");
+        await memory.put({
+          pairKey: "ko:a|ko:b",
+          stand: "2".repeat(64),
+          outcome: "created",
+          conflictId: c.id,
+          at: "2026-10-28T00:00:00.000Z",
+        });
+        const zuvor = (await audit.list({ target: c.id })).length;
+        const lesenA = repoA.findById.bind(repoA);
+        const lesenB = repoB.findById.bind(repoB);
+        let weiter: () => void = () => undefined;
+        const tor = new Promise<void>((resolve) => {
+          weiter = resolve;
+        });
+        const gelesen: Array<Conflict | undefined> = [];
+        const gemeinsam = async (
+          lesen: (id: string) => Promise<Conflict | undefined>,
+          id: string,
+        ) => {
+          let stand: Conflict | undefined;
+          try {
+            stand = await lesen(id);
+          } catch (error) {
+            weiter();
+            throw error;
+          }
+          gelesen.push(stand);
+          if (gelesen.length === 2) weiter();
+          await tor;
+          return stand;
+        };
+        repoA.findById = (id) => gemeinsam(lesenA, id);
+        repoB.findById = (id) => gemeinsam(lesenB, id);
+        let ergebnisse: PromiseSettledResult<Conflict>[];
+        try {
+          ergebnisse = await Promise.allSettled([
+            a.resolve(c.id, "pg-resolve", "Quelle A gilt."),
+            b.dismiss(c.id, "pg-dismiss", "Andere Anlage."),
+          ]);
+        } finally {
+          weiter();
+          repoA.findById = lesenA;
+          repoB.findById = lesenB;
+        }
+        expect(gelesen).toHaveLength(2);
+        expect(gelesen[0]).toEqual(gelesen[1]);
+        expect(ergebnisse.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+        expect(ergebnisse.filter((r) => r.status === "rejected")).toHaveLength(1);
+        const gewinner = ergebnisse.find((r) => r.status === "fulfilled");
+        const verlierer = ergebnisse.find((r) => r.status === "rejected");
+        if (gewinner?.status !== "fulfilled" || verlierer?.status !== "rejected") {
+          throw new Error("Kein eindeutiger tatsächlicher PG-Gewinner");
+        }
+        expect(verlierer.reason).toMatchObject({ code: "CONFLICT" });
+        const ersterGewann = ergebnisse[0]?.status === "fulfilled";
+        const grund = ersterGewann ? "decided" : "dismissed";
+        const gespeichert = await new PgConflictRepo(p).findById(c.id);
+        expect(gespeichert).toEqual(gewinner.value);
+        expect(gespeichert?.status).toBe("geloest");
+        expect(gespeichert?.decidedBy).toBe(ersterGewann ? "pg-resolve" : "pg-dismiss");
+        expect(gespeichert?.decision).toBe(ersterGewann ? "Quelle A gilt." : "Andere Anlage.");
+        expect(gespeichert?.resolutionReason).toBe(grund);
+        const belege = (await audit.list({ target: c.id })).slice(zuvor);
+        expect(belege).toHaveLength(1);
+        expect(belege[0]?.action).toBe(ersterGewann ? "conflict.resolved" : "conflict.dismissed");
+        expect(await memory.find(["ko:a|ko:b"])).toMatchObject([
+          { stand: "2".repeat(64), conflictId: c.id, outcome: grund },
+        ]);
+      });
+    });
+  });
+
+  it("KO14: neue Verbindung bewahrt den Beschluss vor erneuter Eskalation", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    const vorher = await mitNeuemPool(p, async (_repo, dienst) => {
+      const c = await dienst.create({
+        koA: "a",
+        koB: "b",
+        type: "truth",
+        description: "KO14: verbindlicher Beschluss.",
+      });
+      await dienst.escalate(c.id, "controller");
+      await dienst.secondOpinion(c.id, "Die Quelle beschreibt Baureihe B.", "pruefer");
+      return dienst.resolve(c.id, "controller", "B gilt nur für Baureihe B.", {
+        art: "schraenkt_ein",
+        gilt: "b",
+        geltungsbereich: "Baureihe B",
+      });
+    });
+    const gelesen = await mitNeuemPool(p, async (repo, dienst) => {
+      await expect(dienst.escalate(vorher.id, "spaeter")).rejects.toMatchObject({
+        code: "ALREADY_RESOLVED",
+      });
+      return repo.findById(vorher.id);
+    });
+    expect(gelesen).toEqual(vorher);
+    expect(gelesen?.status).toBe("geloest");
+    expect(gelesen?.decidedBy).toBe("controller");
+    expect(gelesen?.decision).toBe("B gilt nur für Baureihe B.");
+    expect(gelesen?.resolutionReason).toBe("decided");
   });
 });

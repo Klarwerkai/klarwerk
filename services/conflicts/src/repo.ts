@@ -1,5 +1,6 @@
+import { isDeepStrictEqual } from "node:util";
 import type { TxContext } from "../../db-tx";
-import type { Conflict } from "./types";
+import { type Conflict, ConflictError } from "./types";
 
 // D-AISTATE PAKET 4 (bens V5, aistate-fix4/fix6): Versions-Autorität für den VERSIONS-KONDITIONALEN
 // Insert — er prüft gegen den bereits committeten KO-Stand, ist aber NICHT gegen ein gleichzeitiges
@@ -30,7 +31,9 @@ export interface ConflictRepo {
   supersedeIfOpen(id: string, patch: Partial<Conflict>): Promise<boolean>;
   findById(id: string): Promise<Conflict | undefined>;
   all(): Promise<Conflict[]>;
-  update(conflict: Conflict): Promise<void>;
+  // Mit erwartetem JSON-Stand: atomar vergleichen und schreiben; bei Verlust CONFLICT.
+  // Ohne Erwartung bleiben direkte Aufrufe und alte Journalzeilen unverändert.
+  update(conflict: Conflict, expected?: Conflict): Promise<void>;
   // JOB 3066: der EINE mengenbasierte Schritt des Aufräumwegs mit optionalem, opakem TxContext —
   // Vertrag, Begründung und Grenze wortgleich zu OverlapRepo.closeOpenForKo (dort ausgeschrieben).
   // Er schliesst alle noch nicht gelösten Konflikte GENAU DIESES Beitrags (Terminalzustand ist
@@ -93,7 +96,20 @@ export class InMemoryConflictRepo implements ConflictRepo {
     return Promise.resolve([...this.conflicts.values()]);
   }
 
-  update(conflict: Conflict): Promise<void> {
+  update(conflict: Conflict, expected?: Conflict): Promise<void> {
+    const current = this.conflicts.get(conflict.id);
+    if (
+      expected !== undefined &&
+      (!current ||
+        !isDeepStrictEqual(
+          JSON.parse(JSON.stringify(current)),
+          JSON.parse(JSON.stringify(expected)),
+        ))
+    ) {
+      return Promise.reject(
+        new ConflictError("CONFLICT", "Der Konflikt wurde inzwischen geändert. Bitte neu laden."),
+      );
+    }
     this.conflicts.set(conflict.id, conflict);
     return Promise.resolve();
   }
