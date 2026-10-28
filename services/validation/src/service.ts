@@ -482,7 +482,11 @@ export class ValidationService {
     // W3-C (Pedi 03.08.) — DIE ENTSCHEIDUNG WIRD AM OBJEKT FESTGEHALTEN, und zwar in DERSELBEN
     // Klammer wie Zustand und Beleg (`setValidationStateMitBeleg`): mit der bewerteten Version als
     // Compare-and-Set; ein zwischenzeitliches `revise` erbt den Verweis nicht.
-    const { ko: gespeichert, geschrieben, ref } = await this.koService.setValidationStateMitBeleg(
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
       koId,
       async (aktuell) => {
         rueckwaerts.length = 0;
