@@ -22,8 +22,9 @@
 //   K5 · Zähler und Seiten über der gefilterten Menge kennen kein unsichtbares Objekt
 //   K6 · die lebende Zeile entscheidet: Spacewechsel und Höherstufung wirken sofort
 //
-// Braucht Docker (Testcontainers); läuft unter `npm run test:integration`. Erfundene Testdaten.
-import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
+// Nutzt eine bewachte lokale PG-URL oder Docker, jeweils mit eigener frischer Testdatenbank.
+// Läuft unter `npm run test:integration`. Erfundene Testdaten.
+import type { StartedTestContainer } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
 import {
@@ -37,6 +38,7 @@ import {
 import type { SessionUser } from "../../services/app/src/http";
 import { darfSehen, sqlSichtbarkeitFuer } from "../../services/app/src/sichtbarkeit";
 import type { Role } from "../../services/auth";
+import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
   type Confidentiality,
   type KnowledgeObject,
@@ -160,16 +162,34 @@ function beschreibe(user: SessionUser, filter: Firmenfilter): string {
 }
 
 describe("P14 · Firmenfilter: SQL-Prädikat und App-Regel liefern dieselbe Menge", () => {
-  let container: StartedTestContainer;
+  let container: StartedTestContainer | undefined;
+  let verwaltung: ReturnType<typeof createPool> | undefined;
+  let datenbank = "";
   let url: string;
 
   beforeAll(async () => {
-    container = await new GenericContainer("postgres:16-alpine")
-      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
-      .withExposedPorts(5432)
-      .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
-      .start();
-    url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
+    let basis: string;
+    const lokal = guardedLocalPgTestUrl();
+    if (lokal) {
+      basis = lokal;
+    } else if (process.env.KLARWERK_PG_TEST_URL !== undefined) {
+      throw new Error("KLARWERK_PG_TEST_URL abgelehnt — kein Container-Rückfall");
+    } else {
+      const { GenericContainer, Wait } = await import("testcontainers");
+      container = await new GenericContainer("postgres:16-alpine")
+        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
+        .withExposedPorts(5432)
+        .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+        .start();
+      basis = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
+    }
+    verwaltung = createPool(basis);
+    const name = `klarwerk_firmenfilter_test_${process.pid}_${Date.now()}`;
+    await verwaltung.query(`CREATE DATABASE "${name}"`);
+    datenbank = name;
+    const ziel = new URL(basis);
+    ziel.pathname = `/${datenbank}`;
+    url = ziel.toString();
     const pool = createPool(url);
     try {
       await migrate(pool);
@@ -189,7 +209,29 @@ describe("P14 · Firmenfilter: SQL-Prädikat und App-Regel liefern dieselbe Meng
   });
 
   afterAll(async () => {
-    await container?.stop();
+    const fehler: unknown[] = [];
+    if (verwaltung) {
+      try {
+        if (datenbank) {
+          await verwaltung.query(`DROP DATABASE "${datenbank}"`);
+        }
+      } catch (error) {
+        fehler.push(error);
+      }
+      try {
+        await verwaltung.end();
+      } catch (error) {
+        fehler.push(error);
+      }
+    }
+    try {
+      await container?.stop();
+    } catch (error) {
+      fehler.push(error);
+    }
+    if (fehler.length > 0) {
+      throw new AggregateError(fehler, "Firmenfilter-Testdatenbank nicht vollständig aufgeräumt");
+    }
   });
 
   it("K2/K3: über alle Betrachter × Filter × Bestand sind `list` und `listForSearch` gleich der Regel", async () => {
