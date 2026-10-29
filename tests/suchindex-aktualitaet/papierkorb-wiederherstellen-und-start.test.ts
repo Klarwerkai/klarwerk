@@ -17,18 +17,18 @@
 // (Vorgabe 10 s) und war nicht fortsetzbar — jeder Start begann von vorn und riss dieselbe Frist.
 // Beleg: daten/dat-04-startschleife.mts.
 import { describe, expect, it, vi } from "vitest";
-import { AuditService, InMemoryAuditRepo } from "../../services/audit";
-import type { TxContext } from "../../services/db-tx";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { stelleSuchprojektionBereit } from "../../services/app/src/search-projection-startup";
+import { AuditService, InMemoryAuditRepo } from "../../services/audit";
+import type { TxContext } from "../../services/db-tx";
 import {
   InMemoryKoMetadataProjectionRepo,
   InMemoryKoRepo,
   InMemoryKoSearchProjectionRepo,
   InMemoryKoVersionRepo,
-  classificationFromVersionSnapshot,
   type KnowledgeObject,
   KoService,
+  classificationFromVersionSnapshot,
   neuerProjektionsSpeicher,
 } from "../../services/knowledge-object";
 
@@ -225,8 +225,12 @@ describe("DAT-1 · der Neuaufbau beim Start ist je Generation fortsetzbar", () =
 });
 
 // Der lokale Fall prüft den Tx-Port des tatsächlichen Restore-Stempels, keine PG-Wirkung.
-vi.mock("testcontainers", () => { throw new Error("NOPULL_INIT1STOP"); });
-vi.mock("dockerode", () => { throw new Error("NOPULL_INIT1STOP"); });
+vi.mock("testcontainers", () => {
+  throw new Error("NOPULL_INIT1STOP");
+});
+vi.mock("dockerode", () => {
+  throw new Error("NOPULL_INIT1STOP");
+});
 
 it("KO15 PG-Nacharbeit: Restore bindet Steuerung, Inhalt, Klassifizierung und Metadaten an denselben Tx", async () => {
   const repo = new InMemoryKoRepo();
@@ -240,7 +244,15 @@ it("KO15 PG-Nacharbeit: Restore bindet Steuerung, Inhalt, Klassifizierung und Me
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),
     withTx: async (fn) => fn(tx),
   });
-  const a = await ko.create({ title: "Restore Alphawort", statement: "Alphawort", type: "best_practice", category: "Wartung", tags: ["Bereitschaft"], author: "anna", confidentiality: "intern" });
+  const a = await ko.create({
+    title: "Restore Alphawort",
+    statement: "Alphawort",
+    type: "best_practice",
+    category: "Wartung",
+    tags: ["Bereitschaft"],
+    author: "anna",
+    confidentiality: "intern",
+  });
   await ko.activateSearchProjectionV2();
   const snapshots = await versions.listByKo(a.id);
   const snapshot = snapshots.find((s) => s.version === a.version);
@@ -269,5 +281,7 @@ it("KO15 PG-Nacharbeit: Restore bindet Steuerung, Inhalt, Klassifizierung und Me
     expect(metadataNachher?.categoryText).toBe(metadataVorher.categoryText);
     expect(metadataNachher?.tagText).toBe(metadataVorher.tagText);
     expect((await ko.findSearchHits({ terms: ["alphawort"] })).map((h) => h.koId)).toEqual([a.id]);
-  } finally { vi.restoreAllMocks(); }
+  } finally {
+    vi.restoreAllMocks();
+  }
 });

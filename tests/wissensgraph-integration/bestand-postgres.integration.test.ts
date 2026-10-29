@@ -477,7 +477,15 @@ describe("KO15 · endgültige Löschung und kuratierte Beziehungen (echtes Postg
       if (!reinGespeichert || !rausGespeichert || !fremdGespeichert) {
         throw new Error("KO15: gespeicherte Kanten vor Purge nicht vollständig lesbar");
       }
-      return { p, services, app, b, rein: reinGespeichert, raus: rausGespeichert, fremd: fremdGespeichert };
+      return {
+        p,
+        services,
+        app,
+        b,
+        rein: reinGespeichert,
+        raus: rausGespeichert,
+        fremd: fremdGespeichert,
+      };
     } catch (error) {
       await app.close();
       await p.end();
