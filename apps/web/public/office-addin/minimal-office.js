@@ -28,6 +28,9 @@
       version: res.headers.get("x-kw-available-version") })),
     contextText: () => el("kontext-zeile").textContent || "Office",
     paint: () => {
+      const account = el("anmeldung-block");
+      const destination = panel.zustand.angemeldet ? el("mini-page-settings") : home.parentNode;
+      if (destination && account.parentNode !== destination) destination.append(account);
       const source = document.querySelector('[data-mini-tool="provenance"]');
       if (source) {
         source.disabled = panel.zustand.host !== "powerpoint";

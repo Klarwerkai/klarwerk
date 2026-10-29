@@ -29,77 +29,41 @@ const resolution = () => ({
   blockedReason: null,
   payloadClasses: ["question", "candidate_texts"],
 });
-const officeExtra = (() => {
+const officeExtra = String.raw`
+(() => {
   const noop = () => {};
   const host = "__HOST__";
   const info = { host, platform: "OfficeOnline" };
-  Office.onReady = (callback) => {
-    if (callback) queueMicrotask(() => callback(info));
-    return Promise.resolve(info);
-  };
-  Office.context.document.url = `https://example.test/office/Fiktiv.${host === "Excel" ? "xlsx" : "pptx"}`;
-  Office.context.document.getActiveViewAsync = (callback) =>
-    callback({ status: "succeeded", value: "edit" });
+  Office.onReady = (callback) => { if (callback) queueMicrotask(() => callback(info)); return Promise.resolve(info); };
+  Office.context.document.url = "https://example.test/office/Fiktiv." + (host === "Excel" ? "xlsx" : "pptx");
+  Office.context.document.getActiveViewAsync = (callback) => callback({ status: "succeeded", value: "edit" });
   Office.context.document.mode = "ReadWrite";
   Office.context.diagnostics = { version: "fiktiv", host, platform: "OfficeOnline" };
   window.__officeReads = 0;
   const selected = {
-    address: "Fiktiv!B2:B4",
-    rowCount: 3,
-    columnCount: 1,
-    cellCount: 3,
-    values: [[4], [7], [9]],
-    formulas: [[4], [7], [9]],
-    text: [["4"], ["7"], ["9"]],
-    valueTypes: [["Double"], ["Double"], ["Double"]],
-    load: noop,
+    address: "Fiktiv!B2:B4", rowCount: 3, columnCount: 1, cellCount: 3,
+    values: [[4], [7], [9]], formulas: [[4], [7], [9]], text: [["4"], ["7"], ["9"]],
+    valueTypes: [["Double"], ["Double"], ["Double"]], load: noop,
   };
   const target = { address: "Fiktiv!B5", formulas: [[""]], values: [[""]], load: noop };
-  const sheet = {
-    name: "Fiktiv",
-    id: "sheet-ui",
-    load: noop,
-    getRange: (address) => (address.includes("B2") ? selected : target),
-  };
-  const workbook = {
-    name: "Fiktiv.xlsx",
-    load: noop,
-    worksheets: { getActiveWorksheet: () => sheet },
-    getSelectedRange: () => selected,
-    getSelectedRanges: () => ({ areas: { items: [selected], load: noop } }),
-  };
-  window.Excel = {
-    run: (fn) => {
-      window.__officeReads++;
-      return Promise.resolve().then(() => fn({ workbook, sync: () => Promise.resolve() }));
-    },
-  };
+  const sheet = { name: "Fiktiv", id: "sheet-ui", load: noop,
+    getRange: (address) => address.includes("B2") ? selected : target };
+  const workbook = { name: "Fiktiv.xlsx", load: noop,
+    worksheets: { getActiveWorksheet: () => sheet }, getSelectedRange: () => selected,
+    getSelectedRanges: () => ({ areas: { items: [selected], load: noop } }) };
+  window.Excel = { run: (fn) => { window.__officeReads++; return Promise.resolve().then(
+    () => fn({ workbook, sync: () => Promise.resolve() })); } };
   const range = { text: "Fiktive Folie", load: noop };
-  const shape = {
-    id: "shape-ui",
-    name: "Textfeld",
-    type: "TextBox",
-    load: noop,
-    left: 20,
-    top: 20,
-    width: 200,
-    height: 80,
-    rotation: 0,
-    textFrame: { textRange: range },
-  };
+  const shape = { id: "shape-ui", name: "Textfeld", type: "TextBox", load: noop,
+    left: 20, top: 20, width: 200, height: 80, rotation: 0, textFrame: { textRange: range } };
   const slide = { id: "slide-ui", load: noop, shapes: { items: [shape], load: noop } };
-  const presentation = {
-    slides: { items: [slide], load: noop },
+  const presentation = { slides: { items: [slide], load: noop },
     getSelectedSlides: () => ({ items: [slide], load: noop }),
-    getSelectedShapes: () => ({ items: [shape], load: noop }),
-  };
-  window.PowerPoint = {
-    run: (fn) => {
-      window.__officeReads++;
-      return Promise.resolve().then(() => fn({ presentation, sync: () => Promise.resolve() }));
-    },
-  };
+    getSelectedShapes: () => ({ items: [shape], load: noop }) };
+  window.PowerPoint = { run: (fn) => { window.__officeReads++; return Promise.resolve().then(
+    () => fn({ presentation, sync: () => Promise.resolve() })); } };
 })();
+`;
 const office = String.raw`
 (() => {
   const noop = () => {};
