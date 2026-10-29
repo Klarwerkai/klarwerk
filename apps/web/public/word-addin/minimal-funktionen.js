@@ -194,21 +194,64 @@
       }
     }
 
+    const kiRuns = new Map();
+    const terminalKi = (status) => ["gestoppt", "ersetzt", "antwort_erhalten", "fehler"].includes(status);
+    function kiRun(gid, result) {
+      const key = gid + ":" + result.job.jobId;
+      let run = kiRuns.get(key);
+      if (!run || run.generation !== ui.generation) {
+        run = { key, gid, generation: ui.generation, jobId: result.job.jobId, epoch: 0,
+          stopped: result.job.status === "gestoppt", stopping: false,
+          label: result.auftrag.ziel, path: base + "/gespraeche/" + encode(gid) +
+            "/ki-auftraege/" + encode(result.job.jobId) };
+        kiRuns.set(key, run);
+      }
+      run.stop = () => guarded(async (stamp) => {
+        if (run.stopping || stamp !== run.generation) return;
+        run.stopping = true;
+        run.stopped = true;
+        run.epoch++;
+        try {
+          const confirmed = await request(run.path + "/stopp", "POST", {});
+          if (!stampGilt(stamp)) return;
+          if (terminalKi(confirmed.auftrag?.job?.status)) ui.activity(run.key, "", null);
+          await refreshKi(run);
+        } catch (error) {
+          run.stopped = false;
+          if (stampGilt(stamp)) ui.activity(run.key, run.label, run.stop);
+          throw error;
+        } finally { run.stopping = false; }
+      });
+      return run;
+    }
+    async function refreshKi(run) {
+      const data = await request(base + "/gespraeche/" + encode(run.gid) + "/ki-auftraege");
+      if (!stampGilt(run.generation)) return;
+      const result = data.auftraege.find((a) => a.job.jobId === run.jobId);
+      if (result && terminalKi(result.job.status)) {
+        run.stopped = result.job.status === "gestoppt";
+        ui.activity(run.key, "", null);
+      } else if (result && ["gesendet", "unterbrochen"].includes(result.job.status)) {
+        ui.activity(run.key, run.label, run.stop);
+      }
+      if (run.gid === ui.conversationId) await ki(ui.room("ki"), run.generation);
+    }
     async function ki(room, stamp) {
+      const gid = ui.conversationId;
       const capabilities = await request(base + "/ki-faehigkeiten");
-      const jobs = ui.conversationId ? await request(
-        base + "/gespraeche/" + encode(ui.conversationId) + "/ki-auftraege",
+      const jobs = gid ? await request(
+        base + "/gespraeche/" + encode(gid) + "/ki-auftraege",
       ) : { auftraege: [] };
-      if (!stampGilt(stamp)) return;
+      if (!stampGilt(stamp) || gid !== ui.conversationId) return;
+      const draft = room.dataset.miniDraft === String(stamp) ? room.querySelector("[data-ki-form]") : null;
       room.replaceChildren();
       for (const capability of capabilities.faehigkeiten) {
         card(room, capability.faehigkeit + " · " + capability.status, capability.text);
       }
       if (capabilities.mcpText) room.append(node("p", "mini-meta", capabilities.mcpText));
       for (const result of jobs.auftraege) {
+        const run = kiRun(gid, result);
         const item = card(room, result.auftrag.ziel, result.job.status);
-        const path = base + "/gespraeche/" + encode(ui.conversationId) +
-          "/ki-auftraege/" + encode(result.job.jobId);
         if (result.wegGesperrt) item.append(node("p", "mini-meta", result.wegGesperrt));
         if (result.prompt) {
           const prompt = node("textarea");
@@ -220,24 +263,28 @@
         }
         if (!result.wegGesperrt && result.paketAktuell && result.job.status === "vorbereitet") {
           item.append(action("confirm", async (current) => {
-            await request(path + "/uebergabe", "POST", { erneutSendenBestaetigt: false });
-            if (stampGilt(current)) await ki(room, current);
+            const ticket = ++run.epoch;
+            run.stopped = false;
+            // Der bekannte Job bleibt vor dem ersten await stoppbar, an SEINEM Gespräch.
+            ui.activity(run.key, run.label, run.stop);
+            await request(run.path + "/uebergabe", "POST", { erneutSendenBestaetigt: false });
+            if (!stampGilt(current) || run.stopped || ticket !== run.epoch) return;
+            await refreshKi(run);
           }));
         }
         if (["vorbereitet", "gesendet", "unterbrochen"].includes(result.job.status)) {
-          const stop = () => guarded(async (current) => {
-            await request(path + "/stopp", "POST", {});
-            if (stampGilt(current)) {
-              ui.activity("ki-" + result.job.jobId, "", null);
-              await ki(room, current);
-            }
-          });
-          item.append(button("stop", stop));
-          if (result.job.status === "gesendet") ui.activity("ki-" + result.job.jobId, result.auftrag.ziel, stop);
+          item.append(button("stop", run.stop));
+          if (result.job.status === "gesendet") ui.activity(run.key, run.label, run.stop);
+        } else if (terminalKi(result.job.status)) {
+          ui.activity(run.key, "", null);
         }
       }
-      if (capabilities.lage.keineKi) return;
+      if (draft) { room.append(draft); return; }
+      if (capabilities.lage.keineKi || !capabilities.lage.erlaubteAnbieter.length ||
+        !capabilities.faehigkeiten.some((c) => ["verfuegbar", "verbunden"].includes(c.status))) return;
       const form = node("section", "mini-record");
+      form.dataset.kiForm = "true";
+      form.addEventListener("input", () => { room.dataset.miniDraft = String(ui.generation); });
       const goal = field(form, "content", "", "textarea");
       const provider = node("select");
       provider.setAttribute("aria-label", "KI");
@@ -255,7 +302,7 @@
           ziel: goal.value, ergebnisformat: "fliesstext", offenePunkte: [],
           anbieter: provider.value, faehigkeit: ability.value, quellen: [], freigegebeneQuellen: [],
         });
-        if (stampGilt(current)) await ki(room, current);
+        if (stampGilt(current)) { delete room.dataset.miniDraft; await ki(room, current); }
       }));
       room.append(form);
     }

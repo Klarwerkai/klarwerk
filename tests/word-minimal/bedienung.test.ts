@@ -17,6 +17,20 @@ let server: Server;
 let browser: Browser;
 let origin = "";
 let counter = 0;
+
+let kiFixture = false;
+let kiStopped = false;
+let releaseKi: (() => void) | null = null;
+let kiArrival: (() => void) | null = null;
+const kiView = (status: string) => ({
+  job: { jobId: "ki-held", status, sendungen: 0 },
+  auftrag: { ziel: "Fiktiver bestehender KI-Auftrag", offenePunkte: [] },
+  wegGesperrt: null,
+  paketAktuell: true,
+  prompt: null,
+  antworten: [],
+});
+
 const resolution = () => ({
   adminConfiguredMode: "deterministic",
   effectiveMode: "deterministic",
@@ -123,6 +137,27 @@ beforeAll(async () => {
           profil: { name: "Mira", avatar: "eule", fassung: 1 },
           einrichtungOffen: false,
         });
+
+      if (url.pathname.includes("/ki-auftraege")) {
+        if (url.pathname.endsWith("/uebergabe")) {
+          kiArrival?.();
+          await new Promise<void>((resolve) => {
+            releaseKi = resolve;
+          });
+          return json({ sicht: kiView("gesendet"), gesendet: true, text: "Später Fiktivrücklauf" });
+        }
+        if (url.pathname.endsWith("/stopp")) {
+          kiStopped = true;
+          return json({ auftrag: kiView("gestoppt"), text: "Gestoppt" });
+        }
+        return json({
+          auftraege:
+            kiFixture && url.pathname.includes("/g-ki-original/")
+              ? [kiView(kiStopped ? "gestoppt" : "vorbereitet")]
+              : [],
+        });
+      }
+
       if (url.pathname === "/api/me/klara/gespraech") return json({ gespraech: conversation });
       if (url.pathname === "/api/me/klara/gespraeche") {
         conversation = {
@@ -215,7 +250,7 @@ beforeAll(async () => {
         return json({
           faehigkeiten: [],
           mcpText: "",
-          lage: { keineKi: true, erlaubteAnbieter: [] },
+          lage: { keineKi: !kiFixture, erlaubteAnbieter: [] },
         });
       if (url.pathname === "/api/categories") return json({ categories: [] });
       if (url.pathname.includes("reasoner/status"))
@@ -391,6 +426,7 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
       await page.keyboard.press("Escape");
       await choose(page, "new");
       await page.getByRole("button", { name: "Beginnen", exact: true }).click();
+      await page.locator("#ask-input").waitFor({ state: "visible" });
       expect(await page.locator("#ask-input").inputValue()).toBe("Nächste Frage als Entwurf");
       expect(
         calls.some((call) => call.path.endsWith("/nachrichten") && call.body.modus === "frage"),
@@ -458,6 +494,10 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         await page.getByRole("button", { name: "Markierung", exact: true }).click();
         await page.locator("#kontext-lesen").click();
         await page.waitForFunction(`window.__officeReads > ${before}`);
+        await page.locator("#kontext-details > summary").click();
+        await page.waitForFunction(
+          "document.getElementById('kontext-text').textContent.includes('Fiktiv')",
+        );
         const context = await page.locator("#kontext-text").innerText();
         expect(context).toContain("Fiktiv");
         await page.keyboard.press("Escape");
@@ -512,6 +552,49 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
           .length,
       ).toBe(writes);
     } finally {
+      await page.close();
+    }
+  });
+
+  it("KI-Übergabe bleibt nach Gesprächswechsel am ursprünglichen Job stoppbar", async () => {
+    kiFixture = true;
+    kiStopped = false;
+    conversation = { id: "g-ki-original", objektbezug: {}, nachrichten: [], einwilligungAm: null };
+    const page = await open();
+    try {
+      const arrived = new Promise<void>((resolve) => {
+        kiArrival = resolve;
+      });
+      await choose(page, "functions");
+      await page.getByRole("button", { name: "Mit KI arbeiten", exact: true }).click();
+      const returned = page.waitForResponse((response) => response.url().endsWith("/uebergabe"));
+      await page.getByRole("button", { name: "Bewusst übernehmen", exact: true }).click();
+      await arrived;
+      const stop = page.locator("#mini-active").getByRole("button", { name: "Stopp", exact: true });
+      expect(await stop.isVisible()).toBe(true);
+      await page.keyboard.press("Escape");
+      await choose(page, "new");
+      await page.getByRole("button", { name: "Beginnen", exact: true }).click();
+      await page.locator("#ask-input").waitFor({ state: "visible" });
+      expect(await stop.isVisible()).toBe(true);
+      await stop.click();
+      await stop.waitFor({ state: "hidden" });
+      expect(
+        calls.some(
+          (call) =>
+            call.path === "/api/me/klara/gespraeche/g-ki-original/ki-auftraege/ki-held/stopp",
+        ),
+      ).toBe(true);
+      releaseKi?.();
+      await returned;
+      await page.evaluate(
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+      );
+      expect(await page.locator("#mini-active .mini-active-row").count()).toBe(0);
+    } finally {
+      releaseKi?.();
+      kiArrival = null;
+      kiFixture = false;
       await page.close();
     }
   });

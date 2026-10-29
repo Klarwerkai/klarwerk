@@ -427,7 +427,7 @@
           config.reset?.(); renderFeed(); show("home");
         } finally { start.disabled = false; }
       }));
-      start.disabled = active.size > 0;
+      start.disabled = active.has("frage");
       el.append(start, button("cancel", () => show("home")));
     }
     function setLanguage(value) {

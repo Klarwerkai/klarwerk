@@ -94,3 +94,12 @@ html[data-word-theme="dark"] { --page: #12161c; --surface: #1b2028; --text: #e2e
 .kw-minimal #frage-block { flex: 0 0 auto; margin: 0; padding: 9px 12px 12px; border: 0; border-top: 1px solid var(--hairline); background: var(--page); }
 .kw-minimal #frage-block > h2 { display: none; }
 .kw-minimal #frage-text { width: 100%; max-height: 100px; }
+
+/* Gleiche Kontraste im bisherigen Excel-/PowerPoint-Stylesheet. */
+.kw-minimal .mini-shell, .kw-minimal .mini-head, .kw-minimal .mini-name,
+.kw-minimal .mini-menu-button, .kw-minimal .mini-room h2, .kw-minimal .mini-room h3 { color: var(--text, #1a2233); }
+.kw-minimal .muted, .kw-minimal .figur-kontext { color: var(--muted, #525b6b); }
+.kw-minimal .kontext, .kw-minimal .antwort, .kw-minimal .plan { color: var(--text, #1a2233); background: var(--surface, #fff); }
+.kw-minimal .hinweis { color: var(--warn-text, #8a5a00); background: var(--warn-bg, #fff6e0); }
+.kw-minimal #frage-text { min-height: 52px; padding: 8px; border: 1px solid var(--hairline, #e9e5de);
+  border-radius: 9px; color: var(--text, #1a2233); background: var(--surface, #fff); }
