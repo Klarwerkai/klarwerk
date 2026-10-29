@@ -450,8 +450,9 @@ export interface KoSearchProjectionRepo {
   /**
    * DIE EINZIGE AUTORITATIVE QUELLE fuer aktive Projektionsfassung und Readiness (04 §1).
    * Fehlt die Zeile, ist die Antwort `UNINITIALIZED` — fail-closed, nie geraten.
+   * Mit TxContext liest der Pg-Adapter auf demselben Client wie der Restore-Stempel.
    */
-  controlState(): Promise<ProjectionControlState>;
+  controlState(tx?: TxContext): Promise<ProjectionControlState>;
   /**
    * BEDINGTER, ATOMARER Zustandswechsel: schreibt NUR, wenn der gespeicherte Zustand `erwartet`
    * ist, und meldet ehrlich, ob DIESER Aufruf geschrieben hat. Genau das macht die Freigabe
@@ -585,7 +586,7 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     this.generationen = speicher.generationen;
   }
 
-  controlState(): Promise<ProjectionControlState> {
+  controlState(_tx?: TxContext): Promise<ProjectionControlState> {
     return Promise.resolve({ ...this.speicher.control });
   }
 

@@ -470,7 +470,14 @@ describe("KO15 · endgültige Löschung und kuratierte Beziehungen (echtes Postg
         )
       ).kante;
       await services.ko.delete(b.id, "admin");
-      return { p, services, app, b, rein, raus, fremd };
+      // Der Erhaltungsvergleich beginnt am gespeicherten PG-Leseaggregat, nicht am Setz-DTO.
+      const reinGespeichert = await services.kanten.hole(rein.id);
+      const rausGespeichert = await services.kanten.hole(raus.id);
+      const fremdGespeichert = await services.kanten.hole(fremd.id);
+      if (!reinGespeichert || !rausGespeichert || !fremdGespeichert) {
+        throw new Error("KO15: gespeicherte Kanten vor Purge nicht vollständig lesbar");
+      }
+      return { p, services, app, b, rein: reinGespeichert, raus: rausGespeichert, fremd: fremdGespeichert };
     } catch (error) {
       await app.close();
       await p.end();
@@ -589,12 +596,12 @@ describe("KO15 · Restore gewinnt gegen Purge-CAS (echtes Postgres)", () => {
       };
       const a = await services.ko.create({ ...input, title: "CAS A" });
       const b = await services.ko.create({ ...input, title: "CAS B" });
-      const gesetzt = (
-        await services.kanten.setzeMitBindung(
-          kante({ quelleId: a.id, zielId: b.id, richtung: "gerichtet" }),
-          "cas-bindung",
-        )
-      ).kante;
+      const setzung = await services.kanten.setzeMitBindung(
+        kante({ quelleId: a.id, zielId: b.id, richtung: "gerichtet" }),
+        "cas-bindung",
+      );
+      const gesetzt = await services.kanten.hole(setzung.kante.id);
+      if (!gesetzt) throw new Error("KO15: CAS-Kante vor Purge nicht gespeichert");
       await services.ko.delete(b.id, "admin");
       services.ko.setPurgeCleanup(async () => {
         angekommen();

@@ -905,8 +905,9 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
 
   // FAIL-CLOSED: fehlt die Steuerzeile (Schema noch nicht migriert), ist die Antwort
   // `UNINITIALIZED` — nicht suchbereit. Nie eine erfundene Freigabe.
-  async controlState(): Promise<ProjectionControlState> {
-    const res = await this.pool.query<ControlRow>(
+  async controlState(tx?: TxContext): Promise<ProjectionControlState> {
+    const q = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    const res = await q.query<ControlRow>(
       `SELECT ${CONTROL_SPALTEN} FROM ko_projection_control WHERE key=$1`,
       [CONTROL_KEY],
     );

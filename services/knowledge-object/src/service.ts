@@ -8613,13 +8613,13 @@ export class KoService {
   // bisher: dann ist der nächste vollständige Bau zuständig. Beide Hälften des Suchdokuments, wie
   // im Schreibweg (`persistSearchProjection`).
   private async stempleWiederhergestellt(ko: KnowledgeObject, tx?: TxContext): Promise<void> {
-    if (sollGeneration(await this.searchProjections.controlState()) === null) {
+    if (sollGeneration(await this.searchProjections.controlState(tx)) === null) {
       return;
     }
     const at = new Date(this.now()).toISOString();
-    const alt = await this.searchProjections.find(ko.id, ko.version);
+    const alt = await this.searchProjections.find(ko.id, ko.version, tx);
     const frisch = buildSearchProjection(ko, at, {
-      classification: await this.classificationForRebuild(ko, alt),
+      classification: await this.classificationForRebuild(ko, alt, tx),
     });
     await this.searchProjections.replace(
       alt ? { ...frisch, createdAt: alt.createdAt } : frisch,

@@ -17,12 +17,16 @@
 // (Vorgabe 10 s) und war nicht fortsetzbar — jeder Start begann von vorn und riss dieselbe Frist.
 // Beleg: daten/dat-04-startschleife.mts.
 import { describe, expect, it, vi } from "vitest";
+import { AuditService, InMemoryAuditRepo } from "../../services/audit";
+import type { TxContext } from "../../services/db-tx";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { stelleSuchprojektionBereit } from "../../services/app/src/search-projection-startup";
 import {
   InMemoryKoMetadataProjectionRepo,
   InMemoryKoRepo,
   InMemoryKoSearchProjectionRepo,
+  InMemoryKoVersionRepo,
+  classificationFromVersionSnapshot,
   type KnowledgeObject,
   KoService,
   neuerProjektionsSpeicher,
@@ -218,4 +222,52 @@ describe("DAT-1 · der Neuaufbau beim Start ist je Generation fortsetzbar", () =
       await app.close();
     }
   });
+});
+
+// Der lokale Fall prüft den Tx-Port des tatsächlichen Restore-Stempels, keine PG-Wirkung.
+vi.mock("testcontainers", () => { throw new Error("NOPULL_INIT1STOP"); });
+vi.mock("dockerode", () => { throw new Error("NOPULL_INIT1STOP"); });
+
+it("KO15 PG-Nacharbeit: Restore bindet Steuerung, Inhalt, Klassifizierung und Metadaten an denselben Tx", async () => {
+  const repo = new InMemoryKoRepo();
+  const projections = new InMemoryKoSearchProjectionRepo(repo);
+  const versions = new InMemoryKoVersionRepo();
+  const tx: TxContext = { brand: "TxContext" };
+  const ko = new KoService({
+    repo,
+    versions,
+    searchProjections: projections,
+    audit: new AuditService({ repo: new InMemoryAuditRepo() }),
+    withTx: async (fn) => fn(tx),
+  });
+  const a = await ko.create({ title: "Restore Alphawort", statement: "Alphawort", type: "best_practice", category: "Wartung", tags: ["Bereitschaft"], author: "anna", confidentiality: "intern" });
+  await ko.activateSearchProjectionV2();
+  const snapshots = await versions.listByKo(a.id);
+  const snapshot = snapshots.find((s) => s.version === a.version);
+  if (!snapshot) throw new Error("Versionssnapshot für Restore fehlt");
+  const metadataVorher = await projections.metadata.find(a.id);
+  if (!metadataVorher) throw new Error("Metadaten vor Restore fehlen");
+  await ko.delete(a.id, "anna");
+  const recover = await ko.recoverSearchProjectionV2("KO15: aktive Restore-Generation");
+  expect(recover.control.projectionState).toBe("V2_ACTIVE");
+  await projections.removeByKo(a.id);
+
+  const control = vi.spyOn(projections, "controlState");
+  const find = vi.spyOn(projections, "find");
+  const classification = vi.spyOn(versions, "listByKo");
+  const metadata = vi.spyOn(projections.metadata, "upsert");
+  try {
+    await ko.restore(a.id, "anna");
+    expect(control.mock.calls).toEqual([[tx]]);
+    expect(find.mock.calls).toEqual([[a.id, a.version, tx]]);
+    expect(classification.mock.calls).toEqual([[a.id, tx]]);
+    expect(metadata).toHaveBeenCalledWith(expect.anything(), tx);
+    const restored = await projections.find(a.id, a.version);
+    expect(restored?.classificationSnapshot).toEqual(classificationFromVersionSnapshot(snapshot));
+    expect(await projections.generationOf(a.id, a.version)).toBe(recover.control.activeGeneration);
+    const metadataNachher = await projections.metadata.find(a.id);
+    expect(metadataNachher?.categoryText).toBe(metadataVorher.categoryText);
+    expect(metadataNachher?.tagText).toBe(metadataVorher.tagText);
+    expect((await ko.findSearchHits({ terms: ["alphawort"] })).map((h) => h.koId)).toEqual([a.id]);
+  } finally { vi.restoreAllMocks(); }
 });
