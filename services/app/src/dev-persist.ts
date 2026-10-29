@@ -45,6 +45,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // WP-SHIP8-CLOSE-6 (bens ROT-1): appendOnce ist eine Mutation (exactly-once-Beleg) — das
   // Replay ist deterministisch (der Set-/Index-Guard macht Doppel-Zeilen im Journal harmlos).
   auditRepo: ["append", "appendOnce"],
+  // KO15: Setzung, Beitragbindung und Endpunkt-Purge müssen gemeinsam replaybar sein.
+  // Die Argumente tragen die vollständigen Aggregate beziehungsweise die gelöschte KO-Kennung.
+  kantenRepo: ["setze", "setzeMitBindung", "entferneFuerKo"],
   // WP-SUBMIT-ASYNC: der Prüf-Status (aiCheck) ist eine Mutation am KO-JSONB → journalieren,
   // sonst wäre er nach einem Dev-Neustart weg (pending-Erkennung/Badges würden lügen).
   koRepo: [

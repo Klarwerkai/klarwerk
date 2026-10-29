@@ -824,17 +824,9 @@ export interface AppServices {
    * JOB 4151: der Bestand der KURATIERTEN BEZIEHUNGEN — die Aussage eines Menschen darüber, dass
    * zwei Wissenseinträge fachlich zusammengehören.
    *
-   * Er steht als eigenes Feld neben `lesevarianten` und ausdrücklich NICHT in `AppRepos`, und der
-   * Grund ist derselbe, den `brandingSettings` darunter ausschreibt: `AppRepos` ist der Satz, den
-   * die Dev-Persistenz journalierend umhüllt, und `MUTATING_METHODS` (`dev-persist.ts:35`) ist ein
-   * VOLLSTÄNDIGER Record über `keyof AppRepos`. Ein Feld dort hinzuzufügen macht `dev-persist.ts`
-   * rot — und diese Datei liegt ausserhalb der Zielpfade dieses Auftrags.
-   *
-   * WAS DAS EHRLICH BEDEUTET, und es wird nicht verschwiegen: im DEV-JOURNAL-Betrieb überlebt eine
-   * kuratierte Beziehung den Neustart NICHT. Im Postgres-Betrieb tut sie es — dort hängt hier
-   * `PgKantenRepo` (s. `buildPgServices`), und das ist der Betrieb, um den es geht. Ohne Datenbank
-   * (Tests, Dev) bleibt der deduplizierende Speicherbestand: derselbe Vertrag, andere Haltbarkeit,
-   * beide gegen DENSELBEN Fallsatz gefahren (`tests/wissensgraph-integration/bestandsvertrag.ts`).
+   * Der Bestand liegt seit KO15 in `AppRepos`: Setzen, Beitragbindung und endgültige
+   * Bereinigung laufen auch im Dev-Journal durch dieselben öffentlichen Mutationsmethoden.
+   * PostgreSQL benutzt denselben Port mit dem Tx-Client des zentralen Purge.
    */
   kanten: KantenRepo;
   /**
@@ -1203,6 +1195,7 @@ export interface AppServices {
 export interface AppRepos {
   auditRepo: AuditRepo;
   koRepo: KoRepo;
+  kantenRepo: KantenRepo;
   koVersions: KoVersionRepo;
   // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
   // Halbwertszeiten. Optional: fehlt er, hält der KoService ihn im Speicher.
@@ -1918,7 +1911,7 @@ export function assembleServices(
   // zweites Mal zu erzeugen wären ZWEI Bestände: der Graph zeigte Beziehungen, die die
   // Beziehungsroute nicht kennt. Die Wahlregel selbst ist UNVERÄNDERT (Postgres, wenn injiziert,
   // sonst der DEDUPLIZIERENDE Speicherbestand — die Begründung steht unten an der Verwendung).
-  const kantenBestand = opts.kanten ?? new DeduplizierenderKantenBestand();
+  const kantenBestand = opts.kanten ?? repos.kantenRepo;
   // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde
   // sie zweimal gebaut (einmal für die Routen, einmal für die Medien-Analyse); solange der Store
   // nur las und schrieb, war das folgenlos. Mit `list`/`delete` und der Lebenszyklus-Zuordnung ist
@@ -2490,6 +2483,7 @@ export function inMemoryRepos(): AppRepos {
   return {
     auditRepo: new InMemoryAuditRepo(),
     koRepo: new InMemoryKoRepo(schreibstand),
+    kantenRepo: new DeduplizierenderKantenBestand(),
     koVersions: new InMemoryKoVersionRepo(schreibstand),
     // R-1636/R-0248: der Lernverlauf im Speicherbetrieb — hier, damit die Dev-Persistenz ihn journaliert.
     halbwertszeitVerlauf: new InMemoryHalbwertszeitVerlauf(),
@@ -2572,6 +2566,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
     {
       auditRepo: new PgAuditRepo(pool),
       koRepo: new PgKoRepo(pool),
+      kantenRepo: new PgKantenRepo(pool),
       koVersions: new PgKoVersionRepo(pool),
       // R-1636/R-0248: der Lernverlauf überlebt Neustarts — sonst begänne er nach jedem Start neu.
       halbwertszeitVerlauf: new PgHalbwertszeitVerlauf(pool),
@@ -2646,11 +2641,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // JOB 3326: die Lesevarianten liegen in DERSELBEN Datenbank wie der Bestand (dedizierte
       // Kundeninstanz = ein Datenraum) — kein zweiter Dienst, keine kundenübergreifende Ablage.
       lesevarianten: new PgLesevariantenRepo(pool),
-      // JOB 4151: die kuratierten Beziehungen liegen in DERSELBEN Datenbank wie der Bestand, auf
-      // den sie zeigen. Mit dieser Zeile überlebt eine von Hand gesetzte Verknüpfung Neuladen und
-      // Serverneustart; ohne sie fiele `assembleServices` auch im Postgres-Betrieb auf den
-      // flüchtigen Speicherbestand zurück — und niemand sähe es, weil beide denselben Port füllen.
-      kanten: new PgKantenRepo(pool),
       // JOB 4156: die Gesamtanweisungen liegen in DERSELBEN Datenbank wie die Wissenseinträge, auf
       // deren Fassungen ihre Bausteine zeigen. Mit dieser Zeile überlebt eine zusammengestellte
       // Anweisung samt Reihenfolge, Prüfständen und Entscheidung den Serverneustart; ohne sie
@@ -4835,7 +4825,7 @@ export function buildApp(
   //
   // DER HAKEN GIBT ZAHLEN ZURÜCK, weil purgeKo sie in die Nutzlast des `ko.purged`-Belegs mischt
   // (service.ts:3158-3166). Der Beleg bezeugt damit nicht nur, DASS gelöscht wurde, sondern wie
-  // viel dabei geschlossen wurde. `0` ist eine gemessene Aussage — beide Zahlen stehen immer da.
+  // viel dabei geschlossen wurde. `0` ist eine gemessene Aussage — die Zahlen stehen immer da; `kuratierteKantenEntfernt` zählt die endgültig entfernten Beziehungen.
   //
   // EHRLICHE GRENZE (Lehre JOB 3039 R2): ohne echten Pg-Pool (InMemory, Dev-Journal) ruft purgeKo
   // denselben Haken mit `tx === undefined` (service.ts:3179) und lässt ihn VOR der Löschung laufen.
@@ -4868,9 +4858,9 @@ export function buildApp(
   //   Rückverfolgbarkeit am einzelnen Befund. Das ist der Rest, der mit der Befundzahl DIESES
   //   Beitrags wächst — benannt, nicht überspielt.
   //
-  // GEMESSENE OBERGRENZE des Hakens: 2 + n + 2m — n/m = offene Überschneidungen/Konflikte GENAU
-  // DIESES Beitrags, NICHT der Instanz; davon sind 2 Schreib-Anweisungen und der Rest Belege. An
-  // 200+200 Befunden nachgezählt: tests/aufraeumen-atomar/aufraeumumfang-bleibt-begrenzt.test.ts.
+  // OBERGRENZE des Hakens seit KO15: 3 + n + 2m — n/m = offene Überschneidungen/Konflikte GENAU
+  // DIESES Beitrags, NICHT der Instanz; davon sind 3 Schreib-Aufrufe und der Rest Belege. An
+  // 200+200 Befunden wurde der bisherige Befundteil nachgezählt: tests/aufraeumen-atomar/aufraeumumfang-bleibt-begrenzt.test.ts.
   //
   // JOB 3071 R2 (bens Korrekturpflicht 2): `ruecknahme` reist DURCH, statt dass der Dienst hier
   // drin nachschlägt. `purgeKo` hat die Auskunft vor dem Öffnen der Transaktion gelesen
@@ -4879,6 +4869,7 @@ export function buildApp(
   // Verbindung, die diese Transaktion selbst hält. Der Aufwand des Hakens ändert sich dadurch nicht:
   // es ist dieselbe eine Auskunft, nur früher gelesen.
   services.ko.setPurgeTxCleanup(async (koId, actor, tx, ruecknahme) => ({
+    kuratierteKantenEntfernt: await services.kanten.entferneFuerKo(koId, tx),
     konflikteGeschlossen: await services.conflicts.onKoRemoved(koId, actor, tx),
     ueberschneidungenGeschlossen: await services.overlaps.onKoRemoved(koId, actor, tx, ruecknahme),
   }));

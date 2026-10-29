@@ -118,6 +118,7 @@ describe("H3/546 · eine Beziehung braucht zwei Enden — der Selbstbezug entste
     // der die Eingangsregel nie gesehen hat. Ein Schreibweg würde genau die Regel anwenden, deren
     // Abwesenheit hier der Prüfgegenstand ist.
     const altbestand: KantenRepo = {
+      entferneFuerKo: async () => 0,
       fuerKo: async () => [kante({ quelleId: eines, zielId: eines })],
       setze: async (k) => k,
       // JOB 4151 (BEN R3): auch die gebundene Schreibseite ist hier wirkungslos — aus demselben

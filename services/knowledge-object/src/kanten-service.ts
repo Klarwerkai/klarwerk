@@ -42,6 +42,7 @@
 // In-Memory-Fassung vorhanden. Das persistente Aggregat samt Postgres-Repo, Deduplizierung,
 // Versionierung und transaktionsgebundener Endlöschung ist eine eigene Scheibe (JOB 1139); sie
 // füllt genau diesen Port, statt ein zweites Modell daneben zu stellen.
+import type { TxContext } from "../../db-tx";
 import { beziehungsSchluessel, istSelbstbeziehung, kanonischesPaar } from "./kanten-paar";
 import {
   type BeurteilterStand,
@@ -97,6 +98,11 @@ export type {
  * BEIDER Endpunkte) und darüber über `ko.relate` an der Route.
  */
 export interface KantenRepo {
+  /** Nur beim endgültigen Purge: alle Endpunktbeziehungen samt Beitragbindungen entfernen.
+   * Mit TxContext ausschließlich auf dessen Client; Fehler verlassen den Purge-Vorgang.
+   * Papierkorb und Widerruf rufen diesen Bestandsweg nicht auf.
+   */
+  entferneFuerKo(koId: string, tx?: TxContext): Promise<number>;
   /** Alle Kanten, an denen `koId` als Quelle ODER als Ziel beteiligt ist — ungetrimmt. */
   fuerKo(koId: string): Promise<readonly KuratierteKante[]>;
   /**
@@ -360,6 +366,20 @@ export class InMemoryKantenRepo implements KantenRepo {
     return [...this.kanten.values()].find((k) =>
       (k.beitragSchluessel ?? []).includes(beitragSchluessel),
     );
+  }
+
+  async entferneFuerKo(koId: string): Promise<number> {
+    return this.sperre.fuehre(async () => {
+      let entfernt = 0;
+      for (const [id, kante] of this.kanten) {
+        if (kante.quelleId === koId || kante.zielId === koId) {
+          this.kanten.delete(id);
+          entfernt++;
+        }
+      }
+      // Beitragbindungen liegen in den gelöschten Aggregaten selbst.
+      return entfernt;
+    });
   }
 
   async hole(id: string): Promise<KuratierteKante | undefined> {

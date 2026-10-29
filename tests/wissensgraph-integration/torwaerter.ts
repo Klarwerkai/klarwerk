@@ -41,6 +41,7 @@ export function mitTorwaerter(echt: KantenRepo, anzahl: number): KantenRepo {
       await tor;
       return ergebnis;
     },
+    entferneFuerKo: (id, tx) => echt.entferneFuerKo(id, tx),
     setze: (k, o) => echt.setze(k, o),
     setzeMitBindung: (k, s) => echt.setzeMitBindung(k, s),
     hole: (id) => echt.hole(id),

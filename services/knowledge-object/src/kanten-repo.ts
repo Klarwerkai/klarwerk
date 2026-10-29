@@ -163,6 +163,20 @@ export class DeduplizierenderKantenBestand implements KantenRepo {
     return fortgeschrieben;
   }
 
+  async entferneFuerKo(koId: string): Promise<number> {
+    return this.sperre.fuehre(async () => {
+      let entfernt = 0;
+      for (const [schluessel, kante] of this.nachBeziehung) {
+        if (kante.quelleId === koId || kante.zielId === koId) {
+          this.nachBeziehung.delete(schluessel);
+          entfernt++;
+        }
+      }
+      // Die Beitragbindungen leben in den Aggregaten; sie verschwinden mit ihnen.
+      return entfernt;
+    });
+  }
+
   async holeNachBeitrag(beitragSchluessel: string): Promise<KuratierteKante | undefined> {
     return this.findeNachBeitrag(beitragSchluessel);
   }
