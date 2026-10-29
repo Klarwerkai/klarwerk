@@ -1075,8 +1075,9 @@ export interface GesamtanweisungDienstDeps {
 /**
  * Der Dienst, den die Route ruft.
  *
- * JEDER schreibende Weg prüft VORHER das Recht an jedem gebundenen Baustein und schreibt DANACH
- * den festgehaltenen Prüfstand fort — beides an genau einer Stelle (`mitRecht`, `festhalten`).
+ * Schreibwege prüfen aktuelle Quellrechte und halten Bestand und Prüfstand zusammen fest.
+ * Kopf und sichtbare Reihenfolge bleiben bei nachweislich fehlenden Quellen bearbeitbar;
+ * vorhandene verbotene Quellen und Lesefehler sperren weiterhin jede Änderung.
  */
 export class GesamtanweisungDienst {
   constructor(private readonly deps: GesamtanweisungDienstDeps) {}
@@ -1087,24 +1088,30 @@ export class GesamtanweisungDienst {
    * `streng` unterscheidet die zwei Fälle, und der Unterschied ist der Kern von F3:
    *   · LESEN (`streng: false`) trimmt — der Betrachter sieht, was er darf, und erfährt, dass
    *     etwas fehlt.
-   *   · SCHREIBEN und VERGLEICHEN (`streng: true`) verweigern — wer nicht alles sehen darf, ordnet
-   *     nichts um und bekommt keine Gegenüberstellung, die Lücken als „unverändert" ausgäbe.
+   *   · SCHREIBEN und VERGLEICHEN (`streng: true`) verweigern bei fehlenden oder verbotenen
+   *     Quellen. Nur Kopf und sichtbare Reihenfolge erlauben tatsächlich fehlende Einträge;
+   *     ein Lesefehler oder ein vorhandener verbotener Eintrag ist dafür nie eine Erlaubnis.
    */
   private async geladen(
     id: string,
     sichtbar: AnweisungSichtbar | undefined,
     streng: boolean,
+    fehlendeQuellenErlaubt = false,
   ): Promise<{ anweisung: Anweisung; lagen: Fassungslagen }> {
     const anweisung = await this.deps.repo.get(id);
     if (!anweisung) {
       throw anweisungFehler("NOT_FOUND", "Diese Anweisung gibt es nicht.");
     }
-    const lagen = await fassungslagenFuer(anweisung.bausteine, this.deps.ko);
+    const fehler = new Set<string>();
+    const lagen = await fassungslagenFuer(anweisung.bausteine, this.deps.ko, fehler);
     if (streng) {
+      if (typeof sichtbar !== "function" || fehler.size > 0) {
+        throw anweisungFehler("FORBIDDEN", "Teile dieser Anweisung sind für Sie nicht zugänglich.");
+      }
       const darf = erzwingeSichtbar(sichtbar);
       for (const baustein of anweisung.bausteine) {
         const lage = lagen.get(fassungsSchluessel(baustein.koId, baustein.koVersion));
-        if (!lage || !darf(lage)) {
+        if ((!lage && !fehlendeQuellenErlaubt) || (lage && !darf(lage))) {
           // KEINE Kennung, kein Titel, keine Zahl — die Meldung sagt nur, dass es nicht geht.
           throw anweisungFehler(
             "FORBIDDEN",
@@ -1162,12 +1169,20 @@ export class GesamtanweisungDienst {
     if (!anweisung) {
       throw anweisungFehler("NOT_FOUND", "Diese Anweisung gibt es nicht.");
     }
+    return this.lesestandFuer(anweisung, sichtbar);
+  }
+
+  /** Auch Schreibantworten verwenden den aktuellen, getrimmten Lesestand statt roher Bindungen. */
+  private async lesestandFuer(
+    anweisung: Anweisung,
+    sichtbar: AnweisungSichtbar | undefined,
+  ): Promise<AnweisungLesestand> {
     const fehler = new Set<string>();
     const lagen = await fassungslagenFuer(anweisung.bausteine, this.deps.ko, fehler);
     return lesestand(anweisung, lagen, sichtbar, {
       pruefzeitpunkt: this.deps.jetzt(),
       fehlgeschlageneQuellen: fehler.size,
-      uebernommen: await this.uebernahmenAusHistorie(id),
+      uebernommen: await this.uebernahmenAusHistorie(anweisung.id),
     });
   }
 
@@ -1266,10 +1281,11 @@ export class GesamtanweisungDienst {
     version: number,
     kopf: Partial<AnweisungKopf>,
     sichtbar: AnweisungSichtbar | undefined,
-  ): Promise<Anweisung> {
-    const { anweisung, lagen } = await this.geladen(id, sichtbar, true);
+  ): Promise<AnweisungLesestand> {
+    const { anweisung, lagen } = await this.geladen(id, sichtbar, true, true);
     const neu = mitGeaendertemKopf(anweisung, version, kopf, this.deps.jetzt());
-    return this.schreiben(neu, anweisung.version, lagen);
+    await this.schreiben(neu, anweisung.version, lagen);
+    return this.lesestandFuer(neu, sichtbar);
   }
 
   /**
@@ -1354,10 +1370,27 @@ export class GesamtanweisungDienst {
     version: number,
     reihenfolge: readonly string[],
     sichtbar: AnweisungSichtbar | undefined,
-  ): Promise<Anweisung> {
-    const { anweisung, lagen } = await this.geladen(id, sichtbar, true);
-    const neu = mitNeuerReihenfolge(anweisung, version, reihenfolge, this.deps.jetzt());
-    return this.schreiben(neu, anweisung.version, lagen);
+  ): Promise<AnweisungLesestand> {
+    const { anweisung, lagen } = await this.geladen(id, sichtbar, true, true);
+    const sichtbare = anweisung.bausteine.filter((b) =>
+      lagen.has(fassungsSchluessel(b.koId, b.koVersion)),
+    );
+    const ids = new Set(sichtbare.map((b) => b.id));
+    if (
+      reihenfolge.length !== ids.size ||
+      new Set(reihenfolge).size !== reihenfolge.length ||
+      reihenfolge.some((id) => !ids.has(id))
+    ) {
+      throw anweisungFehler("INVALID", "Die Reihenfolge muss jeden sichtbaren Baustein genau einmal nennen.");
+    }
+    // Verborgene Bindungen behalten ihren Platz. Nur die sichtbaren Plätze werden neu belegt.
+    let index = 0;
+    const vollstaendigeFolge = anweisung.bausteine.map((b) =>
+      ids.has(b.id) ? (reihenfolge[index++] as string) : b.id,
+    );
+    const neu = mitNeuerReihenfolge(anweisung, version, vollstaendigeFolge, this.deps.jetzt());
+    await this.schreiben(neu, anweisung.version, lagen);
+    return this.lesestandFuer(neu, sichtbar);
   }
 
   async voraussetzungSetzen(
@@ -1425,6 +1458,9 @@ export class GesamtanweisungDienst {
     sichtbar: AnweisungSichtbar | undefined,
   ): Promise<Anweisung> {
     const { anweisung, lagen } = await this.geladen(id, sichtbar, true);
+    if ([...lagen.values()].some((lage) => lage.gebunden === null)) {
+      throw anweisungFehler("FORBIDDEN", "Teile dieser Anweisung sind für Sie nicht zugänglich.");
+    }
     const neu = alsVorgelegt(anweisung, version, this.deps.jetzt());
     return this.schreiben(neu, anweisung.version, lagen);
   }
@@ -1438,6 +1474,9 @@ export class GesamtanweisungDienst {
     von?: string,
   ): Promise<Anweisung> {
     const { anweisung, lagen } = await this.geladen(id, sichtbar, true);
+    if ([...lagen.values()].some((lage) => lage.gebunden === null)) {
+      throw anweisungFehler("FORBIDDEN", "Teile dieser Anweisung sind für Sie nicht zugänglich.");
+    }
     const neu = alsEntschieden(anweisung, version, entscheidung, this.deps.jetzt(), von);
     return this.schreiben(neu, anweisung.version, lagen);
   }

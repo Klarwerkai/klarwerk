@@ -13,7 +13,7 @@
 // Oberfläche würde dann grundlos scheitern, obwohl sie den neuen Stand längst hätte holen können.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { endpoints } from "../../api/endpoints";
-import type { Anweisung, AnweisungKopfEingabe } from "../../api/types";
+import type { AnweisungKopfEingabe } from "../../api/types";
 
 /** Der Schlüsselstamm dieses Bereichs. Eine Stelle, damit kein Aufruf danebengreift. */
 export function anweisungSchluessel(id: string): readonly unknown[] {
@@ -157,9 +157,9 @@ export function useAnweisungAnlegen() {
  * (Begründung an `anweisungslisteSchluessel`). Sie hier zusammenzuziehen hiesse, die Trennung wieder
  * aufzugeben, um einen Aufruf zu sparen.
  */
-function useAnweisungsMutation<TEingabe>(
+function useAnweisungsMutation<TEingabe, TAntwort>(
   id: string | null,
-  lauf: (eingabe: TEingabe) => Promise<Anweisung>,
+  lauf: (eingabe: TEingabe) => Promise<TAntwort>,
 ) {
   const client = useQueryClient();
   return useMutation({

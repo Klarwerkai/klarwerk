@@ -1901,14 +1901,14 @@ export const endpoints = {
     list: () => api.get<AnweisungListe>("/gesamtanweisungen"),
     create: (kopf: AnweisungKopfEingabe) => api.post<Anweisung>("/gesamtanweisungen", kopf),
     updateKopf: (id: string, version: number, kopf: AnweisungKopfEingabe) =>
-      api.put<Anweisung>(`/gesamtanweisungen/${id}`, { ...kopf, version }),
+      api.put<AnweisungLesestand>(`/gesamtanweisungen/${id}`, { ...kopf, version }),
     addBaustein: (
       id: string,
       version: number,
       baustein: { koId: string; koVersion: number; nachweisHash: string | null },
     ) => api.post<Anweisung>(`/gesamtanweisungen/${id}/bausteine`, { ...baustein, version }),
     setReihenfolge: (id: string, version: number, reihenfolge: string[]) =>
-      api.put<Anweisung>(`/gesamtanweisungen/${id}/reihenfolge`, { reihenfolge, version }),
+      api.put<AnweisungLesestand>(`/gesamtanweisungen/${id}/reihenfolge`, { reihenfolge, version }),
     // `null` NIMMT die Voraussetzung. `undefined` gäbe es hier nicht: `JSON.stringify` liesse es
     // spurlos verschwinden, und „Voraussetzung entfernen" wäre ein Klick ohne Wirkung.
     setVoraussetzung: (
