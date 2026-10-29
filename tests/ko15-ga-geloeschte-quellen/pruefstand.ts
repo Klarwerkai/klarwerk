@@ -29,7 +29,7 @@ export async function welt(vorListen?: (app: FastifyInstance) => Promise<void>) 
     const { sitzung: admin, admin: nutzer } = await ersteinrichtung(strecke, EMAIL);
     const experte = strecke.profil("experte");
     await kontoMitRolle(admin, experte, "experte", "experte@ko15-ga.test");
-    const quellen = [];
+    const quellen: Awaited<ReturnType<typeof wissenseintrag>>[] = [];
     for (const [titel, stufe] of [
       ["Sichtbar A", "intern"],
       ["Geheim B", "vertraulich"],
@@ -62,6 +62,7 @@ export async function welt(vorListen?: (app: FastifyInstance) => Promise<void>) 
     }
     const kanonisch = await services.anweisungen.get(angelegt.id);
     if (!kanonisch) throw new Error("Angelegte Anweisung fehlt");
+    expect(kanonisch.bausteine).toHaveLength(4);
     const bestand = async () => ({
       anweisung: await services.anweisungen.get(angelegt.id),
       historie: await Promise.all(
@@ -72,7 +73,9 @@ export async function welt(vorListen?: (app: FastifyInstance) => Promise<void>) 
     });
     const entfernen = async (purge: boolean) => {
       for (const i of [1, 3]) {
-        const id = quellen[i]?.koId;
+        const quelle = quellen[i];
+        if (!quelle) throw new Error("Prüfquelle fehlt");
+        const id = quelle.koId;
         mussGelingen("Papierkorb", await admin.sende("DELETE", `/api/kos/${id}`), 204);
         if (purge)
           mussGelingen("Endlöschung", await admin.sende("DELETE", `/api/kos/trash/${id}`), 204);
@@ -80,16 +83,20 @@ export async function welt(vorListen?: (app: FastifyInstance) => Promise<void>) 
       }
     };
     const ohneSpur = (text: string) => {
-      for (const i of [1, 3])
+      for (const i of [1, 3]) {
+        const quelle = quellen[i];
+        const baustein = kanonisch.bausteine[i];
+        if (!quelle || !baustein) throw new Error("Verdeckungsreferenz fehlt");
         for (const spur of [
-          quellen[i]?.koId,
-          kanonisch.bausteine[i]?.id,
+          quelle.koId,
+          baustein.id,
           `Nachweis-${i}`,
           `Bedingung-${i}`,
           i === 1 ? "Geheim B" : "Geheim D",
         ]) {
           expect(text, `Verborgene Spur ${spur}`).not.toContain(spur);
         }
+      }
     };
     return {
       app,
