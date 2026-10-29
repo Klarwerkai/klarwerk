@@ -327,8 +327,9 @@ export function mitGeaenderterVoraussetzung(
  *     bestehenden Kontoregel.
  *   · Nur VORWÄRTS: eine ältere oder dieselbe Fassung ist keine Übernahme.
  *
- * Der Nachweis der neuen Fassung kommt vom Aufrufer oder fehlt (`null`). Der alte wird NICHT
- * weitergetragen — er belegt eine andere Fassung.
+ * Die Hashangabe der neuen Fassung kommt vom Aufrufer oder fehlt (`null`). Die alte wird NICHT
+ * weitergetragen — sie gehört zu einer anderen Fassung. Keine dieser freien Angaben ist ein
+ * gesicherter Inhaltsnachweis.
  */
 export function mitUebernommenerFassung(
   anweisung: Anweisung,
@@ -621,31 +622,15 @@ function listenVergleich(a: readonly string[] | null, b: readonly string[] | nul
 }
 
 /**
- * Der Inhaltsvergleich EINES Bausteins.
- *
- * DER NACHWEIS GEHT VOR, und das ist der Kern von F7: sind beide Nachweis-Hashes vorhanden und
- * gleich, IST der Inhalt derselbe — dafür ist ein Nachweis da. Dann heisst das Ergebnis
- * `unveraendert`, und es heisst ausdrücklich nicht „richtig", „geprüft" oder „bestätigt".
- * Startvertrag: „Ein gleicher Hash bestätigt Unverändertheit, nicht Richtigkeit."
- *
- * Fehlt ein Hash oder weichen sie ab, wird auf die einzelnen Tatsachen zurückgefallen — und was
- * dort unbestimmbar ist, bleibt `unbekannt`.
+ * Der Inhaltsvergleich EINES Bausteins anhand der Fakten seiner gebundenen Fassungen.
+ * `nachweisHash` ist eine ungesicherte Clientangabe und deshalb kein Inhaltsbeweis.
+ * Was in den gespeicherten Fakten nicht bestimmbar ist, bleibt `unbekannt`.
  */
 function inhaltsBefunde(
   bausteinId: string,
-  vonHash: string | null,
-  bisHash: string | null,
   von: BausteinInhalt,
   bis: BausteinInhalt,
 ): VergleichsBefund[] {
-  if (vonHash !== null && bisHash !== null && vonHash === bisHash) {
-    const satz = "Gleicher Nachweis: unverändert. Das ist keine Aussage über Richtigkeit.";
-    return [
-      befund("tabellenueberschriften", bausteinId, "unveraendert", satz),
-      befund("abbildungen", bausteinId, "unveraendert", satz),
-      befund("geltung", bausteinId, "unveraendert", satz),
-    ];
-  }
   const tabellen = listenVergleich(von.tabellenUeberschriften, bis.tabellenUeberschriften);
   const abbildungen = listenVergleich(von.abbildungen, bis.abbildungen);
   const geltung: Auswirkung =
@@ -738,7 +723,7 @@ export function staendeVergleichen(
       befund("voraussetzungen", id, voraussetzung, hinweisZu(voraussetzung, "Voraussetzung")),
     );
 
-    befunde.push(...inhaltsBefunde(id, a.nachweisHash, b.nachweisHash, a.inhalt, b.inhalt));
+    befunde.push(...inhaltsBefunde(id, a.inhalt, b.inhalt));
   }
 
   const unbekannte = befunde.filter((b) => b.auswirkung === "unbekannt").length;

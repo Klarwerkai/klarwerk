@@ -1,11 +1,15 @@
 // ================================================================================================
-// JOB 4154 · F7 — GLEICHER HASH HEISST UNVERÄNDERT. NICHT RICHTIG.
+// JOB 4154 · F7 / KO18 — FREIER HASH IST KEIN INHALTSNACHWEIS.
 // ================================================================================================
 //
 // Startvertrag, Abschnitt „Festgehaltener Prüfstand", wörtlich:
 //   „Ein gleicher Hash bestaetigt Unveraendertheit, nicht Richtigkeit."
 //   „Unbekannte Auswirkungen bleiben sichtbar und erfordern fachliche Klaerung; kein automatischer
 //    Nachweis reduzierten Pruefumfangs."
+//
+// KO18/M13: Der tatsächliche Port nimmt ungeprüften Clienttext entgegen. Die alte Annahme,
+// Gleichheit dieses Texts trage einen Inhaltsnachweis, war falsch. Die Zitate bleiben erhalten;
+// geprüft werden die gebundenen Fakten, ohne unbekannte oder geänderte Inhalte wegzurunden.
 //
 // ZWEI GETRENNTE ZUSAGEN, und die zweite ist die, die im Alltag verloren geht:
 //   1. Die VOKABEL. Das Ergebnis heisst `unveraendert`. Es heisst nicht `richtig`, nicht `geprueft`,
@@ -44,8 +48,8 @@ function aufnahme(
   };
 }
 
-describe("F7 · gleicher Hash ist kein Richtigkeitsnachweis", () => {
-  it("identischer Nachweis ⇒ das Ergebnis heisst `unveraendert`", async () => {
+describe("F7 · freie Hashangaben ersetzen keine Fassungsfakten", () => {
+  it("bekannte gleiche Fakten ⇒ `unveraendert`, auch mit freier Hashangabe", async () => {
     const eintraege = [
       eintrag({ id: "ko-1", version: 1 }, [{ version: 1, bodyHtml: "<p>Text</p>" }]),
     ];
@@ -75,7 +79,7 @@ describe("F7 · gleicher Hash ist kein Richtigkeitsnachweis", () => {
     expect(draht).not.toContain("bestaetigt");
   });
 
-  it("der Hinweis sagt es ausdrücklich: unverändert ist keine Aussage über Richtigkeit", () => {
+  it("auch ein gleicher freier Hash lässt unbestimmte Inhalte unbekannt", () => {
     const baustein = {
       id: "b-1",
       position: 0,
@@ -83,15 +87,17 @@ describe("F7 · gleicher Hash ist kein Richtigkeitsnachweis", () => {
       koVersion: 1,
       nachweisHash: "gleich",
       voraussetzung: null,
-      // Bewusst UNBESTIMMTER Inhalt: der Nachweis allein trägt die Aussage.
+      // Bewusst UNBESTIMMTER Inhalt: ein gleicher Clienttext darf ihn nicht ersetzen.
       inhalt: { tabellenUeberschriften: null, abbildungen: null, geltung: null },
     } as const;
     const vergleich = staendeVergleichen(aufnahme(1, [baustein]), aufnahme(2, [baustein]));
 
-    expect(vergleich.gesamt).toBe("unveraendert");
-    expect(vergleich.unbekannte).toBe(0);
-    const inhaltsbefund = vergleich.befunde.find((b) => b.feld === "abbildungen");
-    expect(inhaltsbefund?.hinweis).toContain("keine Aussage über Richtigkeit");
+    expect(vergleich.gesamt).toBe("unbekannt");
+    expect(vergleich.unbekannte).toBe(3);
+    const inhaltsbefunde = vergleich.befunde.filter((b) => b.bausteinId === baustein.id &&
+      ["tabellenueberschriften", "abbildungen", "geltung"].includes(b.feld));
+    expect(inhaltsbefunde.map((b) => b.auswirkung)).toEqual(["unbekannt", "unbekannt", "unbekannt"]);
+    expect(inhaltsbefunde.every((b) => b.hinweis.includes("fachlich zu klären"))).toBe(true);
   });
 
   it("OHNE Nachweis bleibt eine unbestimmbare Auswirkung `unbekannt`", () => {
@@ -123,7 +129,7 @@ describe("F7 · gleicher Hash ist kein Richtigkeitsnachweis", () => {
       position: 0,
       koId: "ko-1",
       koVersion: 1,
-      nachweisHash: null,
+      nachweisHash: "frei-gleich",
       voraussetzung: null,
       inhalt: { tabellenUeberschriften: null, abbildungen: ["bild-a"], geltung: null },
     } as const;
@@ -171,7 +177,7 @@ describe("F7 · gleicher Hash ist kein Richtigkeitsnachweis", () => {
       position: 0,
       koId: "ko-1",
       koVersion: 1,
-      nachweisHash: null,
+      nachweisHash: "frei-gleich",
       voraussetzung: null,
     } as const;
     const vergleich = staendeVergleichen(
@@ -179,6 +185,7 @@ describe("F7 · gleicher Hash ist kein Richtigkeitsnachweis", () => {
       aufnahme(2, [{ ...basis, inhalt: umbenannt }]),
     );
 
+    expect(vergleich.unbekannte).toBe(0);
     const felder = vergleich.befunde.filter((b) => b.auswirkung === "geaendert").map((b) => b.feld);
     expect(felder).toContain("tabellenueberschriften");
     expect(felder).toContain("geltung");

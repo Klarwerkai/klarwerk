@@ -17,10 +17,11 @@
 // morgen eine andere Anweisung, ohne dass jemand etwas entschieden hätte. Die Fassungsnummer ist
 // deshalb Teil der Identität des Bausteins, nicht eine Anzeige daneben.
 //
-// Der `nachweisHash` kommt zusätzlich dazu und trägt eine ANDERE Aussage: er belegt, dass der
-// Inhalt jener Fassung derselbe geblieben ist. Er belegt NICHT, dass er richtig ist — deshalb
-// heisst das Vergleichsergebnis unten `unveraendert` und nicht `geprueft`. Auch das steht wörtlich
-// im Startvertrag: „Ein gleicher Hash bestätigt Unverändertheit, nicht Richtigkeit."
+// Der Startvertrag sagt wörtlich: „Ein gleicher Hash bestätigt Unverändertheit, nicht Richtigkeit."
+// Das setzt einen gesicherten Nachweis voraus. `nachweisHash` ist hier jedoch eine freie,
+// ungesicherte Angabe des Aufrufers — auch im Altbestand. Sie bleibt gespeichert, beweist aber
+// keine Inhaltsgleichheit. Der Vergleich verwendet die Fakten der konkret gebundenen Fassung;
+// bekannte gleiche Fakten heissen `unveraendert`, fehlende Fakten bleiben `unbekannt`.
 //
 // ------------------------------------------------------------------------------------------------
 // KEIN NEUER KO-TYP
@@ -53,8 +54,8 @@ export type AnweisungStand = "entwurf" | "vorgelegt" | "entschieden" | "abgelehn
 /**
  * Ein Baustein bindet genau EINE Fassung eines vorhandenen Eintrags.
  *
- * `nachweisHash` ist `null`, wenn zu dieser Fassung kein Nachweis vorliegt — das ist ein eigener
- * Zustand und wird im Vergleich zu `unbekannt`, nie zu `unveraendert`.
+ * `nachweisHash` bewahrt die ungesicherte Angabe des Aufrufers; `null` heisst keine Angabe.
+ * Der Inhaltsvergleich stützt sich unabhängig davon auf die gespeicherten Fassungsfakten.
  */
 export interface Baustein {
   readonly id: string;
