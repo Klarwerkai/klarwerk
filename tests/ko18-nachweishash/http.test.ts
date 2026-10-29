@@ -98,11 +98,15 @@ describe("KO18/M13 · freie Hashangabe am authentifizierten HTTP-Weg", () => {
       abbildungen: ["Schema alt"],
       geltung: "Werk 1",
     });
+    const eingeordnet = await w.ruf<KnowledgeObject>("PUT", `/api/kos/${ko.id}`, {
+      action: "category",
+      category: "Werk 2",
+    });
+    expect(eingeordnet.category).toBe("Werk 2");
     const neu = await w.ruf<KnowledgeObject>("PUT", `/api/kos/${ko.id}`, {
       action: "revise",
-      expectedVersion: ko.version,
+      expectedVersion: eingeordnet.version,
       changes: {
-        category: "Werk 2",
         bodyHtml:
           '<table><tr><th>Dauer</th></tr></table><img alt="Schema neu" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO/a1f8AAAAASUVORK5CYII=">',
       },
