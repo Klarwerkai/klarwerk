@@ -651,10 +651,11 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         route.fulfill({ json: { id: "ui-min-b", name: "Konto B", role: "admin" } }),
       );
       await page.evaluate("checkSession()");
-      await page.waitForFunction(
-        "window.kwWordUi.account === 'ui-min-b' && document.querySelector('.mini-name').textContent === 'Profil von Konto B'",
-      );
+      await page.waitForFunction("window.kwWordUi.account === 'ui-min-b'");
       await page.keyboard.press("Escape");
+      await page.waitForFunction(
+        "document.querySelector('.mini-name').textContent === 'Profil von Konto B'",
+      );
       await choose(page, "settings");
       await page.getByRole("button", { name: "Name und Avatar", exact: true }).click();
       expect(await profile.getByLabel("Name", { exact: true }).inputValue()).toBe(
