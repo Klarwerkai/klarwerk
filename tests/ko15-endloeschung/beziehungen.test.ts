@@ -1,17 +1,25 @@
 import { expect, it, vi } from "vitest";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 import {
+  type JournalEntry,
+  journaledRepos,
+  replayJournal,
+} from "../../services/app/src/dev-persist";
+import {
   DeduplizierenderKantenBestand,
   InMemoryKantenRepo,
   TRASH_RETENTION_DAYS,
 } from "../../services/knowledge-object";
-import { type JournalEntry, journaledRepos, replayJournal } from "../../services/app/src/dev-persist";
 import { kante } from "../wissensgraph-integration/bestandsvertrag";
 import { baueBuehne, kopfFuer, neuesKo } from "../wissensgraph-integration/buehne";
 
 // Kein Runtimeimport und kein Getter von Testcontainers/Dockerode ist für diese Speicherfälle nötig.
-vi.mock("testcontainers", () => { throw new Error("NOPULL_INIT1STOP"); });
-vi.mock("dockerode", () => { throw new Error("NOPULL_INIT1STOP"); });
+vi.mock("testcontainers", () => {
+  throw new Error("NOPULL_INIT1STOP");
+});
+vi.mock("dockerode", () => {
+  throw new Error("NOPULL_INIT1STOP");
+});
 
 it("KO15: Auth-Purge bereinigt beide Richtungen; Trash/Restore erhält sie", async () => {
   const b = await baueBuehne();
@@ -218,24 +226,52 @@ it("KO15: Restore vor dem Purge-CAS erhält Kanten und Beitragbindungen", async 
 
 it("KO15: Dev-Journal-Replay erhält das unabhängige Paar und entfernt Endpunkt samt Bindungen", async () => {
   const zeilen: JournalEntry[] = [];
-  const services = assembleServices(journaledRepos(inMemoryRepos(), (entry) => zeilen.push(JSON.parse(JSON.stringify(entry)) as JournalEntry)));
+  const services = assembleServices(
+    journaledRepos(inMemoryRepos(), (entry) =>
+      zeilen.push(JSON.parse(JSON.stringify(entry)) as JournalEntry),
+    ),
+  );
   const app = buildApp(services);
   try {
     const ids: string[] = [];
     for (const title of ["Weg", "Nachbar", "Unabhängig A", "Unabhängig B"]) {
-      ids.push((await services.ko.create({ title, statement: title, type: "best_practice", category: "KO15", author: "autor", confidentiality: "intern" })).id);
+      ids.push(
+        (
+          await services.ko.create({
+            title,
+            statement: title,
+            type: "best_practice",
+            category: "KO15",
+            author: "autor",
+            confidentiality: "intern",
+          })
+        ).id,
+      );
     }
-    await services.kanten.setzeMitBindung(kante({ id: "weg-kante", quelleId: ids[0]!, zielId: ids[1]! }), "weg-beitrag");
-    await services.kanten.setzeMitBindung(kante({ id: "bleibt-kante", quelleId: ids[2]!, zielId: ids[3]! }), "bleibt-beitrag");
+    await services.kanten.setzeMitBindung(
+      kante({ id: "weg-kante", quelleId: ids[0]!, zielId: ids[1]! }),
+      "weg-beitrag",
+    );
+    await services.kanten.setzeMitBindung(
+      kante({ id: "bleibt-kante", quelleId: ids[2]!, zielId: ids[3]! }),
+      "bleibt-beitrag",
+    );
     await services.ko.delete(ids[0]!, "admin", { hard: true });
     expect(zeilen.some((e) => e.repo === "kantenRepo" && e.method === "entferneFuerKo")).toBe(true);
     const neu = inMemoryRepos();
-    await replayJournal(neu, zeilen.map((entry, i) => ({ entry, lineNumber: i + 1 })));
+    await replayJournal(
+      neu,
+      zeilen.map((entry, i) => ({ entry, lineNumber: i + 1 })),
+    );
     expect(await neu.koRepo.findById(ids[0]!)).toBeUndefined();
     expect(await neu.kantenRepo.fuerKo(ids[0]!)).toEqual([]);
     expect(await neu.kantenRepo.holeNachBeitrag("weg-beitrag")).toBeUndefined();
-    expect(await neu.kantenRepo.holeNachBeitrag("bleibt-beitrag")).toEqual(await services.kanten.holeNachBeitrag("bleibt-beitrag"));
-  } finally { await app.close(); }
+    expect(await neu.kantenRepo.holeNachBeitrag("bleibt-beitrag")).toEqual(
+      await services.kanten.holeNachBeitrag("bleibt-beitrag"),
+    );
+  } finally {
+    await app.close();
+  }
 });
 
 it("KO15: Speicher-Fallback meldet Auditfehler ohne eine Transaktionszusage zu erfinden", async () => {
@@ -248,7 +284,9 @@ it("KO15: Speicher-Fallback meldet Auditfehler ohne eine Transaktionszusage zu e
       if (input.action === "ko.purged") throw new Error("KO15 Speicher-Auditfehler");
       return echt(input, tx);
     });
-    await expect(w.services.ko.purgeTrashed(w.b.id, "admin")).rejects.toThrow("KO15 Speicher-Auditfehler");
+    await expect(w.services.ko.purgeTrashed(w.b.id, "admin")).rejects.toThrow(
+      "KO15 Speicher-Auditfehler",
+    );
     // Der bisherige Purge ohne withTx bleibt sequentiell: Cleanup ist vollzogen, KO nicht gelöscht.
     expect(await w.repos.koRepo.findById(w.b.id)).toEqual(vorher);
     expect(await w.services.kanten.holeNachBeitrag("beitrag")).toBeUndefined();
@@ -256,5 +294,8 @@ it("KO15: Speicher-Fallback meldet Auditfehler ohne eine Transaktionszusage zu e
     ausfall.mockRestore();
     await w.services.ko.purgeTrashed(w.b.id, "admin");
     expect(await w.repos.koRepo.findById(w.b.id)).toBeUndefined();
-  } finally { vi.restoreAllMocks(); await w.app.close(); }
+  } finally {
+    vi.restoreAllMocks();
+    await w.app.close();
+  }
 });

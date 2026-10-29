@@ -44,8 +44,8 @@ import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
-import { PgAuditRepo } from "../../services/audit";
 import { migrate } from "../../services/app/src/db";
+import { PgAuditRepo } from "../../services/audit";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
   KANTEN_SCHEMA,
@@ -524,7 +524,9 @@ describe("KO15 · endgültige Löschung und kuratierte Beziehungen (echtes Postg
     const w = await purgeWelt();
     const neu = new Pool({ connectionString: url as string, max: 1 });
     const vorher = await new PgKoRepo(neu).findById(w.b.id);
-    const kantenVorher = await new PgKantenRepo(neu).fuerKo(w.b.id);
+    const kantenVorher = [...(await new PgKantenRepo(neu).fuerKo(w.b.id))].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
     const belegen = w.services.audit.record.bind(w.services.audit);
     const fehler = vi.spyOn(w.services.audit, "record").mockImplementation(async (input, tx) => {
       if (input.action === "ko.purged") throw new Error("KO15 Auditfehler");
@@ -534,7 +536,9 @@ describe("KO15 · endgültige Löschung und kuratierte Beziehungen (echtes Postg
       await expect(w.services.ko.purgeTrashed(w.b.id, "admin")).rejects.toThrow("KO15 Auditfehler");
       const beobachter = new PgKantenRepo(neu);
       expect(await new PgKoRepo(neu).findById(w.b.id)).toEqual(vorher);
-      expect(await beobachter.fuerKo(w.b.id)).toEqual(kantenVorher);
+      expect(
+        [...(await beobachter.fuerKo(w.b.id))].sort((a, b) => a.id.localeCompare(b.id)),
+      ).toEqual(kantenVorher);
       for (const key of ["rein", "zweiter"]) {
         expect((await beobachter.holeNachBeitrag(`ko15-${key}-${w.b.id}`))?.id).toBe(w.rein.id);
       }
@@ -557,7 +561,10 @@ describe("KO15 · endgültige Löschung und kuratierte Beziehungen (echtes Postg
 
 describe("KO15 · Restore gewinnt gegen Purge-CAS (echtes Postgres)", () => {
   it("P12: verlorener Purge-CAS rollt Kanten und Bindungen zurück; neue Verbindung sieht Restore", async (ctx) => {
-    if (nichtVerfuegbar()) { ctx.skip(); return; }
+    if (nichtVerfuegbar()) {
+      ctx.skip();
+      return;
+    }
     await frischerBestand();
     const p = new Pool({ connectionString: url as string, max: 1 });
     const neu = new Pool({ connectionString: url as string, max: 1 });
@@ -565,16 +572,34 @@ describe("KO15 · Restore gewinnt gegen Purge-CAS (echtes Postgres)", () => {
     const app = buildApp(services);
     let los: () => void = () => undefined;
     let angekommen: () => void = () => undefined;
-    const tor = new Promise<void>((resolve) => { los = resolve; });
-    const halt = new Promise<void>((resolve) => { angekommen = resolve; });
+    const tor = new Promise<void>((resolve) => {
+      los = resolve;
+    });
+    const halt = new Promise<void>((resolve) => {
+      angekommen = resolve;
+    });
     let laufend: Promise<void> | undefined;
     try {
-      const input = { statement: "Fiktiver KO15-Beitrag", type: "best_practice" as const, category: "KO15", author: "autor", confidentiality: "intern" as const };
+      const input = {
+        statement: "Fiktiver KO15-Beitrag",
+        type: "best_practice" as const,
+        category: "KO15",
+        author: "autor",
+        confidentiality: "intern" as const,
+      };
       const a = await services.ko.create({ ...input, title: "CAS A" });
       const b = await services.ko.create({ ...input, title: "CAS B" });
-      const gesetzt = (await services.kanten.setzeMitBindung(kante({ quelleId: a.id, zielId: b.id, richtung: "gerichtet" }), "cas-bindung")).kante;
+      const gesetzt = (
+        await services.kanten.setzeMitBindung(
+          kante({ quelleId: a.id, zielId: b.id, richtung: "gerichtet" }),
+          "cas-bindung",
+        )
+      ).kante;
       await services.ko.delete(b.id, "admin");
-      services.ko.setPurgeCleanup(async () => { angekommen(); await tor; });
+      services.ko.setPurgeCleanup(async () => {
+        angekommen();
+        await tor;
+      });
       laufend = services.ko.purgeTrashed(b.id, "admin");
       await halt;
       await services.ko.restore(b.id, "admin");
@@ -584,9 +609,16 @@ describe("KO15 · Restore gewinnt gegen Purge-CAS (echtes Postgres)", () => {
       expect(wiederhergestellt?.deletedAt).toBeNull();
       expect(await new PgKoRepo(neu).findById(b.id)).toEqual(wiederhergestellt);
       expect(await new PgKantenRepo(neu).holeNachBeitrag("cas-bindung")).toEqual(gesetzt);
-      const bindungen = await neu.query("SELECT kante_id FROM ko_kanten_beitrag WHERE beitrag_schluessel=$1", ["cas-bindung"]);
+      const bindungen = await neu.query(
+        "SELECT kante_id FROM ko_kanten_beitrag WHERE beitrag_schluessel=$1",
+        ["cas-bindung"],
+      );
       expect(bindungen.rows).toEqual([{ kante_id: gesetzt.id }]);
-      expect((await new PgAuditRepo(neu).all()).filter((e) => e.action === "ko.purged" && e.target === b.id)).toEqual([]);
+      expect(
+        (await new PgAuditRepo(neu).all()).filter(
+          (e) => e.action === "ko.purged" && e.target === b.id,
+        ),
+      ).toEqual([]);
     } finally {
       los();
       await laufend?.catch(() => undefined);
