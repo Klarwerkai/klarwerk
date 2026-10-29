@@ -94,9 +94,16 @@ describe("F7 · freie Hashangaben ersetzen keine Fassungsfakten", () => {
 
     expect(vergleich.gesamt).toBe("unbekannt");
     expect(vergleich.unbekannte).toBe(3);
-    const inhaltsbefunde = vergleich.befunde.filter((b) => b.bausteinId === baustein.id &&
-      ["tabellenueberschriften", "abbildungen", "geltung"].includes(b.feld));
-    expect(inhaltsbefunde.map((b) => b.auswirkung)).toEqual(["unbekannt", "unbekannt", "unbekannt"]);
+    const inhaltsbefunde = vergleich.befunde.filter(
+      (b) =>
+        b.bausteinId === baustein.id &&
+        ["tabellenueberschriften", "abbildungen", "geltung"].includes(b.feld),
+    );
+    expect(inhaltsbefunde.map((b) => b.auswirkung)).toEqual([
+      "unbekannt",
+      "unbekannt",
+      "unbekannt",
+    ]);
     expect(inhaltsbefunde.every((b) => b.hinweis.includes("fachlich zu klären"))).toBe(true);
   });
 
