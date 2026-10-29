@@ -1381,7 +1381,10 @@ export class GesamtanweisungDienst {
       new Set(reihenfolge).size !== reihenfolge.length ||
       reihenfolge.some((id) => !ids.has(id))
     ) {
-      throw anweisungFehler("INVALID", "Die Reihenfolge muss jeden sichtbaren Baustein genau einmal nennen.");
+      throw anweisungFehler(
+        "INVALID",
+        "Die Reihenfolge muss jeden sichtbaren Baustein genau einmal nennen.",
+      );
     }
     // Verborgene Bindungen behalten ihren Platz. Nur die sichtbaren Plätze werden neu belegt.
     let index = 0;
