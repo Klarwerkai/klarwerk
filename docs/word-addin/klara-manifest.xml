@@ -15,7 +15,7 @@
        Id+Version; blieb die Version bei 1.0.0.0, griff der ReadWriteDocument-Rechtewechsel im
        Sideload NICHT (alter Cache mit ReadDocument) → "insufficient permissions" beim Einfuegen.
        Ein Versions-Bump erzwingt beim Re-Sideload ein frisches Manifest mit ReadWriteDocument. -->
-  <Version>1.0.0.1</Version>
+  <Version>1.0.0.2</Version>
   <ProviderName>KLARWERK</ProviderName>
   <DefaultLocale>de-DE</DefaultLocale>
   <DisplayName DefaultValue="Klara" />
@@ -51,7 +51,7 @@
          Fragment vor dem Pfadvergleich ab, `/word-addin/*` trifft also weiterhin zu.
          WER DIE VERSION HIER HEBT, HEBT SIE AUCH OBEN. Beide Werte werden gemeinsam geprueft
          (`tests/app/word-addin-taskpane-cache.test.ts`, `tests/app/word-addin.test.ts`). -->
-    <SourceLocation DefaultValue="https://app.klarwerk.ai/word-addin/taskpane.html?v=1.0.0.1" />
+    <SourceLocation DefaultValue="https://app.klarwerk.ai/word-addin/taskpane.html?v=1.0.0.2" />
   </DefaultSettings>
   <!-- WP-KLARA-1b (K3, Least-Privilege): bis KLARA-2 las das Add-in nur die Selektion — ReadDocument.
        WP-KLARA-ASK (Teil 2, Pedis Entscheid 22.07.): "Antwort in Word einfuegen" ist eine bewusste

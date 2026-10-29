@@ -587,8 +587,8 @@
     // JOB 3019 (KA5): `selection` ist der SECHSTE und letzte Parameter — aus demselben Grund wie
     // `bindungsKopf`: er kommt herein, er wird nicht hier drinnen geholt. Er steht ANS ENDE, damit
     // jeder bestehende Aufruf mit fuenf Argumenten unveraendert denselben Koerper absetzt. R-0639: `questionSource` — Markierung ("selection") oder getippt ("manual").
-    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf, selection, questionSource) {
-      var controller = new AbortController();
+    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf, selection, questionSource, abbruch) {
+      var controller = abbruch || new AbortController();
       var timedOut = false;
       var timer = setTimeout(function () {
         timedOut = true;
@@ -704,6 +704,7 @@
               var fragmentFeld = abgeschnitten ? { abgeschnitten: true } : {};
               return Object.assign(fragmentFeld, {
                 kind: "answered",
+                ...(typeof body.answerId === "string" ? { answerId: body.answerId } : {}),
                 // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text; R-0310: NUR belegte Absaetze.
                 answer: absaetze ? absaetze.map(function (a) { return a.text; }).join("\n\n") : stripAskAnswerMarkdown(answer),
                 absaetze: absaetze,
@@ -723,7 +724,7 @@
             // mega77 A: die Wissensluecke durchsucht den Koerper NICHT nach einer Bestandszahl; sie traegt nur die betrachtergefilterte Liste (JOB 3092 S6 / JOB 1591).
             // R-0310/R-0325: nichts belegt UND keine tragende Quelle → die Luecke nennt die unbekannte Zuordnung.
             var unbekannt = !!absaetze && absaetze.length === 0 && !(cited || []).some(function (x) { return sources.indexOf(x) !== -1; });
-            return unbekannt ? { kind: "gap", ungeprueft: ungeprueft, zuordnungUnbekannt: true } : { kind: "gap", ungeprueft: ungeprueft };
+            return Object.assign(unbekannt ? { kind: "gap", ungeprueft: ungeprueft, zuordnungUnbekannt: true } : { kind: "gap", ungeprueft: ungeprueft }, typeof body.answerId === "string" ? { answerId: body.answerId } : {});
           });
         })
         .catch(function (err) {
@@ -2883,6 +2884,7 @@
 
     function setLang(next) {
       lang = next;
+      if (window.kwWordUi) window.kwWordUi.setLanguage(next);
       ["de", "en", "nl"].forEach(function (code) {
         document.getElementById("lang-" + code).className =
           code === lang ? "einst-zeile active" : "einst-zeile";
@@ -3814,6 +3816,7 @@
         .then(function (user) {
           var name = sessionName(user);
           signedIn = name !== null;
+          if (window.kwWordUi) window.kwWordUi.setAccount(signedIn ? user : null);
           // JOB 3093 Runde 3: der Bestandsstand („Haben wir das schon?") haengt an DIESER Sitzung —
           // eine andere oder keine Identitaet verwirft ihn (bestandSitzungMelden).
           if (typeof bestandSitzungMelden === "function") { bestandSitzungMelden(signedIn ? user : null); }
@@ -3843,6 +3846,7 @@
           box.className = "status warn";
           box.textContent = t("sessionError");
           renderKontoZeile(null);
+          if (window.kwWordUi) window.kwWordUi.setAccount(null);
           // Nicht erreichbar (§9): EIN Satz und GENAU „Erneut versuchen" — kein Anmeldeknopf
           // daneben, denn ob eine Anmeldung fehlt, ist ohne Serverantwort nicht festgestellt.
           renderSitzungsflaeche("erneut");
@@ -5309,11 +5313,28 @@
     // Ein- und Ausgang nur hier (askKlara nach performAsk); beim Eintritt wird #ask-status verborgen.
     // Fail-open: der Ausgang gibt das Feld IMMER frei, auch nach Frist, Fehler oder ohne Anmeldung.
     var askLaeuft = false;
+    var askMinimalEpoch = 0, askMinimalController = null, askMinimalTurn = null, askMinimalAuswahl = null;
+    function askMinimalAbbrechen() {
+      if (!askLaeuft) return;
+      askMinimalEpoch++;
+      if (askMinimalAuswahl) {
+        askMinimalAuswahl.offen = false;
+        clearTimeout(askMinimalAuswahl.timer);
+        askMinimalAuswahl = null;
+      }
+      if (askMinimalController) askMinimalController.abort();
+      askWartezustand(false);
+      if (window.kwWordUi) {
+        window.kwWordUi.answer(askMinimalTurn, { stopped: true });
+        window.kwWordUi.notify(window.kwWordUi.t("stopped"));
+      }
+    }
 
     // JOB 3056 K1 (§9): Laden zeigt der Sendeknopf (drehender Kreis, Klasse `laeuft`; askBusy als
     // zugaenglicher Name) — keine Ladekarte, kein Satz im Sichtfeld.
     function askWartezustand(an) {
       askLaeuft = an === true;
+      if (window.kwWordUi) window.kwWordUi.activity("frage", window.kwWordUi.t("working"), askLaeuft ? askMinimalAbbrechen : null);
       hideAskStatus();
       document.getElementById("ask-btn").setAttribute("aria-label", askLaeuft ? t("askBusy") : t("askCta"));
       updateAskState();
@@ -5478,6 +5499,7 @@
     }
 
     function kwKopfZeichnen() {
+      if (window.kwWordUi) window.kwWordUi.paint();
       var antwort = kwAnsicht === "fragen" && kwAntwortSichtbar();
       var zurueck = document.getElementById("kw-zurueck");
       var titel = document.getElementById("kw-titel");
@@ -5520,6 +5542,7 @@
       document.getElementById("tab-ask").className = kwBereich === "fragen" ? "active" : "";
       document.getElementById("tab-capture").className = kwBereich === "erfassen" ? "active" : "";
       kwFlaecheZeichnen();
+      if (window.kwWordUi) window.kwWordUi.legacy(name);
     }
 
     function kwZurueck() {
@@ -6442,7 +6465,11 @@
       // Eingabefeld UND Knopf ab dem Klick (askWartezustand, updateAskState).
       askWartezustand(true);
       var klick = Date.now();
+      var minimalEpoch = ++askMinimalEpoch;
+      askMinimalController = new AbortController();
+      var minimalController = askMinimalController;
       var lauf = { offen: true, timer: null };
+      askMinimalAuswahl = lauf;
       var laufBeenden = function () {
         lauf.offen = false;
         if (lauf.timer !== null) { clearTimeout(lauf.timer); lauf.timer = null; }
@@ -6459,7 +6486,7 @@
         auswahlAbgelaufen();
       }, WORD_ADDIN_ASK_TIMEOUT_MS);
       var absenden = function (selectionText) {
-        if (!lauf.offen) { return; } // verspaetet oder doppelt: dieser Lauf ist vorbei
+        if (!lauf.offen || minimalEpoch !== askMinimalEpoch) { return; } // verspätet, gestoppt oder doppelt
         laufBeenden();
         // Die Restzeit der Gesamtfrist — was Word verbraucht hat, fehlt dem Server (Runde 6).
         // Ist sie aufgebraucht (Rueckruf exakt bei oder nach 15 000 ms), geht KEIN Ask mehr ab:
@@ -6476,6 +6503,8 @@
           return;
         }
         currentAskQuestion = prep.question;
+        askMinimalTurn = window.kwWordUi ? window.kwWordUi.turn(prep.question) : null;
+        var minimalTurn = askMinimalTurn;
         performAsk(
           prep.question,
           askLocale(lang),
@@ -6487,8 +6516,10 @@
           // JOB 3019 (KA5): die Markierung aus DERSELBEN Vorbereitung. Kein zweites
           // `readAskSelection`, kein zweiter Zustand — sonst koennte die Zeile ueber dem Feld eine
           // andere Markierung meinen als die, die wirklich abgeht.
-          prep.selection, prep.from === "selection" ? "selection" : "manual" // R-0639: Herkunft der Frage
+          prep.selection, prep.from === "selection" ? "selection" : "manual", minimalController // R-0639: Herkunft; UI-MIN: echter Abbruch
         ).then(function (outcome) {
+          if (minimalEpoch !== askMinimalEpoch) return;
+          if (window.kwWordUi) window.kwWordUi.answer(minimalTurn, outcome);
           currentAskOutcome = outcome;
           // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
           // Anmeldung: Karte weg, Sperre auf (Knopf sofern angemeldet), dann erst das Ergebnis.
@@ -8514,7 +8545,7 @@
     /** Die Ruhe ist im Bild (weder Antwort noch Luecke) — dort wohnt dieser Weg. */
     function m5RuheSichtbar() {
       var ruhe = document.getElementById("ask-ruhe");
-      return Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
+      return (Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1) || Boolean(window.kwWordUi && window.kwWordUi.isToolPage());
     }
 
     /** Der Weg steht nur mit Sitzung, offenem Word-Dokument und sichtbarer Ruhe. */
@@ -10231,7 +10262,7 @@
     /** Die Ruhe ist im Bild (weder Antwort noch Luecke) — dort wohnt dieser Weg. */
     function bestandRuheSichtbar() {
       var ruhe = document.getElementById("ask-ruhe");
-      return Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
+      return (Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1) || Boolean(window.kwWordUi && window.kwWordUi.isToolPage());
     }
 
     /** Der Knopf steht nur mit Sitzung, offenem Word-Dokument und sichtbarer Ruhe. */
@@ -11095,7 +11126,7 @@
     function ka7SichtbarkeitZeichnen() {
       var block = ka7BlockElement();
       var ruhe = document.getElementById("ask-ruhe");
-      var ruheSichtbar = !!ruhe && ruhe.className.indexOf("hidden") === -1;
+      var ruheSichtbar = (!!ruhe && ruhe.className.indexOf("hidden") === -1) || Boolean(window.kwWordUi && window.kwWordUi.isToolPage());
       block.className = signedIn && officeUsable() && ruheSichtbar ? "" : "hidden";
     }
 

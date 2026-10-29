@@ -8,19 +8,12 @@
          taskpane.html — der alte Word-Rückgabevertrag bleibt unberührt. Logik in begleitung.js,
          Office-Kontext im Word-Adapter office-host-word.js. -->
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-    <style>
-      body { font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px; margin: 12px; color: #1d1d1f; }
-      header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-      header img { width: 32px; height: 32px; border-radius: 50%; }
-      section { border: 1px solid #e3e3e6; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
-      .klein { color: #6e6e73; font-size: 12px; }
-      textarea { width: 100%; box-sizing: border-box; min-height: 60px; }
-      button { margin-top: 6px; }
-      #kw-antwort { white-space: pre-wrap; }
-    </style>
+    <meta name="kw-loaded-version" content="__KW_FASSUNG__" />
+    <link rel="stylesheet" href="taskpane.css?v=__KW_FASSUNG__" />
+    <link rel="stylesheet" href="minimal.css?v=__KW_FASSUNG__" />
   </head>
   <body>
-    <header>
+    <header id="kw-begleitung-kopf">
       <img src="/klara/klara-avatar-v1.png" alt="" />
       <div>
         <strong>Deine Assistenz</strong>
@@ -32,7 +25,7 @@
       <button id="kw-anmelden-knopf" type="button">Anmelden</button>
     </div>
 
-    <section aria-label="Arbeitskontext">
+    <section id="kw-begleitung-kontext" aria-label="Arbeitskontext">
       <div id="kw-verbindung">Keine aktive Verbindung</div>
       <div id="kw-dokument"><strong>Kein Dokument gebunden</strong></div>
       <div id="kw-dokumentstand" class="klein">—</div>
@@ -44,7 +37,7 @@
       <button id="kw-widerrufen-knopf" type="button">Zustimmung widerrufen</button>
     </section>
 
-    <section aria-label="Begleitfigur">
+    <section id="kw-begleitung-begleiter" aria-label="Begleitfigur">
       <button id="kw-begleiter-knopf" type="button" role="switch" aria-checked="false">
         Mit Begleitfigur verbinden
       </button>
@@ -56,7 +49,7 @@
       <div id="kw-begleiter" class="klein" role="status">Begleitfigur nicht verbunden.</div>
     </section>
 
-    <section aria-label="Frage">
+    <section id="kw-begleitung-eingabe" aria-label="Frage">
       <label for="kw-frage">Frage an Klara</label>
       <textarea id="kw-frage"></textarea>
       <label><input id="kw-markierung" type="checkbox" /> Markierung mitsenden</label>
@@ -70,7 +63,7 @@
       <div><button id="kw-frage-knopf" type="button">Fragen</button></div>
     </section>
 
-    <section aria-label="Antwort">
+    <section id="kw-begleitung-antwort" aria-label="Antwort">
       <div id="kw-hinweis" class="klein" role="status"></div>
       <div id="kw-antwort"></div>
       <div id="kw-belege" class="klein"></div>
@@ -84,7 +77,9 @@
     </section>
 
     <!-- Ohne Cachekennung: /word-addin/* wird ohnehin mit no-cache ausgeliefert (web-static.ts). -->
-    <script src="office-host-word.js"></script>
-    <script src="begleitung.js"></script>
+    <script src="minimal-funktionen.js?v=__KW_FASSUNG__"></script>
+    <script src="minimal.js?v=__KW_FASSUNG__"></script>
+    <script src="office-host-word.js?v=__KW_FASSUNG__"></script>
+    <script src="begleitung.js?v=__KW_FASSUNG__"></script>
   </body>
 </html>

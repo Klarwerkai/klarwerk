@@ -1045,7 +1045,7 @@
     function wvZeichnen() {
       var block = wvBlockElement();
       var ruhe = document.getElementById("ask-ruhe");
-      var ruheSichtbar = Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
+      var ruheSichtbar = (Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1) || Boolean(window.kwWordUi && window.kwWordUi.isToolPage());
       block.className = signedIn && officeUsable() && ruheSichtbar ? "" : "hidden";
       var knopf = document.getElementById("wv-btn");
       var stop = document.getElementById("wv-abbrechen");

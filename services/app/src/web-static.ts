@@ -61,7 +61,9 @@ export const KLARA_FASSUNG_PLATZHALTER = "__KW_FASSUNG__";
  * Sie ist bewusst NICHT der Bau-Stempel `__KLARA_STAND__`: der beantwortet „wann wurde gebaut",
  * diese Zahl „ist meine Seite noch die, die ausgeliefert wird". Zwei Fragen, zwei Mechaniken.
  */
-export const KLARA_TASKPANE_FASSUNG = "1.0.0.1";
+export const KLARA_TASKPANE_FASSUNG = "1.0.0.2";
+export const KLARA_BEGLEITUNG_PFAD = "/word-addin/begleitung.html";
+export const KLARA_BEGLEITUNG_FASSUNG = "1.0.0.1";
 
 /** Ersetzt den Platzhalter im Körper. Rührt `__KLARA_STAND__` ausdrücklich nicht an. */
 export function stempleFassung(html: string, fassung: string): string {
@@ -86,25 +88,31 @@ export async function registerWebStatic(
   // sichtbar ist, dass sie den Vorrang hat (find-my-way zieht die exakte Route ohnehin dem
   // Wildcard vor). Fastify legt die HEAD-Route selbst dazu (`exposeHeadRoutes`); sie durchläuft
   // denselben Handler und liefert damit denselben Kopf ohne Körper.
-  app.get(KLARA_TASKPANE_PFAD, async (_request, reply) => {
+  for (const [pfad, datei, version] of [
+    [KLARA_TASKPANE_PFAD, "taskpane.html", fassung],
+    [KLARA_BEGLEITUNG_PFAD, "begleitung.html", KLARA_BEGLEITUNG_FASSUNG],
+  ] as const) {
+  app.get(pfad, async (_request, reply) => {
     let roh: string;
     try {
-      roh = await readFile(join(dist, "word-addin", "taskpane.html"), "utf8");
+      roh = await readFile(join(dist, "word-addin", datei), "utf8");
     } catch {
       // LAUT scheitern, nie still als SPA-HTML: ein fehlendes Add-in im Build ist ein Defekt,
       // kein Navigationspfad (dieselbe Entscheidung wie bei den Assets unten).
       reply.code(404).type("text/plain").send("Not Found");
       return;
     }
-    const koerper = stempleFassung(roh, fassung);
+    const koerper = stempleFassung(roh, version);
     reply
       .header("Cache-Control", "no-cache")
-      .header(KLARA_FASSUNG_KOPF, fassung)
+      .header(KLARA_FASSUNG_KOPF, version)
       // Der Validator über den GESENDETEN Körper — s. Kopfkommentar.
       .header("ETag", `"${createHash("sha256").update(koerper).digest("hex").slice(0, 32)}"`)
       .type("text/html; charset=utf-8")
       .send(koerper);
   });
+
+  }
 
   await app.register(fastifyStatic, {
     root: dist,

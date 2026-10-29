@@ -94,6 +94,8 @@
     let antwort = null;
     let bestaetigung = null;
     let wartet = null;
+    let frageController = null;
+    let frageEpoch = 0;
     let bindungsGen = 0;
     let auswahlGen = 0;
     /** Läuft gerade ein Sitzungsstart oder Rebind der jetzigen Bindungsgeneration? */
@@ -162,7 +164,7 @@
       };
     }
 
-    function api(pfad, methode, koerper, mitSitzung, extraKopf) {
+    function api(pfad, methode, koerper, mitSitzung, extraKopf, signal) {
       const ohneRumpf = koerper === null || koerper === undefined;
       // KLARA-OFFICE-02 (Nacharbeit 6): ohne Rumpf auch kein Rumpftyp. Ein `DELETE` mit
       // `content-type: application/json` und leerem Rumpf weist der Server als leeren JSON-Rumpf
@@ -177,6 +179,7 @@
         credentials: "include",
         headers: koepfe,
         body: ohneRumpf ? undefined : JSON.stringify(koerper),
+        ...(signal ? { signal } : {}),
       }).then((res) =>
         res
           .json()
@@ -431,6 +434,7 @@
     function pruefeKonto() {
       return api("/api/auth/me", "GET", null, false).then((res) => {
         const id = res.status === 200 ? (res.json?.id ?? res.json?.user?.id ?? null) : null;
+        umgebung.onAccount?.(res.status === 200 ? res.json : null);
         if (id === null) {
           zeige("konto", "Nicht angemeldet");
           sichtbar("anmelden", true);
@@ -516,12 +520,24 @@
       }, fehler); // Netzabbruch: Sperre lösen, getrennt zeigen; Kontoabgleich baut neu auf
     }
 
+    function frageAbbrechen() {
+      frageEpoch++;
+      frageController?.abort();
+      umgebung.onBusy?.(false);
+      umgebung.onStopped?.();
+    }
+
     function frage(text, optionen) {
       const frageText = String(text || "").trim();
       if (!sitzung || frageText.length === 0) {
         zeige("hinweis", sitzung ? "Bitte eine Frage eingeben." : "Keine aktive Verbindung.");
         return Promise.resolve(null);
       }
+      frageController?.abort();
+      frageController = new AbortController();
+      const controller = frageController;
+      const epoch = ++frageEpoch;
+      let turn = null;
       verwirfAntwort("");
       const bezug = aktuellerBezug();
       const gefragt = bezug.sitzung;
@@ -531,16 +547,19 @@
         zeige("hinweis", "Markierung nicht gebunden — bitte kurz warten und neu fragen.");
         return Promise.resolve(null);
       }
+      turn = umgebung.onTurn?.(frageText);
+      umgebung.onBusy?.(true);
       zeige("hinweis", "Klara sucht …");
       const markierung = mitMarkierung ? adapter.auswahlText() : Promise.resolve("");
       return markierung
         .then((auswahl) => {
           // VOR JEDEM SENDEN, unabhängig von der Marke: Konto, Sitzung, Bindungs- und
           // Auswahlgeneration sind noch die der Frage. Mit Markierung zusätzlich die Marke selbst.
-          if (!kontextGiltNoch(bezug) || (mitMarkierung && !bezugGiltNoch(bezug))) {
+          if (epoch !== frageEpoch || !kontextGiltNoch(bezug) || (mitMarkierung && !bezugGiltNoch(bezug))) {
             return null; // nichts gesendet — die Auswahl oder Bindung hat sich geändert
           }
-          const koerper = { question: frageText, locale: "de", questionSource: "manual" };
+          const sprache = umgebung.locale?.();
+          const koerper = { question: frageText, locale: ["de", "en", "nl"].includes(sprache) ? sprache : "de", questionSource: "manual" };
           if (auswahl) {
             koerper.selection = auswahl;
             // Ohne ausdrückliche Wahl gilt die Markierung als vertraulich (fail-closed).
@@ -553,9 +572,11 @@
             koerper,
             false,
             bindungsKopf(gefragt),
+            controller.signal,
           );
         })
         .then((res) => {
+          if (epoch !== frageEpoch) return null;
           if (res === null || !kontextGiltNoch(bezug)) {
             // Die Antwort kam nach einem Wechsel: sie gehört nicht zum jetzigen Kontext.
             zeige("hinweis", "Die Antwort kam nach einem Wechsel und wurde verworfen.");
@@ -569,6 +590,8 @@
             return null;
           }
           const ergebnis = res.json?.result ?? {};
+          umgebung.onAnswer?.(turn, { answer: ergebnis.answer, answerId: res.json?.answerId, sources: ergebnis.sources,
+            aiGenerated: ergebnis.aiGenerated?.aiGenerated === true });
           const textAntwort =
             ergebnis.answered && typeof ergebnis.answer === "string" ? ergebnis.answer : "";
           if (!textAntwort) {
@@ -585,8 +608,10 @@
           return antwort;
         })
         .catch(() => {
-          zeige("hinweis", "Klara ist gerade nicht erreichbar.");
+          if (epoch === frageEpoch) zeige("hinweis", "Klara ist gerade nicht erreichbar.");
           return null;
+        }).finally(() => {
+          if (epoch === frageEpoch) umgebung.onBusy?.(false);
         });
     }
 
@@ -1127,6 +1152,8 @@
       pruefeKonto,
       pruefeDokument,
       frage,
+      frageAbbrechen,
+      persoenlicheAnfrage: (pfad, methode, koerper) => api(pfad, methode, koerper, false),
       verwendenVorbereiten,
       verwendenBestaetigen,
       zustimmen,
@@ -1148,6 +1175,8 @@
   function imBrowser() {
     const doc = wurzel.document;
     const Office = wurzel.Office;
+    let ui = null;
+    let letzteFrage = null;
     if (!doc || !Office || typeof Office.onReady !== "function") {
       return;
     }
@@ -1157,6 +1186,7 @@
       if (el) {
         el.textContent = text;
       }
+      ui?.paint();
     };
     const sichtbar = (name, an) => {
       const el = element(name);
@@ -1181,12 +1211,38 @@
         neueId: (praefix) => `${praefix}-${wurzel.crypto.randomUUID()}`,
         zeige,
         sichtbar,
+        onAccount: (konto) => ui?.setAccount(konto),
+        onTurn: (text) => { letzteFrage = ui?.turn(text); return letzteFrage; },
+        onAnswer: (turn, ergebnis) => ui?.answer(turn, ergebnis),
+        onBusy: (an) => ui?.activity("frage", ui.t("working"), an ? () => seite.frageAbbrechen() : null),
+        onStopped: () => { ui?.answer(letzteFrage, { stopped: true }); ui?.notify(ui.t("stopped")); },
+        locale: () => ui?.locale || "de",
         // Eine Frage der Begleitfigur folgt denselben Wahlen wie eine hier getippte.
         frageOptionen: () => ({
           markierungMitsenden: element("markierung")?.checked === true,
           vertraulichkeit: element("vertraulichkeit")?.value,
         }),
       });
+      ui = wurzel.KlarwerkWordMinimal?.create({
+        header: "kw-begleitung-kopf", home: "kw-begleitung-antwort",
+        homeExtras: ["kw-anmelden"], composer: "kw-begleitung-eingabe", input: element("frage"),
+        contextDetails: ["kw-begleitung-kontext"],
+        settings: ["kw-begleitung-begleiter"], help: [],
+        tools: [],
+        sourceHref: (id) => "/wissen/" + encodeURIComponent(id),
+        request: (pfad, methode, koerper) => methode === "HEAD"
+          ? wurzel.fetch(pfad, { method: "HEAD", credentials: "include" }).then((r) => ({ status: r.status, version: r.headers.get("x-kw-available-version") }))
+          : seite.persoenlicheAnfrage(pfad, methode, koerper),
+        contextText: () => ["Word", element("verbindung")?.textContent].filter(Boolean).join(" · "),
+        paint: () => {},
+        reset: () => {},
+        onAccountChange: () => seite.frageAbbrechen(),
+        onPageHide: [() => seite.frageAbbrechen()],
+      });
+      for (const id of ["markierung", "vertraulichkeit"]) {
+        const label = element(id)?.closest("label");
+        if (label && ui) ui.room("context").append(label);
+      }
       const begleiterKnopf = element("begleiter-knopf");
       begleiterKnopf?.addEventListener("click", () => {
         const an = seite.begleiterLage() !== "aus";
