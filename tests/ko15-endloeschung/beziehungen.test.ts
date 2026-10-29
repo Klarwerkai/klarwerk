@@ -213,9 +213,13 @@ it("KO15: Restore vor dem Purge-CAS erhält Kanten und Beitragbindungen", async 
     const purge = w.services.ko.purgeTrashed(w.b.id, "admin");
     await halt;
     await w.services.ko.restore(w.b.id, "admin");
+    const wiederhergestellt = await w.repos.koRepo.findById(w.b.id);
+    expect(wiederhergestellt).toBeDefined();
+    expect(wiederhergestellt?.deletedAt).toBeUndefined();
     los();
     await expect(purge).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect((await w.repos.koRepo.findById(w.b.id))?.deletedAt).toBeNull();
+    expect(await w.repos.koRepo.findById(w.b.id)).toEqual(wiederhergestellt);
+    expect((await w.services.ko.get(w.b.id))?.id).toBe(w.b.id);
     expect(await w.services.kanten.holeNachBeitrag("beitrag")).toEqual(w.gesetzt);
     expect((await w.repos.auditRepo.all()).filter((e) => e.action === "ko.purged")).toEqual([]);
   } finally {

@@ -606,7 +606,8 @@ describe("KO15 · Restore gewinnt gegen Purge-CAS (echtes Postgres)", () => {
       const wiederhergestellt = await new PgKoRepo(neu).findById(b.id);
       los();
       await expect(laufend).rejects.toMatchObject({ code: "NOT_FOUND" });
-      expect(wiederhergestellt?.deletedAt).toBeNull();
+      expect(wiederhergestellt).toBeDefined();
+      expect(wiederhergestellt?.deletedAt).toBeUndefined();
       expect(await new PgKoRepo(neu).findById(b.id)).toEqual(wiederhergestellt);
       expect(await new PgKantenRepo(neu).holeNachBeitrag("cas-bindung")).toEqual(gesetzt);
       const bindungen = await neu.query(
