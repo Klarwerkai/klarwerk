@@ -92,26 +92,25 @@ export async function registerWebStatic(
     [KLARA_TASKPANE_PFAD, "taskpane.html", fassung],
     [KLARA_BEGLEITUNG_PFAD, "begleitung.html", KLARA_BEGLEITUNG_FASSUNG],
   ] as const) {
-  app.get(pfad, async (_request, reply) => {
-    let roh: string;
-    try {
-      roh = await readFile(join(dist, "word-addin", datei), "utf8");
-    } catch {
-      // LAUT scheitern, nie still als SPA-HTML: ein fehlendes Add-in im Build ist ein Defekt,
-      // kein Navigationspfad (dieselbe Entscheidung wie bei den Assets unten).
-      reply.code(404).type("text/plain").send("Not Found");
-      return;
-    }
-    const koerper = stempleFassung(roh, version);
-    reply
-      .header("Cache-Control", "no-cache")
-      .header(KLARA_FASSUNG_KOPF, version)
-      // Der Validator über den GESENDETEN Körper — s. Kopfkommentar.
-      .header("ETag", `"${createHash("sha256").update(koerper).digest("hex").slice(0, 32)}"`)
-      .type("text/html; charset=utf-8")
-      .send(koerper);
-  });
-
+    app.get(pfad, async (_request, reply) => {
+      let roh: string;
+      try {
+        roh = await readFile(join(dist, "word-addin", datei), "utf8");
+      } catch {
+        // LAUT scheitern, nie still als SPA-HTML: ein fehlendes Add-in im Build ist ein Defekt,
+        // kein Navigationspfad (dieselbe Entscheidung wie bei den Assets unten).
+        reply.code(404).type("text/plain").send("Not Found");
+        return;
+      }
+      const koerper = stempleFassung(roh, version);
+      reply
+        .header("Cache-Control", "no-cache")
+        .header(KLARA_FASSUNG_KOPF, version)
+        // Der Validator über den GESENDETEN Körper — s. Kopfkommentar.
+        .header("ETag", `"${createHash("sha256").update(koerper).digest("hex").slice(0, 32)}"`)
+        .type("text/html; charset=utf-8")
+        .send(koerper);
+    });
   }
 
   await app.register(fastifyStatic, {
@@ -207,4 +206,4 @@ export async function registerWebStatic(
 export const KLARA_OFFICE_TASKPANE_PFAD = "/office-addin/taskpane.html";
 
 /** Die ausgelieferte Fassung des Excel-/PowerPoint-Fensters — dieselbe Zahl wie `<Version>`. */
-export const KLARA_OFFICE_TASKPANE_FASSUNG = "1.0.0.0";
+export const KLARA_OFFICE_TASKPANE_FASSUNG = "1.0.0.1";

@@ -35,6 +35,7 @@
         ui.show(name);
         void guarded(async (stamp) => {
           const room = ui.room(name);
+          if (room.dataset.miniDraft === String(ui.generation)) return;
           room.replaceChildren(node("p", "mini-meta", t("loading")));
           if (!ui.account) { room.replaceChildren(node("p", "", t("login"))); return; }
           await factory(room, stamp);
@@ -44,6 +45,7 @@
     async function notes(room, stamp) {
       const data = await request(base + "/notizen");
       if (!stampGilt(stamp)) return;
+      delete room.dataset.miniDraft;
       room.replaceChildren();
       room.append(button("create", () => noteEditor(room, null)));
       empty(room, data.notizen);
@@ -60,6 +62,7 @@
       }
     }
     function noteEditor(room, note) {
+      room.dataset.miniDraft = String(ui.generation);
       room.replaceChildren();
       const title = field(room, "title", note?.titel || "");
       const content = field(room, "content", note?.inhalt || "", "textarea");
@@ -88,6 +91,7 @@
     async function tasks(room, stamp) {
       const data = await request(base + "/aufgaben");
       if (!stampGilt(stamp)) return;
+      delete room.dataset.miniDraft;
       room.replaceChildren(); empty(room, data.aufgaben);
       for (const task of data.aufgaben) {
         const item = card(room, task.titel, task.inhalt);
@@ -100,6 +104,7 @@
           if (stampGilt(current)) await tasks(room, current);
         }));
         item.append(button("change", () => {
+          room.dataset.miniDraft = String(ui.generation);
           room.replaceChildren();
           const title = field(room, "title", task.titel);
           const content = field(room, "content", task.inhalt, "textarea");
@@ -115,6 +120,7 @@
     async function reminders(room, stamp) {
       const data = await request(base + "/erinnerungen");
       if (!stampGilt(stamp)) return;
+      delete room.dataset.miniDraft;
       room.replaceChildren(node("p", "mini-meta", t("reminderInfo")));
       room.append(button("create", () => reminderEditor(room)));
       empty(room, data.erinnerungen);
@@ -136,6 +142,7 @@
       }
     }
     function reminderEditor(room) {
+      room.dataset.miniDraft = String(ui.generation);
       room.replaceChildren();
       const title = field(room, "title");
       const content = field(room, "content", "", "textarea");

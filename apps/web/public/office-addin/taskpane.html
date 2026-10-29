@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="kw-office-fassung" content="__KW_FASSUNG__" />
+  <meta name="kw-loaded-version" content="__KW_FASSUNG__" />
   <title>Klara für Excel und PowerPoint</title>
   <!-- aufnahme:20260922:excel-erster-weg (KO-04-01): EIN Aufgabenfenster für Excel und PowerPoint.
        Welcher Host es geöffnet hat, sagt Office selbst (`Office.onReady` → info.host); die beiden
@@ -12,6 +13,7 @@
        fremde Quelle ist office.js von Microsoft (CSP-Ausnahme in services/app/src/security-headers.ts). -->
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <link rel="stylesheet" href="taskpane.css?v=__KW_FASSUNG__" />
+  <link rel="stylesheet" href="../word-addin/minimal.css?v=__KW_FASSUNG__" />
 </head>
 <body>
   <header id="klara-figur" class="figur" data-host="" aria-live="polite">
@@ -129,5 +131,8 @@
   <script src="hostkern.js?v=__KW_FASSUNG__"></script>
   <script src="taskpane.js?v=__KW_FASSUNG__"></script>
   <script src="folien-herkunft.js?v=__KW_FASSUNG__"></script>
+  <script src="../word-addin/minimal-funktionen.js?v=__KW_FASSUNG__"></script>
+  <script src="../word-addin/minimal.js?v=__KW_FASSUNG__"></script>
+  <script src="minimal-office.js?v=__KW_FASSUNG__"></script>
 </body>
 </html>

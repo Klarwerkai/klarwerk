@@ -63,6 +63,19 @@
   };
 
   var anmeldeLauf = 0;
+  var frageController = null;
+  var minimalTurn = null;
+  function frageAbbrechen() {
+    z.frageLauf++;
+    if (frageController) frageController.abort();
+    z.beschaeftigt = false;
+    if (window.kwOfficeUi) {
+      window.kwOfficeUi.activity("frage", "", null);
+      window.kwOfficeUi.answer(minimalTurn, { stopped: true });
+      window.kwOfficeUi.notify(window.kwOfficeUi.t("stopped"));
+    }
+    kontrollen();
+  }
   var leseTimer = null;
 
   function neueKennung() {
@@ -98,8 +111,8 @@
   // ABRUF — same-origin, mit Frist; der Übergabeschlüssel (Office im Web) hängt an /api-Abrufen.
   // ----------------------------------------------------------------------------------------------
 
-  function abruf(pfad, init, fristMs) {
-    var controller = new AbortController();
+  function abruf(pfad, init, fristMs, abbruch) {
+    var controller = abbruch || new AbortController();
     var frist = setTimeout(function () {
       try { controller.abort(); } catch (e) { /* schon beendet */ }
     }, fristMs || ABRUF_FRIST_MS);
@@ -235,8 +248,10 @@
 
   function anmeldungPruefen() {
     return abruf("/api/auth/me", { method: "GET" })
-      .then(function (res) { return res.ok; }, function () { return false; })
-      .then(function (ok) {
+      .then(function (res) { return res.ok ? res.json() : null; }, function () { return null; })
+      .then(function (user) {
+        var ok = Boolean(user);
+        if (window.kwOfficeUi) window.kwOfficeUi.setAccount(user);
         z.angemeldet = ok;
         text("anmeldung-zeile", ok ? "Angemeldet." : "Nicht angemeldet.");
         zeigen("anmelden-knopf", !ok);
@@ -623,6 +638,11 @@
   function frageSenden(frage) {
     z.frageLauf += 1;
     var lauf = z.frageLauf;
+    frageController = new AbortController();
+    var controller = frageController;
+    minimalTurn = window.kwOfficeUi ? window.kwOfficeUi.turn(frage) : null;
+    var turn = minimalTurn;
+    if (window.kwOfficeUi) window.kwOfficeUi.activity("frage", window.kwOfficeUi.t("working"), frageAbbrechen);
     // Die Bindung DIESER Frage: genau die Lage, deren Kontext jetzt mitgeht.
     var bindung = z.kontextBindung;
     z.beschaeftigt = true;
@@ -635,12 +655,12 @@
       headers: koepfe,
       body: JSON.stringify({
         question: frage,
-        locale: "de",
+        locale: window.kwOfficeUi ? window.kwOfficeUi.locale : "de",
         mode: "retrieval-only",
         selection: z.kontextText.length > 0 ? z.kontextText : undefined,
         questionSource: "manual",
       }),
-    }, FRAGE_FRIST_MS)
+    }, FRAGE_FRIST_MS, controller)
       .then(function (res) {
         if (res.status === 401) { throw new Error("Bitte neu anmelden."); }
         if (res.status === 403) { throw new Error("Dir fehlt das Leserecht für Wissen (ko.read)."); }
@@ -653,6 +673,10 @@
         // Eine neuere Frage läuft schon: diese Antwort überschreibt nichts.
         if (lauf !== z.frageLauf) { return; }
         var ergebnis = body && body.result ? body.result : {};
+        if (window.kwOfficeUi) window.kwOfficeUi.answer(turn, {
+          answer: ergebnis.answer, answerId: body.answerId, sources: ergebnis.sources,
+          aiGenerated: ergebnis.aiGenerated && ergebnis.aiGenerated.aiGenerated === true,
+        });
         var antwort = typeof ergebnis.answer === "string" ? ergebnis.answer.trim() : "";
         var quellen = Array.isArray(ergebnis.sources)
           ? ergebnis.sources.filter(function (q) { return typeof q === "string" && q.trim().length > 0; })
@@ -671,7 +695,12 @@
         if (lauf !== z.frageLauf) { return; }
         meldung("frage-meldung", fehler && fehler.name === "AbortError" ? "Keine Antwort in der Frist." : (fehler && fehler.message) || "Fehler.");
       })
-      .then(function () { z.beschaeftigt = false; kontrollen(); });
+      .then(function () {
+        if (lauf !== z.frageLauf) return;
+        z.beschaeftigt = false;
+        if (window.kwOfficeUi) window.kwOfficeUi.activity("frage", "", null);
+        kontrollen();
+      });
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -1017,9 +1046,11 @@
     aktiv("entwurf-senden", frei && z.host === "excel" && gelesen && z.angemeldet);
     aktiv("formtext-vorbereiten", frei && z.host === "powerpoint" && antwortGilt && !!z.bewertung && z.bewertung.rueckgabeMoeglich === true);
     aktiv("plan-ausfuehren", frei && !!z.plan);
+    if (window.kwOfficeUi) window.kwOfficeUi.paint();
   }
 
   function schrittZeigen(ziel) {
+    if (window.kwOfficeUi) window.kwOfficeUi.reveal(ziel);
     var e = el(ziel);
     if (!e) { return; }
     e.classList.add("hervorgehoben");
@@ -1052,6 +1083,8 @@
   // Für Prüfstände und die gemeinsame Begleitfigur: lesender Zugriff auf den Stand und die Wege.
   window.klaraOfficeFenster = {
     zustand: z,
+    anmeldungPruefen: anmeldungPruefen,
+    frageAbbrechen: frageAbbrechen,
     // PP-02 (folien-herkunft.js): derselbe Abrufweg samt Übergabeschlüssel — kein zweiter Login.
     abruf: abruf,
     kontextLesen: kontextLesen,

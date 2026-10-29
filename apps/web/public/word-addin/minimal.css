@@ -90,3 +90,7 @@ html[data-word-theme="dark"] { --page: #12161c; --surface: #1b2028; --text: #e2e
 .kw-minimal #ask-btn { position: static; }
 .kw-minimal #kw-vormachen { position: static !important; width: 100%; margin-bottom: 6px; color: var(--text); background: var(--surface) !important; }
 .kw-minimal .mini-mic { flex: 0 0 32px; width: 32px; padding: 4px; }
+
+.kw-minimal #frage-block { flex: 0 0 auto; margin: 0; padding: 9px 12px 12px; border: 0; border-top: 1px solid var(--hairline); background: var(--page); }
+.kw-minimal #frage-block > h2 { display: none; }
+.kw-minimal #frage-text { width: 100%; max-height: 100px; }

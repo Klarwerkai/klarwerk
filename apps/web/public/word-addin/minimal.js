@@ -31,7 +31,7 @@
       terms: "Begriffe", templates: "Vorlagen und Bausteine", calendar: "Kalender", learn: "Lernen und Vormachen",
       writing: "Schreiben und Bildsuche", knowledge: "Bestandsblick und Quellen", finish: "Zurück",
       profile: "Name und Avatar", profileSave: "Profil speichern", avatar: "Avatar", nameLabel: "Name",
-      neutral: "Neutral", ki: "Mit KI arbeiten", update: "Neue Fassung laden", memory: "Daten und Freigaben", external: "Verbindungen und externe KI",
+      neutral: "Neutral", use: "Ins Dokument übernehmen", provenance: "Quellen und Herkunft", ki: "Mit KI arbeiten", update: "Neue Fassung laden", memory: "Daten und Freigaben", external: "Verbindungen und externe KI",
     },
     en: {
       name: "Your assistant", menu: "Menu", back: "Back to conversation", new: "New conversation",
@@ -60,7 +60,7 @@
       terms: "Terms", templates: "Templates and building blocks", calendar: "Calendar",
       learn: "Learn and demonstrate", writing: "Writing and image search", knowledge: "Knowledge and sources",
       finish: "Back", profile: "Name and avatar", profileSave: "Save profile", avatar: "Avatar",
-      nameLabel: "Name", neutral: "Neutral", ki: "Work with AI", update: "Load new version", memory: "Data and permissions", external: "Connections and external AI",
+      nameLabel: "Name", neutral: "Neutral", use: "Use in document", provenance: "Sources and provenance", ki: "Work with AI", update: "Load new version", memory: "Data and permissions", external: "Connections and external AI",
     },
     nl: {
       name: "Je assistent", menu: "Menu", back: "Terug naar gesprek", new: "Nieuw gesprek",
@@ -90,7 +90,7 @@
       terms: "Begrippen", templates: "Sjablonen en bouwstenen", calendar: "Agenda",
       learn: "Leren en voordoen", writing: "Schrijven en afbeeldingen", knowledge: "Kennis en bronnen",
       finish: "Terug", profile: "Naam en avatar", profileSave: "Profiel opslaan", avatar: "Avatar",
-      nameLabel: "Naam", neutral: "Neutraal", ki: "Met AI werken", update: "Nieuwe versie laden", memory: "Gegevens en toestemming", external: "Verbindingen en externe AI",
+      nameLabel: "Naam", neutral: "Neutraal", use: "In document gebruiken", provenance: "Bronnen en herkomst", ki: "Met AI werken", update: "Nieuwe versie laden", memory: "Gegevens en toestemming", external: "Verbindingen en externe AI",
     },
   };
   const AVATARS = ["original", "lichtwesen", "roboter", "eule", "fuchs", "pinguin", "wolke",
@@ -197,6 +197,7 @@
       if (el) settings.append(el);
     }
     const help = room("help");
+    help.append(button("context", () => show("context")), button("settings", () => show("settings")));
     for (const id of config.help || []) {
       const el = byId(id);
       if (el) help.append(el);
@@ -207,7 +208,9 @@
       const tool = room("tool-" + group.key);
       tool.dataset.tool = group.key;
       tools.set(group.key, tool);
-      functions.append(button(group.key, () => show("tool-" + group.key), "mini-function"));
+      const entry = button(group.key, () => show("tool-" + group.key), "mini-function");
+      entry.dataset.miniTool = group.key;
+      functions.append(entry);
     }
     const observer = new root.MutationObserver(() => adoptTools());
     function adoptTools() {
@@ -229,7 +232,7 @@
       if (rooms.has(key)) return rooms.get(key);
       const el = node("section", "mini-room");
       el.id = "mini-page-" + key;
-      el.hidden = true;
+      el.hidden = key !== page;
       el.setAttribute("aria-label", t(key));
       rooms.set(key, el);
       viewport.append(el);
@@ -271,6 +274,12 @@
       const target = { fragen: "home", erfassen: "tool-capture", einstellungen: "settings", hilfe: "help" }[name];
       if (target) { page = target; paint(); }
     }
+    function reveal(id) {
+      const element = byId(id);
+      if (!element) return;
+      const owner = Array.from(rooms).find(([, room]) => room.contains(element));
+      show(owner ? owner[0] : "home");
+    }
     function openMenu() {
       menu.hidden = false;
       paint();
@@ -301,7 +310,8 @@
     const base = "/api/me/klara";
     const conversationPath = () => base + "/gespraeche/" + encodeURIComponent(conversation.id);
     const reference = () => ({
-      pfad: root.location.pathname, seitenName: "Word", objekt: "Word", bezug: "frei",
+      pfad: root.location.pathname, seitenName: config.hostName?.() || "Word",
+      objekt: config.hostName?.() || "Word", bezug: "frei",
     });
     async function loadConversation(history) {
       return guarded(async (stamp) => {
@@ -409,6 +419,8 @@
       const start = button("start", () => guarded(async (stamp) => {
         start.disabled = true;
         try {
+          await writeQueue;
+          if (stamp !== generation) return;
           const result = await request(base + "/gespraeche", "POST", { objektbezug: reference() });
           if (stamp !== generation) return;
           conversation = result.gespraech; beforeTurn = Infinity;
@@ -438,6 +450,8 @@
           "/assistenz/erstauswahl-v1/" + id + ".png";
         else avatar.removeAttribute("src");
         avatar.hidden = !AVATARS.includes(id);
+        renderFeed();
+        if (page === "history") renderHistory();
         paint();
       });
     }
@@ -447,6 +461,10 @@
       for (const row of active.values()) row.remove(); active.clear();
       if (account !== null) config.onAccountChange?.();
       generation++; account = id; conversation = null; profile = null; beforeTurn = Infinity;
+      for (const key of ["history", "notes", "tasks", "reminders", "overview", "ki", "profile", "new"]) {
+        const room = rooms.get(key);
+        if (room) { delete room.dataset.miniDraft; room.replaceChildren(node("p", "mini-meta", account ? t("loading") : t("login"))); }
+      }
       renderFeed(); renderData(); paint();
       if (!account) return;
       void loadConversation(false);
@@ -490,6 +508,8 @@
         });
         if (snapshot.generation !== generation) return;
         conversation = data.gespraech;
+        renderFeed();
+        if (page === "history") renderHistory();
         if (!result.answerId && !result.stopped) notify(t("storageError"));
       }).catch(() => { if (snapshot.generation === generation) notify(t("storageError")); });
       return writeQueue;
@@ -509,7 +529,7 @@
       for (const stop of config.onPageHide || []) stop();
     });
     if (!config.read) functions.append(node("p", "mini-meta", t("noSpeech")));
-    const ui = { t, button, node, room, show, paint, legacy, notify, request, guarded, setAccount, setLanguage,
+    const ui = { t, button, node, room, show, paint, legacy, reveal, notify, request, guarded, setAccount, setLanguage,
       turn, answer, activity, reference, read, refreshProfile, ensureConversation,
       get conversationId() { return conversation?.id || null; },
       isToolPage: () => page.startsWith("tool-"), get account() { return account; },
