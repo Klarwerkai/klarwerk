@@ -555,11 +555,19 @@
         .then((auswahl) => {
           // VOR JEDEM SENDEN, unabhängig von der Marke: Konto, Sitzung, Bindungs- und
           // Auswahlgeneration sind noch die der Frage. Mit Markierung zusätzlich die Marke selbst.
-          if (epoch !== frageEpoch || !kontextGiltNoch(bezug) || (mitMarkierung && !bezugGiltNoch(bezug))) {
+          if (
+            epoch !== frageEpoch ||
+            !kontextGiltNoch(bezug) ||
+            (mitMarkierung && !bezugGiltNoch(bezug))
+          ) {
             return null; // nichts gesendet — die Auswahl oder Bindung hat sich geändert
           }
           const sprache = umgebung.locale?.();
-          const koerper = { question: frageText, locale: ["de", "en", "nl"].includes(sprache) ? sprache : "de", questionSource: "manual" };
+          const koerper = {
+            question: frageText,
+            locale: ["de", "en", "nl"].includes(sprache) ? sprache : "de",
+            questionSource: "manual",
+          };
           if (auswahl) {
             koerper.selection = auswahl;
             // Ohne ausdrückliche Wahl gilt die Markierung als vertraulich (fail-closed).
@@ -590,8 +598,12 @@
             return null;
           }
           const ergebnis = res.json?.result ?? {};
-          umgebung.onAnswer?.(turn, { answer: ergebnis.answer, answerId: res.json?.answerId, sources: ergebnis.sources,
-            aiGenerated: ergebnis.aiGenerated?.aiGenerated === true });
+          umgebung.onAnswer?.(turn, {
+            answer: ergebnis.answer,
+            answerId: res.json?.answerId,
+            sources: ergebnis.sources,
+            aiGenerated: ergebnis.aiGenerated?.aiGenerated === true,
+          });
           const textAntwort =
             ergebnis.answered && typeof ergebnis.answer === "string" ? ergebnis.answer : "";
           if (!textAntwort) {
@@ -610,7 +622,8 @@
         .catch(() => {
           if (epoch === frageEpoch) zeige("hinweis", "Klara ist gerade nicht erreichbar.");
           return null;
-        }).finally(() => {
+        })
+        .finally(() => {
           if (epoch === frageEpoch) umgebung.onBusy?.(false);
         });
     }
@@ -1212,10 +1225,17 @@
         zeige,
         sichtbar,
         onAccount: (konto) => ui?.setAccount(konto),
-        onTurn: (text) => { letzteFrage = ui?.turn(text); return letzteFrage; },
+        onTurn: (text) => {
+          letzteFrage = ui?.turn(text);
+          return letzteFrage;
+        },
         onAnswer: (turn, ergebnis) => ui?.answer(turn, ergebnis),
-        onBusy: (an) => ui?.activity("frage", ui.t("working"), an ? () => seite.frageAbbrechen() : null),
-        onStopped: () => { ui?.answer(letzteFrage, { stopped: true }); ui?.notify(ui.t("stopped")); },
+        onBusy: (an) =>
+          ui?.activity("frage", ui.t("working"), an ? () => seite.frageAbbrechen() : null),
+        onStopped: () => {
+          ui?.answer(letzteFrage, { stopped: true });
+          ui?.notify(ui.t("stopped"));
+        },
         locale: () => ui?.locale || "de",
         // Eine Frage der Begleitfigur folgt denselben Wahlen wie eine hier getippte.
         frageOptionen: () => ({
@@ -1224,15 +1244,25 @@
         }),
       });
       ui = wurzel.KlarwerkWordMinimal?.create({
-        header: "kw-begleitung-kopf", home: "kw-begleitung-antwort",
-        homeExtras: ["kw-anmelden"], composer: "kw-begleitung-eingabe", input: element("frage"),
+        header: "kw-begleitung-kopf",
+        home: "kw-begleitung-antwort",
+        homeExtras: ["kw-anmelden"],
+        composer: "kw-begleitung-eingabe",
+        input: element("frage"),
         contextDetails: ["kw-begleitung-kontext"],
-        settings: ["kw-begleitung-begleiter"], help: [],
+        settings: ["kw-begleitung-begleiter"],
+        help: [],
         tools: [],
-        sourceHref: (id) => "/wissen/" + encodeURIComponent(id),
-        request: (pfad, methode, koerper) => methode === "HEAD"
-          ? wurzel.fetch(pfad, { method: "HEAD", credentials: "include" }).then((r) => ({ status: r.status, version: r.headers.get("x-kw-available-version") }))
-          : seite.persoenlicheAnfrage(pfad, methode, koerper),
+        sourceHref: (id) => `/wissen/${encodeURIComponent(id)}`,
+        request: (pfad, methode, koerper) =>
+          methode === "HEAD"
+            ? wurzel
+                .fetch(pfad, { method: "HEAD", credentials: "include" })
+                .then((r) => ({
+                  status: r.status,
+                  version: r.headers.get("x-kw-available-version"),
+                }))
+            : seite.persoenlicheAnfrage(pfad, methode, koerper),
         contextText: () => ["Word", element("verbindung")?.textContent].filter(Boolean).join(" · "),
         paint: () => {},
         reset: () => {},
