@@ -1256,12 +1256,10 @@
         sourceHref: (id) => `/wissen/${encodeURIComponent(id)}`,
         request: (pfad, methode, koerper) =>
           methode === "HEAD"
-            ? wurzel
-                .fetch(pfad, { method: "HEAD", credentials: "include" })
-                .then((r) => ({
-                  status: r.status,
-                  version: r.headers.get("x-kw-available-version"),
-                }))
+            ? wurzel.fetch(pfad, { method: "HEAD", credentials: "include" }).then((r) => ({
+                status: r.status,
+                version: r.headers.get("x-kw-available-version"),
+              }))
             : seite.persoenlicheAnfrage(pfad, methode, koerper),
         contextText: () => ["Word", element("verbindung")?.textContent].filter(Boolean).join(" · "),
         paint: () => {},

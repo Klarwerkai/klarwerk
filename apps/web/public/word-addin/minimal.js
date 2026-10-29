@@ -549,9 +549,9 @@
       paint();
     }
     async function request(path, method, body) {
-      if (method === undefined) method = "GET";
+      const requestMethod = method === undefined ? "GET" : method;
       if (!path.startsWith("/api/")) throw new Error("Same-origin API required");
-      const response = await config.request(path, method, body);
+      const response = await config.request(path, requestMethod, body);
       if (response.status < 200 || response.status >= 300) {
         const error = new Error(response.json?.message || `HTTP ${response.status}`);
         error.status = response.status;
