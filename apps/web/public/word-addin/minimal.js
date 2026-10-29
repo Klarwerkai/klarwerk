@@ -315,6 +315,7 @@
     let account = null;
     let generation = 0;
     let conversation = null;
+    let conversationCreation = 0;
     let profile = null;
     let beforeTurn = Number.POSITIVE_INFINITY;
     let writeQueue = Promise.resolve();
@@ -650,10 +651,24 @@
       el.append(button("finish", () => show("home")));
     }
     async function ensureConversation() {
-      if (!conversation) {
-        const data = await request(`${base}/gespraeche`, "POST", { objektbezug: reference() });
-        conversation = data.gespraech;
+      const stamp = generation;
+      const owner = account;
+      if (!owner) {
+        const error = new Error(t("login"));
+        error.status = 401;
+        throw error;
       }
+      if (conversation) return conversation;
+      const operation = ++conversationCreation;
+      const data = await request(`${base}/gespraeche`, "POST", { objektbezug: reference() });
+      if (
+        stamp !== generation ||
+        owner !== account ||
+        operation !== conversationCreation ||
+        conversation
+      )
+        return null;
+      conversation = data.gespraech;
       return conversation;
     }
     function renderData() {
@@ -661,12 +676,12 @@
       data.append(
         button(conversation?.einwilligungAm ? "revoke" : "consent", () =>
           guarded(async (stamp) => {
-            await ensureConversation();
-            if (stamp !== generation) return;
+            const target = await ensureConversation();
+            if (stamp !== generation || !target || target !== conversation) return;
             const response = await request(`${conversationPath()}/einwilligung`, "PUT", {
-              erteilt: !conversation.einwilligungAm,
+              erteilt: !target.einwilligungAm,
             });
-            if (stamp !== generation) return;
+            if (stamp !== generation || target !== conversation) return;
             conversation = response.gespraech;
             renderData();
           }),

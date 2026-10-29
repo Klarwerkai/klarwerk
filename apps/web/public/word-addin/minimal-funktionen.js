@@ -441,7 +441,7 @@
         ability,
         action("preview", async (current) => {
           const conversation = await ui.ensureConversation();
-          if (!stampGilt(current)) return;
+          if (!stampGilt(current) || !conversation || conversation.id !== ui.conversationId) return;
           await request(`${base}/gespraeche/${encode(conversation.id)}/ki-auftraege`, "POST", {
             ziel: goal.value,
             ergebnisformat: "fliesstext",
@@ -460,15 +460,19 @@
       room.append(form);
     }
 
+    let profileLoad = 0;
     settings.append(
       button(
         "profile",
         () => {
           ui.show("profile");
           void guarded(async (stamp) => {
-            const data = await request("/api/me/assistenz");
-            if (!stampGilt(stamp)) return;
             const room = ui.room("profile");
+            if (room.dataset.miniDraft === String(stamp)) return;
+            const operation = ++profileLoad;
+            const data = await request("/api/me/assistenz");
+            if (!stampGilt(stamp) || operation !== profileLoad) return;
+            room.dataset.miniDraft = String(stamp);
             room.replaceChildren();
             const name = field(room, "nameLabel", data.profil?.name || "");
             const avatar = node("select");
@@ -493,20 +497,40 @@
               avatar.append(option);
             }
             avatar.value = data.profil?.avatar || "original";
+            const discard = button("cancel", () => {
+              if (!stampGilt(stamp)) return;
+              delete room.dataset.miniDraft;
+              room.replaceChildren();
+              ui.show("settings");
+            });
             room.append(
               avatar,
               action("profileSave", async (current) => {
-                await request("/api/me/assistenz", "PUT", {
-                  fassung: data.profil?.fassung || 0,
-                  name: name.value,
-                  avatar: avatar.value,
-                });
-                if (stampGilt(current)) {
-                  ui.refreshProfile();
-                  ui.notify(t("saved"));
-                  ui.show("home");
+                if (!stampGilt(stamp) || current !== stamp || !room.contains(name)) return;
+                name.disabled = true;
+                avatar.disabled = true;
+                discard.disabled = true;
+                try {
+                  await request("/api/me/assistenz", "PUT", {
+                    fassung: data.profil?.fassung || 0,
+                    name: name.value,
+                    avatar: avatar.value,
+                  });
+                  if (!stampGilt(current) || !room.contains(name)) return;
+                  delete room.dataset.miniDraft;
+                  room.replaceChildren();
+                  await ui.refreshProfile();
+                  if (stampGilt(current)) {
+                    ui.notify(t("saved"));
+                    ui.show("home");
+                  }
+                } finally {
+                  name.disabled = false;
+                  avatar.disabled = false;
+                  discard.disabled = false;
                 }
               }),
+              discard,
             );
           });
         },

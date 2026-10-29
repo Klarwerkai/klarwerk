@@ -598,4 +598,161 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
       await page.close();
     }
   });
+
+  it("Ben-Folge: Profilentwurf bleibt bis Speichern, Verwerfen oder Kontowechsel erhalten", async () => {
+    const page = await open();
+    let stored = { name: "Mira", avatar: "eule", fassung: 1 };
+    const writes: Record<string, unknown>[] = [];
+    let reads = 0;
+    try {
+      await page.route(`${origin}/api/me/assistenz`, (route) => {
+        if (route.request().method() === "PUT") {
+          const body = route.request().postDataJSON();
+          writes.push(body);
+          stored = { name: body.name, avatar: body.avatar, fassung: stored.fassung + 1 };
+        } else reads++;
+        return route.fulfill({ json: { profil: stored, einrichtungOffen: false } });
+      });
+      const profile = page.locator("#mini-page-profile");
+      await choose(page, "settings");
+      await page.getByRole("button", { name: "Name und Avatar", exact: true }).click();
+      await profile.getByLabel("Name", { exact: true }).fill("Ungespeicherter Profilname");
+      await profile.getByLabel("Avatar", { exact: true }).selectOption("fuchs");
+      const initialReads = reads;
+      await page.keyboard.press("Escape");
+      await choose(page, "settings");
+      await page.getByRole("button", { name: "Name und Avatar", exact: true }).click();
+      expect(await profile.getByLabel("Name", { exact: true }).inputValue()).toBe(
+        "Ungespeicherter Profilname",
+      );
+      expect(await profile.getByLabel("Avatar", { exact: true }).inputValue()).toBe("fuchs");
+      expect(reads).toBe(initialReads);
+      expect(writes).toEqual([]);
+
+      await profile.getByRole("button", { name: "Abbrechen", exact: true }).click();
+      await page.getByRole("button", { name: "Name und Avatar", exact: true }).click();
+      expect(await profile.getByLabel("Name", { exact: true }).inputValue()).toBe("Mira");
+      expect(await profile.getByLabel("Avatar", { exact: true }).inputValue()).toBe("eule");
+      expect(writes).toEqual([]);
+      await profile.getByLabel("Name", { exact: true }).fill("Bewusst gespeicherter Name");
+      await profile.getByLabel("Avatar", { exact: true }).selectOption("pinguin");
+      await profile.getByRole("button", { name: "Profil speichern", exact: true }).click();
+      await page.waitForFunction(
+        "document.querySelector('.mini-name').textContent === 'Bewusst gespeicherter Name'",
+      );
+      expect(writes).toEqual([
+        { fassung: 1, name: "Bewusst gespeicherter Name", avatar: "pinguin" },
+      ]);
+      await choose(page, "settings");
+      await page.getByRole("button", { name: "Name und Avatar", exact: true }).click();
+      await profile.getByLabel("Name", { exact: true }).fill("Privater Entwurf aus Konto A");
+      stored = { name: "Profil von Konto B", avatar: "kompass", fassung: 7 };
+      await page.route(`${origin}/api/auth/me`, (route) =>
+        route.fulfill({ json: { id: "ui-min-b", name: "Konto B", role: "admin" } }),
+      );
+      await page.evaluate("checkSession()");
+      await page.waitForFunction(
+        "window.kwWordUi.account === 'ui-min-b' && document.querySelector('.mini-name').textContent === 'Profil von Konto B'",
+      );
+      await page.keyboard.press("Escape");
+      await choose(page, "settings");
+      await page.getByRole("button", { name: "Name und Avatar", exact: true }).click();
+      expect(await profile.getByLabel("Name", { exact: true }).inputValue()).toBe(
+        "Profil von Konto B",
+      );
+      expect(await profile.getByLabel("Avatar", { exact: true }).inputValue()).toBe("kompass");
+      expect(writes).toHaveLength(1);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it("Ben-Folge: verspätete A-Erstellung überschreibt nach Kontowechsel kein B-Gespräch", async () => {
+    conversation = null;
+    const page = await open();
+    let release: (() => void) | undefined;
+    let arrive: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const arrived = new Promise<void>((resolve) => {
+      arrive = resolve;
+    });
+    const consentWrites: string[] = [];
+    const b = {
+      id: "g-konto-b",
+      objektbezug: {},
+      einwilligungAm: null,
+      nachrichten: [{ id: "m-b", von: "du", text: "Nur Konto B", quellenAngaben: [] }],
+    };
+    try {
+      await page.route(`${origin}/api/me/klara/gespraeche`, async (route) => {
+        expect(route.request().method()).toBe("POST");
+        expect(route.request().postDataJSON().objektbezug.seitenName).toBe("Word");
+        arrive?.();
+        await held;
+        await route.fulfill({
+          status: 201,
+          json: {
+            gespraech: {
+              id: "g-konto-a-spaet",
+              objektbezug: {},
+              einwilligungAm: "2026-10-29T10:00:00Z",
+              nachrichten: [
+                { id: "m-a", von: "du", text: "Privater Rücklauf aus Konto A", quellenAngaben: [] },
+              ],
+            },
+          },
+        });
+      });
+      await page.route(`${origin}/api/me/klara/gespraeche/*/einwilligung`, (route) => {
+        consentWrites.push(new URL(route.request().url()).pathname);
+        return route.fulfill({ json: { gespraech: b } });
+      });
+      await choose(page, "settings");
+      const returned = page.waitForResponse(
+        (response) => response.url() === `${origin}/api/me/klara/gespraeche`,
+      );
+      await page
+        .getByRole("button", { name: "Gespräch auf diesem Konto speichern", exact: true })
+        .click();
+      await arrived;
+      await page.route(`${origin}/api/auth/me`, (route) =>
+        route.fulfill({ json: { id: "ui-min-b", name: "Konto B", role: "admin" } }),
+      );
+      await page.route(`${origin}/api/me/klara/gespraech`, (route) =>
+        route.fulfill({ json: { gespraech: b } }),
+      );
+      await page.evaluate("checkSession()");
+      await page.waitForFunction(
+        "window.kwWordUi.account === 'ui-min-b' && window.kwWordUi.conversationId === 'g-konto-b'",
+      );
+      await page.keyboard.press("Escape");
+      await choose(page, "history");
+      const history = page.locator("#mini-page-history");
+      await history.getByText("Nur Konto B", { exact: true }).waitFor();
+      release?.();
+      await (await returned).finished();
+      await page.evaluate(
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+      );
+      expect(await page.evaluate("window.kwWordUi.conversationId")).toBe("g-konto-b");
+      expect(await page.evaluate("window.kwWordUi.account")).toBe("ui-min-b");
+      expect(await history.getByText("Nur Konto B", { exact: true }).isVisible()).toBe(true);
+      expect(await page.getByText("Privater Rücklauf aus Konto A", { exact: true }).count()).toBe(
+        0,
+      );
+      expect(consentWrites).toEqual([]);
+      await page.keyboard.press("Escape");
+      await choose(page, "settings");
+      expect(
+        await page
+          .getByRole("button", { name: "Gespräch auf diesem Konto speichern", exact: true })
+          .isVisible(),
+      ).toBe(true);
+    } finally {
+      release?.();
+      await page.close();
+    }
+  });
 });
