@@ -72,7 +72,7 @@ function inhaltsbefunde(vergleich: AnweisungVergleich, bausteinId: string) {
   return Object.fromEntries(befunde.map((b) => [b.feld, b.auswirkung]));
 }
 
-const INHALT = '<table><tr><th>Druck</th></tr></table><img alt="Schema alt" src="https://bilder.invalid/alt.png">';
+const INHALT = '<table><tr><th>Druck</th></tr></table><img alt="Schema alt" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO/a1f8AAAAASUVORK5CYII=">';
 
 describe("KO18/M13 · freie Hashangabe am authentifizierten HTTP-Weg", () => {
   it("gleiche freie Hashes verdecken keine tatsächlichen Inhaltsänderungen", async () => {
@@ -83,7 +83,7 @@ describe("KO18/M13 · freie Hashangabe am authentifizierten HTTP-Weg", () => {
     expect(vorher?.bausteine[0]?.inhalt).toEqual({ tabellenUeberschriften: ["Druck"], abbildungen: ["Schema alt"], geltung: "Werk 1" });
     const neu = await w.ruf<KnowledgeObject>("PUT", `/api/kos/${ko.id}`, {
       action: "revise", expectedVersion: ko.version,
-      changes: { category: "Werk 2", bodyHtml: '<table><tr><th>Dauer</th></tr></table><img alt="Schema neu" src="https://bilder.invalid/neu.png">' },
+      changes: { category: "Werk 2", bodyHtml: '<table><tr><th>Dauer</th></tr></table><img alt="Schema neu" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO/a1f8AAAAASUVORK5CYII=">' },
     });
     expect(neu.version).toBeGreaterThan(ko.version);
     const uebernommen = await w.ruf<Anweisung>("POST", `/api/gesamtanweisungen/${a.id}/bausteine/${baustein.id}/uebernehmen`, {
