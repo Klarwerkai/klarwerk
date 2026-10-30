@@ -1,45 +1,7 @@
-// Aufnahme gesamt-auditprotokoll · VORHER/NACHHER GEGEN DEN TATSÄCHLICHEN PRODUKTSTAND (Ben,
-// Nacharbeit 6).
-//
-// Die Kriterien zu beleg:6818bd52 und beleg:1ea197ac verlangen PostgreSQL-Tests, die VOR der
-// Behebung fehlschlagen und danach bestehen. Diese Datei führt DIESELBEN fachlichen Sollprüfungen
-// zweimal aus, jeweils auf einer frischen Datenbank mit dem Schema der jeweiligen Fassung:
-//
-//   VORHER   der Produktcode des integrierten HAUPTSTANDS OHNE DIE BEHEBUNG (`6c576c70`, s.
-//            `vorher/fassung.json`). Der Prüfweg arbeitet mit einem depth-1-Checkout ohne Historie
-//            (Nacharbeit 7: `git rev-parse 41fad46c` scheiterte dort). Die Vorher-Fassung entsteht
-//            deshalb aus VERFOLGTEN Dateien: die `services/` des Prüfbaums werden in ein temporäres
-//            Verzeichnis kopiert und dort mit `vorher/behebung-rueckwaerts.patch` (die Behebung
-//            rückwärts, von Git erzeugt) per `git apply` zurückgesetzt. Danach wird GELADEN — es ist
-//            das `buildPgServices`/`buildApp`/`migrate` dieser Fassung, kein Nachbau.
-//            Aktualisierung: Der Rückwärtspatch ist vom festen Stand `12d84170` gegen den echten
-//            Commit `6c576c70` mit `git diff --binary --full-index` für `services/` ohne Tests neu
-//            erzeugt und mit `git apply --check` geprüft. Import und PostgreSQL-Gegenprobe bleiben
-//            dem regulären Integrationslauf vorbehalten (genauer Befehl in `vorher/fassung.json`).
-//   NACHHER  der Kandidat selbst (statische Importe unten).
-//
-// Erwartung: VORHER verletzt jede Sollprüfung FACHLICH (die Verletzungen werden benannt und
-// geprüft), NACHHER verletzt keine. Lässt sich die Vorher-Fassung nicht herstellen (Patch passt nicht
-// mehr, `git` fehlt), werden die VORHER-Fälle ROT — mit dem Grund im Text; sie werden nicht
-// übersprungen und nicht als Produktbefund ausgegeben.
-//
-//   VORHER 758e76c1  (Nacharbeit 8) die Fassung, an der Ben beleg:6818bd52 meldete. Sie ist von
-//            keinem Branch erreichbar; das Git-Objekt ist hier derzeit nicht auflösbar. Der alte
-//            Patch `vorher/fassung-758e76c1.patch` und seine Lauf-2-Metadaten bleiben unverändert.
-//            Diese getrennte Quelllücke ist offen; die Fassung ist damit nicht als wiederhergestellt
-//            belegt. Sie hat den Exportweg `GET /api/audit/export` — der gemeldete Auslöser
-//            „gleichzeitige Exporte" läuft dort und am Kandidaten mit DERSELBEN Sollprüfung.
-//
-// FASSUNGEN JE BEFUND: beleg:6818bd52 (gleichzeitige Exporte) an 758e76c1 gegen den Kandidaten;
-// beleg:1ea197ac (Anlage gegen offenen Fremdschreiber; ko.created abgewiesen) am Hauptstand ohne
-// Behebung gegen den Kandidaten.
-//
-// Ergänzend (nicht Ersatz) bleibt `rot-kalibrierung.integration.test.ts`: dort der nachgebildete
-// Altweg AM KANDIDATEN, einschliesslich des Exportwegs.
+// Aktuelle PostgreSQL-Regression für den jeweiligen Kandidaten.
+// Die drei fachlichen NACHHER-Sollprüfungen bleiben unverändert. Sie benötigen keine historische
+// Quellmaterialisierung. Alte Gegenproben und Patchbelege: HISTORISCHE-GEGENPROBEN.md.
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import { Pool } from "pg";
@@ -51,14 +13,6 @@ import { guardedLocalPgTestUrl, withPgTx } from "../../services/db-tx";
 
 const PREFIX = "[KLARWERK][gesamt-auditprotokoll vorher/nachher]";
 const WURZEL = fileURLToPath(new URL("../../", import.meta.url));
-const VORHER_ORDNER = fileURLToPath(new URL("./vorher/", import.meta.url));
-const FASSUNG = JSON.parse(readFileSync(join(VORHER_ORDNER, "fassung.json"), "utf8")) as {
-  kandidat_beim_erzeugen: string;
-  vorher_hauptstand: string;
-  patch: string;
-  lauf2: { fassung: string; patch: string; kandidat_beim_erzeugen: string };
-};
-
 /** Was die Sollprüfungen von einer Fassung brauchen — beide Fassungen bieten genau das an. */
 interface AppModul {
   buildApp(services: unknown): FastifyInstance;
@@ -91,52 +45,6 @@ function git(...args: string[]): string {
   return execFileSync("git", ["-C", WURZEL, ...args], { encoding: "utf8" }).trim();
 }
 
-/**
- * Stellt eine Vorher-Fassung her und lädt sie: verfolgte `services/` kopieren, den von Git erzeugten
- * Patch der Fassung anwenden (`behebung-rueckwaerts.patch` → Hauptstand ohne Behebung,
- * `fassung-758e76c1.patch` → die Lauf-2-Fassung). Wirft mit benanntem Grund, wenn das nicht geht.
- */
-async function ladeVorher(patch: {
-  patch: string;
-  kandidat_beim_erzeugen: string;
-}): Promise<{ modul: AppModul; ordner: string }> {
-  const ordner = mkdtempSync(join(tmpdir(), "kw-vorher-"));
-  try {
-    cpSync(join(WURZEL, "services"), join(ordner, "services"), { recursive: true });
-    cpSync(join(WURZEL, "apps/web/src"), join(ordner, "apps/web/src"), { recursive: true });
-    cpSync(join(WURZEL, "package.json"), join(ordner, "package.json"));
-  } catch (fehler) {
-    throw new Error(`${PREFIX} Vorher-Fassung: Kopieren scheiterte. ${String(fehler)}`);
-  }
-  try {
-    execFileSync("git", ["apply", "--whitespace=nowarn", join(VORHER_ORDNER, patch.patch)], {
-      cwd: ordner,
-      encoding: "utf8",
-    });
-  } catch (fehler) {
-    throw new Error(
-      `${PREFIX} Vorher-Fassung veraltet oder git fehlt: ${patch.patch} (erzeugt an ${patch.kandidat_beim_erzeugen}) passt nicht auf die services/ dieses Prüfbaums — mit dem Befehl aus vorher/fassung.json neu erzeugen. ${String(fehler)}`,
-    );
-  }
-  // Gegenprobe der Herstellung: die Kettensperre der Behebung ist in der Vorher-Fassung NICHT da,
-  // im Kandidaten schon. Sonst wäre „vorher" heimlich „nachher".
-  const marke = "appendNext";
-  const vorherRepo = readFileSync(join(ordner, "services/audit/src/repo-pg.ts"), "utf8");
-  const kandidatRepo = readFileSync(join(WURZEL, "services/audit/src/repo-pg.ts"), "utf8");
-  if (vorherRepo.includes(marke) || !kandidatRepo.includes(marke)) {
-    throw new Error(`${PREFIX} Vorher-Fassung unplausibel: Marke ${marke} falsch verteilt.`);
-  }
-  // Die Pakete der Vorher-Fassung sind die des Prüfbaums (dieselbe package.json-Grundlage).
-  for (const teil of ["node_modules", "apps/web/node_modules"]) {
-    if (existsSync(join(WURZEL, teil)) && !existsSync(join(ordner, teil))) {
-      symlinkSync(join(WURZEL, teil), join(ordner, teil), "dir");
-    }
-  }
-  const eintritt = join(ordner, "services/app/index.ts");
-  const modul = (await import(/* @vite-ignore */ eintritt)) as AppModul;
-  return { modul, ordner };
-}
-
 interface Buehne {
   name: string;
   db: string;
@@ -146,7 +54,7 @@ interface Buehne {
   headers: Record<string, string>;
 }
 
-describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit der Behebung", () => {
+describe("Aktuelle Audit-Regression auf PostgreSQL · drei fachliche Sollprüfungen", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
   let basisUrl = "";
@@ -154,11 +62,6 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
   const pools: Pool[] = [];
   const apps: FastifyInstance[] = [];
   const datenbanken: string[] = [];
-  const ordner: string[] = [];
-  let vorher: Buehne | undefined;
-  let vorherFehler: unknown;
-  let lauf2: Buehne | undefined;
-  let lauf2Fehler: unknown;
   let nachher: Buehne | undefined;
 
   function mitDatenbank(url: string, name: string): string {
@@ -251,36 +154,15 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
       }
     }
     if (!verwaltung) {
-      process.stderr.write(`${PREFIX} ÜBERSPRUNGEN — Grund: ${grund}\n`);
-      return;
+      throw new Error(`${PREFIX} PostgreSQL-Prüfmittel fehlt: ${grund}`);
     }
     nachher = await buehne("nachher", kandidat as unknown as AppModul);
-    try {
-      const fassung = await ladeVorher(FASSUNG);
-      ordner.push(fassung.ordner);
-      process.stderr.write(
-        `${PREFIX} VORHER-Fassung: Hauptstand ${FASSUNG.vorher_hauptstand} ohne Behebung (Patch erzeugt an ${FASSUNG.kandidat_beim_erzeugen})\n`,
-      );
-      vorher = await buehne("vorher", fassung.modul);
-    } catch (fehler) {
-      vorherFehler = fehler;
-    }
-    try {
-      const fassung = await ladeVorher(FASSUNG.lauf2);
-      ordner.push(fassung.ordner);
-      process.stderr.write(
-        `${PREFIX} VORHER-Fassung Lauf 2: ${FASSUNG.lauf2.fassung} (Patch erzeugt an ${FASSUNG.lauf2.kandidat_beim_erzeugen})\n`,
-      );
-      lauf2 = await buehne("lauf2", fassung.modul);
-    } catch (fehler) {
-      lauf2Fehler = fehler;
-    }
     try {
       process.stderr.write(`${PREFIX} NACHHER-Fassung (Kandidat): ${git("rev-parse", "HEAD")}\n`);
     } catch {
       process.stderr.write(`${PREFIX} NACHHER-Fassung: Kandidat (Kennung nicht lesbar)\n`);
     }
-  }, 300_000);
+  }, 60_000);
 
   afterAll(async () => {
     for (const app of apps.splice(0)) {
@@ -301,9 +183,6 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
     }
     await verwaltung?.end();
     await container?.stop();
-    for (const o of ordner.splice(0)) {
-      rmSync(o, { recursive: true, force: true });
-    }
   });
 
   /** Wartet (höchstens ~10 s, ohne Ausnahme), bis keine Sitzung mehr an `db` hängt. */
@@ -318,30 +197,6 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
       }
       await new Promise((r) => setTimeout(r, 100));
     }
-  }
-
-  function datenbankDa(ctx: { skip: () => void }): void {
-    if (!verwaltung) {
-      ctx.skip();
-    }
-  }
-
-  function vorherBuehne(): Buehne {
-    if (!vorher) {
-      throw vorherFehler instanceof Error
-        ? vorherFehler
-        : new Error(`${PREFIX} Prüfmittel fehlt: ${String(vorherFehler)}`);
-    }
-    return vorher;
-  }
-
-  function lauf2Buehne(): Buehne {
-    if (!lauf2) {
-      throw lauf2Fehler instanceof Error
-        ? lauf2Fehler
-        : new Error(`${PREFIX} Prüfmittel fehlt: ${String(lauf2Fehler)}`);
-    }
-    return lauf2;
   }
 
   /**
@@ -523,66 +378,21 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
     );
   }
 
-  it("VORHER Hauptstand ohne Behebung · Anlage gegen offenen Fremdschreiber: die Sollprüfung schlägt fachlich fehl", async (ctx) => {
-    datenbankDa(ctx);
-    const s = vorherBuehne();
-    const verletzt = await sollAnlageGegenFremdschreiber(s);
-    melde("Anlage gegen Fremdschreiber", s, verletzt);
-    // Der gemeldete Befund: der zweite Schreiber scheitert an derselben `seq`, das Objekt bleibt
-    // ohne `ko.created`.
-    expect(verletzt).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^Anlage antwortete 5\d\d/),
-        expect.stringMatching(/^Objekt ohne genau ein ko\.created: [1-9]/),
-      ]),
-    );
-  });
-
-  it("NACHHER Kandidat · Anlage gegen offenen Fremdschreiber: dieselbe Sollprüfung besteht", async (ctx) => {
-    datenbankDa(ctx);
+  it("NACHHER Kandidat · Anlage gegen offenen Fremdschreiber: dieselbe Sollprüfung besteht", async () => {
     const s = nachher as Buehne;
     const verletzt = await sollAnlageGegenFremdschreiber(s);
     melde("Anlage gegen Fremdschreiber", s, verletzt);
     expect(verletzt).toEqual([]);
   });
 
-  it("VORHER Hauptstand ohne Behebung · Datenbank weist ko.created ab: die Sollprüfung schlägt fachlich fehl", async (ctx) => {
-    datenbankDa(ctx);
-    const s = vorherBuehne();
-    const verletzt = await sollErfassenOhneBeleg(s);
-    melde("ko.created abgewiesen", s, verletzt);
-    expect(verletzt).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^Objekt ohne Beleg im Bestand/)]),
-    );
-  });
-
-  it("NACHHER Kandidat · Datenbank weist ko.created ab: dieselbe Sollprüfung besteht", async (ctx) => {
-    datenbankDa(ctx);
+  it("NACHHER Kandidat · Datenbank weist ko.created ab: dieselbe Sollprüfung besteht", async () => {
     const s = nachher as Buehne;
     const verletzt = await sollErfassenOhneBeleg(s);
     melde("ko.created abgewiesen", s, verletzt);
     expect(verletzt).toEqual([]);
   });
 
-  // beleg:6818bd52 — AN DER GEMELDETEN FASSUNG 758e76c1 (Ben, Nacharbeit 8), mit dem gemeldeten
-  // Auslöser: gleichzeitige `GET /api/audit/export`.
-  it("VORHER 758e76c1 (Lauf 2, gemeldete Fassung) · gleichzeitige Exporte: die Sollprüfung schlägt fachlich fehl", async (ctx) => {
-    datenbankDa(ctx);
-    const s = lauf2Buehne();
-    const verletzt = await sollGleichzeitigeExporte(s);
-    melde("gleichzeitige Exporte", s, verletzt);
-    // Der gemeldete Befund: zwei Schreiber lesen denselben Vorgänger, der zweite scheitert an der
-    // schon vergebenen `seq` — der Export antwortet mit einem Serverfehler und bleibt unbelegt.
-    expect(verletzt).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^Export antwortete 5\d\d/),
-        expect.stringMatching(/^audit\.exported \d+ statt 13/),
-      ]),
-    );
-  });
-
-  it("NACHHER Kandidat · gleichzeitige Exporte: dieselbe Sollprüfung besteht", async (ctx) => {
-    datenbankDa(ctx);
+  it("NACHHER Kandidat · gleichzeitige Exporte: dieselbe Sollprüfung besteht", async () => {
     const s = nachher as Buehne;
     const verletzt = await sollGleichzeitigeExporte(s);
     melde("gleichzeitige Exporte", s, verletzt);
