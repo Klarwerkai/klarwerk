@@ -1559,13 +1559,12 @@ export function Mobile(): JSX.Element {
                 ) : null}
               </div>
               {spaeteEingabe && ungesichert ? (
-                <p
+                <output
                   data-testid="mob-spaete-eingabe"
-                  role="status"
-                  className="text-[11.5px] text-muted"
+                  className="block text-[11.5px] text-muted"
                 >
                   {t("mob.spaeteEingabe")}
-                </p>
+                </output>
               ) : null}
               {!queue.online ? (
                 <p className="flex items-center gap-1.5 text-[11.5px] text-trust-warn-text">
