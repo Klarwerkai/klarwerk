@@ -2307,9 +2307,27 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
         // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
         const reviewers = [...new Set(reviewerIds ?? [])].filter((id) => id !== user.id);
+        const followUpsFailed: string[] = [];
         if (reviewers.length > 0) {
           await validation.assign(created.id, reviewers, user.id);
-          await notifyAssignment?.(created.id, reviewers);
+          // IMP-4/M15: die Anlage und Zuweisung stehen bereits. Ein Mailfehler darf weder
+          // ihren Erfolg verbergen noch den anschließenden KI-Prüfvermerk verhindern.
+          try {
+            await notifyAssignment?.(created.id, reviewers);
+          } catch (err) {
+            followUpsFailed.push("notify-assignment");
+            await audit
+              ?.record({
+                actor: user.id,
+                action: "ko.create-followup-failed",
+                target: created.id,
+                payload: {
+                  step: "notify-assignment",
+                  reason: err instanceof Error ? err.name : "unknown",
+                },
+              })
+              .catch(() => undefined);
+          }
         } else {
           // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen.
           await routeNeuesObjekt?.(created.id, user);
@@ -2333,7 +2351,25 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // reist SYNCHRON mit dem Job — die Overflow-Eviction schließt hart versionsgebunden ab.
           aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
         }
-        reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
+        let nacharbeitenVermerkt = false;
+        if (followUpsFailed.length > 0) {
+          nacharbeitenVermerkt = await ko
+            .recordCreateFollowUpFailures(created.id, followUpsFailed)
+            .catch(() => false);
+          if (nacharbeitenVermerkt) {
+            submitted = (await ko.get(created.id).catch(() => undefined)) ?? submitted;
+          }
+        }
+        reply.code(201).send({
+          ...submitted,
+          ...(vorlagenVermerk ? { vorlagenVermerk } : {}),
+          ...(followUpsFailed.length > 0
+            ? {
+                followUpsFailed,
+                followUpsRecorded: { aiCheckFailed: false, failures: nacharbeitenVermerkt },
+              }
+            : {}),
+        });
         // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
         // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
         // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
