@@ -44,6 +44,7 @@ import {
 } from "../gast-nutzerweg/browserweg";
 import { type Sitzung, type Strecke, mussGelingen } from "../gast-nutzerweg/strecke";
 import { type Aussage, SCHLUESSEL, type Sprache, verstoesse, zaehlerVerstoesse } from "./bedeutung";
+import { LadeDiagnose } from "./ladediagnose";
 
 const WER = "UX-26 Beleg/Original";
 
@@ -55,81 +56,19 @@ const WER = "UX-26 Beleg/Original";
 function beobachteLadefehler(seite: Seite, durchgang: string) {
   // `profil` liefert die echte Playwright-Page; die gemeinsame Seite-Typhülle bleibt unverändert.
   const page = seite as unknown as Pick<Page, "on" | "off">;
-  const fehler: Record<string, unknown>[] = [];
-  const antworten = new Map<string, number>();
-  let ausgelassen = 0;
-  const adresse = (roh: string): string | null => {
-    try {
-      const url = new URL(roh.replace(/[),.;]+$/u, ""));
-      if (
-        !/^https?:$/u.test(url.protocol) ||
-        !/^\/(?:assets\/.*|[^/]+\.(?:m?js|css))$/u.test(url.pathname)
-      ) {
-        return null;
-      }
-      return `${url.origin}${url.pathname}`.slice(0, 500);
-    } catch {
-      return null;
-    }
-  };
-  const technik = (roh: string) => ({
-    meldungen: [
-      ...roh.matchAll(
-        /failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed|unable to preload(?: CSS)?|failed to load module script|failed to load resource|refused to (?:load|execute|apply)|content security policy|MIME type|ChunkLoadError|preloadError|net::ERR_[A-Z0-9_]+|NS_ERROR_[A-Z_]+/giu,
-      ),
-    ]
-      .map((m) => m[0])
-      .slice(0, 8),
-    adressen: [
-      ...new Set(
-        [...roh.matchAll(/https?:\/\/[^\s"'<>]+/gu)]
-          .map((m) => adresse(m[0]))
-          .filter((wert): wert is string => wert !== null),
-      ),
-    ].slice(0, 4),
-  });
-  const merke = (ereignis: Record<string, unknown>): void => {
-    if (fehler.length < 16) fehler.push(ereignis);
-    else ausgelassen += 1;
-  };
+  const diagnose = new LadeDiagnose();
   const konsole = (meldung: ConsoleMessage): void => {
     if (!["error", "warning"].includes(meldung.type())) return;
-    const beobachtet = technik(meldung.text());
-    const ort = adresse(meldung.location().url);
-    if (beobachtet.meldungen.length === 0 && beobachtet.adressen.length === 0) return;
-    if (
-      beobachtet.meldungen.every((m) => /failed to load resource/iu.test(m)) &&
-      !ort &&
-      beobachtet.adressen.length === 0
-    ) {
-      return;
-    }
-    merke({ art: "console", typ: meldung.type(), ort, ...beobachtet });
+    diagnose.konsole(meldung.type(), meldung.text(), meldung.location().url);
   };
   const seitenfehler = (fehler: Error): void => {
-    const bekannteNamen =
-      /^(?:Error|TypeError|SyntaxError|ReferenceError|RangeError|ChunkLoadError|preloadError)$/u;
-    const name = bekannteNamen.test(fehler.name) ? fehler.name : "anderer Fehlertyp";
-    merke({ art: "pageerror", name, ...technik(fehler.message) });
+    diagnose.seitenfehler(fehler.name, fehler.message);
   };
   const antwort = (response: Response): void => {
-    const url = adresse(response.url());
-    if (!url) return;
-    antworten.delete(url);
-    antworten.set(url, response.status());
-    if (antworten.size > 24) {
-      const erste = antworten.keys().next().value;
-      if (erste !== undefined) antworten.delete(erste);
-    }
-    if (response.status() >= 400) {
-      merke({ art: "asset-response", adresse: url, status: response.status() });
-    }
+    diagnose.antwort(response.url(), response.status());
   };
   const abbruch = (request: Request): void => {
-    const url = adresse(request.url());
-    if (url) {
-      merke({ art: "requestfailed", adresse: url, ...technik(request.failure()?.errorText ?? "") });
-    }
+    diagnose.abbruch(request.url(), request.failure()?.errorText ?? "");
   };
   page.on("console", konsole);
   page.on("pageerror", seitenfehler);
@@ -140,9 +79,7 @@ function beobachteLadefehler(seite: Seite, durchgang: string) {
       process.stderr.write(
         `${WER} LADEDIAGNOSE (Ursachenmessung, kein Fix): ${JSON.stringify({
           durchgang,
-          fehler,
-          ausgelassen,
-          assetAntworten: [...antworten].map(([adresse, status]) => ({ adresse, status })),
+          ...diagnose.befund(),
         })}\n`,
       );
     },
