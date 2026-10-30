@@ -371,7 +371,11 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
         expect(
           saetze.find((s) => s.version === fassung),
           "die gebundene Fassung enthält nicht den tatsächlich gespeicherten Tabelleninhalt",
-        ).toMatchObject({ koId, version: fassung, snapshot: { id: koId, version: fassung, bodyHtml } });
+        ).toMatchObject({
+          koId,
+          version: fassung,
+          snapshot: { id: koId, version: fassung, bodyHtml },
+        });
         return fassung;
       };
       const fassungEins = await fassungVon(koEins, bodyEins);
