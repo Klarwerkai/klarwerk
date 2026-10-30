@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { APIResponse, Page } from "playwright-core";
 import type { Draft } from "../../apps/web/src/api/types";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 import { Sitzung, type Strecke, ersteinrichtung, mussGelingen } from "../gast-nutzerweg/strecke";
@@ -13,17 +14,40 @@ export const FOTO =
 
 function signal<T>() {
   let erfuellen: ((wert: T) => void) | undefined;
-  const promise = new Promise<T>((resolve) => {
+  let ablehnen: ((grund: unknown) => void) | undefined;
+  const promise = new Promise<T>((resolve, reject) => {
     erfuellen = resolve;
+    ablehnen = reject;
   });
-  return { promise, resolve: (wert: T) => erfuellen?.(wert) };
+  return {
+    promise,
+    resolve: (wert: T) => erfuellen?.(wert),
+    reject: (grund: unknown) => ablehnen?.(grund),
+  };
 }
+
+function redigiert(text: string): string {
+  return text
+    .replace(
+      /(authorization|cookie|password|passwort|secret|token)([=: ]+)[^,; ]+/giu,
+      "$1$2[redigiert]",
+    )
+    .replace(/Bearer +[^,; ]+/giu, "Bearer [redigiert]")
+    .replace(/data:image[^ "'<>]+/giu, "[Bilddaten redigiert]")
+    .slice(0, 12_000);
+}
+
+const draftAntwort = (url: URL): boolean =>
+  url.pathname === "/api/drafts" ||
+  (url.pathname.startsWith("/api/drafts/") && !url.pathname.slice(12).includes("/"));
 
 export async function mobileWelt(vorListen: (app: FastifyInstance) => Promise<void>) {
   const app = buildApp(assembleServices(inMemoryRepos()));
   const alleFreigaben = new Set<() => void>();
+  const laeufe = new Set<Promise<void>>();
   const schreibungen: { methode: string; draft: Draft; eingabe: Record<string, unknown> }[] = [];
   const lage = { ablehnen: false };
+  let steuerSeite: Page | undefined;
   let sperre:
     | {
         methode: "POST" | "PUT";
@@ -40,28 +64,19 @@ export async function mobileWelt(vorListen: (app: FastifyInstance) => Promise<vo
       });
     }
   });
-  app.addHook("onSend", async (request, reply, payload) => {
-    if (
-      (request.method === "POST" || request.method === "PUT") &&
-      /^\/api\/drafts(?:\/[^/?]+)?$/u.test(request.url) &&
-      reply.statusCode >= 200 &&
-      reply.statusCode < 300
-    ) {
-      const draft = JSON.parse(String(payload)) as Draft;
-      schreibungen.push({
+  // Synchroner Beobachter: keine Antwortbarriere oder zusätzlichen async-onSend-Hops im Server.
+  app.addHook("onError", (request, _reply, error, done) => {
+    console.error(
+      JSON.stringify({
+        event: "mobile-server-error",
         methode: request.method,
-        draft,
-        eingabe: request.body as Record<string, unknown>,
-      });
-      const halt = sperre;
-      if (halt?.methode === request.method) {
-        sperre = undefined;
-        halt.erreicht.resolve(draft);
-        // onSend folgt dem echten Capture-Service: persisted, aber die Antwort ist noch unterwegs.
-        await halt.weiter.promise;
-      }
-    }
-    return payload;
+        pfad: request.url.split("?")[0],
+        name: error.name,
+        message: redigiert(error.message),
+        stack: redigiert(error.stack ?? ""),
+      }),
+    );
+    done();
   });
   try {
     await vorListen(app);
@@ -78,6 +93,73 @@ export async function mobileWelt(vorListen: (app: FastifyInstance) => Promise<vo
       admin,
       lage,
       schreibungen,
+      async antwortenSteuern(seite: Page) {
+        steuerSeite = seite;
+        await seite.route(draftAntwort, async (route) => {
+          const request = route.request();
+          const methode = request.method();
+          if (methode !== "POST" && methode !== "PUT") {
+            await route.continue();
+            return;
+          }
+          const halt = sperre?.methode === methode ? sperre : undefined;
+          if (halt) sperre = undefined;
+          const lauf = (async (): Promise<void> => {
+            let original: APIResponse | undefined;
+            try {
+              // Originale Authanfrage; echte Persistenz und echte APIResponse, keine Ersatzantwort.
+              original = await route.fetch();
+              const status = original.status();
+              if (status >= 200 && status < 300) {
+                const draft = (await original.json()) as Draft;
+                schreibungen.push({ methode, draft, eingabe: request.postDataJSON() });
+                if (halt) {
+                  halt.erreicht.resolve(draft);
+                  await halt.weiter.promise;
+                }
+              } else {
+                const body = redigiert(await original.text());
+                console.error(
+                  JSON.stringify({ event: "mobile-http-error", methode, status, body }),
+                );
+                halt?.erreicht.reject(new Error(`Originale Draft-Antwort HTTP ${status}: ${body}`));
+              }
+            } catch (error) {
+              const name = error instanceof Error ? error.name : "Unbekannter Fehler";
+              const message = error instanceof Error ? error.message : String(error);
+              const stack = error instanceof Error ? (error.stack ?? "") : "";
+              console.error(
+                JSON.stringify({
+                  event: "mobile-route-error",
+                  methode,
+                  status: original?.status() ?? null,
+                  name,
+                  message: redigiert(message),
+                  stack: redigiert(stack),
+                }),
+              );
+              halt?.erreicht.reject(error);
+            } finally {
+              try {
+                if (original) await route.fulfill({ response: original });
+                else await route.abort();
+              } finally {
+                await original?.dispose();
+              }
+            }
+          })();
+          laeufe.add(lauf);
+          try {
+            await lauf;
+          } finally {
+            laeufe.delete(lauf);
+          }
+        });
+      },
+      async antwortenAbgeschlossen() {
+        await steuerSeite?.unroute(draftAntwort);
+        await Promise.all([...laeufe]);
+      },
       anhalten(methode: "POST" | "PUT") {
         if (sperre) throw new Error("Eine Antwort wartet bereits");
         const erreicht = signal<Draft>();

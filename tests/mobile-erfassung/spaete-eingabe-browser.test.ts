@@ -23,16 +23,20 @@ import {
 let browser: Browser | undefined;
 let kontext: Kontext | undefined;
 let welt: MobileWelt | undefined;
-const belege = resolve(".local/run/mobile-spaete-eingabe1070");
+const belege = resolve(".local/run/mobile-spaete-eingabe1070-pruefstand5");
 afterEach(async () => {
   welt?.loeseAlle();
   try {
-    await kontext?.close();
+    await welt?.antwortenAbgeschlossen();
   } finally {
     try {
-      await browser?.close();
+      await kontext?.close();
     } finally {
-      await welt?.schliessen();
+      try {
+        await browser?.close();
+      } finally {
+        await welt?.schliessen();
+      }
     }
   }
   kontext = undefined;
@@ -47,6 +51,7 @@ async function oeffnen(sprache: "de" | "nl") {
   const p = await profil(browser, { width: 390, height: 844 }, sprache);
   kontext = p.kontext;
   const seite = p.seite as unknown as Page;
+  await welt.antwortenSteuern(seite);
   await seite.goto(welt.basis, { waitUntil: "domcontentloaded" });
   await seite.locator("#auth-email").fill(EMAIL);
   await seite.locator("#auth-password").fill(PASSWORT);
@@ -89,7 +94,7 @@ describe("Mobile: späte Eingabe nach echtem Speichereffekt", () => {
         .click();
       const feld = seite.getByTestId("mob-interview-antwort");
       await feld.fill("Fiktive Kernaussage A26.");
-      await seite.getByRole("button", { name: "Weiter", exact: true }).click();
+      await seite.getByRole("button", { name: "Nächste Frage", exact: true }).click();
       await feld.fill("Bedingung vor dem Absenden.");
       const halt = w.anhalten("POST");
       const ersteAntwort = antwort(seite, "POST");
