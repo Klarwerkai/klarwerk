@@ -66,7 +66,6 @@ import {
   ersteinrichtung,
   mussGelingen,
   starteStrecke,
-  wissensobjektAnlegen,
 } from "../gast-nutzerweg/strecke";
 import { type Laufzustand, befundsatz, zaehltAlsBestanden } from "./laufzustand";
 
@@ -327,9 +326,37 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
       // Gegenstand dieses Auftrags ist. Ihre Fassungsnummern werden NACHGESEHEN, nicht geraten:
       // eine geratene Nummer liefe in „Diese Fassung gibt es nicht" und die Meldung zeigte auf die
       // falsche Stelle.
-      const koEins = await wissensobjektAnlegen(adminApi, KO_EINS);
-      const koZwei = await wissensobjektAnlegen(adminApi, KO_ZWEI);
-      const fassungVon = async (koId: string): Promise<number> => {
+      // Der Inhaltsvergleich braucht gespeicherten Rumpftext; ein freier Nachweis-Hash ersetzt ihn nicht.
+      const bodyEins =
+        "<table><thead><tr><th>Ventil</th><th>Stellung</th></tr></thead><tbody><tr><td>V1</td><td>Offen</td></tr></tbody></table>";
+      const bodyZwei =
+        "<table><thead><tr><th>Prüfung</th><th>Sollwert</th></tr></thead><tbody><tr><td>Druck</td><td>2 bar</td></tr></tbody></table>";
+      const bausteinAnlegen = async (titel: string, bodyHtml: string): Promise<string> => {
+        const angelegt = mussGelingen(
+          `POST /api/kos (${titel})`,
+          await adminApi.sende("POST", "/api/kos", {
+            confidentiality: "intern",
+            title: titel,
+            statement: `${titel} — Kurzfassung fuer den Pruefstand.`,
+            bodyHtml,
+            type: "best_practice",
+            category: "Wartung",
+          }),
+          201,
+        );
+        return (angelegt.json as { id: string }).id;
+      };
+      const koEins = await bausteinAnlegen(KO_EINS, bodyEins);
+      const koZwei = await bausteinAnlegen(KO_ZWEI, bodyZwei);
+      const fassungVon = async (koId: string, bodyHtml: string): Promise<number> => {
+        const gelesen = mussGelingen(
+          `GET /api/kos/${koId}`,
+          await adminApi.sende("GET", `/api/kos/${koId}`),
+        );
+        expect(
+          gelesen.json,
+          "der Baustein hat nicht den angelegten Tabelleninhalt gespeichert",
+        ).toMatchObject({ id: koId, bodyHtml });
         const antwort = mussGelingen(
           `GET /api/kos/${koId}/versions`,
           await adminApi.sende("GET", `/api/kos/${koId}/versions`),
@@ -339,10 +366,16 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
           saetze.length,
           `der Eintrag ${koId} hat keine belegte Fassung — dann ist er nicht bindbar, und der Weg unten misst etwas anderes als gemeint`,
         ).toBeGreaterThan(0);
-        return Math.max(...saetze.map((s) => s.version));
+        const fassung = Math.max(...saetze.map((s) => s.version));
+        expect(gelesen.json).toMatchObject({ version: fassung });
+        expect(
+          saetze.find((s) => s.version === fassung),
+          "die gebundene Fassung enthält nicht den tatsächlich gespeicherten Tabelleninhalt",
+        ).toMatchObject({ koId, version: fassung, snapshot: { id: koId, version: fassung, bodyHtml } });
+        return fassung;
       };
-      const fassungEins = await fassungVon(koEins);
-      const fassungZwei = await fassungVon(koZwei);
+      const fassungEins = await fassungVon(koEins, bodyEins);
+      const fassungZwei = await fassungVon(koZwei, bodyZwei);
 
       const { kontext, seite } = await profil(echterBrowser, { width: 1280, height: 900 });
       try {
@@ -596,11 +629,11 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
           "die Reihenfolge gilt als geändert, obwohl nur der Inhalt angefasst wurde — die beiden Aussagen sind vertauschbar",
         ).toBe(true);
 
-        // 3. GLEICHER HASH HEISST „unverändert", NICHT „richtig". Der Satz steht am Bildschirm.
+        // 3. GLEICHER GEBUNDENER INHALT HEISST „unverändert", NICHT „richtig". Der Satz steht am Bildschirm.
         const vergleichstext = (await seite.evaluate<string[]>(fn(VERGLEICHSZEILEN))).join(" ");
         expect(
           await seite.evaluate<string>(fn(LIES_TEXT)),
-          "die Gleichheitsaussage nennt ihre Grenze nicht — ein gleicher Nachweis belegt Unverändertheit, nicht Richtigkeit",
+          "die Gleichheitsaussage nennt ihre Grenze nicht — gleicher gebundener Inhalt belegt Unverändertheit, nicht Richtigkeit",
         ).toContain("Das ist keine Aussage über Richtigkeit.");
         for (const verboten of ["geprüft", "bestätigt", "korrekt"]) {
           expect(
