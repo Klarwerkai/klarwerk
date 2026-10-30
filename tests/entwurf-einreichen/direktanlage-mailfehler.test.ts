@@ -11,7 +11,7 @@ afterEach(async () => {
 const fehlertext = "Mailinhalt an pruefer@example.test über https://mail.example.test/send";
 
 async function buehne(mailFehlt: boolean) {
-  const notify = vi.fn(async (_id: string, _reviewers: string[]) => {
+  const notify = vi.fn(async (_id: string, _reviewers: readonly string[]) => {
     if (mailFehlt) throw new TypeError(fehlertext);
   });
   const enqueue = vi.fn();
@@ -86,7 +86,9 @@ describe("IMP-4/M15: direkte Einreichung trotz ausgebliebener Zuweisungsmail", (
       (a) => a.target === id && a.action === "ko.create-followup-failed",
     );
     expect(audit).toHaveLength(1);
-    expect(audit[0].payload).toEqual({ step: "notify-assignment", reason: "TypeError" });
+    const beleg = audit[0];
+    if (!beleg) throw new Error("Auditbeleg fehlt");
+    expect(beleg.payload).toEqual({ step: "notify-assignment", reason: "TypeError" });
     expect(JSON.stringify(audit)).not.toContain(fehlertext);
     expect(antwort.body).not.toContain(fehlertext);
     const vorher = await w.repos.koRepo.findById(id);
