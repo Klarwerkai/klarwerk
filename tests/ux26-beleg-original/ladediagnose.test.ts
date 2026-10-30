@@ -42,7 +42,11 @@ describe("UX26: begrenzte, redigierte Ladeursachen", () => {
       meldungen: ["Error loading dynamically imported module"],
       adressen: [asset("Kapital")],
     });
-    expect(b.fehler).toContainEqual({ art: "asset-response", adresse: asset("Kapital"), status: 404 });
+    expect(b.fehler).toContainEqual({
+      art: "asset-response",
+      adresse: asset("Kapital"),
+      status: 404,
+    });
     expect(b.fehler.length).toBeLessThanOrEqual(16);
     expect(b.assetAntworten).toHaveLength(24);
     expect(b.assetAntwortenAusgelassen).toBe(57);
@@ -57,7 +61,12 @@ describe("UX26: begrenzte, redigierte Ladeursachen", () => {
     expect(b.fehler).toHaveLength(4);
     expect(b.duplikate).toBe(3);
     expect(b.ausgelassen).toBe(7);
-    expect(b.gruppen.rauschen).toEqual({ kapazitaet: 4, behalten: 4, ausgelassen: 7, duplikate: 3 });
+    expect(b.gruppen.rauschen).toEqual({
+      kapazitaet: 4,
+      behalten: 4,
+      ausgelassen: 7,
+      duplikate: 3,
+    });
     expect(b.fehler.length + b.duplikate + b.ausgelassen).toBe(14);
   });
 
