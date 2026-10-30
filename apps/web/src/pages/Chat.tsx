@@ -1168,10 +1168,7 @@ export function Chat(): JSX.Element {
   });
   const gesperrt = gespraechStand.isError ? id : undefined;
   const gespraeche = useMemo(
-    () =>
-      liste.isError
-        ? []
-        : (liste.data?.gespraeche ?? []).filter((g) => g.id !== gesperrt),
+    () => (liste.isError ? [] : (liste.data?.gespraeche ?? []).filter((g) => g.id !== gesperrt)),
     [liste.data, liste.isError, gesperrt],
   );
   const ich = konten.data?.ich ?? "";

@@ -137,9 +137,9 @@ describe("WEBB-4: eigener Chatentwurf bei Hintergrundfehler", () => {
       await seite.getByTestId("chat-erwaehnen").selectOption(x.adminId);
       await seite.getByTestId("chat-anhang-waehlen").check();
       await x.sperreRolle();
-      expect(
-        (await x.leser.sende("GET", `/api/chat/gespraeche/${x.gespraechId}`)).status,
-      ).toBe(403);
+      expect((await x.leser.sende("GET", `/api/chat/gespraeche/${x.gespraechId}`)).status).toBe(
+        403,
+      );
       await seite.getByTestId("chat-nicht-gefunden").waitFor({ timeout: 15_000 });
       expect(await seite.getByTestId("chat-verfassen").count()).toBe(0);
       expect(await seite.getByTestId("chat-gespraech").count()).toBe(0);
@@ -151,9 +151,9 @@ describe("WEBB-4: eigener Chatentwurf bei Hintergrundfehler", () => {
         { stufe: "intern", leser: [x.adminId] },
         x.adminId,
       );
-      expect(
-        (await x.leser.sende("GET", `/api/chat/gespraeche/${x.gespraechId}`)).status,
-      ).toBe(404);
+      expect((await x.leser.sende("GET", `/api/chat/gespraeche/${x.gespraechId}`)).status).toBe(
+        404,
+      );
       expect((await x.leser.sende("GET", `/api/chat/nachrichten/${x.alteId}`)).status).toBe(404);
       const aeltere = `/api/chat/gespraeche/${x.gespraechId}?vor=${x.alteId}`;
       expect((await x.leser.sende("GET", aeltere)).status).toBe(404);

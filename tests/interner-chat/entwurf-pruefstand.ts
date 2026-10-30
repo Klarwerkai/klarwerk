@@ -60,8 +60,7 @@ export async function entwurfWelt(vorListen: (app: FastifyInstance) => Promise<v
       await admin.sende("POST", "/api/objects", {
         name: "fiktiver-anhang.png",
         mime: "image/png",
-        data:
-          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
         kind: "image",
         purpose: "attachment",
       }),
