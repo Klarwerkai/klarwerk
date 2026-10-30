@@ -1559,10 +1559,7 @@ export function Mobile(): JSX.Element {
                 ) : null}
               </div>
               {spaeteEingabe && ungesichert ? (
-                <output
-                  data-testid="mob-spaete-eingabe"
-                  className="block text-[11.5px] text-muted"
-                >
+                <output data-testid="mob-spaete-eingabe" className="block text-[11.5px] text-muted">
                   {t("mob.spaeteEingabe")}
                 </output>
               ) : null}
