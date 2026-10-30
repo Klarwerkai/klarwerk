@@ -49,8 +49,7 @@ describe("IMP4/M15: gespeicherte Zuweisung im echten Browser", () => {
     expect((await anmeldung).status()).toBe(200);
     expect((await kontext.cookies()).some((k) => k.name === "kw_session" && k.value)).toBe(true);
     await seite.goto(`${x.basis}/validierung`, { waitUntil: "domcontentloaded" });
-    const zeile = (title: string) =>
-      seite.getByTestId("validation-row").filter({ hasText: title });
+    const zeile = (title: string) => seite.getByTestId("validation-row").filter({ hasText: title });
     await zeile(einzel.title).getByTestId("pruefen-warteschlange-eintrag").click();
     await seite.getByTestId("pruefen-menue-karte").click();
     const auswahl = seite.getByTestId("pruefen-menue-panel-karte").locator("select");
@@ -68,9 +67,12 @@ describe("IMP4/M15: gespeicherte Zuweisung im echten Browser", () => {
     mkdirSync(belege, { recursive: true });
     await seite.screenshot({ path: resolve(belege, "einzel.png"), fullPage: true });
     await seite.keyboard.press("Escape");
+    await seite.getByTestId("pruefen-menue-stapel").click();
     await seite.getByTestId("pruefen-stapel-modus").click();
+    await seite.keyboard.press("Escape");
     await zeile(a.title).getByTestId("pruefen-stapel-waehlen").check();
     await zeile(b.title).getByTestId("pruefen-stapel-waehlen").check();
+    await seite.getByTestId("pruefen-menue-stapel").click();
     await seite.getByTestId("pruefen-stapel-zuweisen").selectOption(x.konto.id);
     const ergebnisse = seite.getByTestId("pruefen-stapel-ergebnis-zeile");
     await expect.poll(() => ergebnisse.count()).toBe(2);
