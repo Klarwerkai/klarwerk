@@ -31,6 +31,7 @@ import {
 } from "../gast-nutzerweg/strecke";
 import { type Verbindung, pgUrl, zerlege } from "../import-wiederoeffnen-nutzerweg/strecke";
 import { SPRACHEN } from "./bedeutung";
+import { LADE_DIAGNOSE_GRENZEN } from "./ladediagnose";
 import {
   DESKTOP,
   INHALT,
@@ -71,7 +72,7 @@ describe("UX-26 · Beleg und Original im Browser, gegen echtes PostgreSQL", () =
     const flaeche = stelleFlaecheBereit();
     browser = await starteChromium();
     process.stderr.write(
-      `${JOB} · ${wer.rows[0]?.version ?? "(Version nicht lesbar)"} · Chromium ${browserKennung(browser)} · Fläche: ${flaeche}\n`,
+      `${JOB} · ${wer.rows[0]?.version ?? "(Version nicht lesbar)"} · Chromium ${browserKennung(browser)} · Fläche: ${flaeche} · Ladediagnose: ${JSON.stringify(LADE_DIAGNOSE_GRENZEN)}\n`,
     );
     verfuegbar = true;
   }, 1_200_000);
