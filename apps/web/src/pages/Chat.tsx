@@ -238,10 +238,12 @@ function NeuesGespraech({
   );
 }
 
-function Erwaehnungen(): JSX.Element {
+function Erwaehnungen({ gesperrt }: { gesperrt: string | undefined }): JSX.Element {
   const { t, i18n } = useTranslation();
   const abfrage = useQuery({ queryKey: ["chat", "erwaehnungen"], queryFn: chatApi.erwaehnungen });
-  const liste = abfrage.data?.erwaehnungen ?? [];
+  const liste = abfrage.isError
+    ? []
+    : (abfrage.data?.erwaehnungen ?? []).filter((e) => e.gespraechId !== gesperrt);
   return (
     <section data-testid="chat-erwaehnungen" className="space-y-1">
       <SectionLabel>{t("chat.erwaehnungen.titel")}</SectionLabel>
@@ -504,21 +506,29 @@ function Verfasser({ n }: { n: NachrichtSicht }): JSX.Element {
   );
 }
 
+interface ChatEntwurf {
+  text: string;
+  erwaehnt: string[];
+  anhaenge: string[];
+}
+
 function Verfassen({
   g,
   konten,
   ich,
+  entwurf,
+  setEntwurf,
   onSenden,
 }: {
   g: GespraechSicht;
   konten: ChatKonto[];
   ich: string;
+  entwurf: ChatEntwurf;
+  setEntwurf: (aendern: (alt: ChatEntwurf) => ChatEntwurf) => void;
   onSenden: (eingabe: NachrichtEingabe) => void;
 }): JSX.Element {
   const { t } = useTranslation();
-  const [text, setText] = useState("");
-  const [erwaehnt, setErwaehnt] = useState<string[]>([]);
-  const [anhaenge, setAnhaenge] = useState<string[]>([]);
+  const { text, erwaehnt, anhaenge } = entwurf;
   const waehlbar = (
     g.art === "direkt" || g.art === "gruppe"
       ? konten.filter((k) => g.teilnehmer.some((p) => p.id === k.id))
@@ -542,9 +552,7 @@ function Verfassen({
           erwaehnungen: erwaehnt,
           anhaenge: artikel ? anhaenge.map((anhangId) => ({ koId: artikel.koId, anhangId })) : [],
         });
-        setText("");
-        setErwaehnt([]);
-        setAnhaenge([]);
+        setEntwurf(() => ({ text: "", erwaehnt: [], anhaenge: [] }));
       }}
     >
       <label className="block text-[12.5px] text-muted">
@@ -552,7 +560,10 @@ function Verfassen({
         <textarea
           data-testid="chat-eingabe"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            const text = e.target.value;
+            setEntwurf((alt) => ({ ...alt, text }));
+          }}
           placeholder={t("chat.eingabe.platzhalter")}
           rows={3}
           maxLength={4000}
@@ -568,8 +579,11 @@ function Verfassen({
             onChange={(e) => {
               const id = e.target.value;
               if (id) {
-                setErwaehnt((alt) => [...alt, id]);
-                setText((alt) => `${alt}${alt && !alt.endsWith(" ") ? " " : ""}@${name(id)} `);
+                setEntwurf((alt) => ({
+                  ...alt,
+                  erwaehnt: [...alt.erwaehnt, id],
+                  text: `${alt.text}${alt.text && !alt.text.endsWith(" ") ? " " : ""}@${name(id)} `,
+                }));
               }
             }}
             className="h-8 rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text"
@@ -588,7 +602,9 @@ function Verfassen({
             type="button"
             data-testid="chat-erwaehnt-chip"
             aria-label={t("chat.eingabe.entfernen", { name: name(id) })}
-            onClick={() => setErwaehnt((alt) => alt.filter((x) => x !== id))}
+            onClick={() =>
+              setEntwurf((alt) => ({ ...alt, erwaehnt: alt.erwaehnt.filter((x) => x !== id) }))
+            }
             className="rounded-btn bg-page px-2 py-0.5 text-[12px] text-text"
           >
             @{name(id)} ×
@@ -604,11 +620,15 @@ function Verfassen({
                 type="checkbox"
                 data-testid="chat-anhang-waehlen"
                 checked={anhaenge.includes(a.id)}
-                onChange={(e) =>
-                  setAnhaenge((alt) =>
-                    e.target.checked ? [...alt, a.id] : alt.filter((x) => x !== a.id),
-                  )
-                }
+                onChange={(e) => {
+                  const gewaehlt = e.target.checked;
+                  setEntwurf((alt) => ({
+                    ...alt,
+                    anhaenge: gewaehlt
+                      ? [...alt.anhaenge, a.id]
+                      : alt.anhaenge.filter((x) => x !== a.id),
+                  }));
+                }}
               />
               {a.name}
             </label>
@@ -688,6 +708,9 @@ function GespraechAnsicht({
   const darfBearbeiten = useRole().role !== "viewer";
   const [parameter] = useSearchParams();
   const hervor = parameter.get("nachricht");
+  // Der Editor darf bei einer gescheiterten Neuprüfung verschwinden, der eigene Entwurf nicht.
+  // Diese Ansicht ist je Gespräch gemountet; die AppShell ist zusätzlich je Konto gebunden.
+  const [entwurf, setEntwurf] = useState<ChatEntwurf>({ text: "", erwaehnt: [], anhaenge: [] });
   const [offen, setOffenRoh] = useState<Ausgehend[]>(() => ausgang.get(id) ?? []);
   const abfrage = useQuery({
     queryKey: ["chat", "gespraech", id],
@@ -806,10 +829,27 @@ function GespraechAnsicht({
     return <p className="text-sm text-muted">{t("chat.seite.laedt")}</p>;
   }
   if (abfrage.isError) {
+    const zugriffFehlt =
+      abfrage.error instanceof ApiError && [401, 403, 404].includes(abfrage.error.status);
     return (
-      <p role="alert" data-testid="chat-nicht-gefunden" className="text-sm text-muted">
-        {t("chat.seite.fehler")}
-      </p>
+      <div>
+        <p
+          role="alert"
+          data-testid={zugriffFehlt ? "chat-nicht-gefunden" : "chat-ladefehler"}
+          className="text-sm text-muted"
+        >
+          {t(zugriffFehlt ? "chat.seite.fehler" : "chat.seite.ladefehler")}
+        </p>
+        {!zugriffFehlt ? (
+          <Button
+            data-testid="chat-laden-erneut"
+            disabled={abfrage.isFetching}
+            onClick={() => void abfrage.refetch()}
+          >
+            {t("chat.seite.erneut")}
+          </Button>
+        ) : null}
+      </div>
     );
   }
   const g = abfrage.data.gespraech;
@@ -955,7 +995,14 @@ function GespraechAnsicht({
           </li>
         ))}
       </ol>
-      <Verfassen g={g} konten={konten} ich={ich} onSenden={(e) => void senden(e)} />
+      <Verfassen
+        g={g}
+        konten={konten}
+        ich={ich}
+        entwurf={entwurf}
+        setEntwurf={setEntwurf}
+        onSenden={(e) => void senden(e)}
+      />
     </div>
   );
 }
@@ -1112,7 +1159,21 @@ export function Chat(): JSX.Element {
     queryFn: chatApi.liste,
     refetchInterval: 15_000,
   });
-  const gespraeche = useMemo(() => liste.data?.gespraeche ?? [], [liste.data]);
+  // Beobachtet nur den vorhandenen Gesprächscache, ohne einen zweiten Abruf auszulösen.
+  // Scheitert seine Neuprüfung, dürfen auch Seitenleistenkopien keine alten Inhalte zeigen.
+  const gespraechStand = useQuery({
+    queryKey: ["chat", "gespraech", id],
+    queryFn: () => chatApi.gespraech(id ?? ""),
+    enabled: false,
+  });
+  const gesperrt = gespraechStand.isError ? id : undefined;
+  const gespraeche = useMemo(
+    () =>
+      liste.isError
+        ? []
+        : (liste.data?.gespraeche ?? []).filter((g) => g.id !== gesperrt),
+    [liste.data, liste.isError, gesperrt],
+  );
   const ich = konten.data?.ich ?? "";
   return (
     // `page-chat` setzt der Seitenkopf selbst (`PageHeader pageKey`), die Hülle trägt keinen zweiten.
@@ -1140,7 +1201,7 @@ export function Chat(): JSX.Element {
             </p>
           ) : null}
           <GespraechsListe gespraeche={gespraeche} aktiv={id} />
-          <Erwaehnungen />
+          <Erwaehnungen gesperrt={gesperrt} />
           {konten.data ? (
             <NeuesGespraech
               konten={konten.data.konten}

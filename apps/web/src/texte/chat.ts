@@ -16,6 +16,9 @@ export default {
       "Direkt-, Gruppen-, Space- und Artikelgespräche. Was du siehst, folgt deinen Rechten an Space und Artikel — auch nachträglich.",
     "chat.seite.laedt": "Gespräche werden geladen …",
     "chat.seite.fehler": "Dieses Gespräch gibt es nicht oder du darfst es nicht lesen.",
+    "chat.seite.ladefehler":
+      "Das Gespräch konnte nicht geladen werden. Die Inhalte bleiben bis zur erneuten Prüfung ausgeblendet. Dein ungesendeter Entwurf bleibt in dieser Ansicht erhalten.",
+    "chat.seite.erneut": "Erneut laden",
     "chat.seite.zurueck": "Alle Gespräche",
     "chat.liste.titel": "Gespräche",
     "chat.liste.leer": "Noch kein Gespräch, das du lesen darfst.",
@@ -113,6 +116,9 @@ export default {
       "Direct, group, space and article conversations. What you see follows your rights to space and article — also later on.",
     "chat.seite.laedt": "Loading conversations …",
     "chat.seite.fehler": "This conversation does not exist or you may not read it.",
+    "chat.seite.ladefehler":
+      "The conversation could not be loaded. Its contents remain hidden until checked again. Your unsent draft stays in this view.",
+    "chat.seite.erneut": "Try loading again",
     "chat.seite.zurueck": "All conversations",
     "chat.liste.titel": "Conversations",
     "chat.liste.leer": "No conversation you may read yet.",
@@ -210,6 +216,9 @@ export default {
       "Directe, groeps-, space- en artikelgesprekken. Wat je ziet, volgt je rechten op space en artikel — ook achteraf.",
     "chat.seite.laedt": "Gesprekken worden geladen …",
     "chat.seite.fehler": "Dit gesprek bestaat niet of je mag het niet lezen.",
+    "chat.seite.ladefehler":
+      "Het gesprek kon niet worden geladen. De inhoud blijft verborgen totdat deze opnieuw is gecontroleerd. Je niet-verzonden concept blijft in deze weergave bewaard.",
+    "chat.seite.erneut": "Opnieuw laden",
     "chat.seite.zurueck": "Alle gesprekken",
     "chat.liste.titel": "Gesprekken",
     "chat.liste.leer": "Nog geen gesprek dat je mag lezen.",
