@@ -143,6 +143,13 @@ function fundstelle(text: string, von: number, bis: number): NormFundstelle {
   return { von, bis, wortlaut: text.slice(von, bis) };
 }
 
+/** Unmittelbare Negation gehört zum folgenden Marker, nicht zum vorherigen Ereignisbeleg. */
+function negationsanfang(text: string, marker: number): number {
+  const vorlauf = text.slice(Math.max(0, marker - 20), marker);
+  const negation = /\b(?:nicht|nie|kein(?:e|en|em|er|es)?)\s*$/iu.exec(vorlauf);
+  return marker - (negation?.[0].length ?? 0);
+}
+
 /**
  * Liest nur die ausdrücklich erlaubte kurze Bekanntmachung, nie einen Normvolltext/Anhang/URL.
  * Unterstützt explizite „Norm N-17 v2“-Zeilen mit getrennten Ereignis- und Geltungsangaben.
@@ -195,10 +202,13 @@ export function erkenneNormBekanntmachung(
       const art = ART[normal(m[1])];
       if (!art) continue;
       const geltungDanach = geltungen.find((x) => x.index > m.index)?.index ?? text.length;
-      const ende = Math.min(marker[i + 1]?.index ?? text.length, geltungDanach);
+      const folgemarker = marker[i + 1];
+      const ende = Math.min(
+        folgemarker ? negationsanfang(text, folgemarker.index) : text.length,
+        geltungDanach,
+      );
       if (ende <= m.index) continue;
       const ausschnitt = text.slice(m.index, ende);
-      const vorlauf = text.slice(Math.max(0, m.index - 20), m.index);
       const fragen: string[] = [];
       const termine = [
         ...new Set(
@@ -208,9 +218,9 @@ export function erkenneNormBekanntmachung(
         ),
       ];
       const unsicher =
-        /\b(?:nicht|kein|keine|geplant|voraussichtlich|vermutlich|unbekannt|offen|soll|könnte|zurückgezogen|widerrufen|aufgehoben|abgesagt)\b/iu.test(
+        /\b(?:nicht|kein(?:e|en|em|er|es)?|geplant|voraussichtlich|vermutlich|unbekannt|offen|soll|könnte|zurückgezogen|widerrufen|aufgehoben|abgesagt|ausgesetzt|entfällt|entfallen|verschoben)\b/iu.test(
           ausschnitt,
-        ) || /\b(?:nicht|nie)\s*$/iu.test(vorlauf);
+        ) || negationsanfang(text, m.index) < m.index;
       const d = !unsicher && termine.length === 1 && termine[0] ? termine[0] : null;
       if (!d)
         fragen.push(
