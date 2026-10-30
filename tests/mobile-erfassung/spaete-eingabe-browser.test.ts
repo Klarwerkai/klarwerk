@@ -11,7 +11,6 @@ import {
 } from "../gast-nutzerweg/browserweg";
 import { PASSWORT, mussGelingen } from "../gast-nutzerweg/strecke";
 import {
-  ALT_BILD,
   ALT_BODY,
   ALT_LINK,
   EMAIL,
@@ -23,7 +22,7 @@ import {
 let browser: Browser | undefined;
 let kontext: Kontext | undefined;
 let welt: MobileWelt | undefined;
-const belege = resolve(".local/run/mobile-spaete-eingabe1070-pruefstand5");
+const belege = resolve(".local/run/mobile-spaete-eingabe1070-pruefstand6");
 afterEach(async () => {
   welt?.loeseAlle();
   try {
@@ -84,6 +83,29 @@ async function foto(seite: Page) {
   await seite.getByTestId("mob-foto-in-arbeit").waitFor({ state: "hidden" });
 }
 
+async function gespeichertesBild(seite: Page, html: string | undefined, alt: string) {
+  const bilder = (html ?? "").match(/<p><img\b[^>]*><\/p>/gu) ?? [];
+  expect(bilder).toHaveLength(1);
+  const fragment = bilder[0];
+  if (!fragment) throw new Error("Das tatsächlich gespeicherte Bildfragment fehlt.");
+  expect(fragment).toContain(`alt="${alt}"`);
+  const quelle = /\bsrc="([^"]+)"/u.exec(fragment)?.[1] ?? "";
+  expect(quelle).toMatch(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/u);
+  const bytes = Buffer.from(quelle.slice("data:image/webp;base64,".length), "base64");
+  expect(bytes.subarray(0, 4).toString("ascii")).toBe("RIFF");
+  expect(bytes.subarray(8, 12).toString("ascii")).toBe("WEBP");
+  const masse = await seite.evaluate<{ breite: number; hoehe: number }>(
+    `new Promise((resolve) => {
+      const bild = new Image();
+      bild.onload = () => resolve({ breite: bild.naturalWidth, hoehe: bild.naturalHeight });
+      bild.onerror = () => resolve({ breite: 0, hoehe: 0 });
+      bild.src = ${JSON.stringify(quelle)};
+    })`,
+  );
+  expect(masse).toEqual({ breite: 1, hoehe: 1 });
+  return fragment;
+}
+
 describe("Mobile: späte Eingabe nach echtem Speichereffekt", () => {
   it("bindet die Neuanlage und bewahrt spätes Interview und Foto", async () => {
     const { seite, w } = await oeffnen("de");
@@ -130,7 +152,7 @@ describe("Mobile: späte Eingabe nach echtem Speichereffekt", () => {
       expect(zuletzt.payload.conditions).toEqual([
         "Bedingung vor dem Absenden. Später eingegebener Satz bleibt.",
       ]);
-      expect(zuletzt.payload.bodyHtml).toContain("data:image/jpeg;base64,");
+      await gespeichertesBild(seite, zuletzt.payload.bodyHtml, "fiktives-pruefbild.png");
       expect((await w.liste()).map((d) => d.id)).toEqual([erster.id]);
       expect(w.schreibungen.map((s) => s.methode)).toEqual(["POST", "PUT"]);
       await expect.poll(() => feld.inputValue()).toBe("");
@@ -209,6 +231,26 @@ describe("Mobile: späte Eingabe nach echtem Speichereffekt", () => {
         }),
         201,
       ).json as { id: string };
+      // Der echte Auth-GET legt VOR dem Fortsetzen den tatsächlich gespeicherten Altbestand fest.
+      const altStand = await w.lesen(alt.id);
+      expect(altStand.id).toBe(alt.id);
+      const altHtml = altStand.payload.bodyHtml ?? "";
+      const altLink = /<p><a\b[^>]*>Hand<br><br>buch<\/a><\/p>/u.exec(altHtml)?.[0] ?? "";
+      expect(altLink).toBe(ALT_LINK);
+      const altBild = await gespeichertesBild(seite, altHtml, "Pumpe");
+      const altAbsatz = /<p>Unveränderter Altabsatz\.<\/p>/u.exec(altHtml)?.[0] ?? "";
+      expect(altAbsatz).toBe("<p>Unveränderter Altabsatz.</p>");
+      console.log(
+        JSON.stringify({
+          event: "mobile-altbestand-vor-fortsetzen",
+          id: altStand.id,
+          updatedAt: altStand.updatedAt,
+          bodyHtml: altHtml,
+          linkFragment: altLink,
+          bildFragment: altBild,
+          absatzFragment: altAbsatz,
+        }),
+      );
       await seite.reload({ waitUntil: "domcontentloaded" });
       await seite.getByTestId("mobil-entwurf-fortsetzen").click();
       const body = seite.getByTestId("mob-body");
@@ -221,7 +263,21 @@ describe("Mobile: späte Eingabe nach echtem Speichereffekt", () => {
       const ersteAntwort = antwort(seite, "PUT");
       await seite.getByTestId("mob-primaer").click();
       const erster = await halt.erreicht;
-      expect((await w.lesen(alt.id)).updatedAt).toBe(erster.updatedAt);
+      const ersterGelesen = await w.lesen(alt.id);
+      expect(ersterGelesen.updatedAt).toBe(erster.updatedAt);
+      expect(erster.id).toBe(alt.id);
+      expect(erster.payload.bodyHtml).toContain(altLink);
+      expect(erster.payload.bodyHtml).toContain(altBild);
+      expect(erster.payload.bodyHtml).toContain(altAbsatz);
+      expect(ersterGelesen.payload.bodyHtml).toBe(erster.payload.bodyHtml);
+      console.log(
+        JSON.stringify({
+          event: "mobile-altbestand-erste-antwort",
+          id: erster.id,
+          updatedAt: erster.updatedAt,
+          bodyHtml: erster.payload.bodyHtml,
+        }),
+      );
       await body.fill(spaet);
       halt.freigeben();
       expect((await ersteAntwort).status()).toBe(200);
@@ -236,10 +292,27 @@ describe("Mobile: späte Eingabe nach echtem Speichereffekt", () => {
       const zweite = await zweiteAntwort;
       expect(zweite.status()).toBe(200);
       expect(zweite.request().postDataJSON().expectedUpdatedAt).toBe(erster.updatedAt);
+      const zweiteQuittung = (await zweite.json()) as {
+        id: string;
+        payload: { bodyHtml?: string };
+      };
+      expect(zweiteQuittung.id).toBe(alt.id);
+      expect(zweiteQuittung.payload.bodyHtml).toContain(altLink);
+      expect(zweiteQuittung.payload.bodyHtml).toContain(altBild);
+      expect(zweiteQuittung.payload.bodyHtml).toContain(altAbsatz);
       const gespeichert = await w.lesen(alt.id);
-      expect(gespeichert.payload.bodyHtml).toContain(ALT_LINK);
-      expect(gespeichert.payload.bodyHtml).toContain(ALT_BILD);
-      expect(gespeichert.payload.bodyHtml).toContain("<p>Unveränderter Altabsatz.</p>");
+      expect(gespeichert.payload.bodyHtml).toBe(zweiteQuittung.payload.bodyHtml);
+      expect(gespeichert.payload.bodyHtml).toContain(altLink);
+      expect(gespeichert.payload.bodyHtml).toContain(altBild);
+      expect(gespeichert.payload.bodyHtml).toContain(altAbsatz);
+      console.log(
+        JSON.stringify({
+          event: "mobile-altbestand-zweite-antwort",
+          id: gespeichert.id,
+          updatedAt: gespeichert.updatedAt,
+          bodyHtml: gespeichert.payload.bodyHtml,
+        }),
+      );
       expect(gespeichert.payload.bodyHtml).toContain("<p>Erste mobile Ergänzung.</p>");
       expect(gespeichert.payload.bodyHtml).toContain("<p>Später eingegebener Satz.</p>");
       expect(gespeichert.payload.statement).toBe("Gespeicherte Kernaussage bleibt.");

@@ -5,12 +5,12 @@ import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/sr
 import { Sitzung, type Strecke, ersteinrichtung, mussGelingen } from "../gast-nutzerweg/strecke";
 
 export const EMAIL = "admin@mobile-spaete-eingabe.test";
-export const ALT_LINK =
-  '<p><a href="https://example.test/handbuch?kapitel=2">Hand<br><br>buch</a></p>';
-export const ALT_BILD = '<p><img src="https://example.test/pumpe.png" alt="Pumpe"></p>';
-export const ALT_BODY = `<p>Unveränderter Altabsatz.</p>${ALT_LINK}${ALT_BILD}`;
 export const FOTO =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+export const ALT_LINK =
+  '<p><a href="https://example.test/handbuch?kapitel=2" rel="noopener noreferrer nofollow" target="_blank">Hand<br><br>buch</a></p>';
+export const ALT_BILD = `<p><img src="data:image/png;base64,${FOTO}" alt="Pumpe"></p>`;
+export const ALT_BODY = `<p>Unveränderter Altabsatz.</p>${ALT_LINK}${ALT_BILD}`;
 
 function signal<T>() {
   let erfuellen: ((wert: T) => void) | undefined;
