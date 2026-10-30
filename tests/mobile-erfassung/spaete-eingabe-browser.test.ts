@@ -83,7 +83,7 @@ async function foto(seite: Page) {
   await seite.getByTestId("mob-foto-in-arbeit").waitFor({ state: "hidden" });
 }
 
-async function gespeichertesBild(seite: Page, html: string | undefined, alt: string) {
+async function gespeichertesBild(seite: Page, html: string | null | undefined, alt: string) {
   const bilder = (html ?? "").match(/<p><img\b[^>]*><\/p>/gu) ?? [];
   expect(bilder).toHaveLength(1);
   const fragment = bilder[0];
