@@ -31,6 +31,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices, createPool, migrate } from "../../services/app";
 import { AuditService, PgAuditRepo, inspectChain } from "../../services/audit";
 import { guardedLocalPgTestUrl, withPgTx } from "../../services/db-tx";
+import { poolAbschluss } from "./pool-abschluss";
 
 const PREFIX = "[KLARWERK][gesamt-auditprotokoll L3]";
 const DB = "klarwerk_test_auditprotokoll_l3";
@@ -89,6 +90,9 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
   let url = "";
   let poolA: Pool | undefined;
   let poolB: Pool | undefined;
+  let poolAEnde: ReturnType<typeof poolAbschluss> | undefined;
+  let poolBEnde: ReturnType<typeof poolAbschluss> | undefined;
+  let verwaltungEnde: ReturnType<typeof poolAbschluss> | undefined;
   let appA: FastifyInstance | undefined;
   let appB: FastifyInstance | undefined;
   let headers: Record<string, string> = {};
@@ -117,12 +121,14 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
     }
     if (basisUrl) {
       const kandidat = createPool(basisUrl);
+      const kandidatEnde = poolAbschluss(kandidat);
       try {
         await kandidat.query("SELECT 1");
         verwaltung = kandidat;
+        verwaltungEnde = kandidatEnde;
       } catch (fehler) {
         grund = `Datenbank unter der genannten URL nicht erreichbar: ${String(fehler)}`;
-        await kandidat.end().catch(() => undefined);
+        await kandidatEnde();
       }
     }
     if (!verwaltung) {
@@ -133,7 +139,9 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
     await verwaltung.query(`CREATE DATABASE ${DB}`);
     url = mitDatenbank(basisUrl, DB);
     poolA = new Pool({ connectionString: url, max: 6 });
+    poolAEnde = poolAbschluss(poolA);
     poolB = new Pool({ connectionString: url, max: 6 });
+    poolBEnde = poolAbschluss(poolB);
     await migrate(poolA);
     await poolA.query(PROBE_DDL);
     // ZWEI Instanzen gegen DIESELBE Datenbank — die Lage, die eine prozessinterne Schreibfolge
@@ -163,13 +171,35 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
   }, 180_000);
 
   afterAll(async () => {
-    await appA?.close().catch(() => undefined);
-    await appB?.close().catch(() => undefined);
-    await poolA?.end().catch(() => undefined);
-    await poolB?.end().catch(() => undefined);
-    await verwaltung?.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`).catch(() => undefined);
-    await verwaltung?.end();
-    await container?.stop();
+    const fehler: unknown[] = [];
+    const versuche = async (aktion: () => unknown): Promise<void> => {
+      try {
+        await aktion();
+      } catch (ursache) {
+        fehler.push(ursache);
+      }
+    };
+    const poolSchliessen = async (
+      name: string,
+      schliessen: ReturnType<typeof poolAbschluss> | undefined,
+    ): Promise<void> => {
+      if (!schliessen) return;
+      await schliessen();
+      process.stdout.write(
+        `${PREFIX} ${JSON.stringify({ pool: name, tatsaechlich_beendet: true })}\n`,
+      );
+    };
+    // Jeden eigenen Abschluss versuchen, auch wenn ein anderer Aufräumschritt fehlschlägt.
+    await Promise.all([versuche(() => appA?.close()), versuche(() => appB?.close())]);
+    await Promise.all([
+      versuche(() => poolSchliessen("A", poolAEnde)),
+      versuche(() => poolSchliessen("B", poolBEnde)),
+    ]);
+    // Erst nach den wirklichen Clientabschlüssen: keine erzwungene Backend-Terminierung.
+    await versuche(() => verwaltung?.query(`DROP DATABASE IF EXISTS ${DB}`));
+    await versuche(() => poolSchliessen("verwaltung", verwaltungEnde));
+    await versuche(() => container?.stop());
+    if (fehler.length > 0) throw new AggregateError(fehler, `${PREFIX} Aufräumen fehlgeschlagen.`);
   });
 
   function bereit(ctx: { skip: () => void }): {

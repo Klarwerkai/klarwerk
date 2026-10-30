@@ -8,7 +8,7 @@ function kontrollierterPool(beenden: () => Promise<void> = () => Promise.resolve
 }
 
 describe("Poolabschluss wartet auf tatsächliche Clientenden", () => {
-  it("bleibt nach Pool.end offen, bis beide Clients ihr end gemeldet haben", async () => {
+  it("bleibt nach Pool.end offen, bis Client-end oder remove beide echten Abschlüsse melden", async () => {
     const poolEnde = Promise.resolve();
     const pool = kontrollierterPool(() => poolEnde);
     const schliessen = poolAbschluss(pool);
@@ -25,8 +25,12 @@ describe("Poolabschluss wartet auf tatsächliche Clientenden", () => {
     eins.emit("end");
     await setImmediate();
     expect(await Promise.race([abschluss, Promise.resolve(offen)])).toBe(offen);
-    zwei.emit("end");
+    pool.emit("remove", zwei);
     await expect(abschluss).resolves.toBeUndefined();
+    expect(eins.listenerCount("end")).toBe(0);
+    expect(zwei.listenerCount("end")).toBe(0);
+    expect(pool.listenerCount("connect")).toBe(0);
+    expect(pool.listenerCount("remove")).toBe(0);
   });
 
   it("hängt bei bereits beendeten oder fehlenden Clients nicht", async () => {
@@ -36,6 +40,9 @@ describe("Poolabschluss wartet auf tatsächliche Clientenden", () => {
     pool.emit("connect", client);
     client.emit("end");
     await expect(schliessen()).resolves.toBeUndefined();
+    expect(client.listenerCount("end")).toBe(0);
+    expect(pool.listenerCount("connect")).toBe(0);
+    expect(pool.listenerCount("remove")).toBe(0);
 
     // Der SELECT-Fehlerpfad kann schon vor afterAll schließen.
     let aufrufe = 0;
@@ -53,6 +60,25 @@ describe("Poolabschluss wartet auf tatsächliche Clientenden", () => {
     const fehler = new Error("Pool-Ende abgelehnt");
     const pool = kontrollierterPool(() => Promise.reject(fehler));
     const schliessen = poolAbschluss(pool);
-    await expect(schliessen()).rejects.toBe(fehler);
+    const client = new EventEmitter();
+    pool.emit("connect", client);
+    const abschluss = schliessen();
+    const erwarteteAblehnung = expect(abschluss).rejects.toBe(fehler);
+    const offen = Symbol("offen");
+    await setImmediate();
+    expect(
+      await Promise.race([
+        abschluss.then(
+          () => "erfüllt",
+          () => "abgelehnt",
+        ),
+        Promise.resolve(offen),
+      ]),
+    ).toBe(offen);
+    client.emit("end");
+    await erwarteteAblehnung;
+    expect(client.listenerCount("end")).toBe(0);
+    expect(pool.listenerCount("connect")).toBe(0);
+    expect(pool.listenerCount("remove")).toBe(0);
   });
 });
