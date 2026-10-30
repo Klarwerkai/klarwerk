@@ -148,7 +148,7 @@ describe("Mobile: späte Eingabe nach echtem Speichereffekt", () => {
       await seite.getByText("offline", { exact: true }).waitFor();
       await feld.fill("Offline erster Satz.");
       await seite.evaluate(() => {
-        const w = window as unknown as { bereit?: boolean; freigeben?: () => void };
+        const w = globalThis as unknown as { bereit?: boolean; freigeben?: () => void };
         void navigator.locks.request("kw.offlineQueue.v1", async () => {
           w.bereit = true;
           await new Promise<void>((resolve) => {

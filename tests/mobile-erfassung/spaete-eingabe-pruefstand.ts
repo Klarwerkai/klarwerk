@@ -94,10 +94,8 @@ export async function mobileWelt(vorListen: (app: FastifyInstance) => Promise<vo
         ).json as Draft;
       },
       async liste() {
-        return mussGelingen(
-          "Echten Entwurfsbestand lesen",
-          await admin.sende("GET", "/api/drafts"),
-        ).json as Draft[];
+        return mussGelingen("Echten Entwurfsbestand lesen", await admin.sende("GET", "/api/drafts"))
+          .json as Draft[];
       },
       loeseAlle() {
         for (const frei of alleFreigaben) frei();
