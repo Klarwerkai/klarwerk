@@ -20,7 +20,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useDrafts, useKos, useLibrarySearch } from "../api/hooks";
-import type { AnswerResult, KnowledgeObject } from "../api/types";
+import type { AnswerResult, Draft, KnowledgeObject } from "../api/types";
 // JOB 4333: die Sitzungsfrage, dreiwertig — diese Fläche muss „der Server sagt: keine Sitzung" von
 // „es konnte niemand gefragt werden" unterscheiden, sonst sagt sie das Falsche.
 import { useSession } from "../app/AuthContext";
@@ -55,6 +55,7 @@ import {
 import { selectAnswer } from "../lib/askResponse";
 import { conflictImpact } from "../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../lib/displayStatus";
+import { draftBodyMitFotos } from "../lib/draftBody";
 import {
   type DraftFeld,
   type DraftFormFoto,
@@ -95,7 +96,12 @@ import {
   interviewBegonnen,
   interviewZuForm,
 } from "../lib/mobileInterview";
-import { type QueueStatus, offlineVorgangsStand } from "../lib/offlineQueue";
+import {
+  type OfflineVorgangsStand,
+  type QueueStatus,
+  offlineVorgangsStand,
+} from "../lib/offlineQueue";
+import { readOfflineQueue } from "../lib/offlineQueueStorage";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 // JOB 4333: die Zahl der noch nicht übertragenen Vorgänge auf DIESEM Gerät — kontounabhängig und
 // nur lesend. Gebraucht ausschliesslich in der Lage „Sitzungsfrage unbeantwortet", in der
@@ -108,6 +114,13 @@ type MobileTab = "capture" | "ask" | "lookup";
 
 /** FR-MOB-02: die zwei Erfassungsarten am Handy. */
 type ErfassungsModus = "notiz" | "interview";
+
+interface SpeicherVersuch {
+  form: DraftFormState;
+  entwurfId: string | null;
+  generation: number;
+  neueErfassung: boolean;
+}
 
 /**
  * FR-CAP-04: Fotos je neuem Entwurf. Sie reisen als verkleinertes JPEG im Body (wie am Desktop) und
@@ -327,6 +340,9 @@ export function Mobile(): JSX.Element {
   const [form, setForm] = useState<DraftFormState>({ ...EMPTY_DRAFT_FORM });
   const [baseline, setBaseline] = useState<DraftFormState>({ ...EMPTY_DRAFT_FORM });
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Eine bestätigte ID wechselt ein noch beschriebenes Interview nicht in die Resume-Ansicht.
+  const [neueErfassung, setNeueErfassung] = useState(true);
+  const [spaeteEingabe, setSpaeteEingabe] = useState(false);
   const isDirty = isDraftFormChanged(form, baseline);
   // JOB 4193: der Standvergleich läuft ASYNCHRON (er holt den Serverstand nach). Ohne diesen Ref
   // vergliche er gegen den Formularstand von vor dem Absenden — wer während des Speicherns
@@ -353,13 +369,23 @@ export function Mobile(): JSX.Element {
   // wird verworfen — es gehört zu einem Formular, das es nicht mehr gibt, und darf in keinen
   // anderen Entwurf geraten.
   const formGenRef = useRef(0);
+  const lokalerVorgangRef = useRef<string | null>(null);
   /** Die laufenden Umwandlungen. Jeder Speicherweg wartet sie ab, bevor er die Nutzlast baut. */
-  const fotoLaeufeRef = useRef(new Set<Promise<void>>());
+  const fotoLaeufeRef = useRef(new Map<Promise<void>, number>());
+  const aktivRef = useRef(true);
+  useEffect(() => {
+    aktivRef.current = true;
+    return () => {
+      aktivRef.current = false;
+      formGenRef.current += 1;
+    };
+  }, []);
   /** Je laufender Umwandlung die Formular-Generation, unter der sie begann. */
   const [fotoLaufGenerationen, setFotoLaufGenerationen] = useState<readonly number[]>([]);
   const fotosInArbeit = fotoLaufGenerationen.length;
   const formAbloesen = (): void => {
     formGenRef.current += 1;
+    lokalerVorgangRef.current = null;
   };
   // BEN (Nacharbeit 3): eine Fotoauswahl, deren Umwandlung noch läuft, IST ungesicherte Eingabe —
   // auch wenn das Formular das Foto noch nicht trägt. Ohne sie fragte der Weggeh-Wächter bei einer
@@ -367,11 +393,14 @@ export function Mobile(): JSX.Element {
   // Gezählt wird nur, was zum AKTUELLEN Formular gehört; ein abgelöster Lauf wird ohnehin verworfen.
   // Ein Prädikat für beide Wächter (Navigation und beforeunload) — keine zweite Autorität.
   const fotoAuswahlLaeuft = fotoLaufGenerationen.includes(formGenRef.current);
-  const ungesichert = isDirty || fotoAuswahlLaeuft;
+  const ungesichert = isDirty || fotoAuswahlLaeuft || spaeteEingabe;
   const resetForm = (): void => {
     formAbloesen();
-    setForm({ ...EMPTY_DRAFT_FORM });
+    formRef.current = { ...EMPTY_DRAFT_FORM };
+    setForm(formRef.current);
     setBaseline({ ...EMPTY_DRAFT_FORM });
+    setNeueErfassung(true);
+    setSpaeteEingabe(false);
     setEditingId(null);
     setKonflikt(null);
     setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
@@ -410,7 +439,7 @@ export function Mobile(): JSX.Element {
   // GEWECHSELT WIRD NUR OHNE TEXTEINGABE. Sonst stünde Getipptes in einem Feld, das die andere Art
   // gar nicht zeigt — und würde unsichtbar mitgespeichert. Fotos zeigen beide Arten, sie sperren
   // daher nicht.
-  const erfassungsartWaehlbar = !editingId;
+  const erfassungsartWaehlbar = neueErfassung;
   const interviewAktiv = modus === "interview" && erfassungsartWaehlbar;
   const modusGesperrt =
     form.title.trim().length > 0 ||
@@ -439,7 +468,7 @@ export function Mobile(): JSX.Element {
   // Verkleinert wird wie am Desktop-Editor (`fileToThumbDataUrl`), gespeichert im Body
   // (`draftBodyMitFotos`). Nur beim NEUEN Erfassen — an einem fortgesetzten Entwurf stehen Bilder
   // als feste Blöcke im Text.
-  const fotosMoeglich = !editingId;
+  const fotosMoeglich = neueErfassung;
   const fotos = form.fotos ?? [];
   //
   // BEN (Nacharbeit 2): die Umwandlung ist asynchron. Bis hierher ergänzte sie nach dem Warten
@@ -488,7 +517,7 @@ export function Mobile(): JSX.Element {
       formRef.current = naechst;
       setForm(naechst);
     })();
-    fotoLaeufeRef.current.add(lauf);
+    fotoLaeufeRef.current.set(lauf, generation);
     setFotoLaufGenerationen((g) => [...g, generation]);
     try {
       await lauf;
@@ -507,7 +536,7 @@ export function Mobile(): JSX.Element {
   const fotosAbwarten = async (): Promise<DraftFormState | null> => {
     const generation = formGenRef.current;
     while (fotoLaeufeRef.current.size > 0) {
-      await Promise.all([...fotoLaeufeRef.current]);
+      await Promise.all([...fotoLaeufeRef.current.keys()]);
     }
     return formGenRef.current === generation ? formRef.current : null;
   };
@@ -555,10 +584,18 @@ export function Mobile(): JSX.Element {
   // bekommt sie deshalb den Titel, den diese Fläche ohnehin für titellose Entwürfe anzeigt
   // (`capture.draftFallbackTitle`, s. `titelVon`). Fortgesetzte Entwürfe bleiben unberührt: dort
   // steht der Titel schon am Server, und der partielle Merge lässt ihn stehen.
-  const vorgangVon = (f: DraftFormState): ReturnType<typeof formToUpdate> => {
+  const vorgangVon = (
+    f: DraftFormState,
+    entwurfId: string | null = editingId,
+    erfassung = neueErfassung,
+  ): ReturnType<typeof formToUpdate> => {
     const vorgang = formToUpdate(f);
+    // Auch das Entfernen des letzten bereits bestätigten Fotos schreibt den Body bewusst fort.
+    if (erfassung && entwurfId && f.fotos !== undefined) {
+      vorgang.payload.bodyHtml = draftBodyMitFotos(f.statement, f.fotos);
+    }
     const { title, statement } = vorgang.payload;
-    if (!editingId && !title?.trim() && !statement?.trim()) {
+    if (!entwurfId && !title?.trim() && !statement?.trim()) {
       return {
         ...vorgang,
         payload: { ...vorgang.payload, title: t("capture.draftFallbackTitle") },
@@ -567,15 +604,66 @@ export function Mobile(): JSX.Element {
     return vorgang;
   };
 
-  const sendeEntwurf = (f: DraftFormState): Promise<unknown> => {
-    const { payload, expectedUpdatedAt } = vorgangVon(f);
-    if (!editingId) {
-      return endpoints.drafts.create(payload);
+  const versuchVon = (f: DraftFormState): SpeicherVersuch => ({
+    form: f,
+    entwurfId: editingId,
+    generation: formGenRef.current,
+    neueErfassung,
+  });
+  const versuchAktuell = (v: SpeicherVersuch): boolean =>
+    aktivRef.current && v.generation === formGenRef.current;
+  const speicherLaufRef = useRef(false);
+  const sendeEntwurf = async (v: SpeicherVersuch): Promise<Draft> => {
+    if (speicherLaufRef.current) {
+      throw new NavGuardSaveError(t("mob.speichernLaeuft"));
     }
-    if (!expectedUpdatedAt) {
-      return Promise.reject(new StandFehltError());
+    if (!versuchAktuell(v)) throw new NavGuardSaveError(t("mob.spaeteEingabe"));
+    const { payload, expectedUpdatedAt } = vorgangVon(v.form, v.entwurfId, v.neueErfassung);
+    speicherLaufRef.current = true;
+    try {
+      if (v.entwurfId) {
+        if (!expectedUpdatedAt) throw new StandFehltError();
+        return await endpoints.drafts.update(v.entwurfId, payload, { expectedUpdatedAt });
+      }
+      return await endpoints.drafts.create(payload);
+    } finally {
+      speicherLaufRef.current = false;
     }
-    return endpoints.drafts.update(editingId, payload, { expectedUpdatedAt });
+  };
+
+  /** Nur der bestätigte Stand ist gesichert; eine spätere Eingabe gehört weiter diesem Entwurf. */
+  const speicherQuittieren = (
+    v: SpeicherVersuch,
+    bestaetigt?: Draft,
+    lokal?: { id: string; stand: OfflineVorgangsStand | null },
+  ): boolean => {
+    if (!versuchAktuell(v)) return false;
+    setBeiseite(null);
+    const aktuell = formRef.current;
+    const spaeter =
+      JSON.stringify(aktuell) !== JSON.stringify(v.form) ||
+      [...fotoLaeufeRef.current.values()].includes(v.generation);
+    if (!spaeter) {
+      resetForm();
+      return true;
+    }
+    if (bestaetigt) {
+      const naechst = { ...aktuell, gesehenerStand: bestaetigt.updatedAt };
+      formRef.current = naechst;
+      setForm(naechst);
+      setBaseline({ ...v.form, gesehenerStand: bestaetigt.updatedAt });
+      setEditingId(bestaetigt.id);
+    }
+    if (lokal) {
+      lokalerVorgangRef.current = lokal.id;
+      const naechst = { ...aktuell, gesehenerOfflineStand: lokal.stand };
+      formRef.current = naechst;
+      setForm(naechst);
+      setBaseline({ ...v.form, gesehenerOfflineStand: lokal.stand });
+    }
+    // Ein fehlender lokaler Readback bleibt ohne CAS-Basis; der nächste Replace lehnt sicher ab.
+    setSpaeteEingabe(true);
+    return false;
   };
 
   /**
@@ -583,14 +671,14 @@ export function Mobile(): JSX.Element {
    * denen der gesehene Stand vergessen werden kann, und der offline gespeicherte Vorgang ginge
    * beim Nachsenden wieder nach „letzter Schreiber gewinnt" raus.
    */
-  const neuerVorgang = (f: DraftFormState): NeuerVorgang => {
-    const { payload, expectedUpdatedAt } = vorgangVon(f);
+  const neuerVorgang = (v: SpeicherVersuch): NeuerVorgang => {
+    const { payload, expectedUpdatedAt } = vorgangVon(v.form, v.entwurfId, v.neueErfassung);
     return {
       id: crypto.randomUUID(),
-      kind: editingId ? "draft.update" : "draft.create",
-      draftId: editingId,
+      kind: v.entwurfId ? "draft.update" : "draft.create",
+      draftId: v.entwurfId,
       payload,
-      title: titelVon(f),
+      title: titelVon(v.form),
       createdAt: new Date().toISOString(),
       ...(expectedUpdatedAt ? { seenUpdatedAt: expectedUpdatedAt } : {}),
     };
@@ -604,15 +692,59 @@ export function Mobile(): JSX.Element {
    */
   const wiederholtRef = useRef(false);
 
+  // Eine lokal quittierte Fortsetzung ersetzt genau ihren bestehenden Vorgang, auch nach Reconnect.
+  const lokalSpeichern = async (
+    v: SpeicherVersuch,
+  ): Promise<{ id: string; stand: OfflineVorgangsStand | null } | false> => {
+    if (!versuchAktuell(v)) return false;
+    if (speicherLaufRef.current) throw new NavGuardSaveError(t("mob.speichernLaeuft"));
+    speicherLaufRef.current = true;
+    try {
+      const gebunden = lokalerVorgangRef.current;
+      const { payload, expectedUpdatedAt } = vorgangVon(v.form, v.entwurfId, v.neueErfassung);
+      if (gebunden) {
+        const stand = await queue.replace(
+          gebunden,
+          payload,
+          titelVon(v.form),
+          v.form.gesehenerOfflineStand ?? null,
+          expectedUpdatedAt,
+        );
+        return stand ? { id: gebunden, stand } : false;
+      }
+      const op = neuerVorgang(v);
+      if (!(await queue.enqueue(op, v.form.gesehenerOfflineStand ?? null))) return false;
+      const id = v.form.gesehenerOfflineStand?.id ?? op.id;
+      let stand: OfflineVorgangsStand | null = null;
+      try {
+        // Nur der gerade angenommene Vorgang, keine fremden Titel oder Nutzlasten für die Anzeige.
+        const gelesen = readOfflineQueue<VorgangMitStand>().find((q) => q.id === id);
+        if (gelesen && JSON.stringify(gelesen.payload) === JSON.stringify(op.payload)) {
+          stand = offlineVorgangsStand(gelesen);
+        }
+      } catch {
+        // Annahme bleibt wahr; ohne nachgelesenen Stand wird kein zweiter Vorgang angelegt.
+      }
+      return { id, stand };
+    } finally {
+      speicherLaufRef.current = false;
+    }
+  };
+
   const save = useMutation({
     mutationFn: sendeEntwurf,
-    onSuccess: () => {
+    onSuccess: (bestaetigt, v) => {
       invalidateDrafts();
-      push("success", editingId ? t("mob.updated") : t("mob.saved"));
-      setBeiseite(null);
-      resetForm();
+      if (!versuchAktuell(v)) return;
+      const fertig = speicherQuittieren(v, bestaetigt);
+      push(
+        fertig ? "success" : "info",
+        fertig ? (v.entwurfId ? t("mob.updated") : t("mob.saved")) : t("mob.spaeteEingabe"),
+      );
     },
-    onError: (e: unknown) => void speicherfehler(e),
+    onError: (e: unknown, v) => {
+      if (versuchAktuell(v)) void speicherfehler(e);
+    },
   });
 
   /**
@@ -626,6 +758,10 @@ export function Mobile(): JSX.Element {
    */
   const speicherfehler = async (e: unknown): Promise<void> => {
     const id = editingId;
+    if (e instanceof NavGuardSaveError) {
+      push("error", e.message);
+      return;
+    }
     // JOB 4193 R6: FEHLENDE VORAUSSETZUNG ist kein Fehler, sondern ein Auftrag — hole den Stand und
     // vergleiche. Danach steht entweder die Rückfrage (Unterschied) oder es wird gegen den frischen
     // Stand gespeichert (kein Unterschied). Geschrieben wird in keinem Fall ungeprüft.
@@ -665,6 +801,8 @@ export function Mobile(): JSX.Element {
     quelle: StandKonflikt["quelle"],
     op: VorgangMitStand | null,
   ): Promise<void> => {
+    const generation = formGenRef.current;
+    const nochAktuell = (): boolean => aktivRef.current && generation === formGenRef.current;
     const offline = op
       ? { ...draftToForm({ payload: op.payload }), gesehenerOfflineStand: offlineVorgangsStand(op) }
       : null;
@@ -675,9 +813,11 @@ export function Mobile(): JSX.Element {
       frisch = await endpoints.drafts.get(id);
     } catch {
       // Der Vergleich wird NICHT behauptet — weder in die eine noch in die andere Richtung.
+      if (!nochAktuell()) return;
       setKonflikt({ ...rumpf, lage: { art: "fehler" } });
       return;
     }
+    if (!nochAktuell()) return;
     const server = draftToForm(frisch);
     const meins = offline ?? formRef.current;
     const felder = abweichendeFelder(meins, server);
@@ -722,7 +862,7 @@ export function Mobile(): JSX.Element {
       return;
     }
     wiederholtRef.current = true;
-    save.mutate(neu);
+    save.mutate(versuchVon(neu));
   };
 
   // FE-MOB-07: offline → in die lokale Queue statt direkter API-Aufruf.
@@ -771,6 +911,10 @@ export function Mobile(): JSX.Element {
         : konflikt.lage;
 
   const onSave = async (): Promise<void> => {
+    if (speicherLaufRef.current) {
+      push("info", t("mob.speichernLaeuft"));
+      return;
+    }
     if (schreibenGesperrt) {
       push("error", t("mob.stand.erstAufloesen"));
       return;
@@ -781,25 +925,31 @@ export function Mobile(): JSX.Element {
     if (!f) {
       return;
     }
+    if (speicherLaufRef.current) {
+      push("info", t("mob.speichernLaeuft"));
+      return;
+    }
+    const versuch = versuchVon(f);
     wiederholtRef.current = false;
-    if (!queue.online) {
+    if (!queue.online || lokalerVorgangRef.current) {
       // JOB 4249: Der offline gespeicherte Vorgang braucht einen Eigentümer — sonst läge er später
       // als ungebundener Rest da, den niemand mehr senden darf. Steht das Konto nicht fest, wird
       // NICHT angenommen; der getippte Text bleibt im Feld stehen (kein `resetForm`), und der
       // Mensch erfährt den Grund. Nichts wird still weggeworfen.
-      if (!(await queue.enqueue(neuerVorgang(f), f.gesehenerOfflineStand ?? null))) {
+      const lokal = await lokalSpeichern(versuch);
+      if (!lokal) {
         push(
           "error",
           "Die Eingabe konnte lokal nicht sicher gespeichert werden. Sie bleibt im Formular. Bitte Speicher und Konto prüfen.",
         );
         return;
       }
+      if (!versuchAktuell(versuch)) return;
       push("info", t("mob.queued"));
-      setBeiseite(null);
-      resetForm();
+      speicherQuittieren(versuch, undefined, lokal);
       return;
     }
-    save.mutate(f);
+    save.mutate(versuch);
   };
 
   // WP-SAMMEL20-FIX bleibt erhalten: der bestehende NavGuard schützt ungespeicherte Eingaben und
@@ -839,28 +989,31 @@ export function Mobile(): JSX.Element {
         if (!editingId && !isDraftFormFillable(f)) {
           return;
         }
+        const versuch = versuchVon(f);
         wiederholtRef.current = false;
-        if (!queue.online) {
+        if (!queue.online || lokalerVorgangRef.current) {
           // Vor dem anschließenden Seitenwechsel muss auch der Persistenzeffekt der Queue laufen.
           // Sonst kann React enqueue und Navigation bündeln und Mobile vorher aushängen.
           // JOB 4249: dieselbe Bedingung wie am Knopf, und sie wirkt hier STRENGER — wird der
           // Vorgang nicht angenommen, darf auch nicht gewechselt werden, sonst wäre der Text nach
           // dem Seitenwechsel weg. Der Grund reist im `NavGuardSaveError` mit (JOB 3572 R2).
-          const angenommen = await queue.enqueue(neuerVorgang(f), f.gesehenerOfflineStand ?? null);
-          if (!angenommen) {
+          const lokal = await lokalSpeichern(versuch);
+          if (!lokal) {
             throw new NavGuardSaveError(
               "Die Eingabe konnte lokal nicht sicher gespeichert werden. Sie bleibt im Formular. Bitte Speicher und Konto prüfen.",
             );
           }
+          if (!speicherQuittieren(versuch, undefined, lokal)) {
+            throw new NavGuardSaveError(t("mob.spaeteEingabe"));
+          }
           push("info", t("mob.queued"));
-          setBeiseite(null);
-          resetForm();
           return;
         }
+        let bestaetigt: Draft;
         try {
-          await sendeEntwurf(f);
+          bestaetigt = await sendeEntwurf(versuch);
         } catch (e) {
-          await speicherfehler(e);
+          if (versuchAktuell(versuch)) await speicherfehler(e);
           // JOB 4193 R6: fehlt die Voraussetzung, steht jetzt der Vergleich auf der Fläche. Der
           // Dialog sagt das mit demselben Satz wie die Sperre — und wechselt nicht, damit der
           // Mensch die Rückfrage auch sieht.
@@ -869,8 +1022,9 @@ export function Mobile(): JSX.Element {
             : e;
         }
         invalidateDrafts();
-        setBeiseite(null);
-        resetForm();
+        if (!speicherQuittieren(versuch, bestaetigt)) {
+          throw new NavGuardSaveError(t("mob.spaeteEingabe"));
+        }
       },
     });
     return () => setGuard(null);
@@ -946,6 +1100,8 @@ export function Mobile(): JSX.Element {
       // BEN (Nacharbeit 2): ein anderer Entwurf übernimmt das Formular — eine noch laufende
       // Fotoumwandlung des neuen Erfassens darf nicht in ihn geraten.
       formAbloesen();
+      setNeueErfassung(false);
+      setSpaeteEingabe(false);
       setForm(offline);
       setBaseline(offline);
       setEditingId(id);
@@ -963,6 +1119,8 @@ export function Mobile(): JSX.Element {
     if (d) {
       const resumed: DraftFormState = { ...draftToForm(d), gesehenerOfflineStand: null };
       formAbloesen();
+      setNeueErfassung(false);
+      setSpaeteEingabe(false);
       setForm(resumed);
       setBaseline(resumed);
       setEditingId(id);
@@ -999,6 +1157,9 @@ export function Mobile(): JSX.Element {
       return;
     }
     neu.gesehenerOfflineStand = ersetzt || null;
+    formAbloesen();
+    setNeueErfassung(false);
+    setSpaeteEingabe(false);
     setForm(neu);
     setBaseline(neu);
     setEditingId(konflikt.entwurfId);
@@ -1040,7 +1201,7 @@ export function Mobile(): JSX.Element {
       setBaseline(neu);
       return;
     }
-    save.mutate(neu);
+    save.mutate(versuchVon(neu));
   };
 
   // --- Fragen (FE-MOB-03) ---
@@ -1397,6 +1558,15 @@ export function Mobile(): JSX.Element {
                   </button>
                 ) : null}
               </div>
+              {spaeteEingabe && ungesichert ? (
+                <p
+                  data-testid="mob-spaete-eingabe"
+                  role="status"
+                  className="text-[11.5px] text-muted"
+                >
+                  {t("mob.spaeteEingabe")}
+                </p>
+              ) : null}
               {!queue.online ? (
                 <p className="flex items-center gap-1.5 text-[11.5px] text-trust-warn-text">
                   <CloudOff size={12} />

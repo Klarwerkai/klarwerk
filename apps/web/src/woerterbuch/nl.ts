@@ -5016,6 +5016,8 @@ const nl: typeof de = {
   "mob.saved": "Concept opgeslagen.",
   "mob.update": "Concept bijwerken",
   "mob.updated": "Concept bijgewerkt.",
+  "mob.spaeteEingabe": "Je latere wijzigingen zijn nog niet opgeslagen. Sla opnieuw op.",
+  "mob.speichernLaeuft": "Het concept wordt nog opgeslagen. Wacht op het antwoord.",
   "mob.new": "Nieuw",
   "mob.drafts": "Mijn concepten",
   "mob.draftsEmpty": "Nog geen concepten.",

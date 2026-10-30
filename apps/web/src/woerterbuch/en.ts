@@ -5020,6 +5020,8 @@ const en: typeof de = {
   "mob.saved": "Draft saved.",
   "mob.update": "Update draft",
   "mob.updated": "Draft updated.",
+  "mob.spaeteEingabe": "Your later changes have not been saved yet. Please save again.",
+  "mob.speichernLaeuft": "The draft is still being saved. Please wait for the response.",
   "mob.new": "New",
   "mob.drafts": "My drafts",
   "mob.draftsEmpty": "No drafts yet.",

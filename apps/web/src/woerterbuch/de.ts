@@ -6423,6 +6423,9 @@ const de = {
   "mob.saved": "Entwurf gespeichert.",
   "mob.update": "Entwurf aktualisieren",
   "mob.updated": "Entwurf aktualisiert.",
+  "mob.spaeteEingabe":
+    "Deine späteren Änderungen sind noch nicht gespeichert. Bitte erneut speichern.",
+  "mob.speichernLaeuft": "Der Entwurf wird noch gespeichert. Bitte warte auf die Antwort.",
   "mob.new": "Neu",
   "mob.drafts": "Meine Entwürfe",
   "mob.draftsEmpty": "Noch keine Entwürfe.",
