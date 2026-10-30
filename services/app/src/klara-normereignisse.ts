@@ -174,7 +174,7 @@ export function erkenneNormBekanntmachung(
     const start = zeile.index;
     const normen = [
       ...text.matchAll(
-        /\bNorm\s+([\p{L}\p{N}][\p{L}\p{N}_.\/-]{0,79})\s+(?:v|Ausgabe\s+)([\p{L}\p{N}_.\/-]{1,40})\b/giu,
+        /\bNorm\s+([\p{L}\p{N}][\p{L}\p{N}_.\/-]{0,79})\s+(?:v(?=\d)|Ausgabe\s+)([\p{L}\p{N}_.\/-]{1,40})\b/giu,
       ),
     ];
     if (normen.length === 0) continue;
