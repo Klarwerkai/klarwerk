@@ -2639,8 +2639,11 @@ export class KoService {
       input.neededValidations ??
       (await this.defaultNeededValidations?.()) ??
       DEFAULT_NEEDED_VALIDATIONS;
-    if (needed < 1 || needed > 5) {
-      throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
+    if (!Number.isInteger(needed) || needed < 1 || needed > 5) {
+      throw new KoError(
+        "INVALID_NEEDED",
+        "Nötige Validierungen müssen eine ganze Zahl zwischen 1 und 5 sein.",
+      );
     }
     // R-0086: nur die beiden bekannten Aussagearten; leer heißt „nicht angegeben".
     const aussageart = input.aussageart ?? undefined;
