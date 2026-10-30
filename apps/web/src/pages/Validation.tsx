@@ -921,10 +921,18 @@ export function Validation(): JSX.Element {
 
   const assign = useMutation({
     mutationFn: ({ id, userId }: { id: string; userId: string }) =>
-      endpoints.ko.act(id, { action: "assign", userIds: [userId] }),
-    onSuccess: (_data, vars) => {
+      endpoints.ko.assign(id, [userId]),
+    onSuccess: (data, vars) => {
       invalidate();
-      push("success", t("pruefboard.zuweisenErfolg", { name: nameOf(vars.userId) }));
+      push(
+        data?.notification === "unconfirmed" ? "info" : "success",
+        t(
+          data?.notification === "unconfirmed"
+            ? "pruefboard.zuweisenWarnung"
+            : "pruefboard.zuweisenErfolg",
+          { name: nameOf(vars.userId) },
+        ),
+      );
     },
     // Bisher ohne jede Meldung: das Auswahlfeld sprang zurück, und niemand erfuhr, dass die
     // Zuweisung nicht angekommen war.
@@ -1217,8 +1225,12 @@ export function Validation(): JSX.Element {
         return { id: k.id, title: k.title, art: vorab };
       }
       try {
-        await endpoints.ko.act(k.id, { action: "assign", userIds: [userId] });
-        return { id: k.id, title: k.title, art: "zugewiesen" };
+        const data = await endpoints.ko.assign(k.id, [userId]);
+        return {
+          id: k.id,
+          title: k.title,
+          art: data?.notification === "unconfirmed" ? "zugewiesenWarnung" : "zugewiesen",
+        };
       } catch (e) {
         return stapelFehler(k, e);
       }

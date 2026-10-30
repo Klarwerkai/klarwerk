@@ -25,6 +25,7 @@
 export type StapelArt =
   | "bestaetigt"
   | "zugewiesen"
+  | "zugewiesenWarnung"
   | "gesperrt"
   | "dubletteOffen"
   | "stufeFehlt"
@@ -85,6 +86,7 @@ export function zuweisenVorpruefung(
 const VERLAESST_AUSWAHL: ReadonlySet<StapelArt> = new Set<StapelArt>([
   "bestaetigt",
   "zugewiesen",
+  "zugewiesenWarnung",
   "bereitsZugewiesen",
   "entfallen",
 ]);

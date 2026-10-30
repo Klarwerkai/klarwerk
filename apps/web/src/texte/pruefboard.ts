@@ -22,6 +22,8 @@ export default {
   de: {
     "pruefboard.zugewiesenAn": "Zugewiesen an",
     "pruefboard.zuweisenErfolg": "Zugewiesen an {{name}}.",
+    "pruefboard.zuweisenWarnung":
+      "Zuweisung an {{name}} gespeichert. Mindestens eine Benachrichtigung konnte nicht bestätigt werden.",
     "pruefboard.zuweisenFehler": "Zuweisen hat nicht geklappt: {{grund}}",
     "pruefboard.bereitsZugewiesen": "{{name}} (bereits zugewiesen)",
     "pruefboard.begruendungGespeichert":
@@ -57,6 +59,8 @@ export default {
     "pruefboard.stapel.ergebnis": "Ergebnis je Beitrag",
     "pruefboard.stapel.art.bestaetigt": "bestätigt",
     "pruefboard.stapel.art.zugewiesen": "zugewiesen",
+    "pruefboard.stapel.art.zugewiesenWarnung":
+      "Zuweisung gespeichert — mindestens eine Benachrichtigung konnte nicht bestätigt werden",
     "pruefboard.stapel.art.gesperrt": "nicht geschickt — KI-Prüfung läuft",
     "pruefboard.stapel.art.dubletteOffen":
       "nicht geschickt — offene Dublette, bitte einzeln bestätigen",
@@ -73,6 +77,8 @@ export default {
   en: {
     "pruefboard.zugewiesenAn": "Assigned to",
     "pruefboard.zuweisenErfolg": "Assigned to {{name}}.",
+    "pruefboard.zuweisenWarnung":
+      "Assignment to {{name}} saved. At least one notification could not be confirmed.",
     "pruefboard.zuweisenFehler": "Assigning failed: {{grund}}",
     "pruefboard.bereitsZugewiesen": "{{name}} (already assigned)",
     "pruefboard.begruendungGespeichert":
@@ -106,6 +112,8 @@ export default {
     "pruefboard.stapel.ergebnis": "Result per item",
     "pruefboard.stapel.art.bestaetigt": "approved",
     "pruefboard.stapel.art.zugewiesen": "assigned",
+    "pruefboard.stapel.art.zugewiesenWarnung":
+      "assignment saved — at least one notification could not be confirmed",
     "pruefboard.stapel.art.gesperrt": "not sent — AI check running",
     "pruefboard.stapel.art.dubletteOffen": "not sent — open duplicate, please confirm individually",
     "pruefboard.stapel.art.stufeFehlt": "not sent — no level, please classify individually",
@@ -121,6 +129,8 @@ export default {
   nl: {
     "pruefboard.zugewiesenAn": "Toegewezen aan",
     "pruefboard.zuweisenErfolg": "Toegewezen aan {{name}}.",
+    "pruefboard.zuweisenWarnung":
+      "Toewijzing aan {{name}} opgeslagen. Minstens één melding kon niet worden bevestigd.",
     "pruefboard.zuweisenFehler": "Toewijzen is mislukt: {{grund}}",
     "pruefboard.bereitsZugewiesen": "{{name}} (al toegewezen)",
     "pruefboard.begruendungGespeichert":
@@ -156,6 +166,8 @@ export default {
     "pruefboard.stapel.ergebnis": "Resultaat per bijdrage",
     "pruefboard.stapel.art.bestaetigt": "goedgekeurd",
     "pruefboard.stapel.art.zugewiesen": "toegewezen",
+    "pruefboard.stapel.art.zugewiesenWarnung":
+      "toewijzing opgeslagen — minstens één melding kon niet worden bevestigd",
     "pruefboard.stapel.art.gesperrt": "niet verstuurd — AI-controle loopt",
     "pruefboard.stapel.art.dubletteOffen":
       "niet verstuurd — openstaand duplicaat, a.u.b. afzonderlijk bevestigen",

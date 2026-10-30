@@ -302,6 +302,9 @@ export interface KoDiskussionsStelle {
   punkt?: { x: number; y: number };
 }
 
+/** 204 bleibt leer; die Warnantwort bestätigt nur die gespeicherte Zuweisung. */
+export type AssignResult = undefined | { assigned: true; notification: "unconfirmed" };
+
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
 export type KoAction =
   // R-0247: `duplicateAcknowledged` ist die ausdrückliche Bestätigung „offene Dublette gesehen".
@@ -814,6 +817,8 @@ export const endpoints = {
     createFromDocument: (body: CreateFromDocumentRequest) =>
       api.post<CreateFromDocumentResponse>("/kos/from-document", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
+    assign: (id: string, userIds: string[]) =>
+      api.put<AssignResult>(`/kos/${id}`, { action: "assign", userIds }),
     // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt, ohne vorausgehende Antwort. Der
     // Server antwortet mit 204 (kein Objekt) — deshalb ein eigener Aufruf neben `act`.
     helpful: (id: string) => api.put<void>(`/kos/${id}`, { action: "helpful" }),

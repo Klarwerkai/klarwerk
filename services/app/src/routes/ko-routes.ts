@@ -3731,7 +3731,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               }
             }
             await validation.assign(id, userIds, user.id);
-            await notifyAssignment?.(id, userIds); // FR-VAL-07
+            try {
+              await notifyAssignment?.(id, userIds); // FR-VAL-07
+            } catch (err) {
+              // Die Zuweisung steht; einzelne Nachrichten können bereits zugestellt sein.
+              await audit
+                ?.record({
+                  actor: user.id,
+                  action: "ko.assignment-notification-unconfirmed",
+                  target: id,
+                  payload: { reason: err instanceof Error ? err.name : "unknown" },
+                })
+                .catch(() => undefined);
+              reply.code(200).send({ assigned: true, notification: "unconfirmed" });
+              return;
+            }
             reply.code(204).send();
             return;
           }
