@@ -63,7 +63,7 @@ describe("IMP4/M15: gespeicherte Zuweisung im echten Browser", () => {
     await seite.getByText(warnung, { exact: true }).waitFor({ state: "visible" });
     const option = auswahl.locator(`option[value="${x.konto.id}"]`);
     await expect.poll(() => option.isDisabled()).toBe(true);
-    const belege = resolve(".local/run/imp4-assign-mailfehler");
+    const belege = resolve(".local/run/imp4-assign-mailfehler-folge1");
     mkdirSync(belege, { recursive: true });
     await seite.screenshot({ path: resolve(belege, "einzel.png"), fullPage: true });
     await seite.keyboard.press("Escape");
@@ -76,7 +76,10 @@ describe("IMP4/M15: gespeicherte Zuweisung im echten Browser", () => {
     await seite.getByTestId("pruefen-stapel-zuweisen").selectOption(x.konto.id);
     const ergebnisse = seite.getByTestId("pruefen-stapel-ergebnis-zeile");
     await expect.poll(() => ergebnisse.count()).toBe(2);
-    const arten = await ergebnisse.evaluateAll((es) => es.map((e) => e.getAttribute("data-art")));
+    const arten = await Promise.all([
+      ergebnisse.nth(0).getAttribute("data-art"),
+      ergebnisse.nth(1).getAttribute("data-art"),
+    ]);
     expect(arten).toEqual(["zugewiesenWarnung", "zugewiesenWarnung"]);
     for (const title of [a.title, b.title]) {
       const ergebnis = ergebnisse.filter({ hasText: title });
