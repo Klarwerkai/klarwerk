@@ -13,7 +13,6 @@ import {
   TITEL,
   WEG,
   fragenWelt,
-  beobachteEigeneGETs,
 } from "./pruefstand";
 
 let browser: Browser | undefined;
@@ -55,8 +54,6 @@ async function oeffnen(fallId: string) {
   });
   await kontext.addInitScript('localStorage.setItem("kw.sprache", "de");');
   const seite = (await kontext.newPage()) as unknown as Page;
-  const sichereGETs: Record<string, unknown>[] = [];
-  beobachteEigeneGETs(seite, welt, sichereGETs);
   seite.setDefaultTimeout(15_000);
   seite.on("dialog", (dialog) => {
     void dialog.accept();
@@ -77,11 +74,11 @@ async function oeffnen(fallId: string) {
   expect((await login).status()).toBe(200);
   await seite.locator("#auth-email").waitFor({ state: "hidden" });
   expect((await kontext.cookies()).some((c) => c.name === "kw_session" && c.value)).toBe(true);
-  await seite.evaluate("(d) => localStorage.setItem(d.key, JSON.stringify(d.stand))", {
+  await seite.evaluate((d) => localStorage.setItem(d.key, JSON.stringify(d.stand)), {
     key: welt.key,
     stand: welt.stand,
   });
-  const direktNachSeed = await seite.evaluate("(key) => localStorage.getItem(key)", welt.key);
+  const direktNachSeed = await seite.evaluate((key) => localStorage.getItem(key), welt.key);
   await seite.goto(`${welt.basis}/fragen`, { waitUntil: "domcontentloaded" });
   const feld = seite.locator('[data-testid="page-fragen"] form input');
   await feld.waitFor();
@@ -90,13 +87,30 @@ async function oeffnen(fallId: string) {
   } catch (error) {
     try {
       const zustand = await seite.evaluate(
-        "(key) => ({ url: location.origin + location.pathname, sichtbarerText: document.body?.innerText ?? '', frage: document.querySelector('[data-testid=page-fragen] form input')?.value ?? null, eigenerArbeitsstand: localStorage.getItem(key) })",
+        (key) => ({
+          url: location.origin + location.pathname,
+          sichtbarerText: document.body?.innerText ?? "",
+          frage:
+            document.querySelector<HTMLInputElement>("[data-testid=page-fragen] form input")
+              ?.value ?? null,
+          eigenerArbeitsstand: localStorage.getItem(key),
+        }),
         welt.key,
       );
       writeFileSync(
         resolve(diagnoseBelege, `${fallId}-oeffnen-fehler.json`),
-        JSON.stringify({ fall: fallId, kontoId: welt.kontoId, koId: welt.koId,
-          eigenerKey: welt.key, direktNachSeed, zustand, sichereGETs }, null, 2),
+        JSON.stringify(
+          {
+            fall: fallId,
+            kontoId: welt.kontoId,
+            koId: welt.koId,
+            eigenerKey: welt.key,
+            direktNachSeed,
+            zustand,
+          },
+          null,
+          2,
+        ),
       );
       await seite.screenshot({
         path: resolve(diagnoseBelege, `${fallId}-oeffnen-fehler.png`),
@@ -113,7 +127,7 @@ async function oeffnen(fallId: string) {
 
 async function entwurf(seite: Page, key: string): Promise<string | null> {
   return seite.evaluate(
-    "(key) => JSON.parse(localStorage.getItem(key) || 'null')?.entwurf ?? null",
+    (key) => JSON.parse(localStorage.getItem(key) || "null")?.entwurf ?? null,
     key,
   );
 }

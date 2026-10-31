@@ -152,36 +152,3 @@ export async function fragenWelt() {
   }
 }
 export type FragenWelt = Awaited<ReturnType<typeof fragenWelt>>;
-
-// Nur Status und knappe sichere Formen bereits laufender GETs der eigenen Prüfwelt.
-export function beobachteEigeneGETs(seite: Page, welt: FragenWelt, belege: Record<string, unknown>[]) {
-  seite.on("response", async (response) => {
-    const url = new URL(response.url());
-    if (url.origin !== new URL(welt.basis).origin || response.request().method() !== "GET") return;
-    if (!["/api/auth/me", "/api/kos", "/api/conflicts", "/api/reasoner/status",
-      `/api/kos/${welt.koId}`].includes(url.pathname)) return;
-    const beleg: Record<string, unknown> = { pfad: url.pathname, status: response.status() };
-    try {
-      const daten: unknown = await response.json();
-      const obj = daten && typeof daten === "object" && !Array.isArray(daten)
-        ? daten as Record<string, unknown> : {};
-      const user = obj.user && typeof obj.user === "object"
-        ? obj.user as Record<string, unknown> : obj;
-      const tasks = obj.tasks && typeof obj.tasks === "object"
-        ? obj.tasks as Record<string, unknown> : {};
-      beleg.form = Array.isArray(daten) ? "array" : typeof daten;
-      beleg.anzahl = Array.isArray(daten) ? daten.length : null;
-      beleg.felder = Object.keys(obj).filter((k) =>
-        ["user", "id", "role", "status", "version", "active", "tasks", "error", "permissions"].includes(k));
-      beleg.eigeneKontoId = user.id === welt.kontoId ? welt.kontoId : null;
-      beleg.eigeneQuellId = obj.id === welt.koId ? welt.koId : null;
-      beleg.rolle = ["admin", "controller", "editor", "viewer"].includes(String(user.role)) ? user.role : null;
-      beleg.version = typeof obj.version === "number" ? obj.version : null;
-      beleg.active = typeof obj.active === "boolean" ? obj.active : null;
-      beleg.answer = typeof tasks.answer === "boolean" ? tasks.answer : null;
-    } catch {
-      beleg.form = "nicht als JSON lesbar";
-    }
-    belege.push(beleg);
-  });
-}
