@@ -35,8 +35,6 @@ export const TASKPANE_PATH = "apps/web/public/word-addin/taskpane.html";
  * UNGESCHUETZT. `splitTaskpane` fuegt deshalb beide in der Reihenfolge der Auslieferung zusammen.
  */
 export const RUECKWEG_PATH = "apps/web/public/word-addin/rueckweg.js";
-/** Das Verweis-Tag, an dem der Rumpf endet — es steht im Markup, gehoert aber zum Skriptteil. */
-const RUECKWEG_TAG = '<script src="rueckweg.js';
 
 // ---- Schmale Struktur-Typen (Ersatz fuer die fehlende DOM-lib) ---------------------------------
 
@@ -511,16 +509,17 @@ export function readRueckweg(): string {
  */
 export function splitTaskpane(html: string): { markup: string; script: string } {
   const bodyOpen = html.indexOf("<body>");
-  const tagOpen = html.indexOf(RUECKWEG_TAG, bodyOpen);
-  const scriptOpen = html.indexOf("<script>", bodyOpen);
-  const scriptClose = html.lastIndexOf("</script>");
-  if (bodyOpen < 0 || scriptOpen < 0 || scriptClose < scriptOpen) {
+  const bodyClose = html.lastIndexOf("</body>");
+  const tags = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
+  const inline = tags.filter((tag) => !/(?:^|\s)src\s*=/i.test(tag[1] ?? ""));
+  if (bodyOpen < 0 || bodyClose <= bodyOpen || inline.length === 0) {
     throw new Error("taskpane.html: Rumpf/Skript nicht auffindbar");
   }
-  const rumpfBis = tagOpen >= 0 && tagOpen < scriptOpen ? tagOpen : scriptOpen;
   return {
-    markup: html.slice(bodyOpen + "<body>".length, rumpfBis),
-    script: `${readRueckweg()}\n${html.slice(scriptOpen + "<script>".length, scriptClose)}`,
+    markup: html
+      .slice(bodyOpen + "<body>".length, bodyClose)
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ""),
+    script: `${readRueckweg()}\n${inline.map((tag) => tag[2] ?? "").join("\n")}`,
   };
 }
 

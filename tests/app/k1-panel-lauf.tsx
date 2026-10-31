@@ -10,7 +10,7 @@
 // teilt EIN `window` ueber alle Faelle einer Datei (dieselbe Lehre wie im Lebenszyklus-Test).
 import { expect } from "vitest";
 import { panelQuelleAus } from "../support/panelquelle";
-import { readRueckweg } from "./klara-panel-fixture";
+import { splitTaskpane } from "./klara-panel-fixture";
 
 export const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 export const HTML = panelQuelleAus(TASKPANE);
@@ -22,7 +22,12 @@ export interface Aufruf {
 }
 
 export type Antwort = { status: number; body?: unknown } | "netz" | "haengt";
-export type Router = (url: string, methode: string, body: unknown) => Antwort;
+export type Router = (
+  url: string,
+  methode: string,
+  body: unknown,
+  headers?: Record<string, string>,
+) => Antwort;
 
 export interface Lauf {
   aufrufe: Aufruf[];
@@ -60,25 +65,21 @@ function antwortObjekt(a: { status: number; body?: unknown }): Response {
  * Markierung, `window.open` liefert ein Fenster-Handle) und dem uebergebenen Router.
  */
 export function panelStarten(bedienen: Router): Lauf {
-  const bodyStart = HTML.indexOf("<body>") + "<body>".length;
-  const bodyEnd = HTML.indexOf("</body>");
-  const body = HTML.slice(bodyStart, bodyEnd);
-  const skriptStart = body.indexOf("<script>") + "<script>".length;
-  const skriptEnd = body.lastIndexOf("</script>");
-  // JOB 3667: das Fenster wird aus ZWEI Skripten ausgeliefert — `rueckweg.js` laedt davor. Wer nur
-  // das Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen, und `setLang` bricht mit ReferenceError.
-  const skript = `${readRueckweg()}\n${body.slice(skriptStart, skriptEnd)}`;
+  const { markup, script: skript } = splitTaskpane(HTML);
   expect(skript.length, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(1000);
-  document.body.innerHTML = body.slice(0, body.indexOf("<script>"));
+  document.body.innerHTML = markup;
 
   const aufrufe: Aufruf[] = [];
   const haengend: Array<(r: Response) => void> = [];
   const w = window as unknown as Record<string, unknown>;
-  w.fetch = (url: string, init?: { method?: string; body?: string }): Promise<Response> => {
+  w.fetch = (
+    url: string,
+    init?: { method?: string; body?: string; headers?: Record<string, string> },
+  ): Promise<Response> => {
     const methode = (init?.method ?? "GET").toUpperCase();
     const koerper = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
     aufrufe.push({ url, methode, body: koerper });
-    const antwort = bedienen(url, methode, koerper);
+    const antwort = bedienen(url, methode, koerper, init?.headers);
     if (antwort === "netz") {
       return Promise.reject(new TypeError("Failed to fetch"));
     }
@@ -122,6 +123,7 @@ export function panelStarten(bedienen: Router): Lauf {
 
 /** Nach jedem Fall: Zuhoerer der Fensterinstanz entfernen, DOM leeren. */
 export function panelAbraeumen(): void {
+  window.dispatchEvent(new Event("pagehide"));
   for (const z of zuhoerer) {
     z.ziel.removeEventListener(z.typ, z.fn);
   }

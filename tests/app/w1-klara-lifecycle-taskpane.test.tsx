@@ -17,19 +17,17 @@
 // vollstaendige Inline-Skript aus und misst danach nur noch zwei Dinge — was im DOM steht und
 // welche Netzaufrufe hinausgegangen sind. Kein Block wird herausgeschnitten, keine Funktion
 // einzeln gerufen. Was hier gruen ist, ist am ausgelieferten Fenster gruen.
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
+import { splitTaskpane } from "./klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const HTML = panelQuelleAus(TASKPANE);
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
-const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
-const RUECKWEG_QUELLE = readFileSync(resolve(process.cwd(), RUECKWEG), "utf8");
 
 interface Aufruf {
   url: string;
@@ -337,16 +335,13 @@ function bedienen(url: string, methode: string): Response {
  * Inline-Skript ausfuehren. Nichts wird herausgeschnitten.
  */
 async function ladeTaskpane(): Promise<void> {
-  const skriptStart = HTML.lastIndexOf("<script>");
-  const skriptEnde = HTML.lastIndexOf("</script>");
-  expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}`;
-
   const bodyStart = HTML.indexOf("<body>");
   const bodyEnde = HTML.lastIndexOf("</body>");
+  const skriptStart = HTML.indexOf("<script", bodyStart);
+  const skriptEnde = HTML.lastIndexOf("</script>");
+  expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);
-  // Fail-closed: waere das Markup leer, pruefte dieser Test ein leeres Dokument.
-  const markup = HTML.slice(bodyStart + "<body>".length, skriptStart);
+  const { markup, script: skript } = splitTaskpane(HTML);
   expect(markup.length, `${TASKPANE}: Markup ist leer`).toBeGreaterThan(2000);
   expect(bodyEnde).toBeGreaterThan(skriptEnde);
   document.body.innerHTML = markup;

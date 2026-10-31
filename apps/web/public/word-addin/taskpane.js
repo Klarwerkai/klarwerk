@@ -1760,7 +1760,7 @@
         s4ConsentFehler: "Die Zustimmung konnte nicht übertragen werden. Bitte erneut versuchen.",
         s4RebindFehler:
           "Das Dokument wurde gespeichert, der neue Dokumentbezug konnte aber nicht eingetragen werden.",
-        s4FragenGesperrt: "Der Server erlaubt für diese Sitzung derzeit keine Ausführung.",
+        s4FragenGesperrt: "Der Sitzungsstand ist abgelaufen; eine aktuelle Auflösung ist noch nicht verfügbar.",
         // Der real gelieferte Ausschnitt. Ehrlich als Zitat bezeichnet, ausdrücklich KEINE
         // Herleitung — ein Herleitungsprotokoll gibt es in diesem System nirgends.
         askSnippetLabel: "Verwendeter Ausschnitt",
@@ -2153,7 +2153,7 @@
         s4ConsentFehler: "The consent could not be transmitted. Please try again.",
         s4RebindFehler:
           "The document was saved, but the new document binding could not be registered.",
-        s4FragenGesperrt: "The server currently allows no execution for this session.",
+        s4FragenGesperrt: "The session status has expired; a current resolution is not available yet.",
         askSnippetLabel: "Excerpt used",
         askRoleCarrying: "carries the answer",
         askRoleConsulted: "consulted",
@@ -2499,7 +2499,7 @@
         s4ConsentFehler: "De toestemming kon niet worden verzonden. Probeer het opnieuw.",
         s4RebindFehler:
           "Het document is opgeslagen, maar de nieuwe documentbinding kon niet worden vastgelegd.",
-        s4FragenGesperrt: "De server staat voor deze sessie momenteel geen uitvoering toe.",
+        s4FragenGesperrt: "De sessiestand is verlopen; een actuele uitkomst is nog niet beschikbaar.",
         askSnippetLabel: "Gebruikt fragment",
         askRoleCarrying: "draagt het antwoord",
         askRoleConsulted: "geraadpleegd",
@@ -3058,6 +3058,14 @@
     // eine Aufloesung traegt; geloescht NUR in klaraS4Verwerfen (Abmelden). Verstreicht er, setzt
     // klaraS4AblaufMerken die Ablaufsperre — gleich, was die Phase gerade sagt.
     var klaraS4BestaetigtBisMs = Number.NaN;
+    // Ein Ersatzversuch je ungeklärtem Fehlerstand, neu freigegeben nur durch frischen Status.
+    var klaraS4ErholungVerbraucht = false;
+    var klaraS4AuthPruefungVerbraucht = false;
+    var klaraS4ErholungAktiv = false;
+    var klaraS4ErholungWechsel = false;
+    var klaraS4ErholungTimer = null;
+    var klaraS4LetzterStartMs = Number.NEGATIVE_INFINITY;
+    var klaraS4KontoId = null;
 
     function klaraS4NeueId(praefix) {
       var puffer = new Uint8Array(16);
@@ -3113,7 +3121,7 @@
       }
       return fetch(pfad, init)
         .then(function (res) {
-          if (!res.ok) { throw new Error("HTTP " + res.status); }
+          if (!res.ok) { var fehler = new Error("HTTP " + res.status); fehler.status = res.status; throw fehler; }
           return res.json();
         })
         .then(function (body) {
@@ -3157,6 +3165,11 @@
      * nach erneuter Anmeldung etwas anderes belegt (klaraS4NachAnmeldung → klaraS4Start).
      */
     function klaraS4Verwerfen() {
+      if (klaraS4ErholungTimer !== null) { clearTimeout(klaraS4ErholungTimer); klaraS4ErholungTimer = null; }
+      klaraS4ErholungVerbraucht = false;
+      klaraS4AuthPruefungVerbraucht = false;
+      klaraS4ErholungAktiv = klaraS4ErholungWechsel;
+      klaraS4KontoId = null;
       klaraS4Epoche += 1;
       klaraS4RefreshStoppen();
       klaraS4RefreshLaeuft = false;
@@ -3310,10 +3323,80 @@
       klaraS4StartAnfordern();
     }
 
+    function klaraS4StatusBestaetigt(aufloesung) {
+      klaraS4ErholungAktiv = false;
+      var bis = aufloesung ? Date.parse(aufloesung.expiresAt) : Number.NaN;
+      if (aufloesung && typeof aufloesung.executionAllowed === "boolean"
+        && isFinite(bis) && bis > Date.now()) {
+        klaraS4ErholungVerbraucht = false;
+        klaraS4AuthPruefungVerbraucht = false;
+      }
+    }
+
+    function klaraS4AktuellenKontextPruefen(epoche, beschreiber) {
+      var veraltet = epoche !== klaraS4Epoche || klaraS4Geschlossen;
+      if (!veraltet && JSON.stringify(beschreiber) !== JSON.stringify(klaraS4Beschreiber())) {
+        klaraS4ErholungAktiv = false;
+        klaraS4Riegelstand = true;
+        klaraS4Fehlschlag("gesperrt");
+        veraltet = true;
+      }
+      if (veraltet) {
+        var fehler = new Error("veraltet"); fehler.veraltet = true; throw fehler;
+      }
+    }
+
+    function klaraS4NeuAnfordern() {
+      if (klaraS4ErholungVerbraucht || klaraS4Geschlossen) { return; }
+      var authGeprueft = klaraS4AuthPruefungVerbraucht;
+      klaraS4ErholungWechsel = true;
+      try { klaraS4Verwerfen(); } finally { klaraS4ErholungWechsel = false; }
+      klaraS4AuthPruefungVerbraucht = authGeprueft;
+      klaraS4ErholungVerbraucht = true;
+      klaraS4ErholungAktiv = true;
+      klaraS4Angefordert = true;
+      klaraS4NachholungVerbraucht = true;
+      klaraS4Phase = "laedt";
+      var epoche = klaraS4Epoche;
+      var beschreiber = klaraS4Beschreiber();
+      renderKlaraS4();
+      klaraS4ErholungTimer = setTimeout(function () {
+        klaraS4ErholungTimer = null;
+        if (epoche !== klaraS4Epoche || klaraS4Geschlossen) { return; }
+        if (!signedIn) { klaraS4ErholungAktiv = false; renderKlaraS4(); return; }
+        try { klaraS4AktuellenKontextPruefen(epoche, beschreiber); }
+        catch (fehler) { klaraS4ErholungAktiv = false; return; }
+        // Nur eine neue Registrierung, niemals Wiederholung einer Frage oder Schreibaktion.
+        klaraS4Start();
+      }, Math.max(0, klaraS4LetzterStartMs + WORD_ADDIN_S4_REFRESH_MIN_MS - Date.now()));
+    }
+
+    function klaraS4FehlerErholen(fehler) {
+      if ((fehler && fehler.veraltet) || klaraS4Geschlossen) { return; }
+      klaraS4ErholungAktiv = false;
+      klaraS4Fehlschlag(klaraS4SessionId ? "unerreichbar" : "keineSitzung");
+      if (fehler && fehler.status === 401) {
+        if (klaraS4AuthPruefungVerbraucht) { return; }
+        klaraS4AuthPruefungVerbraucht = true;
+        klaraS4ErholungAktiv = true;
+        renderKlaraS4();
+        var epoche = klaraS4Epoche;
+        return checkSession().then(function () {
+          if (epoche !== klaraS4Epoche || klaraS4Geschlossen) { return; }
+          klaraS4ErholungAktiv = false;
+          if (signedIn) { klaraS4NeuAnfordern(); }
+          renderKlaraS4();
+        });
+      }
+      if (fehler && (fehler.status === 404 || fehler.status === 409)) { klaraS4NeuAnfordern(); }
+    }
+
     /** Sitzung eroeffnen und danach den gebundenen Status lesen. */
     function klaraS4Start() {
-      if (klaraS4Laeuft) { return Promise.resolve(); }
+      if (klaraS4Laeuft || klaraS4Geschlossen) { return Promise.resolve(); }
       klaraS4Laeuft = true;
+      klaraS4LetzterStartMs = Date.now();
+      var epoche = klaraS4Epoche;
       klaraS4Phase = "laedt";
       renderKlaraS4();
       var beschreiber = klaraS4Beschreiber();
@@ -3322,20 +3405,21 @@
         documentDescriptor: beschreiber,
       })
         .then(function (sicht) {
+          klaraS4AktuellenKontextPruefen(epoche, beschreiber);
           // Merken, WOMIT gebunden wurde — nur so ist ein spaeterer Wechsel erkennbar (Befund 5).
           klaraS4GebundeneArt = beschreiber.kind;
           klaraS4Uebernehmen(sicht);
           // Der Statusabruf ist die eigentliche Auflösung; erst er traegt alle drei Header.
           return klaraS4AbrufDieserSitzung("/api/klara/ai-status", "GET", null).then(function (aufloesung) {
+            klaraS4AktuellenKontextPruefen(epoche, beschreiber);
+            klaraS4StatusBestaetigt(aufloesung);
             klaraS4Uebernehmen(Object.assign({}, sicht, { resolution: aufloesung }));
             // Ab jetzt haelt sich der Stand selbst frisch (Befund 4).
             klaraS4RefreshPlanen();
           });
         })
         .catch(function (err) {
-          if (err && err.veraltet) { return; } // Runde 4: die Sitzung ist inzwischen abgemeldet
-          // Ohne Sitzung gibt es keinen sitzungsbezogenen Stand. Das wird GESAGT, nicht kaschiert.
-          klaraS4Fehlschlag(klaraS4SessionId ? "unerreichbar" : "keineSitzung");
+          return klaraS4FehlerErholen(err);
         })
         .then(function () { klaraS4Laeuft = false; });
     }
@@ -3448,12 +3532,16 @@
      */
     function klaraS4Refresh(grund) {
       if (!klaraS4SessionId || !klaraS4DocumentId) { return Promise.resolve(); }
-      if (klaraS4RefreshLaeuft) { return Promise.resolve(); }
+      if (klaraS4RefreshLaeuft || klaraS4Laeuft) { return Promise.resolve(); }
       klaraS4RefreshLaeuft = true;
       klaraS4LetzterRefreshMs = Date.now();
       klaraS4LetzterRefreshGrund = grund;
+      var epoche = klaraS4Epoche;
+      var beschreiber = klaraS4Beschreiber();
       return klaraS4AbrufDieserSitzung("/api/klara/ai-status", "GET", null)
         .then(function (aufloesung) {
+          klaraS4AktuellenKontextPruefen(epoche, beschreiber);
+          klaraS4StatusBestaetigt(aufloesung);
           // Der bestaetigte Serverstatus ist das EINZIGE, was einen Riegel wieder oeffnet.
           //
           // AUFTRAG-34 (BEN-Befund 4): HIER stand `Object.assign({}, basis, {resolution})` — und
@@ -3474,10 +3562,7 @@
           return klaraS4DokumentPruefen();
         })
         .catch(function (err) {
-          // Runde 4: eine Antwort aus der Zeit VOR dem Abmelden gehoert niemandem mehr.
-          if (err && err.veraltet) { return; }
-          // Nicht abrufbar heisst nicht abrufbar — und ganz sicher nicht „weiterhin erlaubt".
-          klaraS4Fehlschlag("unerreichbar");
+          return klaraS4FehlerErholen(err);
         })
         .then(function () { klaraS4RefreshLaeuft = false; });
     }
@@ -3550,9 +3635,13 @@
     var klaraS4Geschlossen = false;
 
     function klaraS4Schliessen() {
-      if (klaraS4Geschlossen || !klaraS4SessionId || !klaraS4DocumentId) { return false; }
+      if (klaraS4Geschlossen) { return false; }
       klaraS4Geschlossen = true;
+      klaraS4Epoche += 1;
+      if (klaraS4ErholungTimer !== null) { clearTimeout(klaraS4ErholungTimer); klaraS4ErholungTimer = null; }
+      klaraS4ErholungAktiv = false;
       klaraS4RefreshStoppen();
+      if (!klaraS4SessionId || !klaraS4DocumentId) { return false; }
       try {
         fetch("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/close", {
           method: "POST",
@@ -3734,11 +3823,22 @@
      * und es gilt nicht mehr.
      */
     function klaraS4FragenGesperrt() {
+      if (klaraS4ErholungAktiv || (klaraS4ErholungVerbraucht && !klaraS4Sicht)) { return true; }
       if (klaraS4Riegelstand) { return true; }
       klaraS4AblaufMerken();
       if (klaraS4Abgelaufen) { return true; }
       return klaraS4Phase === "bereit"
         && klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now()).askAllowed === false;
+    }
+
+    function klaraS4FragenSperrtext() {
+      if (!signedIn) { return t(sitzungLage === "erneut" ? "sessionError" : sitzungLage === "anmelden" ? "sessionOff" : "sessionChecking"); }
+      if (klaraS4ErholungAktiv) { return t("s4StateLaedt"); }
+      if (klaraS4Riegelstand) { return t("s4StateGesperrtLokal"); }
+      if (klaraS4Abgelaufen) { return t("s4FragenGesperrt"); }
+      if (!klaraS4Sicht || !klaraS4Sicht.resolution) { return t("s4StateUnerreichbar"); }
+      var lage = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      return t(lage.blockedKey || lage.stateKey);
     }
 
     // (a) Ehrlicher Anmelde-Status: GET /api/auth/me (bestehender Session-Endpunkt der App) mit
@@ -3800,6 +3900,7 @@
     }
 
     function checkSession() {
+      var epoche = klaraS4Epoche;
       var box = document.getElementById("session-status");
       box.className = "status warn";
       box.textContent = t("sessionChecking");
@@ -3807,15 +3908,20 @@
       // nichts (kein Satz, kein Knopf). Ein erneuter Abruf (Sprachwechsel, „Erneut versuchen")
       // laesst die zuletzt belegte Lage stehen, statt sie fuer die Dauer des Abrufs zu leeren.
       renderSitzungsflaeche(sitzungLage === null ? "laedt" : sitzungLage);
-      fetch("/api/auth/me", { credentials: "include" })
+      return fetch("/api/auth/me", { credentials: "include" })
         .then(function (res) {
           if (res.ok) { return res.json(); }
           if (res.status === 401 || res.status === 403) { return null; }
           throw new Error("HTTP " + res.status);
         })
         .then(function (user) {
+          if (epoche !== klaraS4Epoche || klaraS4Geschlossen) { return; }
           var name = sessionName(user);
+          var kontoId = user && typeof user.id === "string" ? user.id : null;
+          var kontoGewechselt = klaraS4KontoId !== null && kontoId !== null && klaraS4KontoId !== kontoId;
           signedIn = name !== null;
+          if (!signedIn || kontoGewechselt) { klaraS4Verwerfen(); }
+          klaraS4KontoId = signedIn ? kontoId : null;
           if (window.kwWordUi) window.kwWordUi.setAccount(signedIn ? user : null);
           // JOB 3093 Runde 3: der Bestandsstand („Haben wir das schon?") haengt an DIESER Sitzung —
           // eine andere oder keine Identitaet verwirft ihn (bestandSitzungMelden).
@@ -3842,6 +3948,7 @@
           if (signedIn) { klaraS4NachAnmeldung(); }
         })
         .catch(function () {
+          if (epoche !== klaraS4Epoche || klaraS4Geschlossen) { return; }
           signedIn = false;
           box.className = "status warn";
           box.textContent = t("sessionError");
@@ -5400,7 +5507,7 @@
       var btn = document.getElementById("ask-btn");
       var input = document.getElementById("ask-input");
       btn.disabled = !signedIn || gesperrt || askLaeuft;
-      btn.title = gesperrt ? t("s4FragenGesperrt") : "";
+      btn.title = !signedIn || gesperrt ? klaraS4FragenSperrtext() : "";
       // JOB 3016 D3: das Eingabefeld ist genau waehrend der Suche gesperrt — und nur dann.
       input.disabled = askLaeuft;
       // JOB 3056 K1 (Ruhe.dc.html Z.36): grau, solange nichts da ist; Funke dunkel, sobald Text da
@@ -6446,7 +6553,7 @@
       // KEINE Anfrage das Fenster (der gesperrte Knopf ist nur die Anzeige).
       if (klaraS4FragenGesperrt()) {
         resetAskResult();
-        showAskStatus("warn", t("s4FragenGesperrt"));
+        showAskStatus("warn", klaraS4FragenSperrtext());
         // Runde 9: der Knopf zeigt danach wieder, was gilt — auch wenn der Aufruf am Attribut
         // vorbei kam (Enter, entferntes `disabled`).
         updateAskState();
