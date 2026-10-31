@@ -128,7 +128,7 @@ describe("JOB 3655 B · der Startbericht", () => {
   });
 
   it("B8 · KORREKTURPFLICHT 2: der Befund trägt keinen Fehlertext, der Fehler geht eigenen Weg", async () => {
-    const INHALT = "Key (email)=(pedi@klarwerk.ai) already exists";
+    const INHALT = "Key (email)=(probe@person.test) already exists";
     const gemeldet: { quelle: string; fehler: unknown }[] = [];
     const befund = await ermittleBestand(
       {
@@ -141,13 +141,13 @@ describe("JOB 3655 B · der Startbericht", () => {
     );
     // Der Befund weiss, WELCHE Abfrage gescheitert ist — und trägt keinerlei freien Text.
     expect(befund).toEqual({ art: "unbekannt", gescheitert: ["wissensobjekte"] });
-    expect(JSON.stringify(befund)).not.toContain("pedi@klarwerk.ai");
-    expect(alsText(startbericht({}, befund))).not.toContain("pedi@klarwerk.ai");
+    expect(JSON.stringify(befund)).not.toContain("probe@person.test");
+    expect(alsText(startbericht({}, befund))).not.toContain("probe@person.test");
     // Der rohe Fehler ist NICHT verloren: er geht an den Melder, der ihn in den `err`-Serializer
     // gibt. Nur dort — und dort ersetzt der Serializer Meldung und Stack.
     expect(gemeldet).toHaveLength(1);
     expect(gemeldet[0]?.quelle).toBe("wissensobjekte");
-    expect(String((gemeldet[0]?.fehler as Error).message)).toContain("pedi@klarwerk.ai");
+    expect(String((gemeldet[0]?.fehler as Error).message)).toContain("probe@person.test");
   });
 
   it("B9 · der Bestandsbefund unterscheidet beide Quellen einzeln", async () => {
