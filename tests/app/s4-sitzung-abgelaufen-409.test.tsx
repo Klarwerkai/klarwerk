@@ -402,6 +402,61 @@ describe("A3: abgelaufene S4-Sitzung sicher und begrenzt erholen", () => {
     keineFrage(lauf);
   });
 
+  it.each([401, 404, 409])(
+    "verspäteter Startfehler%i nach Dokumentwechsel startet weder Ersatz noch Anmeldung",
+    async (code) => {
+      const { lauf, stand } = starten(
+        () => gut(),
+        (n, body) => (n === 1 ? "haengt" : sitzung(n, body)),
+      );
+      await ruhe();
+      tippen();
+      const authVorher = stand.meReads;
+      expect(stand.posts).toBe(1);
+      expect(stand.reads).toBe(0);
+      dokument("https://fiktiv.invalid/anderes-start-dokument.docx");
+      // Eine unerlaubte Erholung koennte jetzt ohne verbleibende Drosselzeit anlaufen.
+      fokus(MIN_MS + 10);
+      lauf.freigeben(0, { status: code });
+      await ruhe();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await ruhe();
+      expect(stand.posts).toBe(1);
+      expect(stand.meReads).toBe(authVorher);
+      expect(stand.reads).toBe(0);
+      expect(knopf().disabled).toBe(true);
+      expect(knopf().title).toBe(wortlaut("s4StateGesperrtLokal"));
+      expect(eingabe().value).toBe(FRAGE);
+      keineFrage(lauf);
+    },
+  );
+
+  it.each([401, 404, 409])(
+    "verspäteter Statusfehler%i nach Dokumentwechsel startet weder Ersatz noch Anmeldung",
+    async (code) => {
+      const { lauf, stand } = starten((n) => (n === 1 ? gut() : "haengt"));
+      await ruhe();
+      tippen();
+      const authVorher = stand.meReads;
+      fokus(301_000);
+      await ruhe();
+      expect(stand.posts).toBe(1);
+      expect(stand.reads).toBe(2);
+      dokument("https://fiktiv.invalid/anderes-status-dokument.docx");
+      lauf.freigeben(0, { status: code });
+      await ruhe();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await ruhe();
+      expect(stand.posts).toBe(1);
+      expect(stand.meReads).toBe(authVorher);
+      expect(stand.reads).toBe(2);
+      expect(knopf().disabled).toBe(true);
+      expect(knopf().title).toBe(wortlaut("s4StateGesperrtLokal"));
+      expect(eingabe().value).toBe(FRAGE);
+      keineFrage(lauf);
+    },
+  );
+
   it("normaler Lader sammelt alle Inline-Blöcke in Reihenfolge, behält Markup und verschluckt Syntaxfehler nicht", () => {
     const html =
       '<html><head><script>var erster = 1;</script><script src="fremd.js">throw new Error("extern");</script></head><body><p>vorher</p><script>var zweiter = erster + 1;</script><p>nachher</p><script src="anderes.js"></script><script>var dritter = zweiter + 1;</script></body></html>';

@@ -3430,6 +3430,8 @@
           });
         })
         .catch(function (err) {
+          try { klaraS4AktuellenKontextPruefen(epoche, beschreiber); }
+          catch (veraltet) { return; }
           return klaraS4FehlerErholen(err);
         })
         .then(function () { klaraS4Laeuft = false; });
@@ -3573,6 +3575,8 @@
           return klaraS4DokumentPruefen();
         })
         .catch(function (err) {
+          try { klaraS4AktuellenKontextPruefen(epoche, beschreiber); }
+          catch (veraltet) { return; }
           return klaraS4FehlerErholen(err);
         })
         .then(function () { klaraS4RefreshLaeuft = false; });
