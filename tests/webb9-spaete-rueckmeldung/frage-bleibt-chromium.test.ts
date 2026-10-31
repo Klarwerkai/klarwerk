@@ -13,12 +13,14 @@ import {
   TITEL,
   WEG,
   fragenWelt,
+  beobachteEigeneGETs,
 } from "./pruefstand";
 
 let browser: Browser | undefined;
 let kontext: Kontext | undefined;
 let welt: FragenWelt | undefined;
 const belege = resolve(".local/run/webb9-spaete-rueckmeldung1073");
+const diagnoseBelege = resolve(".local/run/webb9-spaete-rueckmeldung1073-diagnose1");
 
 afterEach(async () => {
   welt?.freigeben();
@@ -41,7 +43,9 @@ afterEach(async () => {
   console.log(JSON.stringify({ event: "webb9-fixture-closed", workerPid: process.pid }));
 });
 
-async function oeffnen() {
+async function oeffnen(fallId: string) {
+  mkdirSync(belege, { recursive: true });
+  mkdirSync(diagnoseBelege, { recursive: true });
   welt = await fragenWelt();
   browser = await starteChromium();
   kontext = await browser.newContext({
@@ -51,6 +55,8 @@ async function oeffnen() {
   });
   await kontext.addInitScript('localStorage.setItem("kw.sprache", "de");');
   const seite = (await kontext.newPage()) as unknown as Page;
+  const sichereGETs: Record<string, unknown>[] = [];
+  beobachteEigeneGETs(seite, welt, sichereGETs);
   seite.setDefaultTimeout(15_000);
   seite.on("dialog", (dialog) => {
     void dialog.accept();
@@ -75,11 +81,33 @@ async function oeffnen() {
     key: welt.key,
     stand: welt.stand,
   });
+  const direktNachSeed = await seite.evaluate("(key) => localStorage.getItem(key)", welt.key);
   await seite.goto(`${welt.basis}/fragen`, { waitUntil: "domcontentloaded" });
   const feld = seite.locator('[data-testid="page-fragen"] form input');
   await feld.waitFor();
-  await seite.getByText(ANTWORT, { exact: false }).first().waitFor();
-  mkdirSync(belege, { recursive: true });
+  try {
+    await seite.getByText(ANTWORT, { exact: false }).first().waitFor();
+  } catch (error) {
+    try {
+      const zustand = await seite.evaluate(
+        "(key) => ({ url: location.origin + location.pathname, sichtbarerText: document.body?.innerText ?? '', frage: document.querySelector('[data-testid=page-fragen] form input')?.value ?? null, eigenerArbeitsstand: localStorage.getItem(key) })",
+        welt.key,
+      );
+      writeFileSync(
+        resolve(diagnoseBelege, `${fallId}-oeffnen-fehler.json`),
+        JSON.stringify({ fall: fallId, kontoId: welt.kontoId, koId: welt.koId,
+          eigenerKey: welt.key, direktNachSeed, zustand, sichereGETs }, null, 2),
+      );
+      await seite.screenshot({
+        path: resolve(diagnoseBelege, `${fallId}-oeffnen-fehler.png`),
+        fullPage: true,
+        mask: [seite.locator('input[type="password"]')],
+      });
+    } catch {
+      console.log(JSON.stringify({ event: "webb9-diagnose-aufnahmefehler", fall: fallId }));
+    }
+    throw error;
+  }
   return { seite, feld, w: welt };
 }
 
@@ -104,7 +132,7 @@ describe("WEBB9: bestätigte Rückmeldung und aktueller Frageentwurf", () => {
     },
   ]) {
     it(fall.name, async () => {
-      const { seite, feld, w } = await oeffnen();
+      const { seite, feld, w } = await oeffnen(fall.id);
       try {
         await feld.fill(RUECKMELDUNG);
         await feld.press("Enter");
