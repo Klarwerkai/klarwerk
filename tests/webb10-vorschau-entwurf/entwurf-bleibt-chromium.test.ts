@@ -94,6 +94,8 @@ async function oeffnen() {
   await p.getByTestId("klara-gespraech").waitFor();
   await p.getByTestId("klara-einwilligung-erteilen").click();
   await p.getByTestId("klara-einwilligung-erteilt").waitFor();
+  await p.getByTestId("klara-schliessen").click();
+  await p.getByTestId("klara-gespraech").waitFor({ state: "hidden" });
   // Echte Browsermarkierung und bestehender Übernahmeknopf, keine Sender-/Zustandsattrappe.
   await absatz.click({ clickCount: 3 });
   await p.getByTestId("klara-auswahl-knopf").click();
