@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { buildApp, buildPgServices, createPool, migrate } from "../../services/app";
 import { PgAuditRepo } from "../../services/audit";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
@@ -167,6 +167,11 @@ describe("KO17 Quellen auf echtem PostgreSQL", () => {
     });
     const erster = put(appA, id, { action: "add-source", source: quelle("Eins") }).then((r) => r);
     let zweiter: ReturnType<typeof erster.then> | undefined;
+    onTestFinished(async () => {
+      freigegeben = true;
+      weiter.resolve();
+      await Promise.allSettled([erster, ...(zweiter ? [zweiter] : [])]);
+    });
     try {
       await erreicht.promise;
       const lauf = put(appA, id, { action: "add-source", source: quelle("Zwei") }).then((r) => r);
@@ -175,7 +180,11 @@ describe("KO17 Quellen auf echtem PostgreSQL", () => {
       expect(vorzeitigGelesen).toBe(0);
       freigegeben = true;
       weiter.resolve();
-      expect((await Promise.all([erster, lauf])).map((r) => r.statusCode)).toEqual([200, 200]);
+      const antworten = await Promise.all([erster, lauf]);
+      console.log(
+        JSON.stringify({ event: "ko17-pg-seriell", status: antworten.map((r) => r.statusCode) }),
+      );
+      expect(antworten.map((r) => r.statusCode)).toEqual([200, 200]);
       const ko = await lesen(id);
       expect(ko.sources.map((q) => q.label).sort()).toEqual(["Eins", "Zwei"]);
       expect(
@@ -198,24 +207,47 @@ describe("KO17 Quellen auf echtem PostgreSQL", () => {
     ).toBe(200);
     const erreicht = offen();
     const weiter = offen();
-    const update = PgKoRepo.prototype.update;
+    const finden = PgKoRepo.prototype.findById;
+    const addA = servicesA.ko.addSource.bind(servicesA.ko);
+    const laufende: Promise<unknown>[] = [];
+    let imAQuellendienst = false;
     let halten = true;
-    vi.spyOn(PgKoRepo.prototype, "update").mockImplementation(async function (
+    vi.spyOn(servicesA.ko, "addSource").mockImplementation((...args) => {
+      if (args[0] === id && args[2].label === "Verlierer") imAQuellendienst = true;
+      return addA(...args);
+    });
+    vi.spyOn(PgKoRepo.prototype, "findById").mockImplementation(async function (
       this: PgKoRepo,
-      ko,
-      tx,
+      ...args
     ) {
-      if (halten && ko.id === id && ko.sources.some((q) => q.label === "Verlierer")) {
+      const gelesen = await finden.apply(this, args);
+      if (halten && imAQuellendienst && args[0] === id) {
         halten = false;
+        expect(args[1]).toBeUndefined();
+        // Der wirkliche Leseaufruf ist fertig. schreibeMitBeleg/BEGIN startet erst nach Freigabe.
+        console.log(
+          JSON.stringify({ event: "ko17-pg-A-snapshot-vor-tx", rowVersion: gelesen?.rowVersion }),
+        );
         erreicht.resolve();
         await weiter.promise;
       }
-      return update.call(this, ko, tx);
+      return gelesen;
+    });
+    onTestFinished(async () => {
+      weiter.resolve();
+      await Promise.allSettled(laufende);
     });
     const a = put(appA, id, { action: "add-source", source: quelle("Verlierer") }).then((r) => r);
+    laufende.push(a);
     try {
       await erreicht.promise;
-      const b = await put(appB, id, { action: "add-source", source: quelle("Bestaetigt") });
+      console.log(JSON.stringify({ event: "ko17-pg-B-http-start" }));
+      const bLauf = put(appB, id, { action: "add-source", source: quelle("Bestaetigt") }).then(
+        (r) => r,
+      );
+      laufende.push(bLauf);
+      const b = await bLauf;
+      console.log(JSON.stringify({ event: "ko17-pg-B-http-bestaetigt", status: b.statusCode }));
       expect(b.statusCode).toBe(200);
       const bestaetigt = await lesen(id);
       expect(bestaetigt.sources.map((q) => q.label).sort()).toEqual(["Bestaetigt", "Bestand"]);
@@ -225,6 +257,7 @@ describe("KO17 Quellen auf echtem PostgreSQL", () => {
       const auditVor = (await audit.all()).filter(
         (e) => e.target === id && e.action.startsWith("ko.source-"),
       );
+      console.log(JSON.stringify({ event: "ko17-pg-A-snapshot-freigeben" }));
       weiter.resolve();
       const verloren = await a;
       expect(verloren.statusCode).toBe(409);
@@ -238,7 +271,7 @@ describe("KO17 Quellen auf echtem PostgreSQL", () => {
       ).toEqual(auditVor);
     } finally {
       weiter.resolve();
-      await Promise.allSettled([a]);
+      await Promise.allSettled(laufende);
     }
   }, 60_000);
 });

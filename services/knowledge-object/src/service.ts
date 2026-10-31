@@ -8720,29 +8720,31 @@ export class KoService {
     sourceIds: readonly string[],
     offen: boolean,
   ): Promise<boolean> {
-    const ko = await this.require(id);
-    const betroffen = new Set(sourceIds);
-    let geaendert = false;
-    const sources = (ko.sources ?? []).map((s): KoSource => {
-      if (!betroffen.has(s.id) || Boolean(s.neubewertungOffen) === offen) {
-        return s;
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      const betroffen = new Set(sourceIds);
+      let geaendert = false;
+      const sources = (ko.sources ?? []).map((s): KoSource => {
+        if (!betroffen.has(s.id) || Boolean(s.neubewertungOffen) === offen) {
+          return s;
+        }
+        geaendert = true;
+        if (offen) {
+          return { ...s, neubewertungOffen: true };
+        }
+        const {
+          neubewertungOffen: _erledigt,
+          neubewertungQuellwegfallAm: _nachgeholterQuellwegfall,
+          ...ohne
+        } = s;
+        return ohne;
+      });
+      if (!geaendert) {
+        return false;
       }
-      geaendert = true;
-      if (offen) {
-        return { ...s, neubewertungOffen: true };
-      }
-      const {
-        neubewertungOffen: _erledigt,
-        neubewertungQuellwegfallAm: _nachgeholterQuellwegfall,
-        ...ohne
-      } = s;
-      return ohne;
+      await this.repo.update({ ...ko, sources });
+      return true;
     });
-    if (!geaendert) {
-      return false;
-    }
-    await this.repo.update({ ...ko, sources });
-    return true;
   }
 
   /**

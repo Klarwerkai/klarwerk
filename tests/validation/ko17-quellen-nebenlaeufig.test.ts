@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 import type { KnowledgeObject } from "../../services/knowledge-object";
 
@@ -97,21 +97,39 @@ async function parallel(w: Welt, id: string, ersterRumpf: object, zweitesLabel: 
   });
   const erster = put(w, id, ersterRumpf).then((r) => r);
   let zweiter: ReturnType<typeof erster.then> | undefined;
+  let nachlauf: Promise<boolean> | undefined;
+  onTestFinished(async () => {
+    freigegeben = true;
+    weiter.resolve();
+    await Promise.allSettled([
+      erster,
+      ...(zweiter ? [zweiter] : []),
+      ...(nachlauf ? [nachlauf] : []),
+    ]);
+  });
   try {
     await erreicht.promise;
     const lauf = put(w, id, { action: "add-source", source: quelle(zweitesLabel) }).then((r) => r);
     zweiter = lauf;
     await zweiterGestartet.promise;
+    // Auch ein Quellen-Nachlauf muss hinter dem bereits laufenden Quellen-Write lesen.
+    // Leere IDs ändern keine Daten, durchlaufen aber den echten bisherigen Leseweg.
+    nachlauf = w.services.ko.merkeNeubewertungOffen(id, [], false);
     // Der zweite Eintritt ist bewiesen; ein gesperrter zweiter Read wird NICHT abgewartet.
     expect(vorzeitigGelesen).toBe(0);
     freigegeben = true;
     weiter.resolve();
     const antworten = await Promise.all([erster, lauf]);
     expect(antworten.map((r) => r.statusCode)).toEqual([200, 200]);
+    expect(await nachlauf).toBe(false);
   } finally {
     freigegeben = true;
     weiter.resolve();
-    await Promise.allSettled([erster, ...(zweiter ? [zweiter] : [])]);
+    await Promise.allSettled([
+      erster,
+      ...(zweiter ? [zweiter] : []),
+      ...(nachlauf ? [nachlauf] : []),
+    ]);
   }
 }
 
