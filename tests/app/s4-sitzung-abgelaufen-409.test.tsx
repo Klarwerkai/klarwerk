@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { istFrageAufruf } from "../support/frageweg";
 import {
   type Antwort,
-  type Lauf,
   HTML,
+  type Lauf,
   aufloesung,
   el,
   panelAbraeumen,
