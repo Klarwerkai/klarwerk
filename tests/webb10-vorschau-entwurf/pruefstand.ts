@@ -136,7 +136,10 @@ export async function pruefwelt() {
               question?: string;
               seitenbezug?: unknown;
             };
-            fragen.push({ question: body.question, seitenbezug: body.seitenbezug });
+            fragen.push({
+              ...(body.question === undefined ? {} : { question: body.question }),
+              seitenbezug: body.seitenbezug,
+            });
             frageDa.resolve();
             await frageWeiter.promise;
             // Nur angehalten: die unveränderte Anfrage erreicht den echten lokalen Frageweg.
