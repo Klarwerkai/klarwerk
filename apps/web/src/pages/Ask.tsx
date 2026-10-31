@@ -1386,7 +1386,14 @@ export function Ask(): JSX.Element {
   const quelleTitel = (koId: string): string | null =>
     (kos.data ?? []).find((ko) => ko.id === koId)?.title ?? null;
   const nichtHilfreichMelden = useMutation({
-    mutationFn: ({ koId, alternative }: { koId: string; alternative: string | null }) => {
+    mutationFn: ({
+      koId,
+      alternative,
+    }: {
+      koId: string;
+      alternative: string | null;
+      entwurfBeimBestaetigen: string;
+    }) => {
       const titel = quelleTitel(koId);
       // Auch ein vor dem Rechtewechsel gebundener Bestätigungsport darf kein POST starten.
       if (!titel || !rueckmeldungFreigegeben(koId)) {
@@ -1405,10 +1412,11 @@ export function Ask(): JSX.Element {
           : {}),
       });
     },
-    onSuccess: (r) => {
+    onSuccess: (r, { entwurfBeimBestaetigen }) => {
       setNichtHilfreich(null);
       setNichtHilfreichErledigt({ entwurfId: r.entwurfId });
-      setQ("");
+      // Eine später weitergetippte Frage gehört nicht zur bestätigten Rückmeldung.
+      setQ((aktuell) => (aktuell === entwurfBeimBestaetigen ? "" : aktuell));
     },
     onError: rueckmeldungAbgelehnt,
   });
@@ -2458,7 +2466,11 @@ export function Ask(): JSX.Element {
             laeuft={nichtHilfreichMelden.isPending}
             onBestaetigen={(alternative) => {
               if (rueckmeldungFreigegeben(nichtHilfreich.koId)) {
-                nichtHilfreichMelden.mutate({ koId: nichtHilfreich.koId, alternative });
+                nichtHilfreichMelden.mutate({
+                  koId: nichtHilfreich.koId,
+                  alternative,
+                  entwurfBeimBestaetigen: q,
+                });
               }
             }}
             onAlsFrage={() => {
