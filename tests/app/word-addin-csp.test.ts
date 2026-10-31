@@ -300,9 +300,7 @@ describe("ADD-1: Mandanten-CSP der eingebetteten Word-Begleitung", () => {
   it("konfigurierter Mandant gilt für Taskpane und Begleitung; Dialog und andere Pfade bleiben eng", async () => {
     const app = await buildRealApp({ KLARWERK_M365_MANDANTEN: "add1-fiktiv" });
     try {
-      const erwartet =
-        WORD_ADDIN_CSP +
-        " https://add1-fiktiv.sharepoint.com https://add1-fiktiv-my.sharepoint.com";
+      const erwartet = `${WORD_ADDIN_CSP} https://add1-fiktiv.sharepoint.com https://add1-fiktiv-my.sharepoint.com`;
       for (const pfad of ["/word-addin/taskpane.html", "/word-addin/begleitung.html"]) {
         for (const zusatz of ["", "?host=word&x=1", "?host=word#fragment"]) {
           const url = pfad + zusatz;
