@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "playwright-core";
 import { afterEach, describe, expect, it } from "vitest";
-import { type Browser, type Kontext, starteChromium } from "../gast-nutzerweg/browserweg";
+import { type Browser, type Kontext, fn, starteChromium } from "../gast-nutzerweg/browserweg";
 import { PASSWORT } from "../gast-nutzerweg/strecke";
 import {
   ANTWORT,
@@ -42,6 +42,10 @@ afterEach(async () => {
   console.log(JSON.stringify({ event: "webb9-fixture-closed", workerPid: process.pid }));
 });
 
+function imBrowser<Ergebnis>(quelle: string): (arg: unknown) => Ergebnis {
+  return fn(quelle) as (arg: unknown) => Ergebnis;
+}
+
 async function oeffnen(fallId: string) {
   mkdirSync(belege, { recursive: true });
   mkdirSync(diagnoseBelege, { recursive: true });
@@ -74,11 +78,17 @@ async function oeffnen(fallId: string) {
   expect((await login).status()).toBe(200);
   await seite.locator("#auth-email").waitFor({ state: "hidden" });
   expect((await kontext.cookies()).some((c) => c.name === "kw_session" && c.value)).toBe(true);
-  await seite.evaluate((d) => localStorage.setItem(d.key, JSON.stringify(d.stand)), {
-    key: welt.key,
-    stand: welt.stand,
-  });
-  const direktNachSeed = await seite.evaluate((key) => localStorage.getItem(key), welt.key);
+  await seite.evaluate(
+    imBrowser<void>("(d) => localStorage.setItem(d.key, JSON.stringify(d.stand))"),
+    {
+      key: welt.key,
+      stand: welt.stand,
+    },
+  );
+  const direktNachSeed = await seite.evaluate(
+    imBrowser<string | null>("(key) => localStorage.getItem(key)"),
+    welt.key,
+  );
   await seite.goto(`${welt.basis}/fragen`, { waitUntil: "domcontentloaded" });
   const feld = seite.locator('[data-testid="page-fragen"] form input');
   await feld.waitFor();
@@ -87,14 +97,14 @@ async function oeffnen(fallId: string) {
   } catch (error) {
     try {
       const zustand = await seite.evaluate(
-        (key) => ({
-          url: location.origin + location.pathname,
-          sichtbarerText: document.body?.innerText ?? "",
-          frage:
-            document.querySelector<HTMLInputElement>("[data-testid=page-fragen] form input")
-              ?.value ?? null,
-          eigenerArbeitsstand: localStorage.getItem(key),
-        }),
+        imBrowser<{
+          url: string;
+          sichtbarerText: string;
+          frage: string | null;
+          eigenerArbeitsstand: string | null;
+        }>(
+          "(key) => ({ url: location.origin + location.pathname, sichtbarerText: document.body?.innerText ?? '', frage: document.querySelector('[data-testid=page-fragen] form input')?.value ?? null, eigenerArbeitsstand: localStorage.getItem(key) })",
+        ),
         welt.key,
       );
       writeFileSync(
@@ -127,7 +137,9 @@ async function oeffnen(fallId: string) {
 
 async function entwurf(seite: Page, key: string): Promise<string | null> {
   return seite.evaluate(
-    (key) => JSON.parse(localStorage.getItem(key) || "null")?.entwurf ?? null,
+    imBrowser<string | null>(
+      "(key) => JSON.parse(localStorage.getItem(key) || 'null')?.entwurf ?? null",
+    ),
     key,
   );
 }
