@@ -64,6 +64,7 @@ describe("JOB 3655 E · Start gegen eine leere Datenhaltung", () => {
     // dieselbe App anstandslos.
     process.env.DATABASE_URL = "postgresql://k:g@db-demo.intern:5432/klarwerk_demo";
     process.env.APP_BASE_URL = "https://demo.klarwerk.ai";
+    process.env.KLARWERK_TRUST_PROXY = "none";
     expect(() => appMitPuffer()).not.toThrow();
   });
 
@@ -71,6 +72,7 @@ describe("JOB 3655 E · Start gegen eine leere Datenhaltung", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://kennung:GEHEIM@db-demo.intern:5432/klarwerk_demo";
     process.env.APP_BASE_URL = "https://demo.klarwerk.ai";
+    process.env.KLARWERK_TRUST_PROXY = "none";
     const { app, zeilen } = appMitPuffer();
     await app.ready();
     const protokoll = zeilen.join("\n");
@@ -97,6 +99,7 @@ describe("JOB 3655 E · Start gegen eine leere Datenhaltung", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://kennung:GEHEIM@db-demo.intern:5432/klarwerk_demo";
     process.env.APP_BASE_URL = "https://demo.klarwerk.ai";
+    process.env.KLARWERK_TRUST_PROXY = "none";
     const zeilen: string[] = [];
     const services = buildServices();
     // DIE NUTZLAST IST MIT BEDACHT GEWAEHLT. Ein Fehlertext mit einer `user:pass@host`-Adresse
@@ -109,7 +112,7 @@ describe("JOB 3655 E · Start gegen eine leere Datenhaltung", () => {
       ko: Object.assign(Object.create(Object.getPrototypeOf(services.ko)), services.ko, {
         listForSearch: async () => {
           throw new Error(
-            'duplicate key value violates unique constraint "ko_pkey": Key (email)=(pedi@klarwerk.ai) already exists',
+            'duplicate key value violates unique constraint "ko_pkey": Key (email)=(probe@person.test) already exists',
           );
         },
       }),
@@ -119,7 +122,7 @@ describe("JOB 3655 E · Start gegen eine leere Datenhaltung", () => {
     });
     await app.ready();
     const protokoll = zeilen.join("\n");
-    expect(protokoll).not.toContain("pedi@klarwerk.ai");
+    expect(protokoll).not.toContain("probe@person.test");
     expect(protokoll).not.toContain("duplicate key");
     // Der Befund ist ehrlich UNBEKANNT — nicht „leer".
     expect(protokoll).toContain("UNBEKANNT");
@@ -134,6 +137,7 @@ describe("JOB 3655 E · Start gegen eine leere Datenhaltung", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://kennung:GEHEIM@db-demo.intern:5432/klarwerk_demo";
     process.env.APP_BASE_URL = "https://demo.klarwerk.ai";
+    process.env.KLARWERK_TRUST_PROXY = "none";
     const { app } = appMitPuffer();
     await app.ready();
     // Die Ersteinrichtung ist der Zustand, in dem eine frische Instanz steht: noch kein Konto.
