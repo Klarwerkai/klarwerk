@@ -22,10 +22,10 @@ import { panelQuelleAus } from "../support/panelquelle";
 
 type App = ReturnType<typeof buildApp>;
 
-async function buildRealApp(): Promise<App> {
+async function buildRealApp(env: NodeJS.ProcessEnv = {}): Promise<App> {
   const app = buildApp(buildServices());
   // EXAKT die Produktionsregistrierung (helmet-Global-CSP + Word-Add-in-Ausnahmen-Hook).
-  await registerSecurityHeaders(app);
+  await registerSecurityHeaders(app, env);
   // Stellvertreter für die statische Auslieferung (registerWebStatic braucht das gebaute dist):
   // Taskpane + Icons antworten 200 — die Header kommen NICHT aus diesen Routen, sondern aus helmet +
   // dem onSend-Hook der Produktionsfunktion.
@@ -50,12 +50,12 @@ describe("WP-KLARA-1b K1: Header-Matrix gegen die reale Registrierung (inject)",
 
   it("(a) NUR die kanonischen Add-in-Seiten → Ersatz-CSP, KEIN X-Frame-Options", async () => {
     // WP-D10b: die kanonische Menge ist bewusst eng — die Icons stehen ausdruecklich NICHT darin.
-    // JOB 4076: sie umfasst jetzt ZWEI Seiten. Die zweite ist die Dialogseite der
-    // Office-Web-Anmeldung; sie laedt `office.js` fuer `messageParent` und braucht deshalb dieselbe
-    // `script-src`-Ausnahme wie das Taskpane. Begruendung an Ort und Stelle in `security-headers.ts`.
+    // Taskpane, Anmeldedialog und die bereits ausgelieferte Begleitseite laden office.js.
+    // Die genaue Dreiermenge bleibt gepinnt; Icons und Pfadvarianten bleiben ausgeschlossen.
     expect(WORD_ADDIN_CSP_PATHS).toEqual([
       "/word-addin/taskpane.html",
       "/word-addin/anmeldung.html",
+      "/word-addin/begleitung.html",
     ]);
     for (const path of WORD_ADDIN_CSP_PATHS) {
       const res = await app.inject({ method: "GET", url: path });
@@ -120,6 +120,9 @@ describe("WP-KLARA-1b K1: isWordAddinCspPath — exakter Vergleich, fail-closed"
     expect(isWordAddinCspPath("/word-addin/anmeldung.html")).toBe(true);
     expect(isWordAddinCspPath("/word-addin/anmeldung.html?v=1")).toBe(true);
     expect(isWordAddinCspPath("/word-addin/anmeldung.html#frag")).toBe(true);
+    expect(isWordAddinCspPath("/word-addin/begleitung.html")).toBe(true);
+    expect(isWordAddinCspPath("/word-addin/begleitung.html?v=1")).toBe(true);
+    expect(isWordAddinCspPath("/word-addin/begleitung.html#frag")).toBe(true);
   });
 
   it("Präfix-Tricks, Traversal, Encoding, Casing, Slashes, Icons → false (globale CSP)", () => {
@@ -139,6 +142,11 @@ describe("WP-KLARA-1b K1: isWordAddinCspPath — exakter Vergleich, fail-closed"
       "/word-addinX/anmeldung.html",
       "/word-addin/ANMELDUNG.HTML",
       "/word-addin/anmeldung.html%00",
+      "/word-addin/begleitung.html/",
+      "/word-addin/begleitung.htmlx",
+      "/word-addinX/begleitung.html",
+      "/word-addin/BEGLEITUNG.HTML",
+      "/word-addin/begleitung%2Ehtml",
       "/Word-Addin/taskpane.html",
       "/word-addin/TASKPANE.HTML",
       "/word-addin/taskpane%2Ehtml",
@@ -183,10 +191,15 @@ function ausgelieferteSeite(): string {
 describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
   it("jedes Abrufziel des Panels ist same-origin (absoluter /api-Pfad) — passt zu connect-src 'self'", () => {
     const html = taskpaneSource();
-    // `fetch(` deckt die vier direkten Abrufe; `fetchFn(` ist der EINE injizierte Abruf in
-    // performAsk (er ist injizierbar, damit der Ask-Fluss ohne Netz testbar bleibt) — beide Formen
-    // zaehlen, sonst waere der wichtigste Endpunkt des Panels gerade nicht erfasst.
+    // Direkte Literalziele bleiben erfasst. performAsk wählt heute anhand der Sitzung
+    // zwischen dem gebundenen Klara-Zugang und dem allgemeinen Frageweg; beide echten
+    // Zweige müssen ausdrücklich erkannt und derselben Same-Origin-Prüfung unterzogen werden.
     const ziele = [...html.matchAll(/\bfetch(?:Fn)?\(\s*"([^"]+)"/g)].map((m) => m[1] ?? "");
+    const fragewege = html.match(
+      /fetchFn\(sitzung \? "([^"]+)" \+ encodeURIComponent\(sitzung\) \+ "\/execute" : "([^"]+)"/,
+    );
+    expect(fragewege?.slice(1)).toEqual(["/api/klara/sessions/", "/api/ask"]);
+    ziele.push(fragewege?.[1] ?? "", fragewege?.[2] ?? "");
     // Kalibrierung: der Test darf nicht vakuoes werden, wenn der Abrufweg einmal umbenannt wird.
     expect(ziele.length).toBeGreaterThanOrEqual(5);
     for (const ziel of ziele) {
@@ -198,6 +211,7 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
       "/api/auth/me",
       "/api/reasoner/status",
       "/api/ask",
+      "/api/klara/sessions/",
       "/api/kos/",
       "/api/drafts",
     ]) {
@@ -213,42 +227,28 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
     const html = taskpaneSource();
     const seite = ausgelieferteSeite();
     const externeScripts = [...seite.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1] ?? "");
-    // JOB 3667 R8 (14.09.2026): seit dem Schnitt steht eine ZWEITE Quelle hier — der Abschnitt
-    // KW-RUECKWEG wohnt in `rueckweg.js` (Grund: die bewachte Groessengrenze des Inline-Skripts,
-    // `tests/klara-zerlegung/schnittflaechen.test.ts` B3, die NICHT angehoben werden durfte).
-    // Fuer die Angriffsflaeche aendert das nichts, und genau das misst dieser Fall ab hier
-    // getrennt: FREMD bleibt office.js allein, und nur dafuer steht ein Fremd-Ursprung in der CSP.
-    // Jede weitere Quelle muss RELATIV und damit gleichherkuenftig sein — `script-src 'self'`
-    // deckt sie ohne neue Erlaubnis. Ein absoluter oder protokollrelativer Eintrag faellt hier auf.
-    // R-1611 (Drei-Datei-Schnitt): eine DRITTE relative Quelle — `taskpane.js`, das frühere
-    // Inline-Skript, an genau seiner Stelle. Dazu EIN relatives Stilblatt `taskpane.css`.
-    // Zerlegungsauftrag Bestandsblick: eine VIERTE nach derselben Regel — der Block KW-MARKE wohnt
-    // in `marke.js` (relativ, gleichherkuenftig), unmittelbar nach `taskpane.js`.
+    // Tatsächlich ausgelieferte Quellen: nur office.js ist fremd. Jede weitere Quelle
+    // bleibt relativ und wird von der bestehenden self-Direktive gedeckt.
     expect(externeScripts).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
-      // AUFTRAG firmenwoerterbuch: eine FÜNFTE nach derselben Regel — `begriffe.js` (KW-BEGRIFFE),
-      // relativ und gleichherkünftig, im Kopf hinter office.js.
       "begriffe.js?v=__KW_FASSUNG__",
-      // AUFTRAG gesamt-dokumenterzeugung: eine SECHSTE nach derselben Regel — `anleitung.js`
-      // (KW-ANLEITUNG), relativ und gleichherkünftig, im Kopf direkt hinter `begriffe.js`.
       "anleitung.js?v=__KW_FASSUNG__",
-      // AUFTRAG klara-office-mac-maskottchen: dieselbe Regel — `begleiter.js` (KW-BEGLEITER),
-      // relativ und gleichherkünftig, im Kopf direkt hinter `anleitung.js`.
       "begleiter.js?v=__KW_FASSUNG__",
-      // AUFTRAG klara-eigener-kalender (AW-16): nach derselben Regel `kalender.js` (KW-KALENDER),
-      // relativ und gleichherkünftig, im Kopf direkt hinter `anleitung.js`.
       "kalender.js?v=__KW_FASSUNG__",
+      "lernziel.js?v=__KW_FASSUNG__",
+      "vormachen.js?v=__KW_FASSUNG__",
       "rueckweg.js?v=__KW_FASSUNG__",
       "taskpane.js?v=__KW_FASSUNG__",
-      // R-0336/R-0708: eine SECHSTE nach derselben Regel — `wortvergleich.js` (KW-WORDVERGLEICH),
-      // relativ und gleichherkünftig, unmittelbar nach `taskpane.js`.
       "wortvergleich.js?v=__KW_FASSUNG__",
       "marke.js?v=__KW_FASSUNG__",
+      "minimal-funktionen.js?v=__KW_FASSUNG__",
+      "minimal.js?v=__KW_FASSUNG__",
+      "minimal-taskpane.js?v=__KW_FASSUNG__",
     ]);
     const stilblaetter = [...seite.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map(
       (m) => m[1] ?? "",
     );
-    expect(stilblaetter).toEqual(["taskpane.css?v=__KW_FASSUNG__"]);
+    expect(stilblaetter).toEqual(["taskpane.css?v=__KW_FASSUNG__", "minimal.css?v=__KW_FASSUNG__"]);
     const fremde = [...externeScripts, ...stilblaetter].filter((s) => /^[a-z]+:|^\/\//.test(s));
     expect(fremde).toEqual(["https://appsforoffice.microsoft.com/lib/1/hosted/office.js"]);
     expect(WORD_ADDIN_CSP).toContain(
@@ -292,5 +292,84 @@ describe("WP-KLARA-1b K2: frame-ancestors eng und belegt", () => {
     expect(fa).toBe("frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com");
     expect(WORD_ADDIN_CSP).not.toContain("*.live.com");
     expect(WORD_ADDIN_CSP).not.toContain("*.microsoft.com");
+  });
+});
+
+// ADD-1: echte Headerregistrierung mit ausschließlich synthetischer Testkonfiguration.
+describe("ADD-1: Mandanten-CSP der eingebetteten Word-Begleitung", () => {
+  it("konfigurierter Mandant gilt für Taskpane und Begleitung; Dialog und andere Pfade bleiben eng", async () => {
+    const app = await buildRealApp({ KLARWERK_M365_MANDANTEN: "add1-fiktiv" });
+    try {
+      const erwartet =
+        WORD_ADDIN_CSP +
+        " https://add1-fiktiv.sharepoint.com https://add1-fiktiv-my.sharepoint.com";
+      for (const pfad of ["/word-addin/taskpane.html", "/word-addin/begleitung.html"]) {
+        for (const zusatz of ["", "?host=word&x=1", "?host=word#fragment"]) {
+          const url = pfad + zusatz;
+          const res = await app.inject({ method: "GET", url });
+          expect(res.statusCode, url).toBe(200);
+          expect(res.headers["content-security-policy"], url).toBe(erwartet);
+          expect(res.headers["x-frame-options"], url).toBeUndefined();
+          expect(res.headers["cross-origin-opener-policy"], url).toBe("same-origin");
+        }
+      }
+      for (const url of [
+        "/word-addin/anmeldung.html",
+        "/word-addin/anmeldung.html?host=word#dialog",
+      ]) {
+        const res = await app.inject({ method: "GET", url });
+        expect(res.statusCode, url).toBe(200);
+        expect(res.headers["content-security-policy"], url).toBe(WORD_ADDIN_CSP);
+        expect(res.headers["x-frame-options"], url).toBeUndefined();
+        expect(res.headers["cross-origin-opener-policy"], url).toBe("unsafe-none");
+      }
+      for (const url of [
+        "/word-addin/begleitung.html/",
+        "/word-addin/begleitung.htmlx",
+        "/word-addinX/begleitung.html",
+        "/word-addin/BEGLEITUNG.HTML",
+        "/word-addin/begleitung%2Ehtml",
+        "/word-addin/icon-32.png",
+        "/word-addin/icon-80.png",
+        "/api/auth/me",
+        "/",
+      ]) {
+        const res = await app.inject({ method: "GET", url });
+        const csp = String(res.headers["content-security-policy"] ?? "");
+        expect(csp, url).toContain("frame-ancestors 'none'");
+        expect(csp, url).not.toContain("sharepoint.com");
+        expect(csp, url).not.toContain("office.com");
+        expect(res.headers["x-frame-options"], url).toBeDefined();
+        expect(res.headers["cross-origin-opener-policy"], url).toBe("same-origin");
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("fehlende oder ungültige Mandanten erweitern weder Begleitung noch Taskpane", async () => {
+    for (const env of [
+      {},
+      {
+        KLARWERK_M365_MANDANTEN:
+          "https://fiktiv.sharepoint.com,*.sharepoint.com,fiktiv/weg,fiktiv:443",
+      },
+    ]) {
+      const app = await buildRealApp(env);
+      try {
+        for (const pfad of ["/word-addin/taskpane.html", "/word-addin/begleitung.html"]) {
+          for (const zusatz of ["", "?host=word#fragment"]) {
+            const url = pfad + zusatz;
+            const res = await app.inject({ method: "GET", url });
+            expect(res.statusCode, url).toBe(200);
+            expect(res.headers["content-security-policy"], url).toBe(WORD_ADDIN_CSP);
+            expect(res.headers["x-frame-options"], url).toBeUndefined();
+            expect(res.headers["cross-origin-opener-policy"], url).toBe("same-origin");
+          }
+        }
+      } finally {
+        await app.close();
+      }
+    }
   });
 });

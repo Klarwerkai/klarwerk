@@ -134,10 +134,14 @@ function pfadOhneQuery(rawUrl: string | undefined): string {
   return (rawUrl ?? "").split("?")[0]?.split("#")[0] ?? "";
 }
 
-// Die Mandanten-Herkünfte gelten NUR für die Taskpanes — die Seiten, die Word, Excel und PowerPoint
-// im Browser wirklich einbetten. Die Dialogseite ist top-level und behält die Ersatz-CSP ohne Mandanten.
+// Die Mandanten-Herkünfte gelten nur für eingebettete Aufgaben- und Begleitfenster.
+// Die Dialogseite ist top-level und behält die Ersatz-CSP ohne Mandanten.
 const TASKPANE_PATH = "/word-addin/taskpane.html";
-const TASKPANE_PATHS: readonly string[] = [TASKPANE_PATH, ...OFFICE_ADDIN_CSP_PATHS];
+const TASKPANE_PATHS: readonly string[] = [
+  TASKPANE_PATH,
+  "/word-addin/begleitung.html",
+  ...OFFICE_ADDIN_CSP_PATHS,
+];
 
 // ================================================================================================
 // WORD-HOST-GESAMTWEG (Realhostbeleg 05.10.2026) — DIE DIALOGSEITE DARF DEN OFFICE-OPENER NICHT KAPPEN.
