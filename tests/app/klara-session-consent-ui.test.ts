@@ -74,6 +74,24 @@ function frist(): number {
   return Number(treffer?.[1]);
 }
 
+/** Vollstaendige markierte Produktgruppe; fehlende Grenzen sind ein echter Testfehler. */
+function quellblock(von: string, bis: string): string {
+  const start = HTML.indexOf(von);
+  const ende = HTML.indexOf(bis, start);
+  expect(start, `${TASKPANE}: ${von} fehlt`).toBeGreaterThan(0);
+  expect(ende, `${TASKPANE}: ${bis} fehlt`).toBeGreaterThan(start);
+  return HTML.slice(start, ende);
+}
+
+/** Top-Level-Funktion mit ihrer echten Schlussklammer, ohne Ersatz fuer Produktguards. */
+function quellfunktion(name: string): string {
+  const start = HTML.indexOf(`function ${name}(`);
+  const ende = HTML.indexOf("\n    }", start);
+  expect(start, `${TASKPANE}: ${name} fehlt`).toBeGreaterThan(0);
+  expect(ende, `${TASKPANE}: ${name} ohne Ende`).toBeGreaterThan(start);
+  return HTML.slice(start, ende + "\n    }".length);
+}
+
 // ------------------------------------------------------------------------------------------------
 // Der Prüfstand — der ausgelieferte Block, wirklich ausgeführt
 // ------------------------------------------------------------------------------------------------
@@ -100,7 +118,7 @@ interface Lauf {
 }
 
 /**
- * @param antworten je Aufruf-Index eine Antwort; `null` bedeutet: dieser Aufruf scheitert.
+ * @param antworten je Aufruf-Index eine Antwort; `null` bedeutet generischer 5xx-Fehler, keine 404-Erholung.
  * @param beschreiber der Dokumentbeschreiber, den das Aufgabenfenster liefern soll.
  */
 function pruefstand(
@@ -153,6 +171,18 @@ function pruefstand(
     klaraS4Abgelaufen: false,
     // JOB 3056 Runde 10: der bewahrte Ablaufzeitpunkt (klaraS4Uebernehmen traegt ihn je Aufloesung ein).
     klaraS4BestaetigtBisMs: Number.NaN,
+    // Neue S4-Zustaende leben vor dem Fetch-Marker; dieselben Initialwerte wie im Produkt.
+    klaraS4ErholungVerbraucht: false,
+    klaraS4AuthPruefungVerbraucht: false,
+    klaraS4ErholungAktiv: false,
+    klaraS4ErholungSperrt: false,
+    klaraAuthEpoche: 0,
+    klaraS4ErholungWechsel: false,
+    klaraS4ErholungTimer: null,
+    klaraS4LetzterStartMs: Number.NEGATIVE_INFINITY,
+    klaraS4KontoId: null,
+    signedIn: true,
+    sitzungLage: "angemeldet",
     AbortController: class {
       signal = { markiert: true };
       abort() {
@@ -179,29 +209,23 @@ function pruefstand(
       });
       const antwort = antworten[index];
       if (antwort === undefined || antwort === null) {
-        return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+        // Der alte generische Fehlervertrag ist 5xx. 404/409 sind inzwischen bewusst
+        // begrenzte Erholung und werden in der ganzen S4-Regression separat gemessen.
+        return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) });
       }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(antwort) });
     },
   };
 
-  // Der Header-Bauer wird aus der Datei geschnitten, damit die drei Namen aus dem Produktcode
-  // kommen und nicht aus dem Test.
-  const bauerStart = HTML.indexOf("function klaraS4Header()");
-  const bauerEnde = HTML.indexOf("\n    }", bauerStart);
-  expect(bauerStart, `${TASKPANE}: klaraS4Header fehlt`).toBeGreaterThan(0);
-  // JOB 3056 Runde 9: klaraS4Uebernehmen liest den Ablauf der Aufloesung ueber klaraS4Veraltet
-  // (Anzeigeblock). Auch die wird aus der DATEI geschnitten, nicht nachgebaut.
-  const veraltetStart = HTML.indexOf("function klaraS4Veraltet(view, nowMs)");
-  const veraltetEnde = HTML.indexOf("\n    }", veraltetStart);
-  expect(veraltetStart, `${TASKPANE}: klaraS4Veraltet fehlt`).toBeGreaterThan(0);
-
   const factory = new Function(
     "umgebung",
     `with (umgebung) {
-       ${HTML.slice(bauerStart, bauerEnde)}}
+       ${quellblock("// KW-KLARA-S4-START", "// KW-KLARA-S4-END")}
+       ${quellfunktion("klaraS4Header")}
        umgebung.klaraS4Header = klaraS4Header;
-       ${HTML.slice(veraltetStart, veraltetEnde)}}
+       ${quellfunktion("klaraS4AblaufMerken")}
+       ${quellfunktion("klaraS4FragenGesperrt")}
+       ${quellfunktion("klaraS4FragenSperrtext")}
        ${HTML.slice(start, ende)}
        return { start: klaraS4Start, zustimmen: klaraS4Zustimmen, widerrufen: klaraS4Widerrufen };
      }`,
@@ -476,6 +500,52 @@ describe("AUFTRAG-06 BLOCK C: Gegenproben — Scheitern, Frist, Speicherung, Spe
     expect(start).toBeGreaterThan(0);
     const fn = HTML.slice(start, ende);
     expect(fn).toContain("klaraS4FragenGesperrt()");
-    expect(fn).toContain('t("s4FragenGesperrt")');
+    expect(fn).toContain("klaraS4FragenSperrtext()");
+    // Der echte Produkthelfer muss je Ursache den echten Woerterbuchtext liefern.
+    const text = (key: string): string => {
+      const treffer = new RegExp(`^\\s*${key}:\\s*"([^"]*)"`, "m").exec(HTML);
+      expect(treffer, `${TASKPANE}: ${key} fehlt`).not.toBeNull();
+      const wert = treffer?.[1] ?? "";
+      expect(wert.trim().length, `${key}: leerer Sperrgrund`).toBeGreaterThan(0);
+      expect(wert).not.toBe(key);
+      return wert;
+    };
+    const sperrtext = new Function(
+      "zustand",
+      `with (zustand) {
+        ${quellblock("// KW-KLARA-S4-START", "// KW-KLARA-S4-END")}
+        ${quellfunktion("klaraS4FragenSperrtext")}
+        return klaraS4FragenSperrtext();
+      }`,
+    ) as (zustand: Record<string, unknown>) => string;
+    const frisch = { ...AUFLOESUNG, expiresAt: new Date(Date.now() + 60_000).toISOString() };
+    const basis = {
+      signedIn: true,
+      sitzungLage: "angemeldet",
+      klaraS4Phase: "bereit",
+      klaraS4ErholungAktiv: false,
+      klaraS4Riegelstand: false,
+      klaraS4Abgelaufen: false,
+      klaraS4Sicht: { resolution: frisch },
+      t: text,
+    };
+    const faelle: Array<{ zustand: Record<string, unknown>; key: string }> = [
+      { zustand: { signedIn: false, sitzungLage: "anmelden" }, key: "sessionOff" },
+      { zustand: { signedIn: false, sitzungLage: "erneut" }, key: "sessionError" },
+      { zustand: { klaraS4ErholungAktiv: true }, key: "s4StateLaedt" },
+      { zustand: { klaraS4Riegelstand: true }, key: "s4StateGesperrtLokal" },
+      { zustand: { klaraS4Abgelaufen: true }, key: "s4FragenGesperrt" },
+      { zustand: { klaraS4Sicht: null }, key: "s4StateUnerreichbar" },
+      {
+        zustand: {
+          klaraS4Sicht: { resolution: { ...frisch, blockedReason: "policy_incomplete" } },
+        },
+        key: "s4ReasonPolicyIncomplete",
+      },
+      { zustand: {}, key: "s4ReasonExternalConsentMissing" },
+    ];
+    for (const fall of faelle) {
+      expect(sperrtext({ ...basis, ...fall.zustand }), fall.key).toBe(text(fall.key));
+    }
   });
 });
