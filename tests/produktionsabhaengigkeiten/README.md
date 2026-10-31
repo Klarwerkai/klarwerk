@@ -689,3 +689,56 @@ Das Prüfurteil bleibt auf diese Knoten, Meldungen und vorhandenen Funktionstest
 - **Das Verhalten der gehobenen Pakete im lokalen Arbeitsbaum.** Dort zeigt `node_modules` auf den
   geteilten, alten Bestand; jede Aussage über die neuen Versionen stammt aus einem Cloud-Lauf mit
   frischem `npm ci`.
+
+## 9. Nachtrag 31.10.2026 — Glob und Minimatch im Static-Aufrufweg
+
+Bewertet werden ausschließlich zwei neue Meldungen am gebundenen Stand:
+**glob 13.0.6** unter **node_modules/@fastify/static/node_modules/glob** und
+**minimatch 10.2.5** unter **node_modules/@fastify/static/node_modules/minimatch**.
+Elternpaket ist **@fastify/static 9.1.3**. Alle drei Versionen stimmen zwischen
+Lockdatei und den gezielt gelesenen installierten öffentlichen Paketquellen überein.
+
+[GHSA-3g3m-2fjr-6pw4](https://github.com/isaacs/node-glob/security/advisories/GHSA-3g3m-2fjr-6pw4)
+wurde vom Maintainer am 27.10.2026 veröffentlicht, die
+[GitHub-Datenbank](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) am 30.10.2026 aktualisiert.
+Betroffen sind 9.0.0 bis 14.0.1, behoben ist 14.0.2. Ein mit Signal abgebrochener
+Walk kann weiter Dateisystemarbeit ausführen. Glob 13.0.6 bleibt eine betroffene Version.
+
+[GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249)
+wurde ebenfalls am 27.10.2026 veröffentlicht, die
+[GitHub-Datenbank](https://github.com/advisories/GHSA-g3hv-75wg-m249) am 30.10.2026 aktualisiert.
+Die Meldung umfasst Versionen unter 11.0.1; 11.0.1 behebt sie. Voraussetzung ist ein
+kontrollierbares Pattern bei optimizationLevel >= 2. Die Beschreibung nennt 10.2.6;
+die gebundene 10.2.5 liegt ebenfalls im gemeldeten betroffenen Bereich.
+Die gelesene Glob-Quelle setzt tatsächlich Optimierungsstufe 2.
+
+**Konkrete Nicht-Exposition, aus dem heutigen Aufrufweg abgeleitet:** server.ts ruft
+registerWebStatic mit apps/web/dist auf. Dessen unveränderte Registrierung setzt
+nur root und setHeaders. Die öffentliche @fastify/static-Quelle nimmt bei
+wildcard undefined/true den dynamischen GET/HEAD-Wildcardzweig und übergibt den
+aufgelösten Dateipfad an @fastify/send. Der einzige glob-Aufruf steht im anderen
+Zweig, wildcard=false: festes Pattern **/** und Optionen cwd, absolute, follow,
+nodir, dot, ignore. Dieser Walk wird im Produkt nicht gestartet. Damit gelangen
+weder ein Abbruchsignal noch ein anfragegesteuertes Pattern in diese Glob/Minimatch-Kette.
+Keine direkte Paketimportstelle für glob/minimatch wurde in services, apps, tools
+oder scripts gefunden. Web-import.meta.glob ist Vites Buildsyntax mit festen
+Quellmustern und kein Aufruf des gebundenen transitiven Static-Pakets.
+Auch die zweite RegisterWebStatic-Stelle im vorhandenen Prüfumgebungsskript
+verwendet denselben unveränderten Weg.
+
+**Kausaler Wächter:** static-glob-exposition-20261031.test.ts bindet die drei
+Paketversionen, die Lockknoten und den gelesenen öffentlichen Pluginquelltext.
+Im einzigen Fall baut er registerWebStatic mit echter Fastifyinstanz und eigenem
+temporären Dist auf. Erst nach ready wird eine neue Assetdatei geschrieben:
+ein tatsächliches GET muss 200 und exakt deren Inhalt liefern. Der Kontrollaufbau
+verwendet das echte unveränderte Plugin mit wildcard=false und eigener Fixture:
+eine vorher vorhandene Datei ist erreichbar, eine erst nach ready erzeugte erhält 404.
+Es werden keine Bibliotheksfunktionen ersetzt und keine Angriffs-/Abbruchmuster ausgeführt.
+
+Das Urteil gilt nur für diese zwei Meldungen an diesen Knoten und dieser Aufrufkette.
+Ein anderer Static-Zweig, neue Pattern-/Signalübergabe, direkter Paketaufruf oder
+anderer Paketquelltext verlangt eine neue Bewertung. Pakete, Lockdateien,
+Produktcode und Version bleiben unverändert; alte Bewertungen und historische
+Messgrenzen bleiben erhalten. Der normale Pflichtlauf und der danach einmalige echte
+Registryaudit liefern die jeweiligen Laufresultate im SICHERHEIT1/P-Nachweis.
+Eine Gesamtsicherheitsabnahme oder Betriebsmessung folgt daraus nicht.

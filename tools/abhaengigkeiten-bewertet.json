@@ -328,5 +328,27 @@
     "begruendung": "Nur DKIM: Die Meldung setzt DKIM-Signierung am Transport oder an der Nachricht voraus. smtpMailer in services/notifications/src/smtp.ts erzeugt genau einen Transport mit host, port, secure, auth und sendMail erhaelt ausschliesslich from, to, subject, text, html; keine dkim-Option, keine Transportdefaults und kein Plugin werden gesetzt. Die installierte oeffentliche nodemailer-6.10.1-Quelle lib/mailer/index.js setzt this.dkim ohne options.dkim auf false und erreicht dkim.sign nur unter mail.data.dkim || this.dkim. Beide Voraussetzungen fehlen im gebundenen Produktpfad. Diese Bewertung gilt ausschliesslich fuer GHSA-39m8-27wv-hr27; die vorhandenen exponierten Adressparsermeldungen und deren offene Upgradeentscheidung bleiben unveraendert.",
     "beleg": "Primaerquelle https://github.com/advisories/GHSA-39m8-27wv-hr27 (DKIM-Voraussetzung); services/notifications/src/smtp.ts#smtpMailer; installierte oeffentliche Quelle nodemailer/lib/mailer/index.js, Konstruktor und DKIM-Zweig; bestehende Guards tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts N1/N2/N3.",
     "bewertet_am": "2026-10-23"
+  },
+  {
+    "bestand": "wurzel",
+    "kennung": "GHSA-3g3m-2fjr-6pw4",
+    "paket": "glob",
+    "ort": "node_modules/@fastify/static/node_modules/glob",
+    "version": "13.0.6",
+    "urteil": "nicht exponiert",
+    "begruendung": "Primaerquelle https://github.com/isaacs/node-glob/security/advisories/GHSA-3g3m-2fjr-6pw4 (27.10.2026; Datenbank aktualisiert30.10.2026): abgebrochener Walk mit signal/AbortSignal kann weiterlaufen;13.0.6 ist betroffen, behoben ab14.0.2. Heutige Kette server.ts -> registerWebStatic -> @fastify/static9.1.3 verwendet den dynamischen Default wildcard=true. Dessen oeffentliche Quelle ruft glob ausschliesslich im anderen Zweig wildcard=false auf; Klarwerk setzt nur root und setHeaders, kein Pattern oder Signal. Es gibt keinen direkten glob/minimatch-Import in services/apps/tools/scripts; import.meta.glob im Web ist Vites Buildsyntax. Keine Behauptung einer Paketbehebung oder allgemeiner DoS-Freiheit. Bei anderem Static-Zweig oder neuem Aufrufweg neu bewerten.",
+    "beleg": "https://github.com/advisories/GHSA-3g3m-2fjr-6pw4; tests/produktionsabhaengigkeiten/README.md, Nachtrag31.10.2026; tests/abhaengigkeiten-vor-auslieferung/static-glob-exposition-20261031.test.ts; gebundene oeffentliche @fastify/static9.1.3/index.js (Wildcardzweig und einziger glob-Aufruf).",
+    "bewertet_am": "2026-10-31"
+  },
+  {
+    "bestand": "wurzel",
+    "kennung": "GHSA-g3hv-75wg-m249",
+    "paket": "minimatch",
+    "ort": "node_modules/@fastify/static/node_modules/minimatch",
+    "version": "10.2.5",
+    "urteil": "nicht exponiert",
+    "begruendung": "Primaerquelle https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249 (27.10.2026; Datenbank aktualisiert30.10.2026): kontrollierbares Pattern bei optimizationLevel>=2 verstaerkt globParts; betroffen<11.0.1,10.2.5 bleibt betroffen. Glob13.0.6 setzt tatsaechlich optimizationLevel2; dessen Fehlen ist NICHT die Begruendung. Der gebundene transitive Weg @fastify/static -> glob -> minimatch wird im heutigen dynamischen Wildcardzweig nicht aufgerufen. Der einzige Globaufruf liegt in wildcard=false und nutzt das feste Pattern **/**; dieser Zweig ist im Produkt nicht aktiviert, kein fremdes globIgnore. Der HTTP-Regressionstest prueft spaet angelegte Assets und eine echte wildcard=false-Kontrolle; bei Aenderung dieser Kette neu bewerten.",
+    "beleg": "https://github.com/advisories/GHSA-g3hv-75wg-m249; tests/produktionsabhaengigkeiten/README.md, Nachtrag31.10.2026; tests/abhaengigkeiten-vor-auslieferung/static-glob-exposition-20261031.test.ts; gebundene oeffentliche @fastify/static9.1.3/index.js (Wildcardzweig und einziger glob-Aufruf).",
+    "bewertet_am": "2026-10-31"
   }
 ]
