@@ -156,6 +156,7 @@ export interface Route {
 }
 export type RouteHandler = (route: Route) => Promise<void>;
 export interface Seite {
+  context(): BrowserKontext;
   route(url: string, handler: RouteHandler): Promise<void>;
   /** Runde 4: eine gestellte Lage wird wieder abgeraeumt — die Route der Werkbank gilt dann wieder. */
   unroute(url: string, handler?: RouteHandler): Promise<void>;
@@ -170,8 +171,67 @@ export interface Seite {
 }
 interface Browser {
   version(): string;
-  newPage(opts: Record<string, unknown>): Promise<Seite>;
+  isConnected(): boolean;
+  contexts(): BrowserKontext[];
+  newContext(opts: Record<string, unknown>): Promise<BrowserKontext>;
   close(): Promise<void>;
+}
+
+interface BrowserKontext {
+  browser(): Browser | null;
+  newPage(): Promise<Seite>;
+  close(): Promise<void>;
+}
+
+interface BrowserNutzung {
+  start: Promise<Browser>;
+  anzahl: number;
+}
+let gemeinsameNutzung: BrowserNutzung | null = null;
+let browserSchliesst: Promise<void> | null = null;
+
+/** Reserviert vor dem ersten await; ein letzter Close muss vor dem naechsten Start enden. */
+async function browserAusleihen() {
+  while (browserSchliesst) await browserSchliesst;
+  if (!gemeinsameNutzung) {
+    const require = createRequire(import.meta.url);
+    const { chromium } = require("playwright") as {
+      chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
+    };
+    gemeinsameNutzung = {
+      start: chromium.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-gpu", "--no-zygote"],
+      }),
+      anzahl: 0,
+    };
+  }
+  const nutzung = gemeinsameNutzung;
+  nutzung.anzahl++;
+  let browser: Browser;
+  try {
+    browser = await nutzung.start;
+  } catch (fehler) {
+    if (--nutzung.anzahl === 0 && gemeinsameNutzung === nutzung) gemeinsameNutzung = null;
+    throw fehler;
+  }
+  let rueckgabe: Promise<void> | undefined;
+  return {
+    browser,
+    freigeben(): Promise<void> {
+      return (rueckgabe ??= (async () => {
+        if (--nutzung.anzahl !== 0) return;
+        gemeinsameNutzung = null;
+        const ende = browser.close();
+        browserSchliesst = ende;
+        try {
+          await ende;
+        } finally {
+          if (browserSchliesst === ende) browserSchliesst = null;
+        }
+      })());
+    },
+  };
 }
 
 const MIME: Record<string, string> = {
@@ -237,6 +297,8 @@ export interface FlaecheOptionen {
    *  mit gestellter Sitzung, die das Fragen sperrt (Zustimmung verlangt), stattdessen z. B. der
    *  aufgeloeste KI-Modus. */
   bereitWenn?: string;
+  /** Nur fuer eine begrenzte negative Bereitschaftsprobe; Vorgabe bleibt 30 Sekunden. */
+  bereitTimeoutMs?: number;
 }
 
 /** Der Ask-Vertrag als Route — fuer Lagen, die der Test-Server nicht stellt (mehrere Quellen,
@@ -319,136 +381,148 @@ export async function starteFlaeche(opts: FlaecheOptionen = {}): Promise<Flaeche
   }
   const services = buildServices();
   const app = buildApp(services);
-  await app.ready();
-  await app.inject({ method: "POST", url: "/api/auth/register", payload: NUTZER });
-  const login = await app.inject({
-    method: "POST",
-    url: "/api/auth/login",
-    payload: { email: NUTZER.email, password: NUTZER.password },
-  });
-  const token = (login.json() as { token: string }).token;
-  const headers = { authorization: `Bearer ${token}` };
-  const anlegen = async (titel: string, aussage: string): Promise<string> => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/kos",
-      headers,
-      payload: {
-        confidentiality: "intern",
-        title: titel,
-        statement: aussage,
-        type: "best_practice",
-        category: "Wartung",
-      },
-    });
-    const id = (res.json() as { id: string }).id;
-    await app.inject({
-      method: "PUT",
-      url: `/api/kos/${id}`,
-      headers,
-      payload: { action: "admin-validate" },
-    });
-    return id;
-  };
-  let koId = "";
-  if (opts.mitWissen !== false) {
-    koId = await anlegen(TITEL, AUSSAGE);
-  }
-  const weitereIds: string[] = [];
-  for (const o of opts.weitereObjekte ?? []) {
-    weitereIds.push(await anlegen(o.titel, o.aussage));
-  }
-  if (koId !== "" || weitereIds.length > 0) {
-    await services.aiCheckWorker?.idle();
-  }
-
-  const require = createRequire(import.meta.url);
-  const { chromium } = require("playwright") as {
-    chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
-  };
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-  });
-  const seite = await browser.newPage({
-    viewport: { width: ARTBOARD.breite, height: ARTBOARD.hoehe },
-  });
-  const seitenfehler: string[] = [];
-  seite.on("pageerror", (e) => {
-    seitenfehler.push(String(e));
-  });
-  const officeSkript = opts.word ? wordAttrappe(opts.word) : "";
-  await seite.route(OFFICE_JS, async (route) => {
-    await route.fulfill({ status: 200, body: officeSkript, contentType: "application/javascript" });
-  });
-  await seite.route(`${ORIGIN}/**`, async (route) => {
-    const req = route.request();
-    const url = new URL(req.url());
-    if (url.pathname.startsWith("/api/")) {
-      const kopf: Record<string, string> = {};
-      for (const [k, v] of Object.entries(req.headers())) {
-        if (!["host", "origin", "referer", "cookie"].includes(k.toLowerCase())) kopf[k] = v;
+  let nutzung: Awaited<ReturnType<typeof browserAusleihen>> | undefined;
+  let kontext: BrowserKontext | undefined;
+  let schliessung: Promise<void> | undefined;
+  const schliessen = (): Promise<void> =>
+    (schliessung ??= (async () => {
+      try {
+        await kontext?.close();
+      } finally {
+        try {
+          await app.close();
+        } finally {
+          await nutzung?.freigeben();
+        }
       }
-      kopf.authorization = `Bearer ${token}`;
-      const body = req.postData();
-      const res = await app.inject({
-        method: req.method() as "GET",
-        url: url.pathname + url.search,
-        headers: kopf,
-        ...(body !== null ? { payload: body } : {}),
-      });
-      await route.fulfill({
-        status: res.statusCode,
-        body: res.body,
-        headers: { "content-type": (res.headers["content-type"] as string) ?? "application/json" },
-      });
-      return;
-    }
-    const d = distDatei(url.pathname);
-    await route.fulfill({ status: 200, body: d.body, contentType: d.typ });
-  });
-  // Die gestellte Klara-Sitzung: NACH der Werkbank-Route registriert, also vor ihr geprueft.
-  const klara = opts.klara;
-  if (klara) {
-    await seite.route(`${ORIGIN}/api/klara/**`, async (route) => {
-      const req = route.request();
-      const pfad = new URL(req.url()).pathname;
-      const methode = req.method();
-      let body: Record<string, unknown> = {};
-      if (pfad === "/api/klara/sessions" && methode === "POST") body = klara.sicht();
-      else if (pfad === "/api/klara/ai-status") body = klara.aufloesung();
-      else if (pfad.endsWith("/consent") && methode === "POST")
-        body = (klara.zustimmen ?? klara.sicht)();
-      else if (pfad.endsWith("/consent") && methode === "DELETE")
-        body = (klara.widerrufen ?? klara.sicht)();
-      else if (pfad.endsWith("/document-context")) body = klara.sicht();
-      await route.fulfill({
-        status: 200,
-        body: JSON.stringify(body),
-        contentType: "application/json",
-      });
+    })());
+  try {
+    await app.ready();
+    await app.inject({ method: "POST", url: "/api/auth/register", payload: NUTZER });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: NUTZER.email, password: NUTZER.password },
     });
+    const token = (login.json() as { token: string }).token;
+    const headers = { authorization: `Bearer ${token}` };
+    const anlegen = async (titel: string, aussage: string): Promise<string> => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers,
+        payload: {
+          confidentiality: "intern",
+          title: titel,
+          statement: aussage,
+          type: "best_practice",
+          category: "Wartung",
+        },
+      });
+      const id = (res.json() as { id: string }).id;
+      await app.inject({
+        method: "PUT",
+        url: `/api/kos/${id}`,
+        headers,
+        payload: { action: "admin-validate" },
+      });
+      return id;
+    };
+    let koId = "";
+    if (opts.mitWissen !== false) {
+      koId = await anlegen(TITEL, AUSSAGE);
+    }
+    const weitereIds: string[] = [];
+    for (const o of opts.weitereObjekte ?? []) {
+      weitereIds.push(await anlegen(o.titel, o.aussage));
+    }
+    if (koId !== "" || weitereIds.length > 0) {
+      await services.aiCheckWorker?.idle();
+    }
+
+    nutzung = await browserAusleihen();
+    const browser = nutzung.browser;
+    kontext = await browser.newContext({
+      viewport: { width: ARTBOARD.breite, height: ARTBOARD.hoehe },
+    });
+    const seite = await kontext.newPage();
+    const seitenfehler: string[] = [];
+    seite.on("pageerror", (e) => {
+      seitenfehler.push(String(e));
+    });
+    const officeSkript = opts.word ? wordAttrappe(opts.word) : "";
+    await seite.route(OFFICE_JS, async (route) => {
+      await route.fulfill({ status: 200, body: officeSkript, contentType: "application/javascript" });
+    });
+    await seite.route(`${ORIGIN}/**`, async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      if (url.pathname.startsWith("/api/")) {
+        const kopf: Record<string, string> = {};
+        for (const [k, v] of Object.entries(req.headers())) {
+          if (!["host", "origin", "referer", "cookie"].includes(k.toLowerCase())) kopf[k] = v;
+        }
+        kopf.authorization = `Bearer ${token}`;
+        const body = req.postData();
+        const res = await app.inject({
+          method: req.method() as "GET",
+          url: url.pathname + url.search,
+          headers: kopf,
+          ...(body !== null ? { payload: body } : {}),
+        });
+        await route.fulfill({
+          status: res.statusCode,
+          body: res.body,
+          headers: { "content-type": (res.headers["content-type"] as string) ?? "application/json" },
+        });
+        return;
+      }
+      const d = distDatei(url.pathname);
+      await route.fulfill({ status: 200, body: d.body, contentType: d.typ });
+    });
+    // Die gestellte Klara-Sitzung: NACH der Werkbank-Route registriert, also vor ihr geprueft.
+    const klara = opts.klara;
+    if (klara) {
+      await seite.route(`${ORIGIN}/api/klara/**`, async (route) => {
+        const req = route.request();
+        const pfad = new URL(req.url()).pathname;
+        const methode = req.method();
+        let body: Record<string, unknown> = {};
+        if (pfad === "/api/klara/sessions" && methode === "POST") body = klara.sicht();
+        else if (pfad === "/api/klara/ai-status") body = klara.aufloesung();
+        else if (pfad.endsWith("/consent") && methode === "POST")
+          body = (klara.zustimmen ?? klara.sicht)();
+        else if (pfad.endsWith("/consent") && methode === "DELETE")
+          body = (klara.widerrufen ?? klara.sicht)();
+        else if (pfad.endsWith("/document-context")) body = klara.sicht();
+        await route.fulfill({
+          status: 200,
+          body: JSON.stringify(body),
+          contentType: "application/json",
+        });
+      });
+    }
+    await seite.goto(PANEL, { waitUntil: "load", timeout: 60_000 });
+    await seite.waitForFunction(
+      fn(
+        opts.bereitWenn ??
+          "() => { const b = document.getElementById('ask-btn'); return !!b && !b.disabled; }",
+      ),
+      undefined,
+      { timeout: opts.bereitTimeoutMs ?? 30_000 },
+    );
+    return {
+      seite,
+      version: browser.version(),
+      koId,
+      weitereIds,
+      seitenfehler,
+      schliessen,
+    };
+  } catch (fehler) {
+    await schliessen();
+    throw fehler;
   }
-  await seite.goto(PANEL, { waitUntil: "load", timeout: 60_000 });
-  await seite.waitForFunction(
-    fn(
-      opts.bereitWenn ??
-        "() => { const b = document.getElementById('ask-btn'); return !!b && !b.disabled; }",
-    ),
-    undefined,
-    { timeout: 30_000 },
-  );
-  return {
-    seite,
-    version: browser.version(),
-    koId,
-    weitereIds,
-    seitenfehler,
-    async schliessen() {
-      await browser.close();
-      await app.close();
-    },
-  };
 }
 
 /** Die echte Frage ueber das echte Feld und den echten Knopf; wartet den Antwortzustand ab. */
