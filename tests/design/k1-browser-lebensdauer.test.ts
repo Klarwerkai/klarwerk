@@ -28,7 +28,9 @@ it("haelt gleichzeitige Flaechen isoliert und schliesst erst nach der letzten Ru
     await Promise.all([erste.schliessen(), erste.schliessen()]);
     expect(browser.isConnected()).toBe(true);
     expect(browser.contexts()).toHaveLength(1);
-    expect(await zweite.seite.evaluate(fn("() => !!document.getElementById('ask-btn')"))).toBe(true);
+    expect(await zweite.seite.evaluate(fn("() => !!document.getElementById('ask-btn')"))).toBe(
+      true,
+    );
     await zweite.schliessen();
     expect(browser.isConnected()).toBe(false);
   } finally {
@@ -63,7 +65,9 @@ it("raeumt einen fehlgeschlagenen Bereitschaftsstart auf und startet danach erne
     const danach = await starteFlaeche({ mitWissen: false });
     flaechen.push(danach);
     expect(danach.seite.context().browser()!.isConnected()).toBe(true);
-    expect(await danach.seite.evaluate(fn("() => !!document.getElementById('ask-btn')"))).toBe(true);
+    expect(await danach.seite.evaluate(fn("() => !!document.getElementById('ask-btn')"))).toBe(
+      true,
+    );
     await danach.schliessen();
     expect(danach.seite.context().browser()!.isConnected()).toBe(false);
   } finally {

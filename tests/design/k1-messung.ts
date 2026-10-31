@@ -219,7 +219,7 @@ async function browserAusleihen() {
   return {
     browser,
     freigeben(): Promise<void> {
-      return (rueckgabe ??= (async () => {
+      rueckgabe ??= (async () => {
         if (--nutzung.anzahl !== 0) return;
         gemeinsameNutzung = null;
         const ende = browser.close();
@@ -229,7 +229,8 @@ async function browserAusleihen() {
         } finally {
           if (browserSchliesst === ende) browserSchliesst = null;
         }
-      })());
+      })();
+      return rueckgabe;
     },
   };
 }
@@ -384,8 +385,8 @@ export async function starteFlaeche(opts: FlaecheOptionen = {}): Promise<Flaeche
   let nutzung: Awaited<ReturnType<typeof browserAusleihen>> | undefined;
   let kontext: BrowserKontext | undefined;
   let schliessung: Promise<void> | undefined;
-  const schliessen = (): Promise<void> =>
-    (schliessung ??= (async () => {
+  const schliessen = (): Promise<void> => {
+    schliessung ??= (async () => {
       try {
         await kontext?.close();
       } finally {
@@ -395,7 +396,9 @@ export async function starteFlaeche(opts: FlaecheOptionen = {}): Promise<Flaeche
           await nutzung?.freigeben();
         }
       }
-    })());
+    })();
+    return schliessung;
+  };
   try {
     await app.ready();
     await app.inject({ method: "POST", url: "/api/auth/register", payload: NUTZER });
@@ -452,7 +455,11 @@ export async function starteFlaeche(opts: FlaecheOptionen = {}): Promise<Flaeche
     });
     const officeSkript = opts.word ? wordAttrappe(opts.word) : "";
     await seite.route(OFFICE_JS, async (route) => {
-      await route.fulfill({ status: 200, body: officeSkript, contentType: "application/javascript" });
+      await route.fulfill({
+        status: 200,
+        body: officeSkript,
+        contentType: "application/javascript",
+      });
     });
     await seite.route(`${ORIGIN}/**`, async (route) => {
       const req = route.request();
@@ -473,7 +480,9 @@ export async function starteFlaeche(opts: FlaecheOptionen = {}): Promise<Flaeche
         await route.fulfill({
           status: res.statusCode,
           body: res.body,
-          headers: { "content-type": (res.headers["content-type"] as string) ?? "application/json" },
+          headers: {
+            "content-type": (res.headers["content-type"] as string) ?? "application/json",
+          },
         });
         return;
       }
