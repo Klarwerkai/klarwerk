@@ -33,7 +33,11 @@ interface Stand {
   bodies: Array<Record<string, unknown>>;
 }
 
-function starten(status: AntwortFn, session?: Stand["session"]): { lauf: Lauf; stand: Stand } {
+function starten(
+  status: AntwortFn,
+  session?: Stand["session"],
+  me?: Stand["me"],
+): { lauf: Lauf; stand: Stand } {
   const stand: Stand = {
     status,
     posts: 0,
@@ -42,6 +46,7 @@ function starten(status: AntwortFn, session?: Stand["session"]): { lauf: Lauf; s
     headers: [],
     bodies: [],
     ...(session ? { session } : {}),
+    ...(me ? { me } : {}),
   };
   const lauf = panelStarten((url, methode, body, headers): Antwort => {
     if (url === "/api/auth/me") {
@@ -113,7 +118,7 @@ function dokument(url: string): void {
 function text(code: string, key: string): string {
   const start = HTML.indexOf(`      ${code}: {`);
   const ende = HTML.indexOf("\n      },", start);
-  const wert = new RegExp(`^\\s*${key}: "([^"]*)"`, "m").exec(HTML.slice(start, ende))?.[1];
+  const wert = new RegExp(`^\\s*${key}:\\s*"([^"]*)"`, "m").exec(HTML.slice(start, ende))?.[1];
   expect(wert).toBeTruthy();
   return wert ?? "";
 }
@@ -252,7 +257,7 @@ describe("A3: abgelaufene S4-Sitzung sicher und begrenzt erholen", () => {
     },
   );
 
-  it("404/409 bereits beim Start werden einmal nach der vorhandenen Mindestspanne ersetzt", async () => {
+  it("anfänglich unbekannte404/409 werden begrenzt ersetzt und schaffen keine allgemeine Ask-Voraussetzung", async () => {
     expect(MIN_MS).toBeGreaterThan(0);
     for (const code of [404, 409]) {
       const { lauf, stand } = starten(
@@ -261,7 +266,8 @@ describe("A3: abgelaufene S4-Sitzung sicher und begrenzt erholen", () => {
       );
       await ruhe();
       expect(stand.posts).toBe(1);
-      expect(knopf().disabled).toBe(true);
+      expect(knopf().disabled).toBe(false);
+      keineFrage(lauf);
       await new Promise((resolve) => setTimeout(resolve, MIN_MS + 30));
       await ruhe();
       expect(stand.posts).toBe(2);
@@ -270,6 +276,55 @@ describe("A3: abgelaufene S4-Sitzung sicher und begrenzt erholen", () => {
       window.dispatchEvent(new Event("pagehide"));
       panelAbraeumen();
     }
+  });
+
+  it("S4-Ersatz verwirft die noch offene gültige Bootstrap-Anmeldung nicht und lässt unbekannten Erststand offen", async () => {
+    const { lauf, stand } = starten(
+      () => gut(),
+      (n) => (n === 1 ? { status: 404 } : "haengt"),
+      () => "haengt",
+    );
+    await ruhe();
+    tippen();
+    expect(stand.posts).toBe(1);
+    expect(stand.meReads).toBe(1);
+    lauf.freigeben(0, { status: 200, body: { id: "konto-1", name: "Fiktiv", role: "experte" } });
+    await ruhe();
+    expect(el("session-status").textContent).toBe(
+      wortlaut("sessionOk").replace("{name}", "Fiktiv"),
+    );
+    expect(knopf().disabled).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, MIN_MS + 30));
+    await ruhe();
+    expect(stand.posts).toBe(2);
+    expect(knopf().disabled).toBe(false);
+    expect(eingabe().value).toBe(FRAGE);
+    keineFrage(lauf);
+    lauf.freigeben(1, sitzung(2, stand.bodies[1] ?? {}));
+    await ruhe();
+    expect(knopf().disabled).toBe(false);
+    expect(stand.reads).toBe(1);
+    keineFrage(lauf);
+  });
+
+  it("eine vor bestätigtem Logout gestartete positive Bootstrap-Antwort meldet das Fenster nicht wieder an", async () => {
+    const { lauf, stand } = starten(
+      () => gut(),
+      undefined,
+      () => "haengt",
+    );
+    await ruhe();
+    tippen();
+    el("logout-btn").click();
+    await ruhe();
+    expect(el("session-status").textContent).toBe(wortlaut("sessionOff"));
+    lauf.freigeben(0, { status: 200, body: { id: "konto-alt", name: "Alt", role: "experte" } });
+    await ruhe();
+    expect(el("session-status").textContent).toBe(wortlaut("sessionOff"));
+    expect(knopf().disabled).toBe(true);
+    expect(eingabe().value).toBe(FRAGE);
+    expect(stand.posts).toBe(1);
+    keineFrage(lauf);
   });
 
   it("eine verspätete erlaubte Statusantwort nach Logout reaktiviert keine Sitzung und startet keinen Ersatz", async () => {

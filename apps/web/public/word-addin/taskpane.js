@@ -3062,6 +3062,9 @@
     var klaraS4ErholungVerbraucht = false;
     var klaraS4AuthPruefungVerbraucht = false;
     var klaraS4ErholungAktiv = false;
+    var klaraS4ErholungSperrt = false;
+    // Anmeldung hat eine eigene Generation: ein S4-Ersatz ist kein Kontowechsel.
+    var klaraAuthEpoche = 0;
     var klaraS4ErholungWechsel = false;
     var klaraS4ErholungTimer = null;
     var klaraS4LetzterStartMs = Number.NEGATIVE_INFINITY;
@@ -3169,7 +3172,11 @@
       klaraS4ErholungVerbraucht = false;
       klaraS4AuthPruefungVerbraucht = false;
       klaraS4ErholungAktiv = klaraS4ErholungWechsel;
-      klaraS4KontoId = null;
+      if (!klaraS4ErholungWechsel) {
+        klaraS4ErholungSperrt = false;
+        klaraAuthEpoche += 1;
+        klaraS4KontoId = null;
+      }
       klaraS4Epoche += 1;
       klaraS4RefreshStoppen();
       klaraS4RefreshLaeuft = false;
@@ -3325,6 +3332,7 @@
 
     function klaraS4StatusBestaetigt(aufloesung) {
       klaraS4ErholungAktiv = false;
+      klaraS4ErholungSperrt = false;
       var bis = aufloesung ? Date.parse(aufloesung.expiresAt) : Number.NaN;
       if (aufloesung && typeof aufloesung.executionAllowed === "boolean"
         && isFinite(bis) && bis > Date.now()) {
@@ -3373,6 +3381,9 @@
 
     function klaraS4FehlerErholen(fehler) {
       if ((fehler && fehler.veraltet) || klaraS4Geschlossen) { return; }
+      // Nur eine bereits belegte Sperre wird getragen. Unbekannter Erststand autorisiert
+      // nichts zusaetzlich und wird auch nicht zur neuen allgemeinen Ask-Voraussetzung.
+      klaraS4ErholungSperrt = klaraS4FragenGesperrt();
       klaraS4ErholungAktiv = false;
       klaraS4Fehlschlag(klaraS4SessionId ? "unerreichbar" : "keineSitzung");
       if (fehler && fehler.status === 401) {
@@ -3637,6 +3648,7 @@
     function klaraS4Schliessen() {
       if (klaraS4Geschlossen) { return false; }
       klaraS4Geschlossen = true;
+      klaraAuthEpoche += 1;
       klaraS4Epoche += 1;
       if (klaraS4ErholungTimer !== null) { clearTimeout(klaraS4ErholungTimer); klaraS4ErholungTimer = null; }
       klaraS4ErholungAktiv = false;
@@ -3823,7 +3835,7 @@
      * und es gilt nicht mehr.
      */
     function klaraS4FragenGesperrt() {
-      if (klaraS4ErholungAktiv || (klaraS4ErholungVerbraucht && !klaraS4Sicht)) { return true; }
+      if (klaraS4ErholungSperrt) { return true; }
       if (klaraS4Riegelstand) { return true; }
       klaraS4AblaufMerken();
       if (klaraS4Abgelaufen) { return true; }
@@ -3900,7 +3912,7 @@
     }
 
     function checkSession() {
-      var epoche = klaraS4Epoche;
+      var authEpoche = ++klaraAuthEpoche;
       var box = document.getElementById("session-status");
       box.className = "status warn";
       box.textContent = t("sessionChecking");
@@ -3915,7 +3927,7 @@
           throw new Error("HTTP " + res.status);
         })
         .then(function (user) {
-          if (epoche !== klaraS4Epoche || klaraS4Geschlossen) { return; }
+          if (authEpoche !== klaraAuthEpoche || klaraS4Geschlossen) { return; }
           var name = sessionName(user);
           var kontoId = user && typeof user.id === "string" ? user.id : null;
           var kontoGewechselt = klaraS4KontoId !== null && kontoId !== null && klaraS4KontoId !== kontoId;
@@ -3948,7 +3960,7 @@
           if (signedIn) { klaraS4NachAnmeldung(); }
         })
         .catch(function () {
-          if (epoche !== klaraS4Epoche || klaraS4Geschlossen) { return; }
+          if (authEpoche !== klaraAuthEpoche || klaraS4Geschlossen) { return; }
           signedIn = false;
           box.className = "status warn";
           box.textContent = t("sessionError");

@@ -179,7 +179,7 @@ export function sichtbarerText(wurzel: Element): string {
 
 /** Der Wortlaut eines Woerterbuch-Schluessels (DE), GELESEN aus der ausgelieferten Datei. */
 export function wortlaut(key: string): string {
-  const treffer = new RegExp(`^\\s*${key}: "([^"]*)",`, "m").exec(HTML);
+  const treffer = new RegExp(`^\\s*${key}:\\s*"([^"]*)",`, "m").exec(HTML);
   expect(treffer, `${TASKPANE}: ${key} fehlt im Woerterbuch`).not.toBeNull();
   const wert = treffer?.[1] ?? "";
   expect(wert.length, `${TASKPANE}: ${key} ist leer`).toBeGreaterThan(0);

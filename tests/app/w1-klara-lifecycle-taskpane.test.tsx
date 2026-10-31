@@ -17,17 +17,19 @@
 // vollstaendige Inline-Skript aus und misst danach nur noch zwei Dinge — was im DOM steht und
 // welche Netzaufrufe hinausgegangen sind. Kein Block wird herausgeschnitten, keine Funktion
 // einzeln gerufen. Was hier gruen ist, ist am ausgelieferten Fenster gruen.
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
-import { splitTaskpane } from "./klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const HTML = panelQuelleAus(TASKPANE);
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
+const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
+const RUECKWEG_QUELLE = readFileSync(resolve(process.cwd(), RUECKWEG), "utf8");
 
 interface Aufruf {
   url: string;
@@ -341,7 +343,15 @@ async function ladeTaskpane(): Promise<void> {
   const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);
-  const { markup, script: skript } = splitTaskpane(HTML);
+  // Eigener Lader: die Schnitt-Gegenprobe bleibt unabhaengig vom gemeinsamen Fixture.
+  const tags = [...HTML.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
+  const inline = tags.filter((tag) => !/(?:^|\s)src\s*=/i.test(tag[1] ?? ""));
+  expect(inline.length, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
+  const skript = `${RUECKWEG_QUELLE}\n${inline.map((tag) => tag[2] ?? "").join("\n")}`;
+  const markup = HTML.slice(bodyStart + "<body>".length, bodyEnde).replace(
+    /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
+    "",
+  );
   expect(markup.length, `${TASKPANE}: Markup ist leer`).toBeGreaterThan(2000);
   expect(bodyEnde).toBeGreaterThan(skriptEnde);
   document.body.innerHTML = markup;
