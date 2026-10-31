@@ -3364,7 +3364,7 @@
       klaraS4ErholungAktiv = true;
       klaraS4Angefordert = true;
       klaraS4NachholungVerbraucht = true;
-      klaraS4Phase = "laedt";
+      // Der Wiederholtimer wartet erst; klaraS4Start meldet den tatsaechlichen Abruf.
       var epoche = klaraS4Epoche;
       var beschreiber = klaraS4Beschreiber();
       renderKlaraS4();

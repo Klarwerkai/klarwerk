@@ -278,6 +278,33 @@ describe("A3: abgelaufene S4-Sitzung sicher und begrenzt erholen", () => {
     }
   });
 
+  it("initial401 bewahrt die fehlende Sitzungsursache bis der eine Ersatz wirklich startet", async () => {
+    const { lauf, stand } = starten(
+      () => gut(),
+      (n) => (n === 1 ? { status: 401 } : "haengt"),
+    );
+    await ruhe();
+    expect(stand.posts).toBe(1);
+    expect(stand.meReads).toBe(2);
+    expect(stand.reads).toBe(0);
+    expect(el("klara-s4-session").textContent).toBe(wortlaut("s4SitzungNichtAngemeldet"));
+    keineFrage(lauf);
+    await new Promise((resolve) => setTimeout(resolve, MIN_MS + 30));
+    await ruhe();
+    expect(stand.posts).toBe(2);
+    expect(stand.meReads).toBe(2);
+    expect(stand.reads).toBe(0);
+    expect(el("klara-s4-session").textContent).toBe(wortlaut("s4StateLaedt"));
+    keineFrage(lauf);
+    lauf.freigeben(0, sitzung(2, stand.bodies[1] ?? {}));
+    await ruhe();
+    expect(stand.posts).toBe(2);
+    expect(stand.meReads).toBe(2);
+    expect(stand.reads).toBe(1);
+    expect(knopf().disabled).toBe(false);
+    keineFrage(lauf);
+  });
+
   it("S4-Ersatz verwirft die noch offene gültige Bootstrap-Anmeldung nicht und lässt unbekannten Erststand offen", async () => {
     const { lauf, stand } = starten(
       () => gut(),
