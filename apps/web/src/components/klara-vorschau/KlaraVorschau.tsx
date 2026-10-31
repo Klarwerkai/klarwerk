@@ -1720,7 +1720,10 @@ export function KlaraVorschau({
       }
       return;
     }
-    if (istEcht && !echtSendebereit) {
+    if (istEcht) {
+      if (echtSendebereit) {
+        entwurfSenden(kontextRef.current);
+      }
       return;
     }
     setEingabe("");
