@@ -107,8 +107,8 @@ afterAll(async () => {
 function put(app: FastifyInstance, id: string, payload: object) {
   return app.inject({ method: "PUT", url: `/api/kos/${id}`, headers, payload });
 }
-async function lesen(id: string) {
-  const r = await appA.inject({ method: "GET", url: `/api/kos/${id}`, headers });
+async function lesen(id: string, app: FastifyInstance = appA) {
+  const r = await app.inject({ method: "GET", url: `/api/kos/${id}`, headers });
   expect(r.statusCode).toBe(200);
   return r.json<KnowledgeObject>();
 }
@@ -249,7 +249,7 @@ describe("KO17 Quellen auf echtem PostgreSQL", () => {
       const b = await bLauf;
       console.log(JSON.stringify({ event: "ko17-pg-B-http-bestaetigt", status: b.statusCode }));
       expect(b.statusCode).toBe(200);
-      const bestaetigt = await lesen(id);
+      const bestaetigt = await lesen(id, appB);
       expect(bestaetigt.sources.map((q) => q.label).sort()).toEqual(["Bestaetigt", "Bestand"]);
       const evidence = new PgEvidenceRepo(poolA as Pool);
       const audit = new PgAuditRepo(poolA as Pool);
