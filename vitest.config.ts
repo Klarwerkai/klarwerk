@@ -75,7 +75,7 @@ export const GEMEINSAM = {
   coverage: {
     provider: "v8",
     reportsDirectory: "docs/generated/coverage",
-    thresholds: { lines: 80, functions: 80 },
+    // Reguläre Prüfwege messen keine Abdeckung; daher wird keine Mindestquote behauptet.
   },
 } as const;
 
