@@ -3252,7 +3252,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           body.action === "category" ||
           body.action === "propose" ||
           body.action === "decide-proposal";
-        if (code === "STALE_WRITE" && (body.action === "attach" || body.action === "detach")) {
+        if (
+          code === "STALE_WRITE" &&
+          (body.action === "attach" || body.action === "detach" ||
+            body.action === "add-source" || body.action === "remove-source")
+        ) {
           reply.code(409).send({ error: code, message });
           return true;
         }

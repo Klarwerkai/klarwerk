@@ -4709,81 +4709,85 @@ export class KoService {
     if (label.length === 0) {
       throw new KoError("INVALID_SOURCE", "Quellen-Label fehlt.");
     }
-    const ko = await this.require(id);
-    const provider = input.provider?.trim() ? input.provider.trim() : null;
-    const anchor = confirmedSourceAnchor(ko.attachments, input.objectId);
-    const source: KoSource = {
-      id: this.genId(),
-      label,
-      // SCRUM-527 (WP2): nur absolute http/https-URLs speichern; alles andere (javascript:/data:/
-      // vbscript:/relativ/…) → null. Schützt den Klick-Pfad (ko.read) vor gespeicherten aktiven URLs.
-      url: safeSourceUrl(input.url),
-      excerpt: input.excerpt?.trim() ? input.excerpt.trim() : null,
-      kind: "external",
-      peerValidated: false,
-      // SCRUM-118: externe Quelle trägt optional ihren Anbieter; bleibt external/nicht peer-validiert.
-      ...(provider ? { provider } : {}),
-      // JOB 4077: der BESTÄTIGTE Anker — oder gar nichts. Kein `null`, kein Leerstring: ein
-      // weggelassenes Feld ist dasselbe wie am Altbestand, und die Fläche liest beides als „keine
-      // Datei" (`quellennachweis`).
-      ...(anchor ? { objectId: anchor } : {}),
-      // REF-01: die Abrufzeit NUR mit geprüftem Nachweis und nur an einem gespeicherten Auszug —
-      // `at` bleibt die Speicherzeit und wird nie als Abruf ausgegeben.
-      ...(input.abruf && input.excerpt?.trim()
-        ? {
-            abgerufenAm: input.abruf.abgerufenAm,
-            abrufInhaltFingerabdruck: input.abruf.inhaltFingerabdruck,
-          }
-        : {}),
-      author,
-      at: new Date(this.now()).toISOString(),
-    };
-    const updated: KnowledgeObject = { ...ko, sources: [...(ko.sources ?? []), source] };
-    // Aufnahme gesamt-auditprotokoll (Lauf 3): wie `addAttachment` — Quelle, Belegzeile und Beleg
-    // gemeinsam (`schreibeMitBeleg`).
-    await this.schreibeMitBeleg(
-      async (tx) => {
-        await this.repo.update(updated, tx);
-        await this.appendEvidence(
-          {
-            koId: id,
-            koVersion: ko.version,
-            kind: "source",
-            sourceId: source.id,
-            label: source.label,
-            url: source.url,
-            provider: source.provider ?? null,
-            // mega26 Block B: der Grund der Verknüpfung, wörtlich aus der eben gebauten Quelle.
-            ...(source.excerpt ? { excerpt: source.excerpt } : {}),
-            createdBy: author,
-            createdAt: source.at,
-          },
-          tx,
-        );
-      },
-      async (tx) => {
-        await this.audit?.record({ actor: author, action: "ko.source-added", target: id }, tx);
-      },
-      () => this.rollbackKo(ko),
-    );
-    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
-    return this.lesefassung(updated);
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      const provider = input.provider?.trim() ? input.provider.trim() : null;
+      const anchor = confirmedSourceAnchor(ko.attachments, input.objectId);
+      const source: KoSource = {
+        id: this.genId(),
+        label,
+        // SCRUM-527 (WP2): nur absolute http/https-URLs speichern; alles andere (javascript:/data:/
+        // vbscript:/relativ/…) → null. Schützt den Klick-Pfad (ko.read) vor gespeicherten aktiven URLs.
+        url: safeSourceUrl(input.url),
+        excerpt: input.excerpt?.trim() ? input.excerpt.trim() : null,
+        kind: "external",
+        peerValidated: false,
+        // SCRUM-118: externe Quelle trägt optional ihren Anbieter; bleibt external/nicht peer-validiert.
+        ...(provider ? { provider } : {}),
+        // JOB 4077: der BESTÄTIGTE Anker — oder gar nichts. Kein `null`, kein Leerstring: ein
+        // weggelassenes Feld ist dasselbe wie am Altbestand, und die Fläche liest beides als „keine
+        // Datei" (`quellennachweis`).
+        ...(anchor ? { objectId: anchor } : {}),
+        // REF-01: die Abrufzeit NUR mit geprüftem Nachweis und nur an einem gespeicherten Auszug —
+        // `at` bleibt die Speicherzeit und wird nie als Abruf ausgegeben.
+        ...(input.abruf && input.excerpt?.trim()
+          ? {
+              abgerufenAm: input.abruf.abgerufenAm,
+              abrufInhaltFingerabdruck: input.abruf.inhaltFingerabdruck,
+            }
+          : {}),
+        author,
+        at: new Date(this.now()).toISOString(),
+      };
+      const updated: KnowledgeObject = { ...ko, sources: [...(ko.sources ?? []), source] };
+      // Aufnahme gesamt-auditprotokoll (Lauf 3): wie `addAttachment` — Quelle, Belegzeile und Beleg
+      // gemeinsam (`schreibeMitBeleg`).
+      await this.schreibeMitBeleg(
+        async (tx) => {
+          await this.repo.update(updated, tx);
+          await this.appendEvidence(
+            {
+              koId: id,
+              koVersion: ko.version,
+              kind: "source",
+              sourceId: source.id,
+              label: source.label,
+              url: source.url,
+              provider: source.provider ?? null,
+              // mega26 Block B: der Grund der Verknüpfung, wörtlich aus der eben gebauten Quelle.
+              ...(source.excerpt ? { excerpt: source.excerpt } : {}),
+              createdBy: author,
+              createdAt: source.at,
+            },
+            tx,
+          );
+        },
+        async (tx) => {
+          await this.audit?.record({ actor: author, action: "ko.source-added", target: id }, tx);
+        },
+        () => this.rollbackKo(ko),
+      );
+      // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+      return this.lesefassung(updated);
+    });
   }
 
   async removeSource(id: string, sourceId: string, actor: string): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    const updated: KnowledgeObject = {
-      ...ko,
-      sources: (ko.sources ?? []).filter((s) => s.id !== sourceId),
-    };
-    await this.schreibeMitBeleg(
-      (tx) => this.repo.update(updated, tx),
-      async (tx) => {
-        await this.audit?.record({ actor, action: "ko.source-removed", target: id }, tx);
-      },
-      () => this.rollbackKo(ko),
-    );
-    return this.lesefassung(updated);
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      const updated: KnowledgeObject = {
+        ...ko,
+        sources: (ko.sources ?? []).filter((s) => s.id !== sourceId),
+      };
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record({ actor, action: "ko.source-removed", target: id }, tx);
+        },
+        () => this.rollbackKo(ko),
+      );
+      return this.lesefassung(updated);
+    });
   }
 
   // SCRUM-422: getrashte KOs wirken überall gelöscht — get/list/findCandidates blenden sie aus.
