@@ -1226,7 +1226,9 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
     const s = f("browser").seite;
     const l = lesen("browser");
     await zurRuhe("browser");
-    expect(await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")).toBe(true);
+    expect(await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")).toBe(
+      true,
+    );
     await frageStellen(s);
     expect(await l.sichtbar("#ask-answer-block")).toBe(true);
 
