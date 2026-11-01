@@ -17,6 +17,7 @@ import {
   same,
   selection,
 } from "./release.mjs";
+import { assertWordAddinFassung } from "./word-addin-fassung.mjs";
 
 export const metadataRule =
   "Metadatenregel: ein Child, identischer Baum, unveränderte Identitäten und echte Trailer.";
@@ -100,11 +101,12 @@ function command(root, program, args) {
   assert.equal(result.status, 0, `${program}: ${result.stderr || result.stdout}`);
   return result.stdout;
 }
-function checked(root, proofPath) {
+export function checked(root, proofPath) {
   const proof = read(proofPath);
   const commit = git(root, "rev-parse", "HEAD");
   const tree = git(root, "rev-parse", "HEAD^{tree}");
   assert.equal(git(root, "status", "--porcelain=v1", "--untracked-files=all"), "");
+  assertWordAddinFassung(root, proof.base, proof.commit, git);
   assertProof(proof, tree);
   assertEvidence(proof);
   assert.equal(git(root, "rev-parse", `${proof.commit}^{tree}`), tree);

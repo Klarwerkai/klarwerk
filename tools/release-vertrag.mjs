@@ -25,6 +25,7 @@ export const releaseVertrag = {
     { name: "test", command: ["./node_modules/.bin/vitest", "run"] },
   ],
   causalTests: [
+    "tests/releaseweg/word-addin-fassung.test.ts",
     "tests/releaseweg/lieferweg.test.ts",
     "tests/releaseweg/vitest-pflicht.test.ts",
     "tests/releaseweg/p3-transport.test.ts",

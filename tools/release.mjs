@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { ermittleBrowserbefund } from "../tests/tor-inventar/browser-gruppe.ts";
 import { assessFindings, assessStage, policyHash } from "./release-ausnahmen.mjs";
 import { releaseVertrag as contract } from "./release-vertrag.mjs";
+import { assertWordAddinFassung } from "./word-addin-fassung.mjs";
 export { policyHash } from "./release-ausnahmen.mjs";
 
 export const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -182,6 +183,7 @@ export function runRelease(root, base, output) {
   const changedPaths = git(root, "diff", "--name-only", "--diff-filter=ACMR", base, commit)
     .split("\n")
     .filter(Boolean);
+  assertWordAddinFassung(root, base, commit, git);
   const tests = selection(changedPaths);
   const startedAt = new Date().toISOString();
   const limit = Date.now() + contract.maxSeconds * 1000;
