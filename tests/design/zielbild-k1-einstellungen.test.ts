@@ -114,6 +114,20 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     () => flaeche?.seite ?? null,
     () => fehler,
   );
+  async function warteSichtbar(selektor: string, soll = true): Promise<void> {
+    await l.seite().waitForFunction(
+      fn(`([selektor, soll]) => {
+        const el = document.querySelector(selektor);
+        if (!el) return !soll;
+        const r = el.getBoundingClientRect();
+        const stil = getComputedStyle(el);
+        const sichtbar = !el.hidden && stil.display !== 'none' && stil.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+        return sichtbar === soll;
+      }`),
+      [selektor, soll],
+      { timeout: 20_000 },
+    );
+  }
   const rand = (anker: string, eig = "border") => kanonRand(zielProp(zielStil(ziel, anker), eig));
   function kantenGegenRand(k: { links: number; rechts: number }, name: string): void {
     expect(Math.abs(k.links - 16), `${name}: linke Kante ${k.links}`).toBeLessThan(1);
@@ -359,13 +373,20 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     expect(await l.sichtbar("#klara-trust-head")).toBe(true);
     expect((await l.text("#klara-trust-mode"))?.length).toBeGreaterThan(0);
     expect(await l.sichtbar("[data-t=helpTitle]")).toBe(true);
-    await s.click("#kw-zurueck");
+    await warteSichtbar("#mini-page-help > button[data-mini-text=settings]");
+    await s.click("#mini-page-help > button[data-mini-text=settings]");
+    await warteSichtbar("#kw-einstellungen");
+    await warteSichtbar("#kw-hilfe", false);
     expect(await l.sichtbar("#kw-einstellungen")).toBe(true);
     expect(await l.sichtbar("#kw-hilfe")).toBe(false);
   });
   it("V3 · der Zurueck-Chevron fuehrt auf den Fragen-Bereich zurueck: Ruhe sichtbar, Einstellungen verborgen, kein Seitenfehler", async () => {
     expect(fehler).toBeNull();
-    await l.seite().click("#kw-zurueck");
+    await warteSichtbar(".mini-back");
+    await l.seite().click(".mini-back");
+    await warteSichtbar("#kw-einstellungen", false);
+    await warteSichtbar("#section-ask");
+    await warteSichtbar("#ask-ruhe");
     expect(await l.sichtbar("#kw-einstellungen")).toBe(false);
     expect(await l.sichtbar("#section-ask")).toBe(true);
     expect(await l.sichtbar("#ask-ruhe")).toBe(true);
