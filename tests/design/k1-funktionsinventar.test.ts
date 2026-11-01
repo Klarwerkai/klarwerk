@@ -1467,7 +1467,7 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
         "async (origin) => { if (window.location.origin !== origin) throw new Error('Profilabruf ausserhalb der eigenen Werkbank'); const response = await fetch('/api/me/assistenz', { credentials: 'include', cache: 'no-store' }); const daten = await response.json(); return { url: response.url, status: response.status, profil: daten.profil }; }",
         ORIGIN,
       );
-      expect(profilAntwort.url).toBe(ORIGIN + "/api/me/assistenz");
+      expect(profilAntwort.url).toBe(`${ORIGIN}/api/me/assistenz`);
       expect(profilAntwort.status).toBe(200);
       expect(profilAntwort.profil).toBeDefined();
       const profilName = profilAntwort.profil?.name;
@@ -1485,7 +1485,7 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
       expect(await l.sichtbar(".mini-name")).toBe(true);
       expect(
         await l.eval<string>("() => document.querySelector('.mini-name').textContent"),
-        art + ": sichtbarer Home-Titel aus dem frischen eigenen Profil",
+        `${art}: sichtbarer Home-Titel aus dem frischen eigenen Profil`,
       ).toBe(erwartet);
       expect(f(art).seitenfehler).toEqual([]);
     }
