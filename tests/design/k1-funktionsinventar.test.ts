@@ -708,7 +708,29 @@ async function zurRuhe(art: Flaechenart): Promise<void> {
   );
   if (ansicht === "hilfe") await s.click("#kw-zurueck");
   if (ansicht !== "fragen") await s.click(ansicht === "erfassen" ? "#tab-ask" : "#kw-zurueck");
-  if (await l.sichtbar("#ask-answer-block")) await s.click("#kw-zurueck");
+  if (await l.sichtbar("#ask-answer-block")) {
+    if (await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")) {
+      // Dieser sichtbare Testweg legt ein neues Servergespraech an, nicht nur eine neue Frage
+      // im selben Gespraech. Den eigenen Eingabeentwurf leert erst das bestehende fill unten.
+      const menueOffen = await l.eval<string | null>(
+        "() => document.querySelector('.mini-menu-button')?.getAttribute('aria-expanded') ?? null",
+      );
+      if (menueOffen !== "true") await s.click(".mini-menu-button");
+      await s.click("#mini-menu-new");
+      await s.click('#mini-page-new [data-mini-text="start"]');
+      // Menuewechsel allein versteckt die alte Flaeche schon. Erst nach der echten asynchronen
+      // Gespraechsanlage schliesst die Start-Unterseite und resetAskResult raeumt die Antwort ab.
+      await s.waitForFunction(
+        fn(
+          "() => { const neu = document.getElementById('mini-page-new'); const home = document.querySelector('.mini-home'); const input = document.getElementById('ask-input'); const antwort = document.getElementById('ask-answer-block'); const sichtbar = (el) => { if (!el || el.hidden) return false; const r = el.getBoundingClientRect(); const stil = getComputedStyle(el); return stil.display !== 'none' && stil.visibility !== 'hidden' && r.width > 0 && r.height > 0; }; return !!neu && neu.hidden && sichtbar(home) && sichtbar(input) && !!antwort && antwort.classList.contains('hidden'); }",
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
+    } else {
+      await s.click("#kw-zurueck");
+    }
+  }
   if (await l.sichtbar("#ask-gap-block")) await s.click("#ask-luecke-frage-aendern");
   await s.fill("#ask-input", "");
 }
@@ -1198,6 +1220,29 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
     }
     expect(INVENTAR.filter((z) => z.sichtbar === "lage").length).toBeGreaterThanOrEqual(24);
   });
+
+  it("G02 · sichtbarer Neustart räumt Antwort ab und erlaubt die nächste", async () => {
+    expect(fehler).toBeNull();
+    const s = f("browser").seite;
+    const l = lesen("browser");
+    await zurRuhe("browser");
+    expect(await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")).toBe(true);
+    await frageStellen(s);
+    expect(await l.sichtbar("#ask-answer-block")).toBe(true);
+
+    await zurRuhe("browser");
+    expect(await l.sichtbar(".mini-home")).toBe(true);
+    expect(await l.sichtbar("#ask-input")).toBe(true);
+    expect(await l.sichtbar("#ask-answer-block")).toBe(false);
+    expect(await l.eval<string>("() => document.getElementById('ask-input').value")).toBe("");
+
+    // Die echte zweite Antwort bleibt fuer den danach ausgewaehlten unveraenderten ALT-0137
+    // stehen: dessen eigenes zurRuhe muss nun ebenfalls den sichtbaren Neustart durchlaufen.
+    await frageStellen(s);
+    expect(await l.sichtbar("#antwortkarte #ask-answer-edit")).toBe(true);
+    expect(await l.sichtbar("#ask-answer-block")).toBe(true);
+    expect(f("browser").seitenfehler).toEqual([]);
+  }, 90_000);
 
   for (const z of INVENTAR) {
     const art: Flaechenart = z.flaeche ?? "browser";
