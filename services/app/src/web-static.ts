@@ -61,7 +61,7 @@ export const KLARA_FASSUNG_PLATZHALTER = "__KW_FASSUNG__";
  * Sie ist bewusst NICHT der Bau-Stempel `__KLARA_STAND__`: der beantwortet „wann wurde gebaut",
  * diese Zahl „ist meine Seite noch die, die ausgeliefert wird". Zwei Fragen, zwei Mechaniken.
  */
-export const KLARA_TASKPANE_FASSUNG = "1.0.0.2";
+export const KLARA_TASKPANE_FASSUNG = "1.0.0.3";
 export const KLARA_BEGLEITUNG_PFAD = "/word-addin/begleitung.html";
 export const KLARA_BEGLEITUNG_FASSUNG = "1.0.0.1";
 

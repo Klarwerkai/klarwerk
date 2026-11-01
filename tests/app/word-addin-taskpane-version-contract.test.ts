@@ -258,6 +258,66 @@ describe("JOB 1077 D7 · A — die Fassungskette in EINEM Ablauf", () => {
     expect(geladen).toBe(FASSUNG_A);
     expect(modul.kwWechselOffen(geladen, verfuegbar)).toBe(true);
   });
+
+  it("A5 · der echte Serverdefault meldet 3 für geladenes 2 und vollzieht genau einen bewussten Wechsel", async () => {
+    const serverAlt = await auslieferung("1.0.0.2");
+    const serverNeu = Fastify();
+    await registerWebStatic(serverNeu, distMit(readFileSync(QUELLE, "utf8")));
+    try {
+      const lieferungAlt = await serverAlt.inject({ method: "GET", url: KLARA_TASKPANE_PFAD });
+      expect(lieferungAlt.statusCode).toBe(200);
+      const modul = schneideFassungsmodul(lieferungAlt.body);
+      let geladen = modul.kwGeladeneFassungAus(alsDokument(lieferungAlt.body));
+      expect(geladen).toBe("1.0.0.2");
+
+      const protokoll: Array<{ url: string; method: string }> = [];
+      const roh = fetchGegen(serverNeu);
+      const verfuegbar = await modul.kwVerfuegbareFassungLaden(
+        async (url: string, init?: { method?: string }) => {
+          protokoll.push({ url, method: init?.method ?? "GET" });
+          const antwort = await roh(url, init);
+          expect(antwort.status).toBe(200);
+          expect(await antwort.text()).toBe("");
+          return antwort;
+        },
+        modul.KW_TASKPANE_PFAD,
+      );
+      expect(protokoll).toEqual([{ url: KLARA_TASKPANE_PFAD, method: "HEAD" }]);
+      expect(verfuegbar).toBe("1.0.0.3");
+      expect(geladen).toBe("1.0.0.2");
+      expect(modul.kwWechselOffen(geladen, verfuegbar)).toBe(true);
+
+      // Erst die bewusste Produktaktion holt die echte neue Lieferung.
+      const nachladungen: Promise<string>[] = [];
+      const neuLaden = () => {
+        nachladungen.push(
+          roh(modul.KW_TASKPANE_PFAD).then(async (antwort) => {
+            expect(antwort.status).toBe(200);
+            expect(antwort.headers.get(KLARA_FASSUNG_KOPF)).toBe("1.0.0.3");
+            return antwort.text();
+          }),
+        );
+      };
+      expect(nachladungen).toHaveLength(0);
+      expect(modul.kwWechselAusloesen(geladen, verfuegbar, neuLaden)).toBe(true);
+      expect(nachladungen).toHaveLength(1);
+      const koerper = await nachladungen[0];
+      if (koerper === undefined) throw new Error("Die neue Lieferung fehlt.");
+      expect(koerper).not.toContain(KLARA_FASSUNG_PLATZHALTER);
+      const dokument = alsDokument(koerper);
+      expect(dokument.querySelector('script[src^="taskpane.js?"]')?.getAttribute("src")).toBe(
+        "taskpane.js?v=1.0.0.3",
+      );
+      geladen = modul.kwGeladeneFassungAus(dokument);
+      expect(geladen).toBe("1.0.0.3");
+      expect(modul.kwWechselOffen(geladen, verfuegbar)).toBe(false);
+      expect(modul.kwWechselAusloesen(geladen, verfuegbar, neuLaden)).toBe(false);
+      expect(nachladungen).toHaveLength(1);
+    } finally {
+      await serverAlt.close();
+      await serverNeu.close();
+    }
+  });
 });
 
 // ================================================================================================

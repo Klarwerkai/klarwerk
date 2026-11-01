@@ -87,12 +87,14 @@ describe("899/K7 · ein Versionswechsel aendert die URL kausal — an echten Fix
   // ECHTE MUTATION des Manifesttexts: die Version wird ueberall ersetzt, also auch in der
   // abgeleiteten SourceLocation. Beide Fassungen werden GEPARST; verglichen werden die
   // EXTRAHIERTEN Werte, nicht selbst gebaute Strings.
-  const ALT = "1.0.0.1";
+  const ALT = version(manifestText);
   const NEU = "9.9.9.9";
   const mutiert = manifestText.split(ALT).join(NEU);
 
   it("die Vorbedingung stimmt: das Bestandsmanifest traegt die alte Version", () => {
     expect(version(manifestText)).toBe(ALT);
+    expect(ALT).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
+    expect(NEU).not.toBe(ALT);
     expect(mutiert).not.toBe(manifestText);
   });
 
@@ -112,7 +114,9 @@ describe("899/K7 · ein Versionswechsel aendert die URL kausal — an echten Fix
       `<Version>${ALT}</Version>`,
       `<Version>${NEU}</Version>`,
     );
+    expect(divergent).not.toBe(manifestText);
     expect(version(divergent)).toBe(NEU);
+    expect(sourceLocation(divergent)).toBe(sourceLocation(manifestText));
     expect(sourceLocation(divergent)).not.toBe(`${BASIS_URL}?v=${version(divergent)}`);
   });
 });
