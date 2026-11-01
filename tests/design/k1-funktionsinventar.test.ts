@@ -706,8 +706,22 @@ async function zurRuhe(art: Flaechenart): Promise<void> {
   const ansicht = await l.eval<string>(
     "() => document.getElementById('kw-einstellungen').className.indexOf('hidden') === -1 ? 'einstellungen' : document.getElementById('kw-hilfe').className.indexOf('hidden') === -1 ? 'hilfe' : document.getElementById('section-capture').className.indexOf('hidden') === -1 ? 'erfassen' : 'fragen'",
   );
-  if (ansicht === "hilfe") await s.click("#kw-zurueck");
-  if (ansicht !== "fragen") await s.click(ansicht === "erfassen" ? "#tab-ask" : "#kw-zurueck");
+  if (
+    (ansicht === "einstellungen" || ansicht === "hilfe") &&
+    (await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')"))
+  ) {
+    await s.click(".mini-back");
+    await s.waitForFunction(
+      fn(
+        "() => { const home = document.querySelector('.mini-home'); const input = document.getElementById('ask-input'); const altseiten = ['kw-einstellungen', 'kw-hilfe'].map((id) => document.getElementById(id)); const sichtbar = (el) => { if (!el || el.hidden) return false; const r = el.getBoundingClientRect(); const stil = getComputedStyle(el); return stil.display !== 'none' && stil.visibility !== 'hidden' && r.width > 0 && r.height > 0; }; return sichtbar(home) && sichtbar(input) && altseiten.every((el) => !!el && el.classList.contains('hidden') && el.hidden && !sichtbar(el)); }",
+      ),
+      undefined,
+      { timeout: 30_000 },
+    );
+  } else {
+    if (ansicht === "hilfe") await s.click("#kw-zurueck");
+    if (ansicht !== "fragen") await s.click(ansicht === "erfassen" ? "#tab-ask" : "#kw-zurueck");
+  }
   if (await l.sichtbar("#ask-answer-block")) {
     if (await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")) {
       // Dieser sichtbare Testweg legt ein neues Servergespraech an, nicht nur eine neue Frage
@@ -1240,6 +1254,54 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
 
     // Die echte zweite Antwort bleibt fuer den danach ausgewaehlten unveraenderten ALT-0137
     // stehen: dessen eigenes zurRuhe muss nun ebenfalls den sichtbaren Neustart durchlaufen.
+    await frageStellen(s);
+    expect(await l.sichtbar("#antwortkarte #ask-answer-edit")).toBe(true);
+    expect(await l.sichtbar("#ask-answer-block")).toBe(true);
+    expect(f("browser").seitenfehler).toEqual([]);
+  }, 90_000);
+
+  it("G02 · Einstellungen und Hilfe kehren über sichtbaren Ausstieg zur Ruhe zurück", async () => {
+    expect(fehler).toBeNull();
+    const s = f("browser").seite;
+    const l = lesen("browser");
+    await zurRuhe("browser");
+    expect(await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")).toBe(
+      true,
+    );
+    for (const ziel of [
+      { menue: "#mini-menu-settings", altseite: "#kw-einstellungen" },
+      { menue: "#mini-menu-help", altseite: "#kw-hilfe" },
+    ]) {
+      expect(await l.sichtbar(".mini-home")).toBe(true);
+      expect(await l.sichtbar(".mini-menu-button")).toBe(true);
+      await s.click(".mini-menu-button");
+      await warteSichtbar("browser", ziel.menue);
+      await s.click(ziel.menue);
+      await warteSichtbar("browser", ziel.altseite);
+      expect(
+        await l.eval<boolean>(
+          "(sel) => !document.querySelector(sel).classList.contains('hidden')",
+          ziel.altseite,
+        ),
+      ).toBe(true);
+      expect(await l.sichtbar(".mini-back")).toBe(true);
+      expect(await l.sichtbar(".mini-home")).toBe(false);
+      expect(await l.sichtbar("#ask-input")).toBe(false);
+
+      await zurRuhe("browser");
+      expect(await l.sichtbar(".mini-home")).toBe(true);
+      expect(await l.sichtbar("#ask-input")).toBe(true);
+      for (const altseite of ["#kw-einstellungen", "#kw-hilfe"]) {
+        expect(
+          await l.eval<boolean>(
+            "(sel) => { const el = document.querySelector(sel); return el.classList.contains('hidden') && el.hidden; }",
+            altseite,
+          ),
+        ).toBe(true);
+        expect(await l.sichtbar(altseite)).toBe(false);
+      }
+    }
+    // Die echte Antwort bleibt fuer das folgende unveraenderte ALT-0137 stehen.
     await frageStellen(s);
     expect(await l.sichtbar("#antwortkarte #ask-answer-edit")).toBe(true);
     expect(await l.sichtbar("#ask-answer-block")).toBe(true);
