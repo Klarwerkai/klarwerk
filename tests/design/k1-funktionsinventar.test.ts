@@ -1462,7 +1462,7 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
       const profilAntwort = await l.eval<{
         url: string;
         status: number;
-        profil: { name?: string | null };
+        profil: { name?: string | null } | null;
       }>(
         "async (origin) => { if (window.location.origin !== origin) throw new Error('Profilabruf ausserhalb der eigenen Werkbank'); const response = await fetch('/api/me/assistenz', { credentials: 'include', cache: 'no-store' }); const daten = await response.json(); return { url: response.url, status: response.status, profil: daten.profil }; }",
         ORIGIN,
@@ -1470,7 +1470,7 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
       expect(profilAntwort.url).toBe(ORIGIN + "/api/me/assistenz");
       expect(profilAntwort.status).toBe(200);
       expect(profilAntwort.profil).toBeDefined();
-      const profilName = profilAntwort.profil.name;
+      const profilName = profilAntwort.profil?.name;
       expect(
         profilName === undefined || profilName === null || typeof profilName === "string",
       ).toBe(true);
