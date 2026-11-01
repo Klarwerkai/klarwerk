@@ -20,16 +20,14 @@
 //     aus — dieser Test faehrt das Ereignis, der Mensch faehrt am Mittwoch das Menue (Block E).
 //   - Ziehen und Ablegen ueber die Panel-Grenze hinaus. jsdom kennt keine echte Drag-Session; der
 //     Test belegt nur, dass `dragstart` dieselbe Ableitung schreibt.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { panelQuelleAus } from "../support/panelquelle";
+import { splitTaskpane } from "./klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
-const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
 
 const ANTWORT = "Ventil V4 wird jaehrlich geprueft und vor der Wartung entlastet.";
 const GEKUERZT = "Ventil V4 wird jaehrlich geprueft.";
@@ -47,16 +45,8 @@ interface Laufzeit {
 
 function taskpaneStarten(evidence: unknown, optionen: LaufOptionen = {}): Laufzeit {
   const html = panelQuelleAus(TASKPANE);
-  const bodyStart = html.indexOf("<body>") + "<body>".length;
-  const bodyEnd = html.indexOf("</body>");
-  const body = html.slice(bodyStart, bodyEnd);
-  const skriptStart = body.indexOf("<script>") + "<script>".length;
-  const skriptEnd = body.lastIndexOf("</script>");
-  const skript = `${readFileSync(resolve(process.cwd(), RUECKWEG), "utf8")}\n${body.slice(
-    skriptStart,
-    skriptEnd,
-  )}`;
-  document.body.innerHTML = body.slice(0, body.indexOf("<script>"));
+  const { markup, script: skript } = splitTaskpane(html);
+  document.body.innerHTML = markup;
 
   const eingefuegt: string[] = [];
   const kopiert: string[] = [];

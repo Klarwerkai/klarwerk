@@ -27,6 +27,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { splitTaskpane } from "../app/klara-panel-fixture";
 import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
@@ -34,10 +35,6 @@ const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // `taskpane.js` und `marke.js`; gelesen wird das zusammengefügte Dokument — wie in den übrigen
 // Panel-Tests (`tests/support/panelquelle.ts`).
 const HTML = panelQuelleAus(resolve(process.cwd(), TASKPANE));
-const RUECKWEG_QUELLE = readFileSync(
-  resolve(process.cwd(), "apps/web/public/word-addin/rueckweg.js"),
-  "utf8",
-);
 const DOCX = new Uint8Array(readFileSync(resolve(process.cwd(), "tests/fixtures/sample.docx")));
 
 type App = ReturnType<typeof buildApp>;
@@ -162,15 +159,15 @@ function officeAttrappe(): void {
 
 async function ladeTaskpane(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
-  const skriptEnde = HTML.lastIndexOf("</script>");
   const bodyStart = HTML.indexOf("<body>");
   expect(skriptStart).toBeGreaterThan(0);
   expect(bodyStart).toBeGreaterThan(0);
-  document.body.innerHTML = HTML.slice(bodyStart + "<body>".length, skriptStart);
+  const { markup, script: skript } = splitTaskpane(HTML);
+  document.body.innerHTML = markup;
   officeAttrappe();
   zuhoererMitschreiben(window);
   zuhoererMitschreiben(document);
-  new Function(`${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}`)();
+  new Function(skript)();
   // Bereit ist das Fenster, wenn der Dokument-Weg frei ist (Anmeldung UND Office bestätigt).
   await warteBis(() => el("capture-dokument-link").getAttribute("aria-disabled") !== "true");
 }

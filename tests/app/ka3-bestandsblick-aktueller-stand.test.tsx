@@ -15,19 +15,14 @@
 // Vertrag durch eine Attrappe. Diese Datei fährt den GANZEN Ablauf — echtes Inline-Skript, echter
 // KA1→KA3→KA2-Weg, nur Word, Office und `fetch` sind Attrappen — mit verzögertem Lesen und
 // geändertem Dokumenttext. Die Fokusprüfungen bleiben in ihrer eigenen Datei unverändert.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { panelQuelleAus } from "../support/panelquelle";
+import { splitTaskpane } from "./klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // Das Fenster liegt in mehreren Dateien (R-1611: taskpane.html/.css/.js; dazu marke.js). Gelesen
 // wird es als EIN Dokument — `panelQuelleAus` setzt Stil, Skript und den Markenblock an ihre Stellen.
 const HTML = panelQuelleAus(TASKPANE);
-const RUECKWEG_QUELLE = readFileSync(
-  resolve(process.cwd(), "apps/web/public/word-addin/rueckweg.js"),
-  "utf8",
-);
 
 function ausPanel(name: string): number {
   const treffer = new RegExp(`var ${name} = (\\d+);`).exec(HTML);
@@ -139,10 +134,8 @@ function officeEinbauen(): void {
 
 async function ladePanel(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
-  const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart).toBeGreaterThan(0);
-  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}`;
-  const markup = HTML.slice(HTML.indexOf("<body>") + "<body>".length, skriptStart);
+  const { markup, script: skript } = splitTaskpane(HTML);
   expect(markup.length).toBeGreaterThan(2000);
   document.body.innerHTML = markup;
   wordEinbauen();

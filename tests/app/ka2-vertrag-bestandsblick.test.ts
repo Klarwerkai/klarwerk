@@ -31,6 +31,7 @@
 // die hier wirklich angefasst werden, lokal beschrieben — mehr nicht.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { panelQuelleAus } from "../support/panelquelle";
+import { splitTaskpane } from "./klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const HTML = panelQuelleAus(TASKPANE);
@@ -171,13 +172,11 @@ function wordEinbauen(text: string): void {
  */
 async function ladePanel(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
-  const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = HTML.slice(skriptStart + "<script>".length, skriptEnde);
 
   const bodyStart = HTML.indexOf("<body>");
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);
-  const markup = HTML.slice(bodyStart + "<body>".length, skriptStart);
+  const { markup, script: skript } = splitTaskpane(HTML);
   // Fail-closed: waere das Markup leer, pruefte diese Datei ein leeres Dokument.
   expect(markup.length, `${TASKPANE}: Markup ist leer`).toBeGreaterThan(2000);
   fenster.document.body.innerHTML = markup;

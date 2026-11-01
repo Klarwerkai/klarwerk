@@ -90,6 +90,7 @@
 // Der Gate-`tsc` läuft ohne DOM-lib; DOM-Zugriffe gehen über schmale Struktur-Typen.
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { splitTaskpane } from "../app/klara-panel-fixture";
 import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
@@ -298,10 +299,8 @@ async function ladeFenster(folge: Folge): Promise<void> {
   });
   const quelle = panelQuelleAus(TASKPANE);
   const skriptStart = quelle.lastIndexOf("<script>");
-  const skriptEnde = quelle.lastIndexOf("</script>");
   expect(skriptStart, "Inline-Skript nicht gefunden").toBeGreaterThan(0);
-  const bodyStart = quelle.indexOf("<body>");
-  const markup = quelle.slice(bodyStart + "<body>".length, skriptStart);
+  const { markup, script: skript } = splitTaskpane(quelle);
   expect(markup.length).toBeGreaterThan(2000);
   umgebung.document.body.innerHTML = markup;
   umgebung.window.Office = {
@@ -323,7 +322,7 @@ async function ladeFenster(folge: Folge): Promise<void> {
   }
   const vorDemLaden = fristen.length;
   try {
-    new Function(quelle.slice(skriptStart + "<script>".length, skriptEnde))();
+    new Function(skript)();
   } finally {
     for (const [ziel, original] of echt) {
       ziel.addEventListener = original;

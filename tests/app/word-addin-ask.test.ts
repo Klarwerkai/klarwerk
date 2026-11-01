@@ -56,12 +56,12 @@ import {
 import { aiGeneratedMark } from "../../services/model-runs";
 import { istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
+import { splitTaskpane } from "./klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
-const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
 
 function read(rel: string): string {
   // Das Aufgabenfenster liegt seit dem Drei-Datei-Schnitt (R-1611) in drei Dateien; gelesen wird es
@@ -1202,7 +1202,8 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     const match = /<script>\s*([\s\S]*?)\s*<\/script>\s*<\/body>/.exec(html);
     expect(match).not.toBeNull();
     // new Function parst das komplette Skript — wirft bei Syntaxfehlern (entspricht node --check).
-    expect(() => new Function(match?.[1] ?? "")).not.toThrow();
+    const { script: skript } = splitTaskpane(html);
+    expect(() => new Function(skript)).not.toThrow();
   });
 });
 
@@ -1445,13 +1446,11 @@ async function ladeKa6Fenster(lage: Ka6Lage): Promise<void> {
   vi.stubGlobal("fetch", ka6Router(lage));
   const quelle = read(TASKPANE);
   const skriptStart = quelle.lastIndexOf("<script>");
-  const skriptEnde = quelle.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}`;
 
   const bodyStart = quelle.indexOf("<body>");
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);
-  const markup = quelle.slice(bodyStart + "<body>".length, skriptStart);
+  const { markup, script: skript } = splitTaskpane(quelle);
   // Fail-closed: waere das Markup leer, pruefte dieser Fall ein leeres Dokument.
   expect(markup.length, `${TASKPANE}: Markup ist leer`).toBeGreaterThan(2000);
   umgebung.document.body.innerHTML = markup;

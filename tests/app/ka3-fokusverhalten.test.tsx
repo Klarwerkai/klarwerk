@@ -29,18 +29,15 @@
 // PRUEFSTANDS-ATTRAPPE gestellt, in der jsdom-Welt eines Testfalls. Ohne ihn tut KA3 fail-closed
 // NICHTS (`ka3Vertrag()` liefert `null`), es gaebe keine Karte — und Pedis Auflage waere gar nicht
 // pruefbar. Die Attrappe ist die Vorrichtung, nicht der Vertrag.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { panelQuelleAus } from "../support/panelquelle";
+import { splitTaskpane } from "./klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const HTML = panelQuelleAus(TASKPANE);
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
-const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
-const RUECKWEG_QUELLE = readFileSync(resolve(process.cwd(), RUECKWEG), "utf8");
 
 /**
  * Die Ruhefrist wird AUS dem Aufgabenfenster gelesen, nicht hier abgeschrieben. Waere sie als Zahl
@@ -80,13 +77,11 @@ let vertragsAufrufe = 0;
 /** Laedt das VOLLSTAENDIGE Aufgabenfenster: Markup, dann das unveraenderte Inline-Skript. */
 async function ladeTaskpane(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
-  const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}`;
 
   const bodyStart = HTML.indexOf("<body>");
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);
-  const markup = HTML.slice(bodyStart + "<body>".length, skriptStart);
+  const { markup, script: skript } = splitTaskpane(HTML);
   // Fail-closed: waere das Markup leer, pruefte dieser Test ein leeres Dokument.
   expect(markup.length, `${TASKPANE}: Markup ist leer`).toBeGreaterThan(2000);
   document.body.innerHTML = markup;

@@ -29,16 +29,14 @@
 //   - Der `Word.run`-Zweig. Er wird hier bewusst nicht angeboten (`window.Word` fehlt), damit der
 //     Fallback-Zweig laeuft; beide Zweige bekommen von `performInsert` denselben Text-Parameter,
 //     und die Textbildung liegt VOR der Zweigwahl (composeOutputText).
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { panelQuelleAus } from "../support/panelquelle";
+import { splitTaskpane } from "./klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
-const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
 
 const ANTWORT = "Ventil V4 wird jaehrlich geprueft und vor der Wartung entlastet.";
 const GEKUERZT = "Ventil V4 wird jaehrlich geprueft.";
@@ -53,16 +51,8 @@ interface Laufzeit {
 // ausfuehren. Ab hier laeuft die Seite so, wie sie in Word laeuft — getrieben wird ueber Klicks.
 function taskpaneStarten(evidence: unknown): Laufzeit {
   const html = panelQuelleAus(TASKPANE);
-  const bodyStart = html.indexOf("<body>") + "<body>".length;
-  const bodyEnd = html.indexOf("</body>");
-  const body = html.slice(bodyStart, bodyEnd);
-  const skriptStart = body.indexOf("<script>") + "<script>".length;
-  const skriptEnd = body.lastIndexOf("</script>");
-  const skript = `${readFileSync(resolve(process.cwd(), RUECKWEG), "utf8")}\n${body.slice(
-    skriptStart,
-    skriptEnd,
-  )}`;
-  document.body.innerHTML = body.slice(0, body.indexOf("<script>"));
+  const { markup, script: skript } = splitTaskpane(html);
+  document.body.innerHTML = markup;
 
   const eingefuegt: string[] = [];
   const kopiert: string[] = [];
