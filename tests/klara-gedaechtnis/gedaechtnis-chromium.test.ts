@@ -4,6 +4,7 @@ import { type Browser, type Page, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { registerWebStatic } from "../../services/app/src/web-static";
+import { type AnswerEvidenceSnapshot, hashAnswerSnapshot } from "../../services/ask";
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 const services = buildServices();
 const app = buildApp(services);
@@ -17,6 +18,7 @@ const antwort =
   "Fiktive vollständige Antwort. Alle Quellen und Prüfstände bleiben beim Einklappen erhalten.";
 let kontoId = "";
 let quelleId = "";
+let quelleFassung = 0;
 beforeAll(async () => {
   await mkdir(out, { recursive: true });
   await registerWebStatic(app, join(process.cwd(), "apps/web/dist"));
@@ -55,7 +57,51 @@ beforeAll(async () => {
     confidentiality: "intern",
   });
   quelleId = quelle.id;
+  quelleFassung = quelle.version;
   const jetzt = new Date().toISOString();
+  // KONTROLLE: eigener Antwortbeleg (AW04/PV-05-03), damit die gespeicherte Antwort nicht neutralisiert wird.
+  expect(
+    await services.answerSnapshots.createRecord({
+      answerId: "antwort-e",
+      askExecutionId: "lauf-e",
+      createdAt: jetzt,
+      schemaVersion: 1,
+      owner: { kind: "user", userId: kontoId },
+    }),
+  ).toBe(true);
+  const snapshotE: AnswerEvidenceSnapshot = {
+    answerId: "antwort-e",
+    snapshotRevision: 1,
+    supersedesSnapshotRevision: null,
+    schemaVersion: 1,
+    capturedAt: jetzt,
+    citedSources: [quelleId],
+    evidence: [
+      {
+        knowledgeObjectId: quelleId,
+        knowledgeObjectVersion: quelle.version,
+        evidenceRole: "carrying",
+        sourceRecordId: null,
+        sourceRecordIdReason: "no_source_anchor",
+        locator: null,
+        locatorReason: "no_source_anchor",
+        validationReferenceAbsenceReason: "NOT_AVAILABLE_AT_EXECUTION",
+      },
+    ],
+    resolutionId: null,
+    resolutionIdReason: "w1_not_on_answer_path",
+    validationDecisionRef: null,
+    validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
+    status: "INCOMPLETE",
+    integrityHash: "",
+    generationMode: "deterministic",
+  };
+  expect(
+    await services.answerSnapshots.appendSnapshot({
+      ...snapshotE,
+      integrityHash: hashAnswerSnapshot(snapshotE),
+    }),
+  ).toBe(true);
   const bezug = { pfad: "/profil", seitenName: "Persönliche Einstellungen", objekt: "Gedächtnis" };
   await services.klaraGespraeche.lege({
     id: "gespraech-fiktiv-e",
@@ -69,9 +115,9 @@ beforeAll(async () => {
         text: antwort,
         objektbezug: bezug,
         antwortId: "antwort-e",
-        quellen: ["quelle-e"],
+        quellen: [quelleId],
         quellenAngaben: [
-          { koId: "quelle-e", titel: "Fiktive Quelle E", fassung: 7, geprueft: true },
+          { koId: quelleId, titel: "Fiktive Quelle E", fassung: quelle.version, geprueft: true },
         ],
         wissensklasse: "confirmed",
         grund: null,
@@ -128,7 +174,7 @@ describe("Klara09 · eigene HTTP-Anwendung in echtem Chromium, fiktive Konten", 
     await kurz.waitFor();
     const n = page.getByTestId("klara-nachricht");
     expect(await n.textContent()).toContain("Fiktive Quelle E");
-    expect(await n.textContent()).toContain("7");
+    expect(await n.textContent()).toContain(String(quelleFassung));
     expect(await kurz.getAttribute("open")).toBe(null);
     await kurz.locator("summary").focus();
     await page.keyboard.press("Enter");
@@ -226,12 +272,32 @@ describe("Klara09 · eigene HTTP-Anwendung in echtem Chromium, fiktive Konten", 
       zeitzone: "Asia/Tokyo",
       begleitung: "ausfuehrlich",
     });
+    const termintag = new Date();
+    termintag.setDate(termintag.getDate() + 2);
+    const terminBeginn = new Date(
+      Date.UTC(termintag.getFullYear(), termintag.getMonth(), termintag.getDate(), 8),
+    ).toISOString();
+    const berlinTeile = Object.fromEntries(
+      new Intl.DateTimeFormat("de-DE", {
+        timeZone: "Europe/Berlin",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(new Date(terminBeginn))
+        .map(({ type, value }) => [type, value]),
+    );
+    const berlinBeginn = `${berlinTeile.year}-${berlinTeile.month}-${berlinTeile.day}T${berlinTeile.hour}:${berlinTeile.minute}`;
+    const profilBeginn = `${terminBeginn.slice(0, 10)}T09:00`;
     const r = await page.request.post(`${origin}/api/me/kalender/eintraege`, {
       data: {
         art: "termin",
         titel: "Fiktiver Termin mit expliziter Zone",
         ganztaegig: false,
-        beginn: "2026-10-26T08:00:00.000Z",
+        beginn: terminBeginn,
         zeitzone: "Europe/Berlin",
       },
     });
@@ -243,21 +309,21 @@ describe("Klara09 · eigene HTTP-Anwendung in echtem Chromium, fiktive Konten", 
     await page.getByTestId("kalender-neu").click();
     expect(await page.getByTestId("kalender-form-zone").textContent()).toContain("Asia/Tokyo");
     await page.getByTestId("kalender-form-titel").fill("Fiktiver Profilzonentermin");
-    await page.getByTestId("kalender-form-beginn").fill("2026-10-26T09:00");
+    await page.getByTestId("kalender-form-beginn").fill(profilBeginn);
     await page.getByTestId("kalender-form-speichern").click();
     await page.getByTestId("kalender-formular").waitFor({ state: "hidden" });
     await page.getByTestId("kalender-ansicht-agenda").click();
     await page.locator(`[data-event-id="${termin.id}"][data-testid="kalender-eintrag"]`).click();
     await page.getByTestId("kalender-bearbeiten").click();
     expect(await page.getByTestId("kalender-form-zone").textContent()).toContain("Europe/Berlin");
-    expect(await page.getByTestId("kalender-form-beginn").inputValue()).toBe("2026-10-26T09:00");
+    expect(await page.getByTestId("kalender-form-beginn").inputValue()).toBe(berlinBeginn);
     await page.getByTestId("kalender-form-beginn").fill("2026-10-25T02:30");
     await page.getByTestId("kalender-profilzeit-klaeren").waitFor();
     expect(await page.getByTestId("kalender-form-speichern").isDisabled()).toBe(true);
     expect(await page.getByTestId("kalender-form-beginn").inputValue()).toBe("2026-10-25T02:30");
     await page.getByTestId("kalender-form-beginn").fill("2026-03-29T02:30");
     expect(await page.getByTestId("kalender-profilzeit-klaeren").textContent()).toContain("fehlt");
-    await page.getByTestId("kalender-form-beginn").fill("2026-10-26T09:00");
+    await page.getByTestId("kalender-form-beginn").fill(berlinBeginn);
     await page.getByTestId("kalender-form-speichern").click();
     await page.getByTestId("kalender-formular").waitFor({ state: "hidden" });
     const back = await (
@@ -265,7 +331,7 @@ describe("Klara09 · eigene HTTP-Anwendung in echtem Chromium, fiktive Konten", 
     ).json();
     expect(back.eintrag).toMatchObject({
       zeitzone: "Europe/Berlin",
-      beginn: "2026-10-26T08:00:00.000Z",
+      beginn: terminBeginn,
     });
     expect(fehler).toEqual([]);
   }, 90000);
