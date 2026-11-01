@@ -725,9 +725,23 @@ function antwortMit(over: Record<string, unknown>): RouteHandler {
 async function zurRuhe(art: Flaechenart): Promise<void> {
   const s = f(art).seite;
   const l = lesen(art);
-  const ansicht = await l.eval<string>(
+  let ansicht = await l.eval<string>(
     "() => document.getElementById('kw-einstellungen').className.indexOf('hidden') === -1 ? 'einstellungen' : document.getElementById('kw-hilfe').className.indexOf('hidden') === -1 ? 'hilfe' : document.getElementById('section-capture').className.indexOf('hidden') === -1 ? 'erfassen' : 'fragen'",
   );
+  if (
+    ansicht === "erfassen" &&
+    (await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')"))
+  ) {
+    await s.click(".mini-back");
+    await s.waitForFunction(
+      fn(
+        "() => { const home = document.querySelector('.mini-home'); const input = document.getElementById('ask-input'); const capture = document.getElementById('section-capture'); const raum = document.getElementById('mini-page-tool-capture'); const sichtbar = (el) => { if (!el || el.hidden) return false; const r = el.getBoundingClientRect(); const stil = getComputedStyle(el); return stil.display !== 'none' && stil.visibility !== 'hidden' && r.width > 0 && r.height > 0; }; return sichtbar(home) && sichtbar(input) && !!capture && capture.classList.contains('hidden') && capture.hidden && !sichtbar(capture) && !!raum && raum.hidden && !sichtbar(raum); }",
+      ),
+      undefined,
+      { timeout: 30_000 },
+    );
+    ansicht = "fragen";
+  }
   if (
     (ansicht === "einstellungen" || ansicht === "hilfe") &&
     (await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')"))
@@ -776,7 +790,19 @@ async function weg(art: Flaechenart, w: Weg): Promise<void> {
   await zurRuhe(art);
   if (w === "ruhe") return;
   if (w === "erfassen") {
-    await s.click("#tab-capture");
+    if (await lesen(art).eval<boolean>("() => document.body.classList.contains('kw-minimal')")) {
+      const menueOffen = await lesen(art).eval<string | null>(
+        "() => document.querySelector('.mini-menu-button')?.getAttribute('aria-expanded') ?? null",
+      );
+      if (menueOffen !== "true") await s.click(".mini-menu-button");
+      await warteSichtbar(art, "#mini-menu-functions");
+      await s.click("#mini-menu-functions");
+      await warteSichtbar(art, '[data-mini-tool="capture"]');
+      await s.click('[data-mini-tool="capture"]');
+      await warteSichtbar(art, "#section-capture");
+    } else {
+      await s.click("#tab-capture");
+    }
     return;
   }
   if (w === "antwort" || w === "mehr") {
@@ -1377,6 +1403,42 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
       await anmeldungNeuPruefen(art, "de");
       expect(await l.sichtbar(".mini-home")).toBe(true);
       expect(await l.sichtbar("#ask-input")).toBe(true);
+      expect(f(art).seitenfehler).toEqual([]);
+    }
+  }, 90_000);
+
+  it("G02 · sichtbares Erfassen und Rückkehr auf Browser und Word", async () => {
+    expect(fehler).toBeNull();
+    for (const art of ["browser", "word"] as const) {
+      const l = lesen(art);
+      await zurRuhe(art);
+      expect(await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")).toBe(
+        true,
+      );
+      expect(await l.sichtbar("#tab-capture")).toBe(false);
+      expect(await l.sichtbar(".mini-menu-button")).toBe(true);
+      await weg(art, "erfassen");
+      expect(await l.sichtbar("#section-capture")).toBe(true);
+      expect(await l.sichtbar("#mini-page-tool-capture")).toBe(true);
+      expect(
+        await l.eval<boolean>(
+          "() => { const el = document.getElementById('section-capture'); return !el.classList.contains('hidden') && !el.hidden; }",
+        ),
+      ).toBe(true);
+      expect(await l.sichtbar(".mini-back")).toBe(true);
+      expect(await l.sichtbar(".mini-home")).toBe(false);
+      expect(await l.sichtbar("#ask-input")).toBe(false);
+
+      await zurRuhe(art);
+      expect(await l.sichtbar(".mini-home")).toBe(true);
+      expect(await l.sichtbar("#ask-input")).toBe(true);
+      expect(await l.sichtbar("#section-capture")).toBe(false);
+      expect(await l.sichtbar("#mini-page-tool-capture")).toBe(false);
+      expect(
+        await l.eval<boolean>(
+          "() => { const el = document.getElementById('section-capture'); const raum = document.getElementById('mini-page-tool-capture'); return el.classList.contains('hidden') && el.hidden && raum.hidden; }",
+        ),
+      ).toBe(true);
       expect(f(art).seitenfehler).toEqual([]);
     }
   }, 90_000);
