@@ -171,13 +171,13 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // BEN, Korrekturpflicht 3: In Runde 1 fehlte diese Datei. Sie liest `taskpane.html` direkt, baut
   // den Pfad aber aus Segmenten — der Griff `pfad` sah sie deshalb nicht.
   "tests/app/k1-word-addin-origin-panel.test.ts": "zusammengesetzt,panelquelle",
-  "tests/app/ka2-vertrag-bestandsblick.test.ts": "pfad,panelquelle",
-  "tests/app/ka3-fokusverhalten.test.tsx": "pfad,rueckweg,marken,panelquelle",
+  "tests/app/ka2-vertrag-bestandsblick.test.ts": "pfad,fixture,panelquelle",
+  "tests/app/ka3-fokusverhalten.test.tsx": "pfad,marken,fixture,panelquelle",
   // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK: der Wirkungsnachweis, dass der Bestandsblick mit dem
   // aktuellen Dokument fragt. Er laedt das GANZE Fenster (rueckweg.js und das ueber `panelQuelleAus`
   // zusammengefuegte Dokument) und nennt Taskpane und Rueckweg ueber ihr Pfadliteral — Griffe
   // `pfad`, `rueckweg` und `panelquelle`, keine Marken, keine Fixture. A2b haelt den Eintrag fest.
-  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx": "pfad,rueckweg,panelquelle",
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx": "pfad,fixture,panelquelle",
   // Integration mit `main` (Nacharbeit 13): zwei Dateien aus `main` (Verwaltungsbereiche 8d9ff6b2 /
   // Suchraum 22d6b201), die das Pfadliteral von `taskpane.html` tragen. `aufrufer-waechter` nennt
   // es in einer Begründung, `bedarfsabgleich` liest die Datei. GEMESSEN, NICHT GESETZT: A2 meldete
@@ -197,9 +197,9 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/mega34-word-einstufung.test.ts": "pfad,panelquelle",
   // JOB 3667 R8: die drei Word-Ausgabewege starten das Fenster aus der Quelle und fuehren seither
   // BEIDE Skripte aus — sonst fehlt `rwZeichnen` und der erste `renderCapture` bricht ab.
-  "tests/app/mega35-word-ausgabe-entsteht-beim-ausgeben.test.tsx": "pfad,rueckweg,panelquelle",
-  "tests/app/mega36-word-ausgaenge.test.tsx": "pfad,rueckweg,panelquelle",
-  "tests/app/mega38-word-ziehweg.test.tsx": "pfad,rueckweg,panelquelle",
+  "tests/app/mega35-word-ausgabe-entsteht-beim-ausgeben.test.tsx": "pfad,fixture,panelquelle",
+  "tests/app/mega36-word-ausgaenge.test.tsx": "pfad,fixture,panelquelle",
+  "tests/app/mega38-word-ziehweg.test.tsx": "pfad,fixture,panelquelle",
   "tests/app/mega43-klara-werkbank-palette.test.ts": "pfad,panelquelle",
   "tests/app/mega45-word-textrueckfall.test.ts": "pfad,panelquelle",
   "tests/app/mega52-vertrauenswert-sammler.test.ts": "pfad,zusammengesetzt,panelquelle",
@@ -224,7 +224,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/w1-klara-lifecycle-taskpane.test.tsx": "pfad,rueckweg,panelquelle",
   "tests/app/w1-klara-vertrauenskopf.test.ts": "pfad,marken,panelquelle",
   "tests/app/w6-dublettenweg-checktext.test.ts": "pfad,marken,panelquelle",
-  "tests/app/word-addin-ask.test.ts": "pfad,rueckweg,marken,panelquelle",
+  "tests/app/word-addin-ask.test.ts": "pfad,marken,fixture,panelquelle",
   // Word-Host-Gesamtweg (Nacharbeit 6/7, Realhostbeleg 06.10.2026): die Gegenproben zum
   // Auswahlzugriff (W1–W9) fahren das ganze Fenster über `createKlaraPanel`. In Nacharbeit 6 standen
   // sie in `word-addin-ask.test.ts` (dort GEMESSEN grün, Kandidat 26e86268); umgezogen, weil jene
@@ -319,7 +319,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // JOB 3091 M2 (06.09.2026): das Memo aus der Quelle am vollstaendigen Aufgabenfenster (Bauform
   // word-addin-ask.test.ts): laedt die Datei ueber den Pfad und liest die Memo-Schluessel aus
   // KA6_MEMO_TEXTE — Griff `pfad`. A2 hat sie gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
-  "tests/ka6-memo-panel/memo-panel-mounted.test.ts": "pfad,rueckweg,panelquelle",
+  "tests/ka6-memo-panel/memo-panel-mounted.test.ts": "pfad,fixture,panelquelle",
   // JOB 3056 Runde 3: zwei der alten Namen leben als ABLOESUNGS-WAECHTER weiter — sie lesen die
   // Datei ueber Segmente (Griff `zusammengesetzt`) und pinnen, dass Fusszeile, „Neue Frage",
   // Leitsatz und Ladekarte nicht zurueckkommen; zugleich halten sie die Verweise des Werkzeugs
@@ -402,7 +402,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // memo-panel-mounted / word-addin-ask.test.ts): laedt die Datei ueber den Pfad und liest die
   // Schluessel aus M5_BILD_TEXTE — Griff `pfad`. A2 hat sie gemeldet, das Verzeichnis hat sie nicht
   // still aufgenommen.
-  "tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts": "pfad,rueckweg,panelquelle",
+  "tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts": "pfad,fixture,panelquelle",
   // JOB 3278 CHR-01 (08.09.2026): der Gestaltungsvertrag der Chrome-Seitenleiste. Auftrag §5.2
   // verlangt „Kopfzeile wie Klara in Word" — und zwar geprüft, nicht behauptet. Die Datei liest
   // `taskpane.html` deshalb über ihr Pfadliteral (Zeile 44) und hält dessen INHALT gegen
@@ -421,13 +421,13 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // still grün. Griff `pfad`; KW-Marken schneidet sie keine (sie nimmt das ganze Skript), die
   // Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das Verzeichnis nimmt sie nicht
   // still auf.
-  "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts": "pfad,rueckweg,panelquelle",
+  "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts": "pfad,fixture,panelquelle",
   // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632/N11): die Stufenwahl im Panel bis
   // zum gespeicherten Entwurf. Sie baut das GANZE Fenster in jsdom (Pfadliteral `taskpane.html`,
   // gelesen über `panelQuelleAus`), lädt `rueckweg.js` davor und führt das Skript unverändert aus —
   // ein echter Mitfahrer mit drei Griffen. A2 hat sie nach der Integration mit main 38508a1e
   // gemeldet (Prüflauf zu 83c9a4b8).
-  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx": "pfad,rueckweg,panelquelle",
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx": "pfad,fixture,panelquelle",
   // JOB 3512 DEMO-FIRMEN-CI VERBRAUCHER (10.09.2026): die Firmen-CI in Klara/Word. Zwei echte
   // Mitfahrer, mit zwei verschiedenen Griffen — und beide GEMESSEN, nicht gesetzt:
   //   · `marke-quelle.test.ts` nennt `apps/web/public/word-addin/taskpane.html` als Literal
@@ -443,7 +443,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // gar nicht an und steht deshalb bewusst NICHT hier.
   // A2 hat beide gemeldet, das Verzeichnis nimmt sie nicht still auf.
   "tests/demo-firmen-ci-verbraucher/marke-quelle.test.ts": "pfad,panelquelle",
-  "tests/demo-firmen-ci-verbraucher/word-marke.test.ts": "zusammengesetzt,panelquelle",
+  "tests/demo-firmen-ci-verbraucher/word-marke.test.ts": "zusammengesetzt,fixture,panelquelle",
   // JOB 3818 (13.09.2026): der Wächter über den sicheren Kontext der Chromium-Bühnen unter
   // `tests/design/`. Er greift `taskpane.html` NICHT an — er nennt das Pfadliteral zweimal als
   // BEGRÜNDUNG in seinem Bühnenregister: `tests/design/k1-messung.ts` und

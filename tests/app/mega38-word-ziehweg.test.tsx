@@ -66,6 +66,7 @@ function taskpaneStarten(): Laufzeit {
             answer: ANTWORT,
             trust: 90,
             sources: ["k1"],
+            citedSources: ["k1"],
             steps: [],
             demo: false,
             evidence: { grade: "unverified" },
