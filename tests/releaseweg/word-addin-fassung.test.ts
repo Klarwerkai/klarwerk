@@ -9,15 +9,11 @@ import assert from "node:assert/strict";
 import {existsSync,mkdirSync,mkdtempSync,renameSync,rmSync,unlinkSync,writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,dirname} from "node:path";
-import {fileURLToPath} from "node:url";
 const m=await import(process.argv[1]);
 const p=await import(process.argv[2]);
 const {releaseVertrag:contract}=await import(new URL("./release-vertrag.mjs",process.argv[1]));
 const {assertWordAddinFassung}=await import(new URL("./word-addin-fassung.mjs",process.argv[1]));
 const home=mkdtempSync(join(tmpdir(),"word-fassung-vertrag-"));
-const repoRoot=dirname(dirname(fileURLToPath(process.argv[1])));
-const identity=/^(.*) <([^>]+)> \d+ [+-]\d+$/.exec(m.git(repoRoot,"var","GIT_AUTHOR_IDENT"));
-assert(identity,"tatsächliche Git-Autorenidentität fehlt");
 const asset="apps/web/public/word-addin/taskpane.js";
 function put(work,path,text){mkdirSync(dirname(join(work,path)),{recursive:true});writeFileSync(join(work,path),text);}
 function versions(work,values){
@@ -29,7 +25,7 @@ function commit(work,message){m.git(work,"add",".");m.git(work,"commit","-qm",me
 function fixture(){
   const work=mkdtempSync(join(home,"repo-"));
   m.git(work,"init","-q");
-  m.git(work,"config","user.name",identity[1]);m.git(work,"config","user.email",identity[2]);
+  m.git(work,"config","--local","user.name","Fixture");m.git(work,"config","--local","user.email","fixture@klarwerk.invalid");
   versions(work,"1.0.0.9");put(work,asset,"// echte Ausgangsdatei\n");put(work,"outside.js","// außerhalb\n");
   return {work,base:commit(work,"Word-Fassungsfixture Basis")};
 }
