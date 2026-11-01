@@ -182,7 +182,6 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Suchraum 22d6b201), die das Pfadliteral von `taskpane.html` tragen. `aufrufer-waechter` nennt
   // es in einer Begründung, `bedarfsabgleich` liest die Datei. GEMESSEN, NICHT GESETZT: A2 meldete
   // genau diese zwei Pfade als `neu im Baum, aber nicht gepinnt`; Griff `pfad`, kein anderes Muster.
-  "tests/capture/aufrufer-waechter.test.ts": "pfad",
   "tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts": "pfad",
   "tests/app/klara-ai-header.test.ts": "pfad,marken,panelquelle",
   "tests/app/klara-ai-session-consent.test.ts": "pfad,marken,panelquelle",
@@ -600,6 +599,27 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // (Pfadliteral, Griff `pfad`) und fährt im Teil R den Rückweg über `createKlaraPanel` (Griff
   // `fixture`). Die Griffe sind aus den Mustern oben abgelesen, nicht gemessen — kein Lauf hier.
   "tests/anleitung-word/anleitung-word.test.tsx": "pfad,fixture",
+  // A5 · 01.11.2026: ausschließlich Treffer der unveränderten Erhebung auf9fb27fe2.
+  "tests/antwort-erklaerung/word-lage-konfliktseiten.test.tsx": "marken",
+  "tests/app/s4-sitzung-abgelaufen-409.test.tsx": "fixture",
+  "tests/assistenz-lernen/lernauftrag-am-server.test.ts": "pfad",
+  "tests/assistenz-lernen/word-routine-am-server.test.ts": "pfad",
+  "tests/assistenz-lernen/word-routinen-fenster.test.tsx": "pfad",
+  "tests/eigener-kalender/word-kalender.test.tsx": "pfad",
+  "tests/firmenwoerterbuch/word-begriffe.test.tsx": "pfad",
+  "tests/klara-setup-shortcuts/fundstellen.test.ts": "pfad",
+  "tests/m5c-b-bildbudget/panel-rumpfgrenze.test.ts": "fixture",
+  "tests/office-addin/auslieferung.test.ts": "pfad,zusammengesetzt",
+  "tests/office-kontext/word-adapter.test.ts": "pfad",
+  "tests/releaseweg/word-addin-fassung.test.ts": "pfad",
+  "tests/security/mega74-lesewege-sammler.test.ts": "pfad",
+  "tests/security/route-guard-audit.test.ts": "pfad",
+  "tests/security/routeGuardAudit.ts": "pfad",
+  "tests/vormachen-routine/vormachen-am-server.test.ts": "pfad",
+  "tests/vormachen-routine/vormachen-mounted.test.tsx": "pfad",
+  "tests/vormachen-routine/word-panel-anzeige.test.tsx": "pfad",
+  "tests/w45-integritaet/office-operationen.test.ts": "fixture",
+  // A5 · Ende der nachgeführten Treffer.
 };
 
 // ------------------------------------------------------------------------------------------------

@@ -1310,7 +1310,6 @@ const INVENTAR: readonly string[] = [
   // GEMESSEN, NICHT GESETZT: `tools/test tests/app/klara-regressionsinventar` meldete K2 `neu im
   // Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren` mit genau diesen zwei Pfaden.
   "tests/deploy-health-commit/eine-programmversion.test.ts",
-  "tests/deploy-liefernachweis/live-update-liefernachweis.test.ts",
   // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026), R-0639: der Dokumenttext-Riegel. Traegt
   // „klara" im PFAD und kommt ueber `name` herein (K5: 68 -> 69). GEMESSEN, NICHT GESETZT: K2
   // meldete lokal `neu im Baum, aber nicht im gepinnten Inventar` mit genau diesem Pfad.
@@ -1523,6 +1522,176 @@ const INVENTAR: readonly string[] = [
   "tests/suchindex-aktualitaet/klara-quellenstand-server.test.ts",
   "tests/vorlagen/klara-vorlagen-kontext.test.tsx",
   "tests/web/r0604-klara-herkunft.test.tsx",
+  // A5 · 01.11.2026: ausschließlich Treffer der unveränderten Erhebung auf9fb27fe2.
+  "tests/assistenz-lernen/lernauftrag-am-server.test.ts", // taskpane
+  "tests/assistenz-lernen/word-routine-am-server.test.ts", // taskpane
+  "tests/assistenz-lernen/word-routinen-fenster.test.tsx", // taskpane
+  "tests/assistenz-minimal/arbeitsbereichsleiste-am-server.test.tsx", // palette
+  "tests/eigener-kalender/word-kalender.test.tsx", // taskpane
+  "tests/klara-arbeitsueberblick/ueberblick-am-server.test.tsx", // name
+  "tests/klara-aufbewahrung/am-server.test.ts", // name
+  "tests/klara-aufbewahrung/ausnahme-chromium.test.ts", // name
+  "tests/klara-aufbewahrung/ausnahme-pg.integration.test.ts", // name
+  "tests/klara-aufbewahrung/zwecke-und-ausnahme.test.ts", // name
+  "tests/klara-beschaffung/satzendnegation.test.ts", // name
+  "tests/klara-besprechung/notiz-aufgabe-quellbindung.integration.test.ts", // name
+  "tests/klara-besprechung/segment-browser.test.ts", // name
+  "tests/klara-besprechung/segment-pg.integration.test.ts", // name
+  "tests/klara-besprechung/segmentierung.test.ts", // name
+  "tests/klara-besprechung/server.test.ts", // name
+  "tests/klara-besprechung/zeittranskript.test.ts", // name
+  "tests/klara-bildanalyse-ocr/bereichsfrage-mounted.test.tsx", // name
+  "tests/klara-bildanalyse-ocr/bereichsfrage.test.ts", // name
+  "tests/klara-bildanalyse-ocr/finder-ocr-eingang.test.ts", // name
+  "tests/klara-bildanalyse-ocr/ocr-e03-tabelle-berichtigung-mounted.test.tsx", // name
+  "tests/klara-bildanalyse-ocr/ocr-e03-tabelle-mounted.test.tsx", // name
+  "tests/klara-bildanalyse-ocr/ocr-e03-tabellen.test.ts", // name
+  "tests/klara-bildanalyse-ocr/ocr04-abnahme.test.ts", // name
+  "tests/klara-bildanalyse-ocr/widersprueche.test.ts", // name
+  "tests/klara-einfuehrung/profil-pg.integration.test.ts", // name
+  "tests/klara-einfuehrung/profil-und-zeit.test.ts", // name
+  "tests/klara-einfuehrung/profilzone-verspaetet-chromium.test.ts", // name
+  "tests/klara-einzelabbruch/kalender-am-server.test.ts", // name
+  "tests/klara-erinnerungen/dienstneustart-restore.integration.test.ts", // name
+  "tests/klara-erinnerungen/dienstneustart-wiederanlaufsperre.integration.test.ts", // name
+  "tests/klara-erinnerungen/dienstneustart-wochenbericht.integration.test.ts", // name
+  "tests/klara-erinnerungen/entwurf-kontoerkennung.test.ts", // name
+  "tests/klara-erinnerungen/erinnerung-am-server.test.ts", // name
+  "tests/klara-erinnerungen/erinnerung-pg.integration.test.ts", // name
+  "tests/klara-erinnerungen/erinnerungen-am-server.test.tsx", // name
+  "tests/klara-erinnerungen/gespraechsbezug-quellschutz-am-server.test.ts", // name
+  "tests/klara-erinnerungen/negierter-statusbefehl-am-server.test.ts", // name
+  "tests/klara-erinnerungen/routinenbericht-quellschutz-am-server.test.ts", // name
+  "tests/klara-erinnerungen/sekunden-zeitangabe-am-server.test.ts", // name
+  "tests/klara-erinnerungen/startseite.test.ts", // name
+  "tests/klara-erinnerungen/steuerung.test.ts", // name
+  "tests/klara-erinnerungen/zeit.test.ts", // name
+  "tests/klara-fortsetzen/beschaffung-am-server.test.ts", // name
+  "tests/klara-fortsetzen/beschaffung-chromium.test.ts", // name
+  "tests/klara-fortsetzen/beschaffung-pg.integration.test.ts", // name
+  "tests/klara-fortsetzen/beschaffungs-erkennung.test.ts", // name
+  "tests/klara-fortsetzen/beschaffungs-produktklaerung.test.tsx", // name
+  "tests/klara-fortsetzen/d-normport-am-server.test.ts", // name
+  "tests/klara-fortsetzen/d-normport-komposition-am-server.test.ts", // name
+  "tests/klara-fortsetzen/d-normport-pg.integration.test.ts", // name
+  "tests/klara-fortsetzen/erinnerungsanschluss.test.ts", // name
+  "tests/klara-fortsetzen/f15-f08-komposition-am-server.test.ts", // name
+  "tests/klara-fortsetzen/fortsetzen-chromium.test.ts", // name
+  "tests/klara-fortsetzen/geschriebene-notiz-am-server.test.ts", // name
+  "tests/klara-fortsetzen/mehrschritt-am-server.test.ts", // name
+  "tests/klara-fortsetzen/neustart-pg.integration.test.ts", // name
+  "tests/klara-fortsetzen/notizquelle-am-server.test.ts", // name
+  "tests/klara-fortsetzen/notizquelle-chromium.test.ts", // name
+  "tests/klara-fortsetzen/notizquelle-pg.integration.test.ts", // name
+  "tests/klara-fortsetzen/stopp-vor-anlage.test.tsx", // name
+  "tests/klara-fortsetzen/wissensanschluss-am-server.test.ts", // name
+  "tests/klara-fortsetzen/wissensanschluss-chromium.test.ts", // name
+  "tests/klara-fristen/ablage-pg.integration.test.ts", // name
+  "tests/klara-fristen/am-server.test.ts", // name
+  "tests/klara-fristen/bis-datum-gueltig-am-server.test.ts", // name
+  "tests/klara-fristen/erkennung.test.ts", // name
+  "tests/klara-fristen/fachlicher-sollbestand.test.ts", // name
+  "tests/klara-fristen/fortschreibung.test.ts", // name
+  "tests/klara-fristen/importidentitaet-am-server.test.ts", // name
+  "tests/klara-fristen/zeitstatus.test.ts", // name
+  "tests/klara-gedaechtnis/gedaechtnis-chromium.test.ts", // name
+  "tests/klara-gedaechtnis/korrigieren-am-server.test.ts", // name
+  "tests/klara-gedaechtnis/restore-pg.integration.test.ts", // name
+  "tests/klara-kalender/anbindung-am-dienst.test.ts", // name
+  "tests/klara-kalender/kalender-am-server.test.ts", // name
+  "tests/klara-kalender/kalender-pg.integration.test.ts", // name
+  "tests/klara-kalender/kalender-seite-mounted.test.tsx", // name
+  "tests/klara-kalender/m365-vertrag.test.ts", // name
+  "tests/klara-kalender/scheduler-anschluss-am-server.test.ts", // name
+  "tests/klara-kalender/scheduler-sperre-pg.integration.test.ts", // name
+  "tests/klara-normereignisse/ablage-pg.integration.test.ts", // name
+  "tests/klara-normereignisse/ausgabe-wortgrenze.test.ts", // name
+  "tests/klara-normereignisse/dienst-am-bestand.test.ts", // name
+  "tests/klara-normereignisse/ereignisse.test.ts", // name
+  "tests/klara-normereignisse/folgeport-grenzen.test.ts", // name
+  "tests/klara-normereignisse/negation-und-entfall.test.ts", // name
+  "tests/klara-normereignisse/quellenwatch-am-server.test.ts", // name
+  "tests/klara-normereignisse/quellenwatch-pg.integration.test.ts", // name
+  "tests/klara-ocr-mehrseitig/dokument-ergaenzen-scan-mounted.test.tsx", // name
+  "tests/klara-ocr-mehrseitig/dokumentfragen-scan-mounted.test.tsx", // name
+  "tests/klara-ocr-mehrseitig/pdf-scan-seiten.test.ts", // name
+  "tests/klara-ocr-mehrseitig/scan-dateiimport-mounted.test.tsx", // name
+  "tests/klara-ocr-mehrseitig/seitenlauf-konto-mounted.test.tsx", // name
+  "tests/klara-ocr-mehrseitig/text-einfuegen-scan-mounted.test.tsx", // name
+  "tests/klara-office/begleiter-nativ-bau.test.ts", // name
+  "tests/klara-office/native-fenster-logik.test.ts", // name
+  "tests/klara-powerpoint/p4-pptx-serverblockaden.test.ts", // name
+  "tests/klara-powerpoint/pp02-ablage-pg.integration.test.ts", // name
+  "tests/klara-powerpoint/pp02-datenherkunft.test.ts", // name
+  "tests/klara-powerpoint/pp02-herkunft-an-der-zahl.test.tsx", // name,komponente
+  "tests/klara-powerpoint/pp02-hostanschluss.test.ts", // name
+  "tests/klara-powerpoint/pp02-sicherheitsregister.test.ts", // name
+  "tests/klara-powerpoint/pp03-anschluss-flaeche.test.tsx", // name
+  "tests/klara-powerpoint/pp03-anschluss-nacharbeit-flaeche.test.tsx", // name,palette
+  "tests/klara-powerpoint/pp03-anschluss-nacharbeit.test.ts", // name
+  "tests/klara-powerpoint/pp03-anschluss.test.ts", // name
+  "tests/klara-powerpoint/pp03-datenkontrolle-flaeche.test.tsx", // name
+  "tests/klara-powerpoint/pp03-datenkontrolle.test.ts", // name
+  "tests/klara-powerpoint/pp03-setup-einstellung.test.tsx", // name
+  "tests/klara-powerpoint/pp04-bildquellen-flaeche.test.tsx", // name
+  "tests/klara-powerpoint/pp04-bildquellen.test.ts", // name
+  "tests/klara-powerpoint/pp05-browser.test.ts", // name
+  "tests/klara-powerpoint/pp05-folienaufbau-flaeche.test.tsx", // name
+  "tests/klara-powerpoint/pp05-folienaufbau.test.ts", // name
+  "tests/klara-powerpoint/pp05-native-paket.test.ts", // name
+  "tests/klara-powerpoint/pp05-sicherheitsregister.test.ts", // name
+  "tests/klara-powerpoint/pp05-snapshot-download.test.ts", // name
+  "tests/klara-powerpoint/pp06-ergaenzung-browser.test.ts", // name
+  "tests/klara-powerpoint/pp06-ergaenzung.test.ts", // name
+  "tests/klara-powerpoint/pp06-snapshot-download.test.ts", // name
+  "tests/klara-powerpoint/pp07-aenderungsvorschau-flaeche.test.tsx", // name
+  "tests/klara-powerpoint/pp07-aenderungsvorschau.test.ts", // name
+  "tests/klara-powerpoint/pp07-belegfolie-namespace.test.ts", // name
+  "tests/klara-powerpoint/pp07-browser.test.ts", // name
+  "tests/klara-powerpoint/pp07-fassungen-download.test.ts", // name
+  "tests/klara-powerpoint/pp07-konflikte-teilwirkung.test.ts", // name
+  "tests/klara-powerpoint/pp07-pp05-deckanschluss.test.ts", // name
+  "tests/klara-powerpoint/pp07-snapshot-abweisung.test.ts", // name
+  "tests/klara-powerpoint/pp07-uebernahme-flaeche.test.tsx", // name
+  "tests/klara-powerpoint/pp07-uebernahme-ruecknahme.test.ts", // name
+  "tests/klara-powerpoint/pp07-workbook-dezimal-konflikt.test.ts", // name
+  "tests/klara-powerpoint/pp08-deck-anschluss.test.ts", // name
+  "tests/klara-powerpoint/pp08-vortrag-browser.test.tsx", // name
+  "tests/klara-powerpoint/pp08-vortrag-flaeche.test.tsx", // name
+  "tests/klara-powerpoint/pp08-vortrag.test.ts", // name
+  "tests/klara-seitentutorials/browser.integration.test.ts", // name
+  "tests/klara-seitentutorials/e16-anschluss.test.tsx", // name
+  "tests/klara-seitentutorials/rahmen.test.tsx", // name
+  "tests/klara-setup-shortcuts/hostpruefung-doku.test.ts", // name
+  "tests/klara-wissenspflege/ablage-pg.integration.test.ts", // name
+  "tests/klara-wissenspflege/am-server.test.ts", // name
+  "tests/klara-wissenspflege/steuerung.test.ts", // name
+  "tests/klara-wissenspflege/vorlagen.test.ts", // name
+  "tests/klara-wissensuebernahme/freier-space.integration.test.ts", // name
+  "tests/klara-wissensuebernahme/gespraechsnotiz-quellschutz.test.ts", // name
+  "tests/klara-wissensuebernahme/persistenz.integration.test.ts", // name
+  "tests/klara-wissensuebernahme/server.test.ts", // name
+  "tests/klara-wissensuebernahme/uebernahme-chromium.test.ts", // name
+  "tests/office-addin/anmeldedialog-host.test.ts", // taskpane
+  "tests/office-addin/auslieferung.test.ts", // taskpane,version
+  "tests/office-addin/excel-fenster.test.ts", // taskpane
+  "tests/office-addin/manifeste.test.ts", // manifest,version
+  "tests/office-addin/panel.test.ts", // taskpane,version
+  "tests/office-addin/powerpoint-herkunft.test.ts", // taskpane
+  "tests/office-addin/routeninventar.test.ts", // taskpane
+  "tests/office-kontext/begleitung.test.ts", // taskpane
+  "tests/office-kontext/word-adapter.test.ts", // taskpane
+  "tests/releaseweg/word-addin-fassung.test.ts", // taskpane,manifest,version
+  "tests/vormachen-routine/vormachen-am-server.test.ts", // taskpane
+  "tests/vormachen-routine/vormachen-mounted.test.tsx", // taskpane
+  "tests/vormachen-routine/word-panel-anzeige.test.tsx", // taskpane
+  "tests/w45-integritaet/office-operationen.test.ts", // komponente
+  "tests/w46-oberflaeche-daten/aktion-dom-server.test.tsx", // erweiterung
+  "tests/w46-oberflaeche-daten/erweiterung-und-stimmen.test.tsx", // taskpane,version,komponente,erweiterung
+  "tests/w47-betrieb/abbild-vertrag.test.ts", // version
+  "tests/word-minimal/auslieferung.test.ts", // taskpane,manifest,version
+  "tests/word-minimal/bedienung.test.ts", // taskpane
+  // A5 · Ende der nachgeführten Treffer.
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1871,7 +2040,7 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Dateien mit „klara" im Pfad, darunter die sieben oben nachgeführten Prüfungen.
     // BPA-03 Produktanschluss (Chat 62, gemessen): +5 durch die fünf neuen Prüfdateien oben — 161.
     // Im vereinigten Stand gemessen: 161 + sieben OCR-Prüfdateien des Hauptzweigs = 168.
-    expect(nurName.length).toBe(168);
+    expect(nurName.length).toBe(312);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
