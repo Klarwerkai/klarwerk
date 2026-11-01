@@ -662,6 +662,24 @@ async function tippen(art: Flaechenart, text: string): Promise<void> {
   await f(art).seite.focus("#ask-input");
   await f(art).seite.type("#ask-input", text);
 }
+async function unterseiteOeffnen(art: Flaechenart, ziel: "einstellungen" | "hilfe"): Promise<void> {
+  const s = f(art).seite;
+  const l = lesen(art);
+  if (await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")) {
+    const menueOffen = await l.eval<string | null>(
+      "() => document.querySelector('.mini-menu-button')?.getAttribute('aria-expanded') ?? null",
+    );
+    if (menueOffen !== "true") await s.click(".mini-menu-button");
+    const menue = ziel === "hilfe" ? "#mini-menu-help" : "#mini-menu-settings";
+    await warteSichtbar(art, menue);
+    await s.click(menue);
+  } else {
+    await s.click("#kw-zahnrad");
+    if (ziel === "hilfe") await s.click("#einst-hilfe-zeile");
+  }
+  await warteSichtbar(art, ziel === "hilfe" ? "#kw-hilfe" : "#kw-einstellungen");
+}
+
 /**
  * Zahnrad → Zeile „Sprache". Die Zeile KLAPPT UM (aria-expanded) und behaelt ihren Stand, wenn man
  * die Einstellungen verlaesst: geoeffnet wird nur, wenn sie zu ist — sonst schloesse der Klick sie.
@@ -670,7 +688,7 @@ async function tippen(art: Flaechenart, text: string): Promise<void> {
  */
 async function spracheOeffnen(art: Flaechenart): Promise<void> {
   const s = f(art).seite;
-  await s.click("#kw-zahnrad");
+  await unterseiteOeffnen(art, "einstellungen");
   const offen = await lesen(art).eval<string | null>(
     "() => document.getElementById('einst-sprache-zeile').getAttribute('aria-expanded')",
   );
@@ -682,7 +700,11 @@ async function anmeldungNeuPruefen(art: Flaechenart, code: "de" | "en"): Promise
   const s = f(art).seite;
   await spracheOeffnen(art);
   await s.click(`#lang-${code}`);
-  await s.click("#kw-zurueck");
+  if (await lesen(art).eval<boolean>("() => document.body.classList.contains('kw-minimal')")) {
+    await s.click(".mini-back");
+  } else {
+    await s.click("#kw-zurueck");
+  }
 }
 function antwortMit(over: Record<string, unknown>): RouteHandler {
   const b = f("browser");
@@ -766,8 +788,7 @@ async function weg(art: Flaechenart, w: Weg): Promise<void> {
     await spracheOeffnen(art);
     return;
   }
-  await s.click("#kw-zahnrad");
-  if (w === "hilfe") await s.click("#einst-hilfe-zeile");
+  await unterseiteOeffnen(art, w === "hilfe" ? "hilfe" : "einstellungen");
 }
 
 // ---- Die Lagen: stellen (von der Ruhe aus, bis das Element da sein MUSS) und abraeumen ----------
@@ -839,7 +860,7 @@ const LAGEN: Record<LageName, Lage> = {
       // Der Abgleich des Panels selbst (HEAD auf die eigene Adresse, JOB 1077) — mit dem Kopf des
       // Servers, der jetzt eine andere Fassung nennt.
       await s.evaluate(fn("() => kwFassungAbgleichen()"));
-      await s.click("#kw-zahnrad");
+      await unterseiteOeffnen("browser", "einstellungen");
     },
     async abraeumen() {
       const s = f("browser").seite;
@@ -853,7 +874,7 @@ const LAGEN: Record<LageName, Lage> = {
     flaeche: "word",
     async stellen() {
       await zurRuhe("word");
-      await f("word").seite.click("#kw-zahnrad");
+      await unterseiteOeffnen("word", "einstellungen");
     },
     async abraeumen() {
       await zurRuhe("word");
@@ -863,7 +884,7 @@ const LAGEN: Record<LageName, Lage> = {
     flaeche: "word",
     async stellen() {
       await zurRuhe("word");
-      await f("word").seite.click("#kw-zahnrad");
+      await unterseiteOeffnen("word", "einstellungen");
     },
     async abraeumen() {
       await zurRuhe("word");
@@ -873,7 +894,7 @@ const LAGEN: Record<LageName, Lage> = {
     flaeche: "word",
     async stellen() {
       await zurRuhe("word");
-      await f("word").seite.click("#kw-zahnrad");
+      await unterseiteOeffnen("word", "einstellungen");
       await f("word").seite.click("#ka4-frage-nein");
     },
     async abraeumen() {
@@ -885,7 +906,7 @@ const LAGEN: Record<LageName, Lage> = {
     async stellen() {
       await zurRuhe("word");
       const s = f("word").seite;
-      await s.click("#kw-zahnrad");
+      await unterseiteOeffnen("word", "einstellungen");
       // Der Schalter IST der Zustimmen-Knopf: POST …/consent, der Server antwortet „granted".
       sitzung.zugestimmt = true;
       await s.click("#klara-consent-grant");
@@ -1306,6 +1327,58 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
     expect(await l.sichtbar("#antwortkarte #ask-answer-edit")).toBe(true);
     expect(await l.sichtbar("#ask-answer-block")).toBe(true);
     expect(f("browser").seitenfehler).toEqual([]);
+  }, 90_000);
+
+  it("G02 · sichtbare Einstellungen, Hilfe und Sprache auf Browser und Word", async () => {
+    expect(fehler).toBeNull();
+    for (const art of ["browser", "word"] as const) {
+      const l = lesen(art);
+      await zurRuhe(art);
+      expect(await l.eval<boolean>("() => document.body.classList.contains('kw-minimal')")).toBe(
+        true,
+      );
+      expect(await l.sichtbar("#kw-zahnrad")).toBe(false);
+      for (const ziel of ["einstellungen", "hilfe"] as const) {
+        expect(await l.sichtbar(".mini-menu-button")).toBe(true);
+        await unterseiteOeffnen(art, ziel);
+        const altseite = ziel === "hilfe" ? "#kw-hilfe" : "#kw-einstellungen";
+        expect(await l.sichtbar(altseite)).toBe(true);
+        expect(
+          await l.eval<boolean>(
+            "(sel) => !document.querySelector(sel).classList.contains('hidden')",
+            altseite,
+          ),
+        ).toBe(true);
+        expect(await l.sichtbar(".mini-back")).toBe(true);
+        expect(
+          await l.eval<string>(
+            "() => document.querySelector('.mini-menu-button').getAttribute('aria-expanded')",
+          ),
+        ).toBe("false");
+        await zurRuhe(art);
+        expect(await l.sichtbar(".mini-home")).toBe(true);
+        expect(await l.sichtbar("#ask-input")).toBe(true);
+      }
+      await spracheOeffnen(art);
+      expect(await l.sichtbar("#lang-de")).toBe(true);
+      expect(
+        await l.eval<string>(
+          "() => document.getElementById('einst-sprache-zeile').getAttribute('aria-expanded')",
+        ),
+      ).toBe("true");
+      await zurRuhe(art);
+      await spracheOeffnen(art);
+      expect(await l.sichtbar("#lang-de")).toBe(true);
+      expect(
+        await l.eval<string>(
+          "() => document.getElementById('einst-sprache-zeile').getAttribute('aria-expanded')",
+        ),
+      ).toBe("true");
+      await anmeldungNeuPruefen(art, "de");
+      expect(await l.sichtbar(".mini-home")).toBe(true);
+      expect(await l.sichtbar("#ask-input")).toBe(true);
+      expect(f(art).seitenfehler).toEqual([]);
+    }
   }, 90_000);
 
   for (const z of INVENTAR) {
