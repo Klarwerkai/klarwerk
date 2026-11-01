@@ -18,6 +18,7 @@ import {
   MOCKUP_EINSTELLUNGEN,
   NUTZER,
   aufloesen,
+  fn,
   kanon,
   kanonLaenge,
   kanonRand,
@@ -84,7 +85,18 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
   beforeAll(async () => {
     try {
       flaeche = await starteFlaeche({ mitWissen: false });
-      await flaeche.seite.click("#kw-zahnrad");
+      const sichtbar = fn(`(sel) => {
+        const el = document.querySelector(sel);
+        if (!el || el.hidden) return false;
+        const r = el.getBoundingClientRect();
+        const stil = getComputedStyle(el);
+        return stil.display !== 'none' && stil.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+      }`);
+      await flaeche.seite.waitForFunction(sichtbar, ".mini-menu-button", { timeout: 20_000 });
+      await flaeche.seite.click(".mini-menu-button");
+      await flaeche.seite.waitForFunction(sichtbar, "#mini-menu-settings", { timeout: 20_000 });
+      await flaeche.seite.click("#mini-menu-settings");
+      await flaeche.seite.waitForFunction(sichtbar, "#kw-einstellungen", { timeout: 20_000 });
       sel = (await aufloesen(flaeche.seite, SELEKTOREN)) as Sel;
       console.info(
         `JOB 3056 K1 Einstellungen · Chromium ${flaeche.version} · Selektoren ${JSON.stringify(sel)}`,
@@ -92,7 +104,7 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 3).join(" | ");
     }
-  }, 120_000);
+  }, 180_000);
 
   afterAll(async () => {
     await flaeche?.schliessen();
