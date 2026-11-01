@@ -79,10 +79,10 @@ const INVENTAR: readonly Zeile[] = [
   // ---- Kopf --------------------------------------------------------------------------------------
   {
     heute: ".brand „Klara KLARWERK“",
-    neu: "#kw-titel",
+    neu: ".mini-name",
     weg: "ruhe",
     sichtbar: true,
-    funktion: "Titel „Klara“",
+    funktion: "Persönlicher Assistenzname, sonst „Deine Assistenz“",
   },
   {
     heute: "#tab-ask / #tab-capture (Reiterleiste)",
@@ -1439,6 +1439,54 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
           "() => { const el = document.getElementById('section-capture'); const raum = document.getElementById('mini-page-tool-capture'); return el.classList.contains('hidden') && el.hidden && raum.hidden; }",
         ),
       ).toBe(true);
+      expect(f(art).seitenfehler).toEqual([]);
+    }
+  }, 90_000);
+
+  it("G02 · persönlicher Home-Titel aus frischem eigenem Profil auf Browser und Word", async () => {
+    expect(fehler).toBeNull();
+    for (const art of ["browser", "word"] as const) {
+      const s = f(art).seite;
+      const l = lesen(art);
+      await zurRuhe(art);
+      expect(await l.sichtbar(".mini-home")).toBe(true);
+      expect(await l.eval<string>("() => window.location.origin")).toBe(ORIGIN);
+      // Erst den vorhandenen asynchronen Profilabruf dieser frischen Werkbank abwarten.
+      await s.waitForFunction(
+        fn(
+          "(origin) => window.location.origin === origin && performance.getEntriesByName(origin + '/api/me/assistenz', 'resource').some((entry) => entry.responseEnd > 0)",
+        ),
+        ORIGIN,
+        { timeout: 20_000 },
+      );
+      const profilAntwort = await l.eval<{
+        url: string;
+        status: number;
+        profil: { name?: string | null };
+      }>(
+        "async (origin) => { if (window.location.origin !== origin) throw new Error('Profilabruf ausserhalb der eigenen Werkbank'); const response = await fetch('/api/me/assistenz', { credentials: 'include', cache: 'no-store' }); const daten = await response.json(); return { url: response.url, status: response.status, profil: daten.profil }; }",
+        ORIGIN,
+      );
+      expect(profilAntwort.url).toBe(ORIGIN + "/api/me/assistenz");
+      expect(profilAntwort.status).toBe(200);
+      expect(profilAntwort.profil).toBeDefined();
+      const profilName = profilAntwort.profil.name;
+      expect(
+        profilName === undefined || profilName === null || typeof profilName === "string",
+      ).toBe(true);
+      const erwartet = profilName || "Deine Assistenz";
+      await s.waitForFunction(
+        fn(
+          "(name) => { const home = document.querySelector('.mini-home'); const titel = document.querySelector('.mini-name'); const sichtbar = (el) => { if (!el || el.hidden) return false; const r = el.getBoundingClientRect(); const stil = getComputedStyle(el); return stil.display !== 'none' && stil.visibility !== 'hidden' && r.width > 0 && r.height > 0; }; return sichtbar(home) && sichtbar(titel) && titel.textContent === name; }",
+        ),
+        erwartet,
+        { timeout: 20_000 },
+      );
+      expect(await l.sichtbar(".mini-name")).toBe(true);
+      expect(
+        await l.eval<string>("() => document.querySelector('.mini-name').textContent"),
+        art + ": sichtbarer Home-Titel aus dem frischen eigenen Profil",
+      ).toBe(erwartet);
       expect(f(art).seitenfehler).toEqual([]);
     }
   }, 90_000);
