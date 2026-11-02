@@ -248,7 +248,7 @@ async function wegAufbauen(
   await erteileKiFreigabe(reasoner);
   const koService = new KoService({ repo: new InMemoryKoRepo() });
   await koService.activateSearchProjectionV2();
-  await koService.create({
+  const ko = await koService.create({
     title: "Zylinderkopfdichtung XQ42 wechseln",
     statement: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet und gereinigt.",
     type: "best_practice",
@@ -256,6 +256,7 @@ async function wegAufbauen(
     author: "anna",
     confidentiality: "intern" as const,
   });
+  await koService.setValidationState(ko.id, { trust: 90, status: "validiert" });
   const ask = new AskService({
     reasoner,
     koService,
