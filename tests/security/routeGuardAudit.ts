@@ -1966,4 +1966,31 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/me/klara/aufgaben/:id": { protection: "auth" },
   // :195–214 — id/Konto löschen ohne erneute Quelllesung, Nachweis erst nach dem Löschen.
   "DELETE /api/me/klara/aufgaben/:id": { protection: "auth" },
+
+  // A5-G15: vormachen-routes.ts — tatsächliche Wache vor Fachzugriff, Konto nur aus user.id.
+  // Produktiv build-app.ts:6522–6588; Sitzung flüchtig, Routinen über eigenen Memory-/PG-Bestand.
+  // :149–181 — eigener Bestand und Anzeige pro Konto/Host/Tokenhash; Fristenbereinigung möglich, Rohwerte nur gezählt.
+  "GET /api/me/vormachen": { protection: "auth" },
+  // :183–227 — Lernauftrag/Host/Vorgänge klären und eigene Sitzung begrenzt anlegen; Audit danach.
+  "POST /api/me/vormachen": { protection: "auth" },
+  // :230–247 — eigene Löschmarkierung vor Sitzungs-/Routinenlöschung; spätere Fehler können nach Teilwirkung liegen.
+  "DELETE /api/me/vormachen": { protection: "auth" },
+  // :249–265 — eigene offene Sitzung, lernt/Host/gewählter Clientvorgang und sichtbarer Tokenhash-Client.
+  "POST /api/me/vormachen/:id/beobachtungen": { protection: "auth" },
+  // :267–287 — eigene offene Sitzung, nur lernt/pausiert; Zustand schreiben, danach Audit.
+  "PUT /api/me/vormachen/:id/zustand": { protection: "auth" },
+  // :289–303 — eigene offene Sitzung und Vorschau mit Standhash, ohne Rohwert-Array; Fristen können wirken.
+  "GET /api/me/vormachen/:id/vorschau": { protection: "auth" },
+  // :305–320 — eigene Sitzung, vorhandene Beobachtung/Ableitung korrigieren; neue Vorschau zur Prüfung.
+  "PUT /api/me/vormachen/:id/korrektur": { protection: "auth" },
+  // :322–343 — eigene Vorschau exakt bestätigt, neue Routine per CAS, dann Sitzung entfernen und Audit.
+  "POST /api/me/vormachen/:id/bestaetigung": { protection: "auth" },
+  // :345–365 — eigene Abbruchregel: verwerfen oder abbrechen und Rohdaten entfernen; Audit danach.
+  "POST /api/me/vormachen/:id/abbruch": { protection: "auth" },
+  // :367–383 — Sitzung über id und Konto entfernen; fremd/unbekannt404, Audit nach Löschung.
+  "DELETE /api/me/vormachen/:id": { protection: "auth" },
+  // :385–417 — eigene Routine/Schritt/Fassung, kurzlebige einmalige Bestätigung; Freigabe führt nichts aus.
+  "POST /api/me/vormachen/routinen/:id/schritte/:schrittId/freigabe": { protection: "auth" },
+  // :419–457 — ko.create, eigene Routine, vertraulicher Capture-Entwurf mit user.id; Vermerk/Audit danach.
+  "POST /api/me/vormachen/routinen/:id/firmenuebergabe": { protection: "ko.create" },
 };
