@@ -98,7 +98,37 @@ function abrufziele(src: string): string[] {
 /** M1 · Die Ask-Nutzlast trägt den server-garantierten Modus. Ohne ihn ginge markierter
  *  Dokumenttext potenziell an ein Modell — die tragendste Zusage dieser Datei. */
 function m1RetrievalOnly(src: string): boolean {
-  return /body:\s*JSON\.stringify\(\{[^}]*mode:\s*"retrieval-only"/.test(ausfuehrbar(src));
+  // Der vorhandene Ask-Schnitt bindet die echte Sendestelle; Z3 bleibt eine direkte Miniatur.
+  const start = src.indexOf("// KW-KLARA-ASK-FETCH-START");
+  const end = src.indexOf("// KW-KLARA-ASK-FETCH-END", start);
+  if (start >= 0 && end <= start) {
+    return false;
+  }
+  const code = ausfuehrbar(start < 0 ? src : src.slice(start, end))
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .trim();
+  const body =
+    start < 0
+      ? code.match(/^body:\s*JSON\.stringify\(\s*([\s\S]*?)\s*\),?$/)?.[1]
+      : code.match(/\bbody:\s*JSON\.stringify\(\s*([\s\S]*?)\s*\),\s*signal:/)?.[1];
+  if (
+    !body ||
+    (start >= 0 &&
+      (!code.includes("function performAsk(") || (code.match(/\bbody\s*:/g) ?? []).length !== 1))
+  ) {
+    return false;
+  }
+  const direkt = body.match(/^\{([^{}]*)\}$/);
+  const bedingt = body.match(/^sitzung\s*\?\s*\{([^{}]*)\}\s*:\s*\{([^{}]*)\}$/);
+  const zweige = direkt ? [direkt[1] ?? ""] : bedingt ? [bedingt[1] ?? "", bedingt[2] ?? ""] : [];
+  return (
+    zweige.length > 0 &&
+    zweige.every(
+      (zweig) =>
+        (zweig.match(/\bmode\s*:/g) ?? []).length === 1 &&
+        /(?:^|,)\s*mode\s*:\s*"retrieval-only"\s*(?:,|$)/.test(zweig),
+    )
+  );
 }
 
 /** M2 · Der Ausführungsriegel steht VOR dem Absenden, nicht nur am Knopf. Ein Gate, das nur ein
@@ -519,6 +549,87 @@ describe("JOB 537 D4 · Kalibrierung: jedes Merkmal wird an seiner eigenen Verf�
         src.replace('locale: locale, mode: "retrieval-only"', 'locale: locale, mode: "cloud"'),
       ),
     ).toBe(false);
+  });
+
+  // M1: unabhängige Gegenproben an den beiden echten Zweigen und der direkten Miniatur.
+  it("K1a: der Sitzungszweig weist Cloud und fehlenden Modus unabhängig zurück", () => {
+    const stelle = 'sitzung ? { question: question, locale: locale, mode: "retrieval-only",';
+    expect(src.split(stelle)).toHaveLength(2);
+    expect(m1RetrievalOnly(src)).toBe(true);
+    for (const ersatz of [
+      'sitzung ? { question: question, locale: locale, mode: "cloud",',
+      "sitzung ? { question: question, locale: locale,",
+    ]) {
+      const veraendert = src.replace(stelle, ersatz);
+      expect(veraendert).not.toBe(src);
+      expect(veraendert).toContain(ersatz);
+      expect(veraendert).toContain(
+        '} : { question: question, locale: locale, mode: "retrieval-only" }',
+      );
+      expect(m1RetrievalOnly(veraendert)).toBe(false);
+    }
+  });
+
+  it("K1b: der allgemeine Zweig weist Cloud und fehlenden Modus unabhängig zurück", () => {
+    const stelle = '} : { question: question, locale: locale, mode: "retrieval-only" }';
+    expect(src.split(stelle)).toHaveLength(2);
+    expect(m1RetrievalOnly(src)).toBe(true);
+    for (const ersatz of [
+      '} : { question: question, locale: locale, mode: "cloud" }',
+      "} : { question: question, locale: locale }",
+    ]) {
+      const veraendert = src.replace(stelle, ersatz);
+      expect(veraendert).not.toBe(src);
+      expect(veraendert).toContain(ersatz);
+      expect(veraendert).toContain(
+        'sitzung ? { question: question, locale: locale, mode: "retrieval-only",',
+      );
+      expect(m1RetrievalOnly(veraendert)).toBe(false);
+    }
+  });
+
+  it("K1c: der direkte Körper weist fehlenden, fremden und unbekannten Nutzlastaufbau zurück", () => {
+    const objekt = '{ question: q, locale: locale, mode: "retrieval-only" }';
+    const probe = `body: JSON.stringify(${objekt}),`;
+    expect(m1RetrievalOnly(probe)).toBe(true);
+    for (const ersatz of [
+      '{ question: q, locale: locale, mode: "cloud" }',
+      "{ question: q, locale: locale }",
+      "nutzlast",
+      'anders ? { mode: "retrieval-only" } : { mode: "retrieval-only" }',
+    ]) {
+      const veraendert = probe.replace(objekt, ersatz);
+      expect(veraendert).not.toBe(probe);
+      expect(veraendert).toContain(ersatz);
+      expect(m1RetrievalOnly(veraendert)).toBe(false);
+    }
+  });
+
+  it("K1d: sachfremde Modusköder retten keine defekte Ask-Nutzlast", () => {
+    const stelle = 'sitzung ? { question: question, locale: locale, mode: "retrieval-only",';
+    const cloud = 'sitzung ? { question: question, locale: locale, mode: "cloud",';
+    expect(src.split(stelle)).toHaveLength(2);
+    expect(m1RetrievalOnly(src)).toBe(true);
+    const defekt = src.replace(stelle, cloud);
+    expect(defekt).not.toBe(src);
+    expect(defekt).toContain(cloud);
+    expect(m1RetrievalOnly(defekt)).toBe(false);
+    for (const koeder of [
+      '\n// body: JSON.stringify({ mode: "retrieval-only" }),',
+      '\nfunction sachfremd() { return { body: JSON.stringify({ mode: "retrieval-only" }) }; }',
+      '\nconst andereNutzlast = { mode: "retrieval-only" };',
+    ]) {
+      const veraendert = `${defekt}${koeder}`;
+      expect(veraendert).not.toBe(defekt);
+      expect(veraendert).toContain(koeder);
+      expect(m1RetrievalOnly(veraendert)).toBe(false);
+    }
+    const kommentiert = defekt.replace(
+      cloud,
+      'sitzung ? { question: question, locale: locale, /* mode: "retrieval-only", */ mode: "cloud",',
+    );
+    expect(kommentiert).not.toBe(defekt);
+    expect(m1RetrievalOnly(kommentiert)).toBe(false);
   });
 
   it("K2: ohne den Riegel schlägt M2 an", () => {
