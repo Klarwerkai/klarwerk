@@ -1857,12 +1857,36 @@ function sachtoken(question: string, nominal: Set<string>): string[] {
   return token;
 }
 
-export function undVerknuepfteFragebegriffe(question: string): string[] {
+// B3: Nur diese neun echten KA6-Katalogpräfixe am Anfang sind Auftrag, kein Sachinhalt.
+const KA6_AUFTRAGSPRAEFIXE = [
+  "Formuliere einen Textvorschlag zu:",
+  "Vervollständige diesen Text:",
+  "Formuliere diesen Text klarer:",
+  "Draft a passage about:",
+  "Complete this text:",
+  "Phrase this text more clearly:",
+  "Stel een tekstvoorstel op over:",
+  "Vul deze tekst aan:",
+  "Formuleer deze tekst duidelijker:",
+] as const;
+
+function gebundeneSachbegriffe(question: string): string[] {
   const nominal = new Set<string>();
   const gebunden = sachtoken(question, nominal).filter(
     (token) => !fragegeruest().has(token) && (istSubstanztragend(token) || nominal.has(token)),
   );
   return [...new Set(gebunden)];
+}
+
+export function undVerknuepfteFragebegriffe(question: string): string[] {
+  const praefix = KA6_AUFTRAGSPRAEFIXE.find((text) => question.startsWith(text));
+  if (praefix) {
+    // Genau einmal abtrennen; der ganze Rest behält die bisherige Sach- und Ankerbindung.
+    const rest = gebundeneSachbegriffe(question.slice(praefix.length));
+    if (rest.length > 0) return rest;
+  }
+  // Ohne Sachrest keine neue leere Bindung: die ursprüngliche Eingabe bleibt gebunden.
+  return gebundeneSachbegriffe(question);
 }
 
 /**
