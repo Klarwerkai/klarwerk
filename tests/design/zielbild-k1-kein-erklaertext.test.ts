@@ -13,7 +13,7 @@
 // Pruefhinweis, Hilfe-Karte: weit ueber 60 Zeichen). Gegenprobe: ein Hinweissatz in der Ruhe
 // eingefuegt → rot (Rueckgabe).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ERKLAERTEXT_FN, type Flaeche, frageStellen, leser, starteFlaeche } from "./k1-messung";
+import { ERKLAERTEXT_FN, type Flaeche, fn, frageStellen, leser, starteFlaeche } from "./k1-messung";
 
 /** Was KEIN Erklaertext ist: Knopfbeschriftungen, das Frage-Feld, die Frage, die Antwort samt
  *  ihren Fussnotenziffern (Runde 4: <sup> am Textende, Main.dc.html Z.28), die Quellen-Chips, die
@@ -98,7 +98,39 @@ describe("JOB 3056 · K1 · kein Erklaertext — innerText der gebauten Flaeche 
       () => fehler,
     );
     // Zurueck in die Ruhe, dann einen Hinweissatz einhaengen (nur in dieser Seite, nicht im Produkt).
-    await l.seite().click("#kw-zurueck");
+    const s = l.seite();
+    const sichtbar = fn(`(selektor) => {
+      const el = document.querySelector(selektor);
+      if (!el || el.hidden) return false;
+      const r = el.getBoundingClientRect();
+      const stil = getComputedStyle(el);
+      return stil.display !== 'none' && stil.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+    }`);
+    await s.waitForFunction(sichtbar, ".mini-menu-button", { timeout: 20_000 });
+    await s.click(".mini-menu-button");
+    await s.waitForFunction(sichtbar, "#mini-menu-new", { timeout: 20_000 });
+    await s.click("#mini-menu-new");
+    await s.waitForFunction(sichtbar, "#mini-page-new [data-mini-text=start]", { timeout: 20_000 });
+    await s.click("#mini-page-new [data-mini-text=start]");
+    await s.waitForFunction(
+      fn(`() => {
+        const neu = document.getElementById('mini-page-new');
+        const home = document.querySelector('.mini-home');
+        const input = document.getElementById('ask-input');
+        const antwort = document.getElementById('ask-answer-block');
+        const ruhe = document.getElementById('ask-ruhe');
+        const sichtbar = (el) => {
+          if (!el || el.hidden) return false;
+          const r = el.getBoundingClientRect();
+          const stil = getComputedStyle(el);
+          return stil.display !== 'none' && stil.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+        };
+        return !!neu && neu.hidden && !sichtbar(neu) && sichtbar(home) && sichtbar(input) &&
+          !!antwort && antwort.classList.contains('hidden') && !sichtbar(antwort) && sichtbar(ruhe);
+      }`),
+      undefined,
+      { timeout: 30_000 },
+    );
     const mit = await l.eval<Messung>(
       `(arg) => { const p = document.createElement('p'); p.id = 'sonde-hinweis'; p.textContent = 'Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — bitte fachlich prüfen.'; document.getElementById('ask-ruhe').appendChild(p); const r = (${ERKLAERTEXT_FN})(arg); p.remove(); return r; }`,
       AUSNAHMEN,
