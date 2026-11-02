@@ -736,11 +736,16 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     if (source === "draft" && typeof bindung.draftId === "string" && bindung.draftId.length > 0) {
       const entwurf = await capture.getDraft(bindung.draftId);
       if (entwurf !== undefined) {
+        const entwurfsStufe = entwurf.payload.confidentiality ?? null;
         backstop = {
           found: true,
           level: backstop.found
-            ? hoehereStufe(backstop.level, entwurf.payload.confidentiality ?? null)
-            : (entwurf.payload.confidentiality ?? null),
+            ? hoehereStufe(
+                // Ein internes KO darf einen gefundenen ungeklärten Entwurf nicht verdecken.
+                backstop.level === "intern" ? entwurfsStufe : backstop.level,
+                backstop.level === "intern" ? backstop.level : entwurfsStufe,
+              )
+            : entwurfsStufe,
         };
       }
     }
