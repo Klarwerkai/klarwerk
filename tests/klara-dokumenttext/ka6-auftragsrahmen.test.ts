@@ -12,12 +12,12 @@ const katalog = fenster.slice(
   fenster.indexOf("\n    };", fenster.indexOf("var KA6_TEXTE = {")),
 );
 const auftraege = ["de", "en", "nl"].flatMap((sprache) => {
-  const block = katalog.match(new RegExp("\\b" + sprache + ": \\{([\\s\\S]*?)\\n\\s*\\}"))?.[1];
-  if (!block) throw new Error("KA6-Produktkatalog fehlt: " + sprache);
+  const block = katalog.match(new RegExp(`\\b${sprache}: \\{([\\s\\S]*?)\\n\\s*\\}`))?.[1];
+  if (!block) throw new Error(`KA6-Produktkatalog fehlt: ${sprache}`);
   return ["ka6AuftragErstellen", "ka6AuftragVervollstaendigen", "ka6AuftragUmformulieren"].map(
     (schluessel) => {
-      const literal = block.match(new RegExp(schluessel + ':\\s*("(?:\\\\.|[^"\\\\])*")'))?.[1];
-      if (!literal) throw new Error("KA6-Produktauftrag fehlt: " + schluessel);
+      const literal = block.match(new RegExp(`${schluessel}:\\s*("(?:\\\\.|[^"\\\\])*")`))?.[1];
+      if (!literal) throw new Error(`KA6-Produktauftrag fehlt: ${schluessel}`);
       return JSON.parse(literal) as string;
     },
   );
@@ -25,7 +25,7 @@ const auftraege = ["de", "en", "nl"].flatMap((sprache) => {
 const FRAGE = "Welche Temperatur gilt für das Ventil F3?";
 const VOLL = "Die Temperatur am Ventil F3 liegt bei 80 Grad.";
 const ANKER = "Welcher Druck gilt für die Pumpe P8?";
-const MIT_ANKER = VOLL + " Der Druck an der Pumpe P8 liegt bei 5 bar.";
+const MIT_ANKER = `${VOLL} Der Druck an der Pumpe P8 liegt bei 5 bar.`;
 
 describe("B3 · feste KA6-Auftragspräfixe", () => {
   it("B3a · alle neun echten Katalogaufträge binden genau den vollständigen Sachrest", () => {
@@ -33,16 +33,16 @@ describe("B3 · feste KA6-Auftragspräfixe", () => {
     expect(new Set(auftraege).size).toBe(9);
     for (const auftrag of auftraege) {
       expect(auftrag.endsWith(":"), auftrag).toBe(true);
-      expect(undVerknuepfteFragebegriffe(auftrag + " " + FRAGE), auftrag).toEqual(
+      expect(undVerknuepfteFragebegriffe(`${auftrag} ${FRAGE}`), auftrag).toEqual(
         undVerknuepfteFragebegriffe(FRAGE),
       );
-      expect(decktAlleFragebegriffe(auftrag + " " + FRAGE, VOLL), auftrag).toBe(true);
+      expect(decktAlleFragebegriffe(`${auftrag} ${FRAGE}`, VOLL), auftrag).toBe(true);
     }
   });
 
   it("B3b · Sachbegriff, Objektkennung und eigenständiger Anker bleiben hinter jedem Auftrag gebunden", () => {
     for (const auftrag of auftraege) {
-      const frage = auftrag + " " + FRAGE;
+      const frage = `${auftrag} ${FRAGE}`;
       expect(decktAlleFragebegriffe(frage, VOLL), auftrag).toBe(true);
       expect(decktAlleFragebegriffe(frage, "Das Ventil F3 wird jährlich gewartet."), auftrag).toBe(
         false,
@@ -57,10 +57,10 @@ describe("B3 · feste KA6-Auftragspräfixe", () => {
       ).toBe(false);
       expect(
         decktAlleFragebegriffe(frage, MIT_ANKER) &&
-          decktAlleFragebegriffe(auftrag + " " + ANKER, MIT_ANKER),
+          decktAlleFragebegriffe(`${auftrag} ${ANKER}`, MIT_ANKER),
         auftrag,
       ).toBe(true);
-      expect(decktAlleFragebegriffe(auftrag + " " + ANKER, VOLL + " Druck Pumpe P9"), auftrag).toBe(
+      expect(decktAlleFragebegriffe(`${auftrag} ${ANKER}`, `${VOLL} Druck Pumpe P9`), auftrag).toBe(
         false,
       );
     }
@@ -69,11 +69,11 @@ describe("B3 · feste KA6-Auftragspräfixe", () => {
   it("B3c · gewöhnliche, zitierte, mittige und nur ähnliche Auftragswörter bleiben Sachinhalt", () => {
     for (const auftrag of auftraege) {
       for (const frage of [
-        '"' + auftrag + '" ' + FRAGE,
-        FRAGE.slice(0, -1) + " " + auftrag,
-        auftrag.slice(0, -1) + " " + FRAGE,
-        auftrag.slice(0, -1) + " jetzt: " + FRAGE,
-        auftrag.toLowerCase() + " " + FRAGE,
+        `"${auftrag}" ${FRAGE}`,
+        `${FRAGE.slice(0, -1)} ${auftrag}`,
+        `${auftrag.slice(0, -1)} ${FRAGE}`,
+        `${auftrag.slice(0, -1)} jetzt: ${FRAGE}`,
+        `${auftrag.toLowerCase()} ${FRAGE}`,
       ]) {
         expect(decktAlleFragebegriffe(frage, VOLL), frage).toBe(false);
         expect(undVerknuepfteFragebegriffe(frage), frage).not.toEqual(
@@ -92,7 +92,7 @@ describe("B3 · feste KA6-Auftragspräfixe", () => {
         expect(decktAlleFragebegriffe(frage, VOLL), frage).toBe(false);
       }
       for (const zweiter of auftraege) {
-        const frage = auftrag + " " + zweiter + " " + FRAGE;
+        const frage = `${auftrag} ${zweiter} ${FRAGE}`;
         expect(decktAlleFragebegriffe(frage, VOLL), frage).toBe(false);
       }
     }
