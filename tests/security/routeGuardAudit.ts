@@ -342,6 +342,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/users/:id/ausscheiden": { protection: "users.manage" },
 
   // --- Composition-Root inline (services/app/src/build-app.ts) ---
+  "GET /ready": {
+    protection: "public",
+    reason:
+      "Öffentliche Bereitschaftsprobe; antwortet ausschließlich mit status ok/unavailable " +
+      "(200/503), ohne Nutzer-/Wissensdaten oder Verbindungsdetails.",
+  },
   "GET /health": { protection: "public", reason: "Health-Probe; liefert nur { status: ok }." },
   "GET /api/reasoner/status": {
     protection: "public",
