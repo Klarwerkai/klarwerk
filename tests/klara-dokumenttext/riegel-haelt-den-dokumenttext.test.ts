@@ -255,18 +255,8 @@ async function wegAufbauen(
     category: "Betrieb",
     author: "anna",
     confidentiality: "intern" as const,
-    // Suchfelder decken Markierung und echte DE-Anweisung; sie sind keine Modellquellenfelder.
-    tags: [
-      "Entwurf",
-      "Drehmoment",
-      "38",
-      "Nm",
-      "anziehen",
-      "laut",
-      "nur",
-      "mit",
-      ...(KA6_UMFORMULIEREN.match(/\p{L}+/gu) ?? []),
-    ],
+    // Suchfelder decken die Markierung; sie sind keine Modellquellenfelder.
+    tags: ["Entwurf", "Drehmoment", "38", "Nm", "anziehen", "laut", "nur", "mit"],
   });
   await koService.setValidationState(ko.id, { trust: 90, status: "validiert" });
   const ask = new AskService({
