@@ -1909,17 +1909,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // :134–145 — eigener Routinenbestand; gespeicherte Altquellen werden hier nicht erneut geprüft.
   "GET /api/me/funktionen": { protection: "auth" },
   // :149–164 — eigener Gesprächsfall, aktuelle sichtbare Quellen und Entwurf ohne Speichern.
-  "POST /api/me/funktionen/entwurf": { protection: "auth" },
+  "POST /api/me/funktionen/entwurf": {
+    protection: "auth",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // :166–197 — Vorschau/Gespräch/Fassung und heutige Quellen, eigener neuer Datensatz per CAS.
-  "POST /api/me/funktionen": { protection: "auth" },
+  "POST /api/me/funktionen": { protection: "auth", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // :199–210 — id/Konto im Repo, fremd und unbekannt gleich; eigene historische Fassungen enthalten.
   "GET /api/me/funktionen/:id": { protection: "auth" },
   // :212–234 — eigene rev, neue Quellen jetzt lesbar, begrenzter Standwechsel und Datensatz-CAS.
-  "PUT /api/me/funktionen/:id": { protection: "auth" },
+  "PUT /api/me/funktionen/:id": { protection: "auth", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // :236–264 — eigene rev/zulässiger Stand, validierte Serie und Zeitzone, danach Audit/Vorschau.
   "PUT /api/me/funktionen/:id/zeitauftrag": { protection: "auth" },
   // :266–286 — eigene Funktion und exakte rev; nur deren Zeitauftrag per CAS entfernen.
   "DELETE /api/me/funktionen/:id/zeitauftrag": { protection: "auth" },
   // :289–323 — eigene aktive Funktion, neue Parameter, aktuelle Quellen/Rolle; Lauf ohne Außenwirkung.
-  "POST /api/me/funktionen/:id/laeufe": { protection: "auth" },
+  "POST /api/me/funktionen/:id/laeufe": {
+    protection: "auth",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 };
