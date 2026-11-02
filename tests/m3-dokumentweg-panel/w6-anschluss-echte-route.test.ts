@@ -282,6 +282,8 @@ describe("JOB 3243 · Lieferung 6 · der Panelweg an der echten /api/check-text-
         .konfliktpruefung,
     ).toMatchObject({ grund: null, gelaufen: true });
 
+    expect(mit.gesehen.join("\n")).toContain(TEXT);
+
     const ohne = await aufbauen(true);
     expect(
       (await panelweg(ohne, { want: "deep", confidentiality: "vertraulich" }, ["nichtEingestuft"]))

@@ -333,7 +333,8 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
         url: "/api/reasoner/describe",
         headers: { ...a.headers, ...a.binding },
         payload: {
-          dataUrl: "data:image/png;base64,iVBORw0KGgoAAAAA",
+          dataUrl:
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
           context: TEXT,
           ...draftProvenance(undefined, koId),
         },
@@ -362,7 +363,8 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
 });
 
 describe("N11b R3: Dokumentzustimmung stuft ausschließlich Text herab", () => {
-  const dataUrl = "data:image/png;base64,iVBORw0KGgoAAAAA";
+  const dataUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
   it.each(["draft", "transient-document"] as const)(
     "B1 Bildquelle %s: fehlend, ungültig und Marker bleiben mit und ohne Zustimmung gesperrt",
     async (source) => {

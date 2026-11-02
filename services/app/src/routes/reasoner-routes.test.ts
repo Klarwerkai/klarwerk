@@ -124,6 +124,135 @@ describe("N11b: Zustimmung ist ein zusätzlicher Eingang der reinen Regel", () =
       ).toBe(true);
     }
   });
+
+  it("fehlender und gefundener ungeklärter Backstop bleiben für beide Textquellen unterscheidbar", () => {
+    for (const source of ["draft", "transient-document"]) {
+      for (const dokumentZustimmung of [false, true]) {
+        expect(
+          classifyProvenanceConfidential(
+            source,
+            undefined,
+            { found: false },
+            { dokumentZustimmung },
+          ),
+        ).toBe(!dokumentZustimmung);
+        expect(
+          classifyProvenanceConfidential(
+            source,
+            "vertraulich",
+            { found: false },
+            {
+              dokumentZustimmung,
+              nichtEingestuft: true,
+            },
+          ),
+        ).toBe(!dokumentZustimmung);
+        for (const level of [
+          undefined,
+          null,
+          "",
+          "ungueltig",
+          0,
+          false,
+          {},
+          "vertraulich",
+          "streng_vertraulich",
+        ]) {
+          // Ungeklärte Laufzeitdaten werden bewusst nicht zu einer gültigen Stufe normalisiert.
+          const gefunden = { found: true, level } as Parameters<
+            typeof classifyProvenanceConfidential
+          >[2];
+          for (const declared of [undefined, "intern", "vertraulich"]) {
+            expect(
+              classifyProvenanceConfidential(source, declared, gefunden, {
+                dokumentZustimmung,
+                nichtEingestuft: true,
+              }),
+            ).toBe(true);
+          }
+        }
+      }
+      expect(classifyProvenanceConfidential(source, "intern", { found: false })).toBe(false);
+      expect(
+        classifyProvenanceConfidential(
+          source,
+          "vertraulich",
+          { found: false },
+          { dokumentZustimmung: true },
+        ),
+      ).toBe(true);
+      expect(
+        classifyProvenanceConfidential(
+          source,
+          "streng_vertraulich",
+          { found: false },
+          {
+            dokumentZustimmung: true,
+            nichtEingestuft: true,
+          },
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("der echte Entwurfs-Merge nutzt nur tatsächlich gefundene KO- und Entwurfsstufen", async () => {
+    const services = buildServices();
+    const s = spione(services);
+    const app = buildApp(services);
+    try {
+      const headers = await anmelden(app, "backstop-merge@n11b.test");
+      const internDraft = await entwurf(services, "intern");
+      const vertraulichDraft = await entwurf(services, "vertraulich");
+      const strengDraft = await entwurf(services, "streng_vertraulich");
+      const ungeklartDraft = await services.capture.createDraft(
+        { title: "Ungeklärter Entwurf", statement: "the customer recieved the router." },
+        "autor-3353",
+      );
+      const basis = {
+        title: "Backstop",
+        statement: "the customer recieved the router.",
+        type: "best_practice" as const,
+        category: "N11b",
+        author: "autor-3353",
+      };
+      const internKo = await services.ko.create({ ...basis, confidentiality: "intern" });
+      const ungeklartKo = await services.ko.create(basis);
+      const vertraulichKo = await services.ko.create({ ...basis, confidentiality: "vertraulich" });
+      const strengKo = await services.ko.create({
+        ...basis,
+        confidentiality: "streng_vertraulich",
+      });
+      const faelle: [string, string | undefined, string, boolean][] = [
+        ["kein KO + interner Entwurf", undefined, internDraft, false],
+        ["internes KO + interner Entwurf", internKo.id, internDraft, false],
+        ["ungeklärtes KO + interner Entwurf", ungeklartKo.id, internDraft, true],
+        ["kein KO + ungeklärter Entwurf", undefined, ungeklartDraft.id, true],
+        ["internes KO + ungeklärter Entwurf", internKo.id, ungeklartDraft.id, true],
+        ["vertrauliches KO + interner Entwurf", vertraulichKo.id, internDraft, true],
+        ["internes KO + vertraulicher Entwurf", internKo.id, vertraulichDraft, true],
+        ["strenges KO + vertraulicher Entwurf", strengKo.id, vertraulichDraft, true],
+        ["vertrauliches KO + strenger Entwurf", vertraulichKo.id, strengDraft, true],
+        ["kein KO + strenger Entwurf", undefined, strengDraft, true],
+      ];
+      for (const [fall, koId, draftId, geschuetzt] of faelle) {
+        s.assistText.mockClear();
+        // Der bestehende Spion wirft, statt einen Erfolg nachzubauen. Gemessen wird das vom
+        // echten Resolver übergebene Schutzargument; kein Modellanbieter wird gerufen.
+        await assistUeberRoute(app, headers, {
+          source: "draft",
+          confidentiality: "intern",
+          ...(koId ? { koId } : {}),
+          draftId,
+        });
+        expect(s.assistText, fall).toHaveBeenCalledTimes(1);
+        expect((s.assistText.mock.calls.at(-1) as unknown[] | undefined)?.[3], fall).toBe(
+          geschuetzt,
+        );
+      }
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 // ================================================================================================

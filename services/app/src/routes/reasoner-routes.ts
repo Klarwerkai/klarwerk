@@ -148,9 +148,11 @@ export function classifyProvenanceConfidential(
     nichtEingestuft?: unknown;
   } = {},
 ): boolean {
+  // Kein gefundener Anker ist keine gespeicherte Schutzstufe. Ein gefundener ungeklärter bleibt geschützt.
+  const backstopVertraulich = backstop.found && isConfidential(backstop.level);
   if (typeof source === "string" && CLIENT_TEXT_SOURCES.has(source)) {
     if (ohneEinstufung(declared, nichtEingestuft)) {
-      return dokumentZustimmung !== true || isConfidential(backstop.level ?? null);
+      return dokumentZustimmung !== true || backstopVertraulich;
     }
     // Backstop hebt nur: ein gespeichert-vertrauliches KO (via koId) macht auch als "intern"
     // deklarierten Text vertraulich; ein internes/unbekanntes KO senkt nie eine Deklaration.
@@ -160,7 +162,7 @@ export function classifyProvenanceConfidential(
       declared === "intern" || declared === "vertraulich" || declared === "streng_vertraulich"
         ? declared
         : null;
-    return isConfidential(stufe) || isConfidential(backstop.level ?? null);
+    return isConfidential(stufe) || backstopVertraulich;
   }
   // source:"ko"/plain/fehlend/ungültig → loser/kein Anker → fail-safe vertraulich.
   return true;
@@ -736,7 +738,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       if (entwurf !== undefined) {
         backstop = {
           found: true,
-          level: hoehereStufe(backstop.level, entwurf.payload.confidentiality ?? null),
+          level: backstop.found
+            ? hoehereStufe(backstop.level, entwurf.payload.confidentiality ?? null)
+            : (entwurf.payload.confidentiality ?? null),
         };
       }
     }
