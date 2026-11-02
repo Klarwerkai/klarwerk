@@ -96,7 +96,7 @@ function traegtKiSatz(datei: string, inhalt: string): boolean {
   }
   const sichtbar = nachricht.slice(beginn);
   return (
-    /^\n  return \(\s*<li\s+data-testid="klara-nachricht"/.test(sichtbar) &&
+    /^\n {2}return \(\s*<li\s+data-testid="klara-nachricht"/.test(sichtbar) &&
     /\{n\.modus\s*===\s*"ki"\s*\?\s*\(\s*<>\s*<span\b[^<>]*>\s*\{t\("klaragespraech\.label\.ki"\)\}\s*<\/span>\s*<span\s+className=\{`\$\{SCHILD\} bg-trust-warn-bg text-trust-warn-text`\}>\s*\{t\("klaragespraech\.label\.kiHinweis"\)\}\s*<\/span>\s*<\/>\s*\)\s*:\s*n\.modus\s*===\s*"ohne_ki"/.test(
       sichtbar,
     )
