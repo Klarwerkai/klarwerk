@@ -20,6 +20,7 @@ import {
   type Flaeche,
   MOCKUP_ANTWORT,
   ORIGIN,
+  type RouteHandler,
   TITEL,
   askAntwort,
   aufloesen,
@@ -496,6 +497,8 @@ describe("JOB 3056 · K1 · Antwort — zwei tragende Quellen, eine herangezogen
     "Offene, ablaufende Profile sind zu bevorzugen.\n\nIst ein geschlossenes Profil unvermeidbar, sind Begruendung und Entwaesserungskonzept zu dokumentieren.";
   let f2: Flaeche | null = null;
   let fehler2: string | null = null;
+  let fixtureAntworten = 0;
+  const fixturePfadtypen: Array<"legacy" | "session-execute"> = [];
   const l2 = leser(
     () => f2?.seite ?? null,
     () => fehler2,
@@ -512,19 +515,36 @@ describe("JOB 3056 · K1 · Antwort — zwei tragende Quellen, eine herangezogen
         ],
       });
       const [a, b, c] = ids();
-      await f2.seite.route(
-        ASK_URL,
-        askAntwort({
-          answered: true,
-          answer: ANTWORT,
-          sources: [a, b, c],
-          citedSources: [a, b],
-          trust: 80,
-          steps: [],
-          demo: false,
-          evidence: { grade: "verified" },
-        }),
-      );
+      const antwortFixture = askAntwort({
+        answered: true,
+        answer: ANTWORT,
+        sources: [a, b, c],
+        citedSources: [a, b],
+        trust: 80,
+        steps: [],
+        demo: false,
+        evidence: { grade: "verified" },
+      });
+      const routeFixture: RouteHandler = async (route) => {
+        const req = route.request();
+        const url = new URL(req.url());
+        let pfadtyp: "legacy" | "session-execute" | null = null;
+        if (url.origin === ORIGIN && url.search === "" && req.method() === "POST") {
+          if (url.pathname === "/api/ask") pfadtyp = "legacy";
+          else if (/^\/api\/klara\/sessions\/[^/]+\/execute$/.test(url.pathname))
+            pfadtyp = "session-execute";
+        }
+        if (pfadtyp === null) {
+          await route.fallback();
+          return;
+        }
+        await antwortFixture(route);
+        fixtureAntworten += 1;
+        fixturePfadtypen.push(pfadtyp);
+        console.info("P15 Z-Fixture", JSON.stringify({ antworten: fixtureAntworten, pfadtyp }));
+      };
+      await f2.seite.route(ASK_URL, routeFixture);
+      await f2.seite.route(`${ORIGIN}/api/klara/sessions/*/execute`, routeFixture);
       await frageStellen(f2.seite, "Welche Profile sind in Spritzzonen erlaubt?");
     } catch (e) {
       fehler2 = String(e).split("\n").slice(0, 3).join(" | ");
@@ -561,6 +581,9 @@ describe("JOB 3056 · K1 · Antwort — zwei tragende Quellen, eine herangezogen
   });
   it("Z2 · Quellenbezug: Ziffer 1 → Chip 1, Ziffer 2 → Chip 2 (dieselbe Objekt-Id, derselbe Titel); die dritte, nur herangezogene Quelle hat KEINE Ziffer", async () => {
     expect(fehler2).toBeNull();
+    expect(fixtureAntworten).toBe(1);
+    expect(fixturePfadtypen).toHaveLength(1);
+    expect(["legacy", "session-execute"]).toContain(fixturePfadtypen[0]);
     const [a, b, c] = ids();
     expect(await l2.eval<string[]>(FUSSNOTEN_QUELLEN)).toEqual([a, b]);
     const chips = await l2.eval<Array<{ q: string | null; t: string }>>(
