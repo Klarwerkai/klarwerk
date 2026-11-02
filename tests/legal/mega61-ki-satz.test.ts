@@ -81,6 +81,28 @@ function modellflaechen(): string[] {
   });
 }
 
+function traegtKiSatz(datei: string, inhalt: string): boolean {
+  if (TRAEGER.some((traeger) => inhalt.includes(`<${traeger}`))) {
+    return true;
+  }
+  if (datei !== join(WEB, "components", "klara-vorschau", "KlaraEchtGespraech.tsx")) {
+    return false;
+  }
+  const code = inhalt.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const nachricht = /^function NachrichtEcht\([\s\S]*?^\}$/m.exec(code)?.[0] ?? "";
+  const beginn = nachricht.lastIndexOf("\n  return (\n");
+  if (beginn < 0 || !/<NachrichtEcht\b[^>]*\bn=\{n\}/.test(code)) {
+    return false;
+  }
+  const sichtbar = nachricht.slice(beginn);
+  return (
+    /^\n  return \(\s*<li\s+data-testid="klara-nachricht"/.test(sichtbar) &&
+    /\{n\.modus\s*===\s*"ki"\s*\?\s*\(\s*<>\s*<span\b[^<>]*>\s*\{t\("klaragespraech\.label\.ki"\)\}\s*<\/span>\s*<span\s+className=\{`\$\{SCHILD\} bg-trust-warn-bg text-trust-warn-text`\}>\s*\{t\("klaragespraech\.label\.kiHinweis"\)\}\s*<\/span>\s*<\/>\s*\)\s*:\s*n\.modus\s*===\s*"ohne_ki"/.test(
+      sichtbar,
+    )
+  );
+}
+
 describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () => {
   it("die Erhebung greift überhaupt", () => {
     // Ein leerer Sammler wäre ein grüner Sammler, der nichts bewacht.
@@ -104,11 +126,78 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
         continue;
       }
       const inhalt = readFileSync(join(WURZEL, datei), "utf8");
-      if (!TRAEGER.some((traeger) => inhalt.includes(`<${traeger}`))) {
+      if (!traegtKiSatz(datei, inhalt)) {
         verstoesse.push(`${datei} benutzt ein Modell, zeigt aber den KI-Satz nicht`);
       }
     }
     expect(verstoesse).toEqual([]);
+  });
+
+  // Eigener Gesprächshinweis: kausale Gegenproben am erhaltenen Produktquelltext.
+  it("der eigene Gesprächshinweis bleibt sichtbar und an den KI-Modus gebunden", () => {
+    const datei = join(WEB, "components", "klara-vorschau", "KlaraEchtGespraech.tsx");
+    const inhalt = readFileSync(join(WURZEL, datei), "utf8");
+    expect(traegtKiSatz(datei, inhalt)).toBe(true);
+    const mutationen: [string, string][] = [
+      ['{t("klaragespraech.label.kiHinweis")}', ""],
+      ['t("klaragespraech.label.kiHinweis")', 't("klaragespraech.label.defekt")'],
+      ['{n.modus === "ki" ? (', '{n.modus === "ohne_ki" ? ('],
+      ['{n.modus === "ki" ? (', "{true ? ("],
+      [
+        "<span className={`${SCHILD} bg-trust-warn-bg text-trust-warn-text`}>",
+        "<span className={`${SCHILD} bg-trust-warn-bg text-trust-warn-text hidden`}>",
+      ],
+      ["<NachrichtEcht key={n.id} n={n}", "<AndereNachricht key={n.id} n={n}"],
+    ];
+    for (const [von, nach] of mutationen) {
+      expect(inhalt.split(von)).toHaveLength(2);
+      const veraendert = inhalt.replace(von, nach);
+      expect(veraendert).not.toBe(inhalt);
+      expect(veraendert).not.toContain(von);
+      expect(traegtKiSatz(datei, veraendert)).toBe(false);
+    }
+  });
+
+  it("eigener Hinweis braucht echte Darstellung und Sprachbindung statt fremder Textköder", () => {
+    const datei = join(WEB, "components", "klara-vorschau", "KlaraEchtGespraech.tsx");
+    const inhalt = readFileSync(join(WURZEL, datei), "utf8");
+    const fremd = join(WEB, "components", "Unbeteiligt.tsx");
+    expect(traegtKiSatz(datei, inhalt)).toBe(true);
+    expect(fremd).not.toBe(datei);
+    expect(traegtKiSatz(fremd, inhalt)).toBe(false);
+    for (const traeger of TRAEGER) {
+      expect(traegtKiSatz(fremd, `<${traeger} />`)).toBe(true);
+    }
+    const texte = readFileSync(join(WURZEL, WEB, "texte", "klaragespraech.ts"), "utf8");
+    const hinweise = [...texte.matchAll(/"klaragespraech\.label\.kiHinweis"\s*:\s*"([^"]*)"/g)].map(
+      (treffer) => treffer[1] ?? "",
+    );
+    expect(hinweise).toHaveLength(3);
+    expect(hinweise.every((text) => text.trim().length > 0)).toBe(true);
+    const hinweis = '{t("klaragespraech.label.kiHinweis")}';
+    expect(inhalt.split(hinweis)).toHaveLength(2);
+    const defekt = inhalt.replace(hinweis, "");
+    expect(defekt).not.toBe(inhalt);
+    expect(defekt).not.toContain(hinweis);
+    expect(traegtKiSatz(datei, defekt)).toBe(false);
+    for (const koeder of [
+      '\n// {t("klaragespraech.label.kiHinweis")}',
+      '\nconst unbenutzt = "klaragespraech.label.kiHinweis";',
+      '\n/* <span>{t("klaragespraech.label.kiHinweis")}</span> */',
+    ]) {
+      const veraendert = `${defekt}${koeder}`;
+      expect(veraendert).not.toBe(defekt);
+      expect(veraendert).toContain(koeder);
+      expect(traegtKiSatz(datei, veraendert)).toBe(false);
+    }
+    const kommentiert = inhalt.replace(hinweis, `{/* ${hinweis} */}`);
+    expect(kommentiert).not.toBe(inhalt);
+    expect(kommentiert).toContain(hinweis);
+    expect(traegtKiSatz(datei, kommentiert)).toBe(false);
+    const nurText = inhalt.replace(hinweis, '{"klaragespraech.label.kiHinweis"}');
+    expect(nurText).not.toBe(inhalt);
+    expect(nurText).toContain('"klaragespraech.label.kiHinweis"');
+    expect(traegtKiSatz(datei, nurText)).toBe(false);
   });
 
   it("die Modellangabe trägt den Satz WIRKLICH — sonst wäre die Regel oben hohl", () => {
