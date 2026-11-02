@@ -122,7 +122,7 @@ describe("Aufnahme Gesamt-Klara-Assistenz · Abgleich bleibt am Baum", () => {
 
   it("W3 (Runde 2, B2): die KA5-Teilbelege mit Einwilligung stehen, wo der Abgleich sie nennt", () => {
     expect(lies("services/app/src/routes/ka5-markierung.test.ts")).toContain(
-      'it("KA5-R6f · auch die KA4-freigegebenen Zweige reichen die Markierung weiter"',
+      'it("KA5-R6f · auch der KA4-freigegebene Zweig reicht die Markierung weiter"',
     );
     expect(lies("tests/ka5/markierung-kein-egress.test.ts")).toContain(
       'it("KA5-R3c · MIT KA4-Freigabe (der Modellweg) gilt derselbe Riegel"',

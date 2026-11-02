@@ -197,3 +197,24 @@ genannte Pfad existiert und dass die Panelmarken stehen. Außerdem prüft er die
 - die Teilbelege `KA5-R6f` und `KA5-R3c` stehen, wo dieser Abgleich sie nennt (B2),
 - der M365-Folgeauftrag ist zugeordnet und abgegrenzt (B3). Ändert sich einer davon, wird der Test rot. Dann ist diese Datei
 nachzuführen, nicht der Test aufzuweichen.
+
+## Nachtrag zu W3 vom 02.11.2026
+
+Quellabgleich am Stand `1.0.0-beta.1.1093` (`3a186479ce7c4ce7beb564ba647ce6b800bc1132`),
+bezogen auf R-0700 (`74e88143db`, 08.10.2026): Der oben erhaltene Stand .639 beschreibt
+bei KA5-R6f noch Sitzung und Add-on gemeinsam. Der vorhandene Fall heißt jetzt
+„KA5-R6f · auch der KA4-freigegebene Zweig reicht die Markierung weiter“.
+
+- `KA5-R6f` in `services/app/src/routes/ka5-markierung.test.ts:416-439` prüft den manuellen
+  Sitzungsweg: `selection` reist mit `validatedOnly: true` weiter. Der Add-on-Weg wird mit
+  Status 403 abgewiesen; der Dienst erhält keinen Aufruf. Die Gegenprobe ohne Markierung
+  übergibt ausschließlich `validatedOnly: true`.
+- `KA5-R3c` in `tests/ka5/markierung-kein-egress.test.ts:218-226` bleibt ein eigener Teilbeleg:
+  Auch auf dem durch KA4-Freigabe geöffneten Modellweg erreicht die Passage den
+  Reasoner-Kontext nicht. Daraus folgt keine externe dokumentbezogene Modellantwort.
+
+Dieser Nachtrag hält gelesenen Quellbestand fest, keinen neuen Lauf dieser KA5-Tests,
+keinen Modell- oder Word-/Hostbeleg. Die oben genannten 193 grünen Fälle und der Stand .639
+bleiben historische Angaben. Die verwandte Assistenzaufnahme ist in Revision 9 bereits
+abgeschlossen und mit `1.0.0-beta.1.669` geliefert. Diese A5-Prüfpflege ändert oder
+wiederholt ihren Originalabschluss nicht.
