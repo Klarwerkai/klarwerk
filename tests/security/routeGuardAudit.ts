@@ -2021,4 +2021,24 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["darfSehen"],
   },
+
+  // A5-G15: office-routes.ts — direktes Routenrecht vor Fachzugriff, lokale artikelOder404/rechteFuer.
+  // Produktiv build-app.ts:5409–5426; WOPI und nicht zugeteilte Helferregistrierungen bleiben offen.
+  // :399–434 — sichtbarer Anhang, Schreibweg und Verlauf; vertagter Sitzungsabschluss kann sichern und löschen.
+  "GET /api/kos/:id/office/:anhangId": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // :436–501 — sichtbarer Anhang, Discovery edit/view und gebundene Marke; hier keine WOPI-Sitzungsanlage.
+  "POST /api/kos/:id/office/:anhangId/sitzung": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  // :628–737 — heutiges direktes Schreibtor und konkrete Vorschau; Dokument vor Daten-CAS, ehrliche Teilwirkung.
+  "POST /api/kos/:id/office/:anhangId/ergaenzung/uebernehmen": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  // :985–1019 — sichtbarer Anhang, eigener laufender Prozessauftrag; nur Stoppflag vor nächster Wirkung.
+  "POST /api/kos/:id/office/:anhangId/nachbearbeitung/:laufId/stopp": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
 };
