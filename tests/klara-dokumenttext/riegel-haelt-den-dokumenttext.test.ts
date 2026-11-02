@@ -255,6 +255,18 @@ async function wegAufbauen(
     category: "Betrieb",
     author: "anna",
     confidentiality: "intern" as const,
+    // Suchfelder decken Markierung und echte DE-Anweisung; sie sind keine Modellquellenfelder.
+    tags: [
+      "Entwurf",
+      "Drehmoment",
+      "38",
+      "Nm",
+      "anziehen",
+      "laut",
+      "nur",
+      "mit",
+      ...(KA6_UMFORMULIEREN.match(/\p{L}+/gu) ?? []),
+    ],
   });
   await koService.setValidationState(ko.id, { trust: 90, status: "validiert" });
   const ask = new AskService({
@@ -489,6 +501,15 @@ describe("R-0639 · R4 — am Draht: was den Modellclient WIRKLICH erreicht", ()
 // R-1611: das Fenster liegt in drei Dateien; geschnitten wird aus dem zusammengefügten Dokument.
 const TASKPANE = panelQuelleAus(resolve(WURZEL, "apps/web/public/word-addin/taskpane.html"));
 
+// Der benutzte KA6-Auftrag kommt aus dem deutschen Produktkatalog, nicht aus dem Schlüsselnamen.
+const KA6_DE = TASKPANE.match(/var KA6_TEXTE = \{\s*de: \{([\s\S]*?)\n\s*\},/)?.[1];
+const KA6_UMFORMULIEREN = JSON.parse(
+  KA6_DE?.match(/ka6AuftragUmformulieren:\s*("(?:\\.|[^"\\])*")/)?.[1] ?? "null",
+) as string;
+if (typeof KA6_UMFORMULIEREN !== "string" || KA6_UMFORMULIEREN.length === 0) {
+  throw new Error("Deutscher KA6-Auftrag fehlt in der Produktquelle.");
+}
+
 /** Schneidet `function <name>(…) { … }` aus — mit Klammerzählung über Strings und Kommentare. */
 function funktionsquelle(name: string): string {
   const start = TASKPANE.indexOf(`function ${name}(`);
@@ -590,7 +611,8 @@ async function einstiegAusfuehren(
     readAskSelection: (rueckruf: (text: string) => void) => rueckruf(markierung),
     klaraS4Header: () => w.kopf,
     klaraS4FragenGesperrt: () => false,
-    t: (schluessel: string) => schluessel,
+    t: (schluessel: string) =>
+      schluessel === "ka6AuftragUmformulieren" ? KA6_UMFORMULIEREN : schluessel,
     lang: "de",
     askLaeuft: false,
     askMinimalEpoch: 0,
