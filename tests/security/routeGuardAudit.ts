@@ -1953,4 +1953,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/klara/normereignisse/:id/annahme": { protection: "ko.validate" },
   // :187–205 — Auth plus konkrete Annahme-/Fachbindung und heutiges Leserecht; liefert auch Aussage.
   "GET /api/me/klara/normereignisse/:id/fassungen/:koId/:fassung": { protection: "auth" },
+
+  // A5-G15: klara-aufgabe-routes.ts — requireUser jeweils vor Fachzugriff, Konto nur aus user.id.
+  // Produktiv build-app.ts:6312–6333 mit geschützter Notiz-/Antwortherkunft und eigener Ablage.
+  // :100–114 — eigener Bestand; gesperrte Notizherkunft auslassen, ungeklärte Felder redigieren.
+  "GET /api/me/klara/aufgaben": { protection: "auth" },
+  // :116–145 — eigene Notiz/eigener Plan, serverseitige Schreibfreigabe, Wiederholung; dann Audit/Readback.
+  "POST /api/me/klara/aufgaben": { protection: "auth" },
+  // :147–158 — id und Konto im Repo, heutige Notizherkunft; gesperrt404, ungeklärt redigiert.
+  "GET /api/me/klara/aufgaben/:id": { protection: "auth" },
+  // :160–192 — eigene gesehene Fassung/CAS, eigene Textfelder erhalten; Audit/Readback nach Änderung.
+  "PUT /api/me/klara/aufgaben/:id": { protection: "auth" },
+  // :195–214 — id/Konto löschen ohne erneute Quelllesung, Nachweis erst nach dem Löschen.
+  "DELETE /api/me/klara/aufgaben/:id": { protection: "auth" },
 };
