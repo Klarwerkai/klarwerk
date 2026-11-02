@@ -1928,4 +1928,29 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "auth",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
+
+  // A5-G15: klara-normereignis-routes.ts — echte Wache jeweils vor dem Fachzugriff.
+  // Produktiv build-app.ts:4356–4371/6350, eigene Fristenablage und aktuelle FristenQuellen.
+  // :46–59 — eigenes sichtbares Ereignis und Originalnotizplan; eigener Gesprächs-/Aufgabenbezug.
+  "GET /api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag": {
+    protection: "auth",
+  },
+  // :60–78 — gewählter eigener Originalauftrag, Fassung/Quellbelege und CAS; nur Referenz binden.
+  "POST /api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag": {
+    protection: "auth",
+  },
+  // :79–87 — eigener Stand, historische Herkunft heute lesbar, Fachannahmerecht aus aktueller Rolle.
+  "GET /api/me/klara/normereignisse": { protection: "auth" },
+  // :88–99 — ausdrücklich erlaubte begrenzte Quellen, Vorschau mit heutigen Belegen ohne Speichern.
+  "POST /api/me/klara/normereignisse/vorschau": { protection: "auth" },
+  // :100–124 — eigene Erfassung, aktuelle Quellbedingungen im Stand-CAS; Audit nach möglichem Schreiben.
+  "POST /api/me/klara/normereignisse/erfassen": { protection: "auth" },
+  // :125–138 — ko.validate und frische Dienstrolle; lesbare belegte Anleitungsfassungen als Metadaten.
+  "GET /api/me/klara/normereignisse/:id/fachoptionen": { protection: "ko.validate" },
+  // :139–162 — ko.validate, explizite belegte Konfliktauswahl, aktuelle Rolle/Quellen und Fassungs-CAS.
+  "POST /api/me/klara/normereignisse/:id/klaerung": { protection: "ko.validate" },
+  // :163–186 — ko.validate, konkrete validierte Ablösung/Freigabebelege und Quellen-/Snapshot-CAS.
+  "POST /api/me/klara/normereignisse/:id/annahme": { protection: "ko.validate" },
+  // :187–205 — Auth plus konkrete Annahme-/Fachbindung und heutiges Leserecht; liefert auch Aussage.
+  "GET /api/me/klara/normereignisse/:id/fassungen/:koId/:fassung": { protection: "auth" },
 };
