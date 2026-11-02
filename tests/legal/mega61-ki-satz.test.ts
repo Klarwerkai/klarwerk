@@ -147,7 +147,6 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
         "<span className={`${SCHILD} bg-trust-warn-bg text-trust-warn-text`}>",
         "<span className={`${SCHILD} bg-trust-warn-bg text-trust-warn-text hidden`}>",
       ],
-      ["<NachrichtEcht key={n.id} n={n}", "<AndereNachricht key={n.id} n={n}"],
     ];
     for (const [von, nach] of mutationen) {
       expect(inhalt.split(von)).toHaveLength(2);
@@ -156,6 +155,28 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
       expect(veraendert).not.toContain(von);
       expect(traegtKiSatz(datei, veraendert)).toBe(false);
     }
+
+    // Beide echten Verwendungen bleiben unabhängig gültig; erst ohne beide fehlt der Träger.
+    const aufrufe = [...inhalt.matchAll(/<NachrichtEcht\b[^>]*\bn=\{n\}[^>]*\/>/g)].map(
+      (treffer) => treffer[0] ?? "",
+    );
+    expect(aufrufe).toHaveLength(2);
+    expect(new Set(aufrufe).size).toBe(2);
+    let ohneBeide = inhalt;
+    for (const aufruf of aufrufe) {
+      expect(aufruf).not.toBe("");
+      expect(inhalt.split(aufruf)).toHaveLength(2);
+      const ohneEinen = inhalt.replace(aufruf, "");
+      expect(ohneEinen).not.toBe(inhalt);
+      expect(ohneEinen).not.toContain(aufruf);
+      expect(ohneEinen.match(/<NachrichtEcht\b/g) ?? []).toHaveLength(1);
+      expect(traegtKiSatz(datei, ohneEinen)).toBe(true);
+      const vorher = ohneBeide;
+      ohneBeide = ohneBeide.replace(aufruf, "");
+      expect(ohneBeide).not.toBe(vorher);
+    }
+    expect(ohneBeide).not.toMatch(/<NachrichtEcht\b/);
+    expect(traegtKiSatz(datei, ohneBeide)).toBe(false);
   });
 
   it("eigener Hinweis braucht echte Darstellung und Sprachbindung statt fremder Textköder", () => {
