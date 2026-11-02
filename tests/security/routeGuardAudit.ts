@@ -1877,4 +1877,30 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/vormachen/routinen/:id/word-lauf": { protection: "auth" },
   // :646–673 — eigene Routine, erwartete Fassung und gültige Korrektur vor vergleichendem Schreiben.
   "POST /api/me/vormachen/routinen/:id/korrektur": { protection: "auth" },
+
+  // A5-G15: klara-notiz-routes.ts — requireUser vor jedem persönlichen Zugriff, Konto aus user.id.
+  // Ausgabe zusätzlich über build-app.ts:6290–6310 / klaraWissen.original und aktuelle Quellrechte.
+  // :93–108 — eigene Liste; Quellschutz und lesbar filtern vor der Ausgabe.
+  "GET /api/me/klara/notizen": { protection: "auth" },
+  // :110–133 — eigener Vorgang/gespeicherte Gesprächsquelle; Ausgabe und Audit nach möglichem Anlegen.
+  "POST /api/me/klara/notizen": { protection: "auth" },
+  // :135–146 — id und Konto im Repo; fremde oder unlesbare Notiz wird nicht ausgegeben.
+  "GET /api/me/klara/notizen/:id": { protection: "auth" },
+  // :148–174 — eigene Notiz, geprüfte Fassung und CAS; Quelle/Rücklink bleiben erhalten.
+  "PUT /api/me/klara/notizen/:id": { protection: "auth" },
+  // :178–201 — produktiv klaraBesprechung.loesche:748–769; eigene Besprechungsdaten, danach Audit.
+  "DELETE /api/me/klara/notizen/:id": { protection: "auth" },
+
+  // A5-G15: klara-fristen-routes.ts — requireUser vor Dienst; eigener Stand und frische Quellrechte.
+  // Produktiv fristenQuellen.lies; gespeicherte Herkunft wird auch bei der Ausgabe erneut geprüft.
+  // :27–34 — eigener Stand, nur aktuell lesbare Herkunft, interne Normereignisse entfernt.
+  "GET /api/me/klara/fristen": { protection: "auth" },
+  // :36–43 — validierte Vorschau aus eigenen/lesbaren Quellen, ohne Speichern.
+  "POST /api/me/klara/fristen/vorschau": { protection: "auth" },
+  // :45–62 — eigene Regel, Fassung und aktuelle Quellenbedingungen vor vergleichendem Speichern.
+  "PUT /api/me/klara/fristen/regel": { protection: "auth" },
+  // :64–78 — aktive eigene Regel, aktuelle Quellen/Importidentität und Stand-/Quell-CAS.
+  "POST /api/me/klara/fristen/aktualisieren": { protection: "auth" },
+  // :80–98 — eigene lesbare Frist, Fassung/Aktion/Datum und Quell-CAS; nur id/fassung/stand zurück.
+  "POST /api/me/klara/fristen/:id/aktion": { protection: "auth" },
 };
