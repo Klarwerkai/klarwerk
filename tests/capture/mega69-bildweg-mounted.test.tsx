@@ -17,7 +17,7 @@
 // KEIN zweites Formular, KEIN zweiter describe-Aufruf: der Vorschlag läuft über denselben
 // ImageDescribeContext (eine Egress-Stelle), und der umgebende Text reist als context im SELBEN
 // Request mit (WP-BILD-1f) — beides wird hier am Mock belegt.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
@@ -53,6 +53,26 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
   },
 }));
 
+// Dieser manuelle Galeriepfad nutzt ein bestaetigtes synthetisches Kontoprofil.
+// Automatisches OCR ist darin bewusst aus; es ist eine eigene beabsichtigte Aktion.
+vi.mock("../../apps/web/src/api/assistenzProfil", () => ({
+  assistenzProfilApi: {
+    lesen: vi.fn(async () => ({
+      profil: {
+        name: "Klara",
+        avatar: null,
+        bewegung: "standard",
+        eingerichtetAm: "2026-11-01T00:00:00Z",
+        fassung: 1,
+        geaendertAm: "2026-11-01T00:00:00Z",
+        bildAutomatik: false,
+      },
+      einrichtungOffen: false,
+    })),
+    speichern: vi.fn(async () => ({ profil: null, einrichtungOffen: false })),
+  },
+}));
+
 import {
   QueryClient,
   QueryClientProvider,
@@ -66,6 +86,10 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import {
+  ladeAssistenzProfil,
+  verwerfeAssistenzProfil,
+} from "../../apps/web/src/lib/assistenzProfil";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 import { schreibeBeschreibung } from "./bildbeschreibung-naht";
 
@@ -148,11 +172,16 @@ function mount(url: string): void {
   });
 }
 
+beforeEach(async () => {
+  await ladeAssistenzProfil("u1");
+});
+
 afterEach(() => {
   act(() => {
     root.unmount();
   });
   container.remove();
+  verwerfeAssistenzProfil();
   vi.clearAllMocks();
   document.body.innerHTML = "";
 });
@@ -214,6 +243,7 @@ describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibu
     );
     expect(suggest, "der Vorschlags-Knopf fehlt im Formular").not.toBeNull();
     expect(suggest?.disabled, "der Vorschlags-Knopf ist trotz Modell ausgegraut").toBe(false);
+    expect(describeMock).not.toHaveBeenCalled();
     await act(async () => {
       suggest?.click();
     });
@@ -298,6 +328,7 @@ describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibu
     const suggest = container.querySelector<HTMLButtonElement>(
       '[data-testid="caption-form-suggest"]',
     );
+    expect(describeMock).not.toHaveBeenCalled();
     await act(async () => {
       suggest?.click();
     });
