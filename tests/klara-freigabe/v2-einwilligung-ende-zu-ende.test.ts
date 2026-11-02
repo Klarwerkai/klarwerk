@@ -64,6 +64,8 @@ const INSTANZ = "inst-1";
 const T0 = Date.parse("2026-09-05T09:00:00.000Z");
 /** Die Antwort, die der Anbieter WIRKLICH liefert — sie muss bis in die Fläche durchkommen. */
 const MODELLANTWORT = "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet. [1]";
+/** R-0310: der echte Absatzleser entfernt die Zitiermarke; die Quellenbindung bleibt am Absatz. */
+const KLARTEXTANTWORT = "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet.";
 
 /** Der Anbieter, der bei erteilter Einwilligung WIRKLICH rechnet. */
 const CLOUD_ANBIETER = "anthropic";
@@ -191,12 +193,27 @@ interface AskAusgang {
   answer?: string;
   sources?: string[];
   aiGenerated?: boolean;
+  absaetze?: { text: string; quellen: string[] }[];
 }
 
 /** `performAsk` des ausgelieferten Fensters, mit einem `fetch`, das an die ECHTE App geht. */
-function panelAsk(app: FastifyInstance, kopf: Record<string, string>) {
+function panelAsk(
+  app: FastifyInstance,
+  kopf: Record<string, string>,
+  { ohneAbsatzleser = false }: { ohneAbsatzleser?: boolean } = {},
+) {
+  // R-0310: beide echten Helfer stehen außerhalb der drei Abruf-/Kennzeichnungsblöcke.
+  // Nur E1u lässt gezielt den Absatzleser weg; sein echter Klartexthelfer bleibt auch dort gleich.
+  const klartextQuelle = schnitt(
+    "    function stripAskAnswerMarkdown(answer) {",
+    "    // R-0310 (Spiegel von wordAddin.ts#askAbsaetzeLesen):",
+  );
+  const absatzleserQuelle = schnitt(
+    "    function askAbsaetzeLesen(body, cited) {",
+    "    // AUFTRAG-JOB507-D4 — Retry-After",
+  );
+  const httpAntworten: { status: number; body: string }[] = [];
   const umgebung = {
-    stripAskAnswerMarkdown: (a: string) => a,
     askGradeOf: () => "unverified",
     setTimeout: () => 1,
     clearTimeout: () => undefined,
@@ -210,12 +227,16 @@ function panelAsk(app: FastifyInstance, kopf: Record<string, string>) {
         headers: { ...(init.headers ?? {}), "content-type": "application/json" },
         payload: init.body,
       });
+      // Nur die ohnehin erfolgte Antwort mitlesen; kein zweiter HTTP-/Modellaufruf.
+      httpAntworten.push({ status: res.statusCode, body: res.body });
       return { ok: res.statusCode === 200, status: res.statusCode, json: async () => res.json() };
     },
   };
   const factory = new Function(
     "umgebung",
     `with (umgebung) {
+       ${klartextQuelle}
+       ${ohneAbsatzleser ? "" : absatzleserQuelle}
        ${schnitt("// KW-KLARA-AI-MARK-START", "// KW-KLARA-AI-MARK-END")}
        ${schnitt("// KW-KLARA-AI-NOTICE-START", "// KW-KLARA-AI-NOTICE-END")}
        ${schnitt("// KW-KLARA-ASK-FETCH-START", "// KW-KLARA-ASK-FETCH-END")}
@@ -240,6 +261,7 @@ function panelAsk(app: FastifyInstance, kopf: Record<string, string>) {
     fragen: () =>
       geschnitten.performAsk(FRAGE, "de", umgebung.fetch, 5000, kopf, undefined, "manual"),
     notizSichtbar: geschnitten.askAiNoticeVisible,
+    httpAntworten,
   };
 }
 
@@ -296,6 +318,9 @@ async function ketteAufbauen(
     type: "best_practice",
     category: "Betrieb",
     author: "anna",
+    // P6: ein validiertes KO ohne Einstufung bleibt aus dem externen Kontext ausgeschlossen.
+    // Dieser Positivaufbau misst die Einwilligung; sein freigegebener Inhalt ist explizit intern.
+    confidentiality: "intern",
   });
   // R-0278 (Nacharbeit 3): auch mit Einwilligung ist nur Geprüftes Antwortgrundlage. Gemessen wird
   // hier die EINWILLIGUNG — das Objekt ist deshalb freigegeben, sonst erreichte es den Anbieter nie.
@@ -466,7 +491,8 @@ describe("JOB 3079 · V2 · die Einwilligung wirkt bis zum Anbieter", () => {
   // (b) die SANDBOX des Falls: der ausgeschnittene `performAsk` ruft `askAbsaetzeLesen` (R-0310),
   // das AUSSERHALB der drei ausgeschnittenen Blöcke steht. Ohne diese Funktion wirft der Erfolgszweig
   // eine ReferenceError, und der Fangzweig von `performAsk` meldet `{ kind: "error" }` — genau der
-  // Zustand aus V2-E1, und nur bei einer 200-Antwort. V2-E1 selbst bleibt unverändert.
+  // historische Zustand aus V2-E1, und nur bei einer 200-Antwort. Heute erhält der Erfolgswirt die
+  // echten Helfer; E1u entfernt ausschließlich den Absatzleser als kausale Negativ-Kalibrierung.
   it("V2-E1u · Ursache: Server antwortet 200 mit Quelle; der Panel-Ausschnitt kennt `askAbsaetzeLesen` nicht", async () => {
     const k = await ketteAufbauen();
     expect((await zustimmen(k)).statusCode).toBe(200);
@@ -492,9 +518,10 @@ describe("JOB 3079 · V2 · die Einwilligung wirkt bis zum Anbieter", () => {
     expect(ausgeschnitten).not.toContain("function askAbsaetzeLesen");
     expect(HTML).toContain("function askAbsaetzeLesen");
 
-    const ausgang = await panelAsk(k.app, k.bindung).fragen();
+    const ausgang = await panelAsk(k.app, k.bindung, { ohneAbsatzleser: true }).fragen();
     expect(ausgang.kind).toBe("error");
     expect(String((ausgang as { detail?: unknown }).detail)).toContain("askAbsaetzeLesen");
+    expect((ausgang as { detail?: unknown }).detail).toBe("askAbsaetzeLesen is not defined");
     await k.app.close();
   });
 
@@ -518,10 +545,24 @@ describe("JOB 3079 · V2 · die Einwilligung wirkt bis zum Anbieter", () => {
     expect(nachConsent.resolution.executionAllowed).toBe(true);
 
     // Die Frage läuft durch den AUSGELIEFERTEN Panelcode in die echte Route.
-    const ausgang = await panelAsk(k.app, k.bindung).fragen();
+    const askPanel = panelAsk(k.app, k.bindung);
+    const ausgang = await askPanel.fragen();
     expect(ausgang.kind, "das Panel hat keine Antwort erhalten").toBe("answered");
+    expect(askPanel.httpAntworten).toHaveLength(1);
+    expect(askPanel.httpAntworten[0]?.status).toBe(200);
+    const roh = JSON.parse(askPanel.httpAntworten[0]?.body ?? "null") as {
+      result: { answer: string; sources: string[]; citedSources: string[] };
+      absaetze: { text: string; quellen: string[] }[];
+    };
+    // Derselbe HTTP-Körper trägt den unveränderten Anbietertext MIT Marke und dessen KO-ID.
+    expect(roh.result.answer).toBe(MODELLANTWORT);
+    expect(roh.result.sources).toEqual([k.koId]);
+    expect(roh.result.citedSources).toEqual([k.koId]);
+    expect(roh.absaetze).toEqual([{ text: MODELLANTWORT, quellen: [k.koId] }]);
     // DIE ANTWORT IST DIE DES ANBIETERS — Runde 1 belegte hier nur einen Aufruf.
-    expect(ausgang.answer).toBe(MODELLANTWORT);
+    // Der ausgelieferte R-0310-Leser entfernt nur die Marke [1], nicht den fachlichen Wortlaut.
+    expect(ausgang.answer).toBe(KLARTEXTANTWORT);
+    expect(ausgang.absaetze).toEqual([{ text: KLARTEXTANTWORT, quellen: [k.koId] }]);
     expect(ausgang.sources).toContain(k.koId);
     // UND SIE TRÄGT DEN BELEG, den das Panel dem Menschen zeigt: die KI-Kennzeichnung.
     expect(ausgang.aiGenerated, "die Antwort trägt keine KI-Kennzeichnung").toBe(true);
