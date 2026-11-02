@@ -238,9 +238,57 @@ const PIN_ADDIN: Record<string, Record<Sprache, string>> = {
 const ALIAS =
   /interne KI|lokale KI|internal AI|interne AI|On-Prem|on-prem|lokales LLM|hausintern|in-house|eigenen Haus|im Haus|Im Haus|das Haus|eigen huis|in huis|het huis|the house|eigenen Hardware|own hardware|eigen hardware/i;
 
-// Einzige bekannte Redewendung ohne KI-Bezug: „im Haus „Stufe 2" genannt" = betriebsintern.
+// Ursprüngliche Redewendung ohne KI-Bezug: „im Haus „Stufe 2" genannt" = betriebsintern.
 // Ausdrücklich benannt, damit der Ausschluss nachvollziehbar ist statt stillschweigend.
 const AUSNAHMEN = new Set(["stage2.gate.body"]);
+
+// ALT-0076 · K-A-Nachzug für die später hinzugekommene Referenz-KI. Diese sechs Werte gehören
+// zusätzlich zum ursprünglichen 21/39-Schnitt und werden in TV-10 vollständig geprüft.
+const ZIEL_REFERENZ_NACHZUG: Record<string, Record<Sprache, string>> = {
+  "referenzpruefung.stufe.local": { de: BEGRIFF, en: BEGRIFF, nl: BEGRIFF },
+  "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung": {
+    de: "Gesperrt: Für öffentliche KI fehlt die Freigabe für externe Verarbeitung. Nächster Schritt: die Freigabe unter Verwaltung → KI → KI-Verwaltung erteilen oder eine On-Premise Enterprise AI wählen.",
+    en: "Blocked: approval for external processing is missing for public AI. Next step: grant it under Administration → AI → AI administration, or choose an On-Premise Enterprise AI.",
+    nl: "Geblokkeerd: voor openbare AI ontbreekt de vrijgave voor externe verwerking. Volgende stap: de vrijgave verlenen onder Beheer → AI → AI-beheer, of een On-Premise Enterprise AI kiezen.",
+  },
+};
+
+// Die beiden deutschen Redewendungen benennen die Organisation bzw. ihren Firmenwortschatz.
+// Sie sagen nichts über Betriebsort, Hardware oder Datenverbleib einer KI. Nur die unveränderten
+// ganzen Werte aus genau diesem Träger, Schlüssel und Sprachblock sind gebunden — kein Key-Pin.
+const BETRIEBLICHE_REDEWENDUNGEN = [
+  {
+    quelle: "i18n",
+    key: "ausgangspruefung.seite.lead",
+    sprache: "de",
+    wert: "Bevor ein KI-Aufruf das Haus verlässt, steht hier genau der Text, der gesendet würde. Ersetzte Stellen sind hervorgehoben. Gesendet wird erst nach deiner Freigabe.",
+    grund: "das Haus = Organisation; en organisation, nl organisatie",
+    aufrufer: "apps/web/src/pages/Ausgangspruefung.tsx: PageHeader.lead",
+  },
+  {
+    quelle: "i18n",
+    key: "begriffe.hinweise.vorschlag",
+    sprache: "de",
+    wert: "„{{gefunden}}“ → im Haus heißt es „{{vorzug}}“",
+    grund: "im Haus heißt es = Firmenwörterbuch; en company term, nl binnen het bedrijf",
+    aufrufer: "apps/web/src/components/Begriffshinweise.tsx: Begriffsvorschlag",
+  },
+] as const;
+
+function istGebundeneRedewendung(
+  quelle: string,
+  key: string,
+  sprache: string,
+  wert: unknown,
+): boolean {
+  return BETRIEBLICHE_REDEWENDUNGEN.some(
+    (eintrag) =>
+      eintrag.quelle === quelle &&
+      eintrag.key === key &&
+      eintrag.sprache === sprache &&
+      eintrag.wert === wert,
+  );
+}
 
 const sha = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
 
@@ -305,13 +353,19 @@ describe("PRO 375 · Terminologie-Vertrag On-Premise Enterprise AI", () => {
     const bekannt = new Set([
       ...Object.keys(ZIEL_VOLL),
       ...Object.keys(ZIEL_AUSSCHNITT),
+      ...Object.keys(ZIEL_REFERENZ_NACHZUG),
       ...Object.keys(PIN),
       ...AUSNAHMEN,
     ]);
     const neu: string[] = [];
     for (const lang of SPRACHEN) {
       for (const [key, wert] of Object.entries(blockAus(i18n, lang))) {
-        if (typeof wert === "string" && ALIAS.test(wert) && !bekannt.has(key)) {
+        if (
+          typeof wert === "string" &&
+          ALIAS.test(wert) &&
+          !bekannt.has(key) &&
+          !istGebundeneRedewendung("i18n", key, lang, wert)
+        ) {
           neu.push(`${key} (${lang})`);
         }
       }
@@ -319,7 +373,12 @@ describe("PRO 375 · Terminologie-Vertrag On-Premise Enterprise AI", () => {
     const bekanntAddin = new Set([...Object.keys(ZIEL_ADDIN), ...Object.keys(PIN_ADDIN)]);
     for (const lang of SPRACHEN) {
       for (const [key, wert] of Object.entries(blockAus(STRINGS, lang))) {
-        if (typeof wert === "string" && ALIAS.test(wert) && !bekanntAddin.has(key)) {
+        if (
+          typeof wert === "string" &&
+          ALIAS.test(wert) &&
+          !bekanntAddin.has(key) &&
+          !istGebundeneRedewendung("addin", key, lang, wert)
+        ) {
           neu.push(`addin ${key} (${lang})`);
         }
       }
@@ -477,7 +536,7 @@ describe("PRO 375 · Terminologie-Vertrag On-Premise Enterprise AI", () => {
     }
   });
 
-  // Der Vertrag deckt genau die 21 im erlaubten Schnitt geänderten Texte und die 39 gesperrten.
+  // Der ursprüngliche Schnitt bindet 21 geänderte und 39 gesperrte Texte; TV-10 zählt den Nachzug.
   it("TV-1 bindet 21 geänderte und 39 gesperrte Texte", () => {
     const geaendert =
       (Object.keys(ZIEL_VOLL).length + Object.keys(ZIEL_AUSSCHNITT).length) * 3 +
@@ -485,5 +544,66 @@ describe("PRO 375 · Terminologie-Vertrag On-Premise Enterprise AI", () => {
     const gesperrt = (Object.keys(PIN).length + Object.keys(PIN_ADDIN).length) * 3;
     expect(geaendert).toBe(21);
     expect(gesperrt).toBe(39);
+  });
+
+  it("TV-10 bindet die sechs zusätzlichen K-A-Referenzwerte an die realen Sprachbestände", () => {
+    expect(Object.keys(ZIEL_REFERENZ_NACHZUG)).toEqual([
+      "referenzpruefung.stufe.local",
+      "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung",
+    ]);
+    let anzahl = 0;
+    for (const [key, werte] of Object.entries(ZIEL_REFERENZ_NACHZUG)) {
+      for (const lang of SPRACHEN) {
+        expect(textAus(i18n, lang, key), `${key} · ${lang}`).toBe(werte[lang]);
+        anzahl += 1;
+      }
+    }
+    expect(anzahl).toBe(6);
+  });
+
+  it("TV-11 bindet nur die echten Redewendungen und weist verfälschte Aliasfundstellen ab", () => {
+    expect(BETRIEBLICHE_REDEWENDUNGEN).toHaveLength(2);
+    for (const eintrag of BETRIEBLICHE_REDEWENDUNGEN) {
+      const { quelle, key, sprache } = eintrag;
+      const original = textAus(i18n, sprache, key);
+      expect(original, key).toBe(eintrag.wert);
+      expect(ALIAS.test(original), `${key} · echter Aliastreffer`).toBe(true);
+      expect(istGebundeneRedewendung(quelle, key, sprache, original), key).toBe(true);
+
+      // Dasselbe im TV-2-Anschluss verwendete Prädikat muss bei jeder einzelnen Änderung
+      // ablehnen. Produkt- und Ortsbehauptung kommen auch aus den realen Ressourcen.
+      const gegenfaelle: [string, string, string, unknown][] = [
+        ["addin", key, sprache, original],
+        ["fremdeQuelle", key, sprache, original],
+        [quelle, `${key}.fremd`, sprache, original],
+        [quelle, key, "en", original],
+        [quelle, key, "nl", original],
+        [quelle, key, sprache, `${original} `],
+        [quelle, key, sprache, textAus(i18n, sprache, "referenzpruefung.stufe.local")],
+        [
+          quelle,
+          key,
+          sprache,
+          textAus(
+            i18n,
+            sprache,
+            "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung",
+          ),
+        ],
+        [quelle, key, sprache, textAus(i18n, sprache, "reasoner.taskInfo.bodyLocal")],
+        [quelle, key, sprache, `${original} Die interne KI arbeitet im Haus auf eigener Hardware.`],
+      ];
+      for (const [q, k, s, wert] of gegenfaelle) {
+        expect(
+          typeof wert === "string" && ALIAS.test(wert),
+          `${key} · Gegenmutation trifft Alias`,
+        ).toBe(true);
+        expect(istGebundeneRedewendung(q, k, s, wert), `${key} · ${q} · ${k} · ${s}`).toBe(false);
+      }
+      expect(istGebundeneRedewendung(quelle, key, sprache, undefined), `${key} · fehlt`).toBe(
+        false,
+      );
+      expect(istGebundeneRedewendung(quelle, key, sprache, ""), `${key} · leer`).toBe(false);
+    }
   });
 });

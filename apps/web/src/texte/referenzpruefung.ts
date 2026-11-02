@@ -23,7 +23,7 @@ export default {
       "Eine eigene Referenz-KI ({{pruefer}}) hat geprüft, ob die Fundstellen die Aussagen tragen.",
     "referenzpruefung.status.nicht_pruefbar": "Nicht prüfbar.",
     "referenzpruefung.stufe.cloud": "extern",
-    "referenzpruefung.stufe.local": "im Haus",
+    "referenzpruefung.stufe.local": "On-Premise Enterprise AI",
     "referenzpruefung.stufe.deterministic": "ohne Modell",
     "referenzpruefung.stufe.unbekannt": "unbekannt",
     "referenzpruefung.zustand.belegt": "Belegt",
@@ -193,7 +193,7 @@ export default {
     "referenzpruefung.admin.sperre.ki_abgeschaltet":
       "Die KI ist administrativ abgeschaltet. Nächster Schritt: die Abschaltung in der KI-Verwaltung aufheben.",
     "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung":
-      "Gesperrt: Für öffentliche KI fehlt die Freigabe für externe Verarbeitung. Nächster Schritt: die Freigabe unter Verwaltung → KI → KI-Verwaltung erteilen oder eine interne KI wählen.",
+      "Gesperrt: Für öffentliche KI fehlt die Freigabe für externe Verarbeitung. Nächster Schritt: die Freigabe unter Verwaltung → KI → KI-Verwaltung erteilen oder eine On-Premise Enterprise AI wählen.",
     "referenzpruefung.admin.sperre.nicht_erreichbar":
       "Der Zugang ist eingerichtet, aber gerade nicht erreichbar. Nächster Schritt: Verbindung unter KI-Zugänge testen oder eine weitere Referenz-KI erlauben.",
     "referenzpruefung.admin.sperre.kein_pruefmodell":
@@ -258,7 +258,7 @@ export default {
       "A separate reference AI ({{pruefer}}) checked whether the cited passages support the statements.",
     "referenzpruefung.status.nicht_pruefbar": "Not checkable.",
     "referenzpruefung.stufe.cloud": "external",
-    "referenzpruefung.stufe.local": "in-house",
+    "referenzpruefung.stufe.local": "On-Premise Enterprise AI",
     "referenzpruefung.stufe.deterministic": "without model",
     "referenzpruefung.stufe.unbekannt": "unknown",
     "referenzpruefung.zustand.belegt": "Supported",
@@ -417,7 +417,7 @@ export default {
     "referenzpruefung.admin.sperre.ki_abgeschaltet":
       "AI has been switched off by the administrator. Next step: lift the switch-off in AI administration.",
     "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung":
-      "Blocked: approval for external processing is missing for public AI. Next step: grant it under Administration → AI → AI administration, or choose an internal AI.",
+      "Blocked: approval for external processing is missing for public AI. Next step: grant it under Administration → AI → AI administration, or choose an On-Premise Enterprise AI.",
     "referenzpruefung.admin.sperre.nicht_erreichbar":
       "The access is set up but not reachable right now. Next step: test the connection under AI accesses or allow another reference AI.",
     "referenzpruefung.admin.sperre.kein_pruefmodell":
@@ -480,7 +480,7 @@ export default {
       "Een eigen referentie-AI ({{pruefer}}) heeft gecontroleerd of de vindplaatsen de uitspraken dragen.",
     "referenzpruefung.status.nicht_pruefbar": "Niet controleerbaar.",
     "referenzpruefung.stufe.cloud": "extern",
-    "referenzpruefung.stufe.local": "intern",
+    "referenzpruefung.stufe.local": "On-Premise Enterprise AI",
     "referenzpruefung.stufe.deterministic": "zonder model",
     "referenzpruefung.stufe.unbekannt": "onbekend",
     "referenzpruefung.zustand.belegt": "Onderbouwd",
@@ -645,7 +645,7 @@ export default {
     "referenzpruefung.admin.sperre.ki_abgeschaltet":
       "AI is door de beheerder uitgeschakeld. Volgende stap: de uitschakeling in het AI-beheer opheffen.",
     "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung":
-      "Geblokkeerd: voor openbare AI ontbreekt de vrijgave voor externe verwerking. Volgende stap: de vrijgave verlenen onder Beheer → AI → AI-beheer, of een interne AI kiezen.",
+      "Geblokkeerd: voor openbare AI ontbreekt de vrijgave voor externe verwerking. Volgende stap: de vrijgave verlenen onder Beheer → AI → AI-beheer, of een On-Premise Enterprise AI kiezen.",
     "referenzpruefung.admin.sperre.nicht_erreichbar":
       "De toegang is ingericht, maar nu niet bereikbaar. Volgende stap: de verbinding testen onder AI-toegangen of een andere referentie-AI toestaan.",
     "referenzpruefung.admin.sperre.kein_pruefmodell":
