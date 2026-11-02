@@ -254,6 +254,7 @@ async function wegAufbauen(
     type: "best_practice",
     category: "Betrieb",
     author: "anna",
+    confidentiality: "intern" as const,
   });
   const ask = new AskService({
     reasoner,
@@ -591,6 +592,10 @@ async function einstiegAusfuehren(
     t: (schluessel: string) => schluessel,
     lang: "de",
     askLaeuft: false,
+    askMinimalEpoch: 0,
+    askMinimalController: null,
+    askMinimalTurn: null,
+    askMinimalAuswahl: null,
     currentAskQuestion: "",
     currentAskOutcome: null,
     resetAskResult: leer,
