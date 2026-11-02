@@ -1314,6 +1314,8 @@ const INVENTAR: readonly string[] = [
   // „klara" im PFAD und kommt ueber `name` herein (K5: 68 -> 69). GEMESSEN, NICHT GESETZT: K2
   // meldete lokal `neu im Baum, aber nicht im gepinnten Inventar` mit genau diesem Pfad.
   "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts",
+  // B3: Katalogpraefixe; Achsen name und taskpane, K5 312 -> 313.
+  "tests/klara-dokumenttext/ka6-auftragsrahmen.test.ts",
   // R-1526: die zehn Pruefungen, die erst die Achse `einwilligung` findet — Begruendung und Messung
   // an der Achse. Keine traegt „klara" im Pfad; sie fallen in `verfehlt`, K5 bleibt bei 69.
   "tests/ka6/job3026-riegel-am-erzeuger.test.ts",
@@ -2040,7 +2042,7 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Dateien mit „klara" im Pfad, darunter die sieben oben nachgeführten Prüfungen.
     // BPA-03 Produktanschluss (Chat 62, gemessen): +5 durch die fünf neuen Prüfdateien oben — 161.
     // Im vereinigten Stand gemessen: 161 + sieben OCR-Prüfdateien des Hauptzweigs = 168.
-    expect(nurName.length).toBe(312);
+    expect(nurName.length).toBe(313);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
