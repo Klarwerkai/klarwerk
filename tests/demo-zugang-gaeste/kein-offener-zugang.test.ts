@@ -422,6 +422,40 @@ const NUTZLAST_JE_WEG: Record<string, Record<string, unknown>> = {
   // R-0560: der SAML-Rücksprung, abgelesen aus `Body: { SAMLResponse?: unknown }`. Der Wert ist
   // bewusst keine echte Antwort — geprüft wird der Leckweg, nicht die Anmeldung.
   "POST /api/auth/saml/acs": { SAMLResponse: "keine-echte-saml-antwort" },
+  // A5-G10: kiosk-routes.ts, POST-Body und schema.body: question, profilId, revision (locale optional).
+  // Kein Installationsprofil wird erzeugt; die Kennung ist ausdrücklich unbekannt.
+  "POST /api/kiosk/fragen": {
+    question: "Unangemeldete Sonde",
+    locale: "de",
+    profilId: "kein-echtes-kiosk-profil",
+    revision: 1,
+  },
+  // A5-G10: office-routes.ts registriert beide WOPI-POSTs ohne JSON-Body-Schema; wopi liest Bytes.
+  // markenRiegel läuft in onRequest VOR dem Parser und gibt ohne Einrichtung 404 zurück.
+  // Die leere Sonde belegt diesen Guard, keine gültige WOPI-Sperr-/Dateioperation.
+  "POST /wopi/files/:anhangId": {},
+  "POST /wopi/files/:anhangId/contents": {},
+  // A5-G10: office-routes.ts, Body { ausFassung?, expectedVersion? }; erwartet() verlangt Integer >= 1.
+  "POST /api/kos/:id/office/:anhangId/zurueckholen": { ausFassung: 1, expectedVersion: 1 },
+  // Body { objectId?, expectedVersion? }; bewusst kein echter gesicherter Stand. Der Sitzungsriegel
+  // in vorFassungsschritt kommt VOR der Suche nach diesem Objekt, nicht dessen Eingabeablehnung.
+  "POST /api/kos/:id/office/:anhangId/gesichert": {
+    objectId: "kein-gesicherter-stand",
+    expectedVersion: 1,
+  },
+  // A5-G10: office-routes.ts ruft leseAuftrag(request.body) aus office-nachbearbeitung.ts auf:
+  // laufId, basisFassung >= 1, schritte (auch leer); Notizen/Folgeprodukte haben dort Vorgaben.
+  "POST /api/kos/:id/office/:anhangId/nachbearbeitung": {
+    laufId: "unangemeldete-sonde",
+    basisFassung: 1,
+    schritte: [],
+  },
+  // A5-G10: auth/routes.ts, Body { challenge?: unknown; code?: unknown }, beide als string gelesen.
+  // Die unbekannte Anmeldeanfrage ist kein echter Nachweis; es wird keine Sitzung eingerichtet.
+  "POST /api/auth/login/second-factor": {
+    challenge: "keine-echte-anmeldeanfrage",
+    code: "000000",
+  },
 };
 
 /** Der positive Kontrollaufruf je Weg: der Status, mit dem sein Handler wirklich antwortet. */
@@ -470,6 +504,23 @@ const HANDLERKONTAKT: Record<string, Handlerkontakt> = {
   "POST /api/auth/office-handover/redeem": { status: 401, schluessel: "INVALID_CREDENTIALS" },
   // R-0560: die Testinstanz konfiguriert SAML nicht — dieselbe bewusste 501 wie beim OIDC-Rücksprung.
   "POST /api/auth/saml/acs": { status: 501, schluessel: "SAML_DISABLED" },
+  // A5-G10: kiosk-routes.ts, bindung()/gesperrt(): fehlendes Installationsprofil -> 403 KIOSK_GESPERRT.
+  // Der Scanner führt auch indirekte Guards konservativ als public; das ist kein anonymer Zugang.
+  "POST /api/kiosk/fragen": { status: 403, schluessel: "KIOSK_GESPERRT" },
+  // A5-G10: office-routes.ts, markenRiegel(): ohne Einrichtung 404 ohne Rumpf, vor dem Parser.
+  "POST /wopi/files/:anhangId": { status: 404 },
+  "POST /wopi/files/:anhangId/contents": { status: 404 },
+  // A5-G10: office-routes.ts, vorFassungsschritt() -> requirePermission("ko.create");
+  // http.ts, requireUser(): ohne Sitzung 401 mit error="UNAUTHENTICATED", vor jeder Objektprüfung.
+  "POST /api/kos/:id/office/:anhangId/zurueckholen": { status: 401, schluessel: "UNAUTHENTICATED" },
+  "POST /api/kos/:id/office/:anhangId/gesichert": { status: 401, schluessel: "UNAUTHENTICATED" },
+  "POST /api/kos/:id/office/:anhangId/nachbearbeitung": {
+    status: 401,
+    schluessel: "UNAUTHENTICATED",
+  },
+  // A5-G10: auth/service.ts, anmeldenMitZweitemFaktor(): unbekannte challenge -> INVALID_CREDENTIALS;
+  // auth/routes.ts, sendError()/STATUS_BY_CODE: 401 und genau dieser Code im JSON-Feld error.
+  "POST /api/auth/login/second-factor": { status: 401, schluessel: "INVALID_CREDENTIALS" },
 };
 
 /**
