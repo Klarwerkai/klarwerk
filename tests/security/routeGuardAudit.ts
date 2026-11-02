@@ -1993,4 +1993,32 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/vormachen/routinen/:id/schritte/:schrittId/freigabe": { protection: "auth" },
   // :419–457 — ko.create, eigene Routine, vertraulicher Capture-Entwurf mit user.id; Vermerk/Audit danach.
   "POST /api/me/vormachen/routinen/:id/firmenuebergabe": { protection: "ko.create" },
+
+  // A5-G15: Präsentationswege — tatsächliches Routenrecht vor Fachzugriff, Verdrahtung build-app.ts:5409–5440.
+  // Änderungsrouter importiert die Rechtekette; genau die drei Datenrouter-Wege führen lokal darfSehen.
+  // Änderungsrouter362–398 — aktuelles Office-Schreibtor, KO-/Dateifassung und heutige Quellen; nur Vorschau.
+  "POST /api/kos/:id/office/:anhangId/datenaktualisierung/vorschau": { protection: "ko.create" },
+  // Änderungsrouter399–457 — konkrete Vorschau/Quellabdrücke erneut prüfen; Datei vor Daten-CAS, Teilwirkung möglich.
+  "POST /api/kos/:id/office/:anhangId/datenaktualisierung/uebernehmen": { protection: "ko.create" },
+  // Änderungsrouter458–519 — heutige importierte Leserechte, Übernahme-/historische Datenfassungen; Momentaufnahme.
+  "GET /api/kos/:id/office/:anhangId/datenaktualisierung/stand": { protection: "ko.read" },
+  // Änderungsrouter520–641 — belegte Ausgangsdatei und Vor-/Nachstände; neue ungeprüfte Rücknahmefassungen.
+  "POST /api/kos/:id/office/:anhangId/datenaktualisierung/ruecknahme": { protection: "ko.create" },
+  // Änderungsrouter642–772 — Quellen/Leserkreis und Readbacks je privater Fassung; zwei Dateien können teilweise entstehen.
+  "POST /api/kos/:id/office/:anhangId/datenaktualisierung/fassungen": { protection: "ko.create" },
+  // Datenrouter335–357 — lokale datenUmgebung mit darfSehen, Snapshot-UND und lesbare Quellen; reine Ergänzungsvorschau.
+  "POST /api/kos/:id/office/:anhangId/ergaenzung/vorschau": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  // Datenrouter358–395 — aktueller sichtbarer Anhang und lesbare gebundene Daten/Fassungen; nur Vortragsauswertung.
+  "POST /api/kos/:id/office/:anhangId/vortrag": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  // Datenrouter397–476 — heutige Rechte/Snapshot und exakte KO-/Dateifassung; reine Projektion ohne Speicherung.
+  "POST /api/kos/:id/office/:anhangId/aenderungsvorschau": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
 };
