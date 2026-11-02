@@ -3,8 +3,9 @@
 // ================================================================================================
 //
 // Der Textmesser: in Ruhe und Antwort ist die Summe aller SICHTBAREN Textknoten ausserhalb von
-// Frage, Antwort, Quellen-Chips und Knopfbeschriftungen hoechstens 60 Zeichen — der eine Ruhe-
-// Satz („Stell eine Frage oder markiere Text in Word.", 44 Zeichen) und der Titel „Klara".
+// Frage, Antwort, Quellen-Chips und Knopfbeschriftungen hoechstens 60 Zeichen. Die deutsche
+// Standardfixture ohne gewaehltes Profil erwartet nach UI-MIN „Deine Assistenz" und im
+// Leerzustand „Wie kann ich helfen?". Beliebige persoenliche Namen werden hier nicht geprueft.
 // Gemessen wird der innerText der gebauten Flaeche (apps/web/dist/word-addin/taskpane.html) in
 // Chromium (k1-messung.ts, ERKLAERTEXT_FN), nicht das Markup: ein per `hidden` versteckter Absatz
 // zaehlt nicht, ein sichtbarer sehr wohl.
@@ -73,8 +74,9 @@ describe("JOB 3056 · K1 · kein Erklaertext — innerText der gebauten Flaeche 
     expect(ruhe).not.toBeNull();
     const m = ruhe as Messung;
     expect(m.zeichen, `Sichtbarer Text in der Ruhe: „${m.text}“`).toBeLessThanOrEqual(HOECHSTENS);
-    expect(m.teile).toContain("Stell eine Frage oder markiere Text in Word.");
-    expect(m.teile).toContain("Klara");
+    expect(m.teile).toContain("Wie kann ich helfen?");
+    expect(m.teile).not.toContain("Stell eine Frage oder markiere Text in Word.");
+    expect(m.teile).toContain("Deine Assistenz");
     expect(flaeche?.seitenfehler).toEqual([]);
   });
 
@@ -88,7 +90,8 @@ describe("JOB 3056 · K1 · kein Erklaertext — innerText der gebauten Flaeche 
     // Der Ruhe-Satz steht in der Antwort NICHT mehr; was bleibt, ist der Titel — und, NUR wenn der
     // Fall eintritt, der eine lagebezogene Satz unter der Karte (Lieferung 5).
     expect(m.teile).not.toContain("Stell eine Frage oder markiere Text in Word.");
-    expect(m.teile).toContain("Klara");
+    expect(m.teile).not.toContain("Wie kann ich helfen?");
+    expect(m.teile).toContain("Deine Assistenz");
   });
 
   it("K · KALIBRIERUNG: der Messer sieht sichtbaren Text wirklich — ein eingefuegter Hinweissatz in der Ruhe wuerde ihn ueber 60 heben", async () => {
