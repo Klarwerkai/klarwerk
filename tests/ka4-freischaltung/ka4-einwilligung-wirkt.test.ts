@@ -40,6 +40,7 @@ import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import {
   type AnswerResult,
+  decktAlleFragebegriffe,
   InMemoryKlaraSessionRepo,
   KLARA_DETERMINISTIC_MODEL,
   KLARA_DETERMINISTIC_PROVIDER,
@@ -613,7 +614,7 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
     await koService.activateSearchProjectionV2();
     const geheim = await koService.create({
       title: "Zylinderkopfdichtung XQ42 Sonderverfahren",
-      statement: "Die Zylinderkopfdichtung XQ42 folgt dem Sonderverfahren des Mandanten Mueller.",
+      statement: "Die Zylinderkopfdichtung XQ42 wird nach dem Sonderverfahren des Mandanten Mueller gewechselt.",
       type: "best_practice",
       category: "Geheim",
       author: "anna",
@@ -621,11 +622,14 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
     });
     const offen = await koService.create({
       title: "Zylinderkopfdichtung XQ42 Grundlagen",
-      statement: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet.",
+      statement: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet und danach gewechselt.",
       type: "best_practice",
       category: "Betrieb",
       author: "anna",
     });
+    // Beide Kandidaten decken dieselbe Frage; F8b misst weiter den Vertraulichkeitsausschluss.
+    expect(decktAlleFragebegriffe(FRAGE, offen.statement)).toBe(true);
+    expect(decktAlleFragebegriffe(FRAGE, geheim.statement)).toBe(true);
     // R-0278 (Nacharbeit 3/4): auch mit Einwilligung reist nur Freigegebenes in den Modellkontext.
     // BEIDE Objekte sind deshalb freigegeben — so beweist F8b weiterhin, dass die VERTRAULICHKEIT
     // das geheime Objekt ausschließt, nicht bloß sein Prüfstand.
@@ -892,11 +896,12 @@ describe("KA4 · ohne Einwilligung antwortet der Server bytegleich wie ohne KA4-
     await koService.activateSearchProjectionV2();
     const ko = await koService.create({
       title: "Zylinderkopfdichtung XQ42 Grundlagen",
-      statement: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet.",
+      statement: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet und danach gewechselt.",
       type: "best_practice",
       category: "Betrieb",
       author: "anna",
     });
+    expect(decktAlleFragebegriffe(FRAGE, ko.statement)).toBe(true);
     // Validiert: nur dann ist die retrieval-only-Frage ein TREFFER (`validatedOnly` bleibt stehen).
     await koService.setValidationState(ko.id, { trust: 90, status: "validiert" });
 
