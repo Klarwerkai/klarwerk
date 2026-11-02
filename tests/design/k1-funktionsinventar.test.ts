@@ -93,10 +93,10 @@ const INVENTAR: readonly Zeile[] = [
   },
   {
     heute: "— (neu)",
-    neu: "#kw-zahnrad",
+    neu: ".mini-menu-button",
     weg: "ruhe",
     sichtbar: true,
-    funktion: "Zahnrad → Einstellungen",
+    funktion: "Menü → Einstellungen",
   },
   {
     heute: "#lang-de / #lang-en / #lang-nl (Sprachwahl im Kopf)",
@@ -1487,6 +1487,53 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
         await l.eval<string>("() => document.querySelector('.mini-name').textContent"),
         `${art}: sichtbarer Home-Titel aus dem frischen eigenen Profil`,
       ).toBe(erwartet);
+      expect(f(art).seitenfehler).toEqual([]);
+    }
+  }, 90_000);
+
+  it("G02 · Menü ersetzt Zahnrad: Einstellungen erreichbar auf Browser und Word", async () => {
+    expect(fehler).toBeNull();
+    for (const art of ["browser", "word"] as const) {
+      const s = f(art).seite;
+      const l = lesen(art);
+      await zurRuhe(art);
+      expect(await l.sichtbar("#kw-zahnrad")).toBe(false);
+      await warteSichtbar(art, ".mini-menu-button");
+      expect(await l.sichtbar(".mini-menu-button")).toBe(true);
+      expect(
+        await l.eval<string>(
+          "() => document.querySelector('.mini-menu-button').getAttribute('aria-controls')",
+        ),
+      ).toBe("mini-menu");
+
+      await s.click(".mini-menu-button");
+      await s.waitForFunction(
+        fn(
+          "() => document.querySelector('.mini-menu-button').getAttribute('aria-expanded') === 'true'",
+        ),
+        undefined,
+        { timeout: 20_000 },
+      );
+      await warteSichtbar(art, "#mini-menu-settings");
+      expect(await l.sichtbar("#mini-menu-settings")).toBe(true);
+      await s.click("#mini-menu-settings");
+      await warteSichtbar(art, "#mini-page-settings");
+      await warteSichtbar(art, "#kw-einstellungen");
+      await warteSichtbar(art, ".mini-home", false);
+      expect(await l.sichtbar("#mini-page-settings")).toBe(true);
+      expect(await l.sichtbar("#kw-einstellungen")).toBe(true);
+      expect(await l.sichtbar(".mini-home")).toBe(false);
+
+      await warteSichtbar(art, ".mini-back");
+      await s.click(".mini-back");
+      await warteSichtbar(art, ".mini-home");
+      await warteSichtbar(art, "#ask-input");
+      await warteSichtbar(art, "#mini-page-settings", false);
+      await warteSichtbar(art, "#kw-einstellungen", false);
+      expect(await l.sichtbar(".mini-home")).toBe(true);
+      expect(await l.sichtbar("#ask-input")).toBe(true);
+      expect(await l.sichtbar("#mini-page-settings")).toBe(false);
+      expect(await l.sichtbar("#kw-einstellungen")).toBe(false);
       expect(f(art).seitenfehler).toEqual([]);
     }
   }, 90_000);
