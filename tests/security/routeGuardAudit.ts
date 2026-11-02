@@ -887,6 +887,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.create",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
+  // A5-G15: ask-routes.ts:2228 verlangt ko.create vor rejectBeanstandung; der Dienst prüft
+  // Zuständigkeit. beteiligterAus/vorgangSenden binden Quelle und Antwort an die Betrachtersicht.
+  "POST /api/gaps/:id/zurueckweisen": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Klara Status / Sitzung / Zustimmung (klara-ai-routes.ts, W1 S4) ---
   //
@@ -1852,4 +1858,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.create",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
+
+  // A5-G15: assistenz-lernen-routes.ts — requireUser jeweils vor persönlichem Zugriff/Wirkung;
+  // Konto aus user.id, eigene Routine im Dienst. Schreib-/Fassungs-/Hostprüfungen bleiben zusätzlich.
+  // :245–290 — eigener Lauf, aktuelles Schreibrecht im Plan, wiederholgeschützter eigener Auftrag.
+  "POST /api/me/vormachen/routinen/:id/lauf": { protection: "auth" },
+  // :300–313 — Zustand der eigenen Routine; konkurrierende Änderungen überschreibt der Dienst nicht.
+  "PUT /api/me/vormachen/routinen/:id/zustand": { protection: "auth" },
+  // :323–374 — Zeitplan und Laufgespräch am eigenen Konto, begrenzte/validierte Eingaben.
+  "PUT /api/me/vormachen/routinen/:id/zeitplan": { protection: "auth" },
+  // :385–398 — Übergabeart der eigenen Routine, Einschränkungen bei Word und Zeitplan im Dienst.
+  "PUT /api/me/vormachen/routinen/:id/ausfuehrung": { protection: "auth" },
+  // :411–434 — kontoabhängige Übersicht, daraus nur eigene Word-Routinen und deren Metadaten.
+  "GET /api/me/vormachen/word-routinen": { protection: "auth" },
+  // :447–477 — eigenes Konto/Routine, gesiegelter aktueller Host und ausdrückliche Hostfreigabe.
+  "PUT /api/me/vormachen/routinen/:id/host": { protection: "auth" },
+  // :495–630 — eigene Word-Routine; Bindung, Textprüfsummen, Fassung und fälliger Termin vor Laufweg.
+  "POST /api/me/vormachen/routinen/:id/word-lauf": { protection: "auth" },
+  // :646–673 — eigene Routine, erwartete Fassung und gültige Korrektur vor vergleichendem Schreiben.
+  "POST /api/me/vormachen/routinen/:id/korrektur": { protection: "auth" },
 };
