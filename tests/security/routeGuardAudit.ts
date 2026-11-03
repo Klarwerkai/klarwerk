@@ -955,6 +955,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/klara/sessions/:sessionId/document-context": { protection: "ko.read" },
   // (b) Liest den eigenen Sitzungszustand. Eine fremde sessionId ergibt NOT_FOUND — die Kennung
   // ist kein Leserecht und keine Existenzauskunft.
+  // Office-Kontext: ko.read, gebundene Sitzung, Herkunft und Metadaten vor Touch/Sequenz/Marke.
+  // Touch kann schon vor stale409 wirken; Profilantwort folgt nach der Prozessmap ohne Rollback.
+  "POST /api/klara/sessions/:sessionId/office-kontext": { protection: "ko.read" },
+  // Ziel: ko.read, signierte Marke/Vorbindung und Herkunft; nach Sitzungsabruf Mapsequenz/Zielhash.
+  // Bestätigt den zweiten Klick, ohne Office-Schreibvorgang oder globalen Snapshot zu belegen.
+  "POST /api/klara/sessions/:sessionId/office-kontext/ziel": { protection: "ko.read" },
+  // Verwerfen: ko.read, gebundene Sitzung und Herkunft vor dem Löschen der Prozessmap.
+  // Beendet keine Sitzung; paralleles Melden kann neu setzen. Kein lokales G10-Zeilenprädikat.
+  "DELETE /api/klara/sessions/:sessionId/office-kontext": { protection: "ko.read" },
   "GET /api/klara/sessions/:sessionId": { protection: "ko.read" },
   // (b) Zustimmung zur externen KI. Erteilt kein Recht auf KO-Inhalt, sondern hebt ausschliesslich
   // die Sperre für den externen Weg auf — der derzeit ohnehin nicht ausführbar ist.
