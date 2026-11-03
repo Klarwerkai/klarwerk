@@ -738,7 +738,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Aufnahme gesamt-konfliktklassifikation · R-0263: der Vorrang am Punkt — dasselbe Paar-Tor je
   // Eintrag, der Geltungsbereich zusätzlich über `feldFreigabe` (wie `description`).
   "GET /api/conflicts/vorrang/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
-  "POST /api/conflicts/:id/escalate": { protection: "conflict.resolve" },
+  "POST /api/conflicts/:id/escalate": {
+    protection: "conflict.resolve",
+    // G15 Konflikte3: paarSichtbar vor Eskalation; danach aktuelle Feldfreigabe und bestehende Redaktion.
+    zeilenrecht: ["paarSichtbar"],
+  },
   // R-0252 (Nacharbeit 5): der Einordnungsweg — dasselbe Recht wie Eskalieren und Entscheiden.
   // Nacharbeit 6: dasselbe Paar-Tor wie der Detailweg — unsichtbar ⇒ 404 und keine Änderung; die
   // Antwort geht durch `feldFreigabe`/`redigiereKonflikt`.
@@ -746,8 +750,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "conflict.resolve",
     zeilenrecht: ["paarSichtbar"],
   },
-  "POST /api/conflicts/:id/dismiss": { protection: "conflict.resolve" },
-  "POST /api/conflicts/:id/second-opinion": { protection: "ko.validate" },
+  "POST /api/conflicts/:id/dismiss": {
+    protection: "conflict.resolve",
+    // G15 Konflikte3: paarSichtbar vor Verwerfen mit Sitzungsakteur; danach Feldfreigabe und Redaktion.
+    zeilenrecht: ["paarSichtbar"],
+  },
+  "POST /api/conflicts/:id/second-opinion": {
+    protection: "ko.validate",
+    // G15 Konflikte3: paarSichtbar vor gespeicherter Zweitmeinung; danach Feldfreigabe und Redaktion.
+    zeilenrecht: ["paarSichtbar"],
+  },
 
   // --- Duplicates / Overlaps (overlap-routes.ts) ---
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Liste/Detail lesen alle Leseberechtigten; die
