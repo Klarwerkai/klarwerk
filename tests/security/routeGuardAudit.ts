@@ -453,6 +453,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // W2-A/148: der Leseweg der Laufdomaene. Dasselbe Recht wie der Start — waere er weicher,
   // koennte jemand ohne users.manage die Ergebnisse eines Imports lesen, den er nicht ausloesen darf.
   // ADMIN-02: die Importliste — die jüngsten Läufe in derselben Form wie der Einzelweg.
+  // Wiederanlauf: users.manage vor auskunft mit Audit-Laufpunkten und vorhandenem Prozesszustand.
+  // GET über WIEDERANLAUF_PFAD; keine Freigabe/Außenaktion und kein globaler Snapshot.
+  "GET /api/admin/wiederanlauf": { protection: "users.manage" },
   "GET /api/admin/import/runs": { protection: "users.manage" },
   "GET /api/admin/import/runs/:importId": { protection: "users.manage" },
   // R-0142 (Lauf 5 R3): der Lückenbezug je Element wird nur für sichtbare Objekte erhoben.
@@ -964,6 +967,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Verwerfen: ko.read, gebundene Sitzung und Herkunft vor dem Löschen der Prozessmap.
   // Beendet keine Sitzung; paralleles Melden kann neu setzen. Kein lokales G10-Zeilenprädikat.
   "DELETE /api/klara/sessions/:sessionId/office-kontext": { protection: "ko.read" },
+  // E-Mail bestätigen: lokaler requireUser, body.token und echtes user.id vor confirmEmailChange.
+  // Tokenverbrauch vor Kontovergleich/Audit-Update; spätere Fehler geben den Token nicht zurück.
+  "POST /api/auth/me/email/confirm": { protection: "auth" },
   "GET /api/klara/sessions/:sessionId": { protection: "ko.read" },
   // (b) Zustimmung zur externen KI. Erteilt kein Recht auf KO-Inhalt, sondern hebt ausschliesslich
   // die Sperre für den externen Weg auf — der derzeit ohnehin nicht ausführbar ist.
