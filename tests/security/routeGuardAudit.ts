@@ -1271,6 +1271,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/klara/besprechungen/import": { protection: "auth" },
   // requireUser vor quellgeschützter eigener Besprechungsnotiz und deren gespeichertem Audioanker.
   "GET /api/me/klara/besprechungen/:id/audio": { protection: "auth" },
+  // G15 Quellrevision/Board2: tatsächliche frühe Leseguards und gemessene Zeilenrechte.
+  // darfSehen am lebenden KO vor eigener historischer Nichtanhang-Quellrevision.
+  "GET /api/kos/:id/quellrevisionen/:sourceRecordId": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  // Sichtfilter im echten boardCount vor length der offenen body-freien Suchgrundmenge.
+  "GET /api/validation/board/count": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): KI-Aufträge am EIGENEN Gespräch —
   // Konto aus der Sitzung, fremd und unbekannt 404, Quellen nur nach `sichtbarkeitsfilterFuer`.
   // Die Verbindungsprobe ist ein echter Modellaufruf und trägt das Recht der vorhandenen Probe.
