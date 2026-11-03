@@ -1193,6 +1193,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "DELETE /api/livewall/photo": { protection: "auth" },
   // R-0466: das eigene Interaktionsgedächtnis — lesen, merken, einzeln und ganz löschen, jeweils
   // nur für das EIGENE Konto (user.id aus der Sitzung). Wie die Live-Wand: kein zusätzliches Recht.
+  // Gedächtnisänderung: requireUser, eigene gültige Fassung; Audit und Herkunftsausgabe folgen.
+  "PUT /api/me/gedaechtnis/:id": {
+    protection: "auth",
+  },
   "GET /api/me/gedaechtnis": { protection: "auth" },
   "POST /api/me/gedaechtnis": { protection: "auth" },
   "DELETE /api/me/gedaechtnis/:id": { protection: "auth" },
@@ -1209,6 +1213,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen Word-Fenster und
   // Begleitapp — nur Fenster und Aktionen des EIGENEN Kontos (user.id aus der Sitzung), fremd und
   // unbekannt 404. Wie die Gespräche: kein zusätzliches Recht. (BPA-01 nacharbeit-19: aus ff96149e.)
+  // Begleiter-Klärung: requireUser und Konto der Sitzung im synchronen, instanzgebundenen Kanal.
+  "POST /api/me/klara/begleiter/auftraege/:schluessel/klaeren": {
+    protection: "auth",
+  },
+  // Begleiter-Stopp: eigene Aktion; uebergeben bleibt bei angefordertem Abbruch unbestätigt.
+  "POST /api/me/klara/begleiter/adapter/:instanz/aktionen/:aktion/stopp": {
+    protection: "auth",
+  },
   "POST /api/me/klara/begleiter/adapter": { protection: "auth" },
   "PUT /api/me/klara/begleiter/adapter/:instanz": { protection: "auth" },
   "DELETE /api/me/klara/begleiter/adapter/:instanz": { protection: "auth" },
@@ -1246,6 +1258,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // produkt:20261008:klara-kalender (Klara 11): die eigene Kalenderanbindung. Jede Tür nur mit
   // Anmeldung; das Konto kommt aus der Sitzung, fremde Anbindungen und Zuordnungen antworten 404.
   "GET /api/me/klara/kalender": { protection: "auth" },
+  // Kalenderanbindung entfernen: requireUser, Konto der Sitzung und ausdrückliche Bestätigung.
+  "POST /api/me/klara/kalender/anbindungen/:id/entfernen": {
+    protection: "auth",
+  },
   "POST /api/me/klara/kalender/anbindungen": { protection: "auth" },
   "GET /api/me/klara/kalender/anbindungen/:id/termine": { protection: "auth" },
   "POST /api/me/klara/kalender/anbindungen/:id/termine": { protection: "auth" },
@@ -1260,6 +1276,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/me/klara/erinnerungen": { protection: "auth" },
   "GET /api/me/klara/erinnerungen/einstellungen": { protection: "auth" },
   "PUT /api/me/klara/erinnerungen/einstellungen": { protection: "auth" },
+  // Wissenspflegevorschau: requireUser, Dienst prüft ausgewählte Quellen; keine Pflegeausführung.
+  "POST /api/me/klara/erinnerungen/wissenspflege/vorschau": {
+    protection: "auth",
+  },
   "POST /api/me/klara/erinnerungen/vorschau": { protection: "auth" },
   "POST /api/me/klara/erinnerungen": { protection: "auth" },
   "GET /api/me/klara/erinnerungen/ueberwachung": { protection: "auth" },
