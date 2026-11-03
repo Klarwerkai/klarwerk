@@ -1255,18 +1255,56 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Die Verbindungsprobe ist ein echter Modellaufruf und trägt das Recht der vorhandenen Probe.
   "GET /api/me/klara/ki-faehigkeiten": { protection: "auth" },
   "POST /api/me/klara/ki-verbindung/:anbieter/pruefen": { protection: "users.manage" },
-  "GET /api/me/klara/gespraeche/:id/ki-auftraege": { protection: "auth" },
-  "POST /api/me/klara/gespraeche/:id/ki-auftraege": { protection: "auth" },
-  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe": { protection: "auth" },
-  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis": { protection: "auth" },
-  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen": { protection: "auth" },
-  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp": { protection: "auth" },
+  "GET /api/me/klara/gespraeche/:id/ki-auftraege": {
+    protection: "auth",
+    // G15 KI10: liste → sicht: aktuelle Quellenrechte vor Inhaltsausgabe.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege": {
+    protection: "auth",
+    // G15 KI10: bereite → quellen: aktuelles KO-Leserecht vor Paket und Gesprächs-CAS.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe": {
+    protection: "auth",
+    // G15 KI10: uebergib → pruefeFrisch: aktuelles Paket und Weg vor Sendestand/Übergabe.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis": {
+    protection: "auth",
+    // G15 KI10: ergebnis → bereich/sicht: ursprüngliche Bindung und aktuelle Inhaltsausgabe.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen": {
+    protection: "auth",
+    // G15 KI10: unterbrich → sicht: Teilergebnis im Gespräch, Ausgabe mit aktuellen Quellenrechten.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp": {
+    protection: "auth",
+    // G15 KI10: stoppe → sicht: Jobstopp mit aktueller Inhaltssicht; bereits Gesendetes bleibt.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/freigabe-schliessen": {
     protection: "auth",
+    // G15 KI10: schliesseFreigabe → sicht: Quellenfreigabe am Job schließen, Ausgabe frisch prüfen.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
-  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden": { protection: "auth" },
-  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex": { protection: "auth" },
-  "POST /api/me/klara/gespraeche/:id/ki-vergleich": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden": {
+    protection: "auth",
+    // G15 KI10: bindeNeu → quellen: aktuelle Quellen, geschlossene Freigaben bleiben geschlossen.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex": {
+    protection: "auth",
+    // G15 KI10: wendeCodexAn → paketJetzt: aktuelle Quellen vor begrenzten Dateieinzelwirkungen.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-vergleich": {
+    protection: "auth",
+    // G15 KI10: vergleiche → lesbareQuellen: aktuelle Lesbarkeit vor gespeicherten Originalpassagen.
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // produkt:20261008:klara-aktionen (Klara 05): Ausführungsaufträge im EIGENEN Gespräch — dieselbe
   // Tür wie das Gespräch. Kein zusätzliches Recht: die Grenze kann nur verhindern; ob ein Schritt
   // wirkt, entscheidet der vorhandene Produktweg (`/api/drafts`, `/api/kos/:id`) mit seinen Rechten.
