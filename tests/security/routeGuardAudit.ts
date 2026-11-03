@@ -1456,6 +1456,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
   "GET /api/reasoner/assist-presets": { protection: "ko.read" },
   "PUT /api/reasoner/assist-presets": { protection: "users.manage" },
+  // R-0468: optionale Admin-Regeln; beide ganzen Handler in reasoner-routes.ts:1826–1867
+  // prüfen zuerst users.manage. GET liest geltende Fassungen und den Verlauf getrennt.
+  "GET /api/reasoner/verhaltensartefakte": { protection: "users.manage" },
+  // POST validiert die Angaben und schreibt eine neue Fassung; Freigabe ist kein Ausleitungsrecht.
+  "POST /api/reasoner/verhaltensartefakte": { protection: "users.manage" },
   // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf — nur Admin, kein Secret in der Antwort.
   "POST /api/reasoner/test": { protection: "users.manage" },
   // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung — nur Admin (echte Erkennungskette).
