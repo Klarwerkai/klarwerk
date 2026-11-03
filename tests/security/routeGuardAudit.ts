@@ -970,6 +970,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // E-Mail bestätigen: lokaler requireUser, body.token und echtes user.id vor confirmEmailChange.
   // Tokenverbrauch vor Kontovergleich/Audit-Update; spätere Fehler geben den Token nicht zurück.
   "POST /api/auth/me/email/confirm": { protection: "auth" },
+  // Importbefunde: ko.read, dann je Kandidat der importierte darfKandidatSehen vor der Befundausgabe.
+  // Dessen Sichtprüfung wirkt; G10 verfolgt importierte Helferrümpfe hier nicht als lokales Prädikat.
+  "GET /api/library/import/candidates/befunde": { protection: "ko.read" },
   "GET /api/klara/sessions/:sessionId": { protection: "ko.read" },
   // (b) Zustimmung zur externen KI. Erteilt kein Recht auf KO-Inhalt, sondern hebt ausschliesslich
   // die Sperre für den externen Weg auf — der derzeit ohnehin nicht ausführbar ist.
