@@ -460,7 +460,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "users.manage",
     zeilenrecht: ["darfSehen"],
   },
-  "GET /api/admin/import/source-records/:sourceRecordId": { protection: "users.manage" },
+  // Quellrevision: Admin-Guard bleibt; darfRevisionSehen verbraucht darfSehen an heutigen KO-Ankern.
+  "GET /api/admin/import/source-records/:sourceRecordId": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
   // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts (Quellrevision, Lauf, Elementausgang).
   "GET /api/admin/import/knowledge/:koId": {
     protection: "users.manage",
@@ -813,8 +817,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // BPA-02 (technische-daten-routes.ts): Vorschau, Übernahme als eigener Entwurf und Abgleich der
   // eigenen Übernahmen — dasselbe Recht wie jede Entwurfsroute.
   "POST /api/technische-daten/vorschau": { protection: "ko.create" },
-  "POST /api/technische-daten/uebernahme": { protection: "ko.create" },
-  "POST /api/technische-daten/quellenabgleich": { protection: "ko.create" },
+  // Technische Übernahme: sichtbares passendes KO über darfSehen wiederverwenden, sonst eigener Entwurf.
+  "POST /api/technische-daten/uebernahme": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  // Quellenabgleich: eigene Entwürfe und mit darfSehen gefilterte aktuelle KO; keine globale Transaktion.
+  "POST /api/technische-daten/quellenabgleich": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
   // Rechteentzug/-erteilung einer Quelle wirkt auf fremde Wissensobjekte und Entwürfe — nur die
   // Fachprüfung, wie der Import-Accept, der denselben Quellrechte-Weg schreibt.
   "POST /api/technische-daten/quellenrechte": { protection: "ko.validate" },
