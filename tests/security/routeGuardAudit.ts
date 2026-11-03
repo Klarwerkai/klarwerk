@@ -1250,6 +1250,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/klara/erinnerungen/:id/ab/:termin": { protection: "auth" },
   "POST /api/me/klara/erinnerungen/:id/laeufe/:lauf/klaeren": { protection: "auth" },
   "DELETE /api/me/klara/erinnerungen/:id": { protection: "auth" },
+  // G15 Wissen/Besprechung4: tatsächliche frühe Guards und gebundene Privat-/Speicherwege.
+  // requirePermission(ko.create) vor aktuellem Space-Lese- und Schreibfilter.
+  "GET /api/me/klara/wissen/ziele": { protection: "ko.create" },
+  // requireUser vor privatem Import mit aktueller Quellprüfung im Dienst/Notiz-Wrapper.
+  "POST /api/me/klara/wissen/import": { protection: "auth" },
+  // requireUser vor kontogebundenem Import; Audioquelle und Notizspeicherung getrennt geprüft.
+  "POST /api/me/klara/besprechungen/import": { protection: "auth" },
+  // requireUser vor quellgeschützter eigener Besprechungsnotiz und deren gespeichertem Audioanker.
+  "GET /api/me/klara/besprechungen/:id/audio": { protection: "auth" },
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): KI-Aufträge am EIGENEN Gespräch —
   // Konto aus der Sitzung, fremd und unbekannt 404, Quellen nur nach `sichtbarkeitsfilterFuer`.
   // Die Verbindungsprobe ist ein echter Modellaufruf und trägt das Recht der vorhandenen Probe.
