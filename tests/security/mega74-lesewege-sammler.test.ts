@@ -206,6 +206,31 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/aufgaben": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Persönliche Aufgabenliste: klara-aufgabe-routes.ts übergibt nur requireUser.id an dienst.liste. KlaraAufgabeDienst.liste liest ausschließlich konto_id/eigene(kontoId), prüft herkunft pro Aufgabe und unterdrückt gesperrte Quellen bzw. neutralisiert ungeklärte Kopien (klara-aufgabe.ts:484-530); sicht gibt keine Kontokennung aus. Keine gemeinsame KO-Grundmenge.",
+  },
+  "POST /api/me/klara/aufgaben": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Aufgabenanlage: requireUser.id ist Eigentümer; KlaraAufgabeDienst.lege liest die eigene Notiz oder den gebundenen Auftrag im eigenen Gespräch, verlangt bereich persoenlich und speichert kontogebunden. Die Antwort wird nochmals über dienst.hole(user.id, aufgabe.id) und dessen herkunft/ausgabe gelesen; Quellnotizen hängen am bestehenden Quellschutz (build-app.ts:2113-2145,6315-6320).",
+  },
+  "GET /api/me/klara/aufgaben/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Einzelaufgabe: dienst.hole mit der Sitzungskennung; KlaraAufgabeDienst.lese/ausgabe prüft kontoId und aktuelle Notizherkunft. InMemory.hole und Pg.hole lesen nur das eigene Konto; fremd/unbekannt und gesperrte Quellen ergeben404, ungeklärte Kopien sind neutralisiert (klara-aufgabe.ts:153-155,229-234,484-519).",
+  },
+  "PUT /api/me/klara/aufgaben/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Aufgabenänderung: dienst.aendere(user.id,id,...) liest über lese/ausgabe nur die eigene sichtbare Aufgabe und schreibt mit Konto/Fassungsbindung; vor Ausgabe folgt nochmals dienst.hole(user.id,id). Bezug und Eigentümer werden nicht vom Client übernommen; aktuelle Quellnotizen bleiben geschützt (klara-aufgabe.ts:706-771; build-app.ts:2113-2145,6315-6320).",
+  },
+  "DELETE /api/me/klara/aufgaben/:id": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Eigene Aufgabenlöschung: dienst.loesche(requireUser.id,id) führt nur konto/id-gebundenes entferne aus (klara-aufgabe.ts:195-200,301-306,774-775). Antwort ausschließlich geloescht:1 oder neutrales404; Audit enthält Aktion und Aufgabenkennung, keinen Titel, Inhalt oder Bezugstext.",
+  },
   // --- Der Hauptlesepfad (Block B) ---------------------------------------------------------
   "GET /api/kos": { urteil: "PRAEDIKAT", grund: "Block B — Liste gefiltert." },
   "GET /api/kos/:id": { urteil: "PRAEDIKAT", grund: "Block B — 404 statt Objekt." },
