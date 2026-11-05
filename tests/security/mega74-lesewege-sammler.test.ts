@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/vormachen/routinen/:id/host": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Hostbindung der eigenen persönlichen Word-Routine: nach requireUser und pruefeWordHost mit user.id ruft die Route setzeHostbindung(user.id,id,...) und antwortet nur mit routineSicht/hostbindungSicht (assistenz-lernen-routes.ts:127-159,178-192,444-482). setzeHostbindung lädt routine(kontoId,id), verlangt host word und schreibt mit schreibeRoutine/CAS (vormachen.ts:1343-1349,1549-1562,1571-1578); Memory/Pg binden Konto und gelesenen Stand (vormachen.ts:423-432,504-523), tatsächlich in build-app.ts:2106,2698,6525-6527,6687-6698 verdrahtet. Ausgabe persönliche Routine-/Bindungs-/Korrektur-/Fassungsdaten, Zeitplaneingaben nur Namen, kein gemeinsamer KO-Bestand. Eigentumsurteil ohne allgemeine Zusage zu späteren Quellrechtsänderungen kopierter eigener Texte; keine echte Hostprobe.",
+  },
   "PUT /api/me/vormachen/routinen/:id/zeitplan": {
     urteil: "EIGENER_BESTAND",
     grund:
