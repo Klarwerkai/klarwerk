@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen/routinen/:id/lauf": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Anlage bzw. Wiederlesen eines Laufs der eigenen Routine: requireUser.id bindet vormachen.routine und legeRoutinenLaufAn.kontoId; ausgegeben werden der anschließend mit klara.auftrag(user.id,...) gelesene eigene Auftrag samt abgeleitetem Verlauf und bei Neuanlage der Routineplan (assistenz-lernen-routes.ts:242-295). legeRoutinenLaufAn bindet Herkunft/Eigentümer und nutzt klara.legeAuftragAn/auftraege mit derselben Kontokennung, einmalJeLauf lädt die eigene Routine (assistenz-lernen-lauf.ts:133-252; vormachen.ts:1593-1645). Klara.auftrag/hole und beide Gesprächs-Repos lesen konto-gebunden; fremd/unbekannt ergibt404 (klara-gespraech.ts:261-264,336-342,661-668,966-1029,1054-1056; build-app.ts:6074-6077). auftragMitVerlauf berechnet Zusatzangaben aus diesem Auftrag (klara-aktionsverlauf.ts:264-342). Kein gemeinsamer KO-Bestand; Eigentumsurteil ohne allgemeine Quellrechtsparität kopierter eigener Texte.",
+  },
   "POST /api/me/vormachen/routinen/:id/korrektur": {
     urteil: "EIGENER_BESTAND",
     grund:
