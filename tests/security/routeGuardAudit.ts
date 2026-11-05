@@ -1198,6 +1198,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Wiederanlauf: users.manage vor auskunft mit Audit-Laufpunkten und vorhandenem Prozesszustand.
   // GET über WIEDERANLAUF_PFAD; keine Freigabe/Außenaktion und kein globaler Snapshot.
   "GET /api/admin/wiederanlauf": { protection: "users.manage" },
+  "POST /api/admin/wiederanlauf/freigabe": { protection: "users.manage" },
   "GET /api/admin/import/runs": { protection: "users.manage" },
   "GET /api/admin/import/runs/:importId": { protection: "users.manage" },
   // R-0142 (Lauf 5 R3): der Lückenbezug je Element wird nur für sichtbare Objekte erhoben.

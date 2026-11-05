@@ -618,6 +618,116 @@ function pfadeAusTupelschleife(
   return pfade;
 }
 
+/** Nur eine feste Vorlage: leerer Kopf, ein eindeutiger Top-Level-const-String, fester Rest. */
+function pfadAusFesterVorlage(
+  aufruf: ts.CallExpression,
+  sf: ts.SourceFile,
+  instanzen: ReadonlySet<string>,
+): string | undefined {
+  const empfaenger = ts.isPropertyAccessExpression(aufruf.expression)
+    ? aufruf.expression.expression
+    : undefined;
+  if (!empfaenger || !ts.isIdentifier(empfaenger) || !instanzen.has(empfaenger.text))
+    return undefined;
+  const argument = aufruf.arguments[0];
+  if (!argument || sf.isDeclarationFile) return undefined;
+  const vorlage = ohneHuelle(argument);
+  if (
+    !ts.isTemplateExpression(vorlage) ||
+    vorlage.head.text !== "" ||
+    vorlage.templateSpans.length !== 1
+  )
+    return undefined;
+  const teil = vorlage.templateSpans[0];
+  if (!teil) return undefined;
+  const bezug = ohneHuelle(teil.expression);
+  if (!ts.isIdentifier(bezug)) return undefined;
+  for (let raum: ts.Node | undefined = aufruf.parent; raum; raum = raum.parent) {
+    if (
+      ts.isCaseBlock(raum) ||
+      ts.isClassDeclaration(raum) ||
+      ts.isClassExpression(raum) ||
+      ts.isModuleDeclaration(raum) ||
+      ts.isModuleBlock(raum) ||
+      ts.isEnumDeclaration(raum) ||
+      ts.isWithStatement(raum)
+    )
+      return undefined;
+  }
+  // Absichtlich dateiweit konservativ; diese Grenze gilt nur fuer den neuen Vorlagenweg.
+  const bindungen: ts.Node[] = [];
+  let unsicher = false;
+  const schreibziel = (n: ts.Node): void => {
+    if (ts.isIdentifier(n) && n.text === bezug.text) unsicher = true;
+    ts.forEachChild(n, schreibziel);
+  };
+  const suche = (n: ts.Node): void => {
+    if (ts.isWithStatement(n)) unsicher = true;
+    if (
+      ts.isVariableDeclaration(n) ||
+      ts.isBindingElement(n) ||
+      ts.isParameter(n) ||
+      ts.isFunctionDeclaration(n) ||
+      ts.isFunctionExpression(n) ||
+      ts.isClassDeclaration(n) ||
+      ts.isClassExpression(n) ||
+      ts.isEnumDeclaration(n) ||
+      ts.isEnumMember(n) ||
+      ts.isModuleDeclaration(n) ||
+      (ts.isImportClause(n) && !n.isTypeOnly) ||
+      (ts.isImportSpecifier(n) && !n.isTypeOnly && !n.parent.parent.isTypeOnly) ||
+      (ts.isNamespaceImport(n) && !n.parent.isTypeOnly) ||
+      (ts.isImportEqualsDeclaration(n) && !n.isTypeOnly)
+    ) {
+      if (
+        n.name &&
+        (ts.isIdentifier(n.name) || ts.isStringLiteral(n.name)) &&
+        n.name.text === bezug.text
+      )
+        bindungen.push(n);
+    }
+    if (
+      ts.isBinaryExpression(n) &&
+      n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      n.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    )
+      schreibziel(n.left);
+    if (
+      (ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) &&
+      (n.operator === ts.SyntaxKind.PlusPlusToken || n.operator === ts.SyntaxKind.MinusMinusToken)
+    )
+      schreibziel(n.operand);
+    if (ts.isDeleteExpression(n)) schreibziel(n.expression);
+    if (
+      (ts.isForOfStatement(n) || ts.isForInStatement(n)) &&
+      !ts.isVariableDeclarationList(n.initializer)
+    )
+      schreibziel(n.initializer);
+    ts.forEachChild(n, suche);
+  };
+  suche(sf);
+  const bindung = bindungen[0];
+  if (
+    unsicher ||
+    bindungen.length !== 1 ||
+    !bindung ||
+    !ts.isVariableDeclaration(bindung) ||
+    !ts.isIdentifier(bindung.name) ||
+    !bindung.initializer ||
+    !ts.isVariableDeclarationList(bindung.parent) ||
+    !(bindung.parent.flags & ts.NodeFlags.Const) ||
+    bindung.parent.getFirstToken(sf)?.kind !== ts.SyntaxKind.ConstKeyword ||
+    !ts.isVariableStatement(bindung.parent.parent) ||
+    !ts.isSourceFile(bindung.parent.parent.parent) ||
+    bindung.parent.parent.modifiers?.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)
+  )
+    return undefined;
+  const wert = ohneHuelle(bindung.initializer);
+  if (!(ts.isStringLiteral(wert) || ts.isNoSubstitutionTemplateLiteral(wert))) return undefined;
+  const pfad = wert.text + teil.literal.text;
+  return pfad.startsWith("/") ? pfad : undefined;
+}
+
 /** (2) Alle Registrierungen EINER Datei, samt der Stellen, die sie nicht lesen konnte. */
 export function erhebeRegistrierungen(datei: string, text: string): Dateierhebung {
   const registrierungen: Registrierung[] = [];
@@ -639,7 +749,7 @@ export function erhebeRegistrierungen(datei: string, text: string): Dateierhebun
       const name = n.expression.name;
       if (METHODEN.has(name.text)) {
         gelesen.add(name.getStart(sf));
-        const pfad = pfadVon(n.arguments[0], konstanten);
+        const pfad = pfadVon(n.arguments[0], konstanten) ?? pfadAusFesterVorlage(n, sf, instanzen);
         const empfaenger = n.expression.expression;
         // Nacharbeit 2: nicht mehr nur `app`, sondern jede erhobene Serverinstanz.
         const anApp = ts.isIdentifier(empfaenger) && instanzen.has(empfaenger.text);
