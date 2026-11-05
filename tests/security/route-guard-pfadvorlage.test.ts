@@ -22,7 +22,7 @@ describe(GRUPPE, () => {
       ["START", "/irgendwo", "get", "/weiter"],
       ["WURZEL", "/anders", "patch", "/ende"],
       ["ORT", "/dritter/weg", "delete", "/fest"],
-    ]) {
+    ] as const) {
       const aufruf = `tor.${methode}(\`\${${name}}${suffix}\`, async (request, reply) => { await guards.requirePermission("users.manage", request, reply); })`;
       const text = quelle(`export const ${name} = (${JSON.stringify(wert)} as const);`, aufruf);
       const datei = `services/app/src/beliebig-${name}.ts`;
