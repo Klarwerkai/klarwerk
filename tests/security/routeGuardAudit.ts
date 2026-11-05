@@ -1146,6 +1146,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
       "Statische Seite des Word-Aufgabenfensters aus dem Build, nur mit Fassungsstempel; keine " +
       "Nutzer-/Wissensdaten. Das Manifest zeigt vor jeder Anmeldung auf diese Adresse.",
   },
+  "GET /word-addin/begleitung.html": {
+    protection: "public",
+    reason:
+      "Statische Word-Begleitungsseite aus derselben festen Tupeltabelle wie das Aufgabenfenster; " +
+      "nur HTML mit Fassungsstempel oder 404, keine Nutzer-/Wissensdaten (web-static.ts).",
+  },
   // aufnahme:20260922:excel-erster-weg: dieselbe Bauform für das Excel-/PowerPoint-Fenster.
   "GET /office-addin/taskpane.html": {
     protection: "public",

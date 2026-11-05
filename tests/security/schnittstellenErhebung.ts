@@ -384,6 +384,202 @@ export function textlaufLuecken(
   return luecken;
 }
 
+// Begrenzter Fallback: ein direkter Aufruf im Rumpf einer festen const-Tupelschleife.
+// Jede Pfadspalte muss vollständig lesbar und unverändert sein; keine Teilmenge wird übernommen.
+function pfadeAusTupelschleife(
+  aufruf: ts.CallExpression,
+  sf: ts.SourceFile,
+): string[] | null | undefined {
+  const arg = aufruf.arguments[0];
+  if (!arg || !ts.isIdentifier(arg)) return undefined;
+  let schleife: ts.ForOfStatement | undefined;
+  for (let ort: ts.Node | undefined = aufruf.parent; ort; ort = ort.parent) {
+    if (!ts.isForOfStatement(ort) || !ts.isVariableDeclarationList(ort.initializer)) continue;
+    const d = ort.initializer.declarations[0];
+    if (
+      d &&
+      ts.isArrayBindingPattern(d.name) &&
+      d.name.elements.some(
+        (e) => ts.isBindingElement(e) && ts.isIdentifier(e.name) && e.name.text === arg.text,
+      )
+    ) {
+      schleife = ort;
+      break;
+    }
+  }
+  if (!schleife) return undefined;
+  // null kennzeichnet eine erkannte, aber unlesbare Tupelbindung: kein alter Namenskoeder darf sie ersetzen.
+  const satz = aufruf.parent;
+  if (
+    !ts.isExpressionStatement(satz) ||
+    satz.expression !== aufruf ||
+    !ts.isBlock(satz.parent) ||
+    schleife.statement !== satz.parent ||
+    schleife.awaitModifier ||
+    !ts.isVariableDeclarationList(schleife.initializer) ||
+    !(schleife.initializer.flags & ts.NodeFlags.Const)
+  )
+    return null;
+  const deklarationen = schleife.initializer.declarations;
+  const tupel = deklarationen[0];
+  if (
+    deklarationen.length !== 1 ||
+    !tupel ||
+    !ts.isArrayBindingPattern(tupel.name) ||
+    tupel.initializer
+  )
+    return null;
+  const spalten = tupel.name.elements;
+  if (
+    !spalten.length ||
+    spalten.some(
+      (e) =>
+        !ts.isBindingElement(e) ||
+        !ts.isIdentifier(e.name) ||
+        !!e.dotDotDotToken ||
+        !!e.initializer ||
+        !!e.propertyName,
+    )
+  )
+    return null;
+  const spalte = spalten.findIndex(
+    (e) => ts.isBindingElement(e) && ts.isIdentifier(e.name) && e.name.text === arg.text,
+  );
+  const bindung = spalten[spalte];
+  if (spalte < 0 || !bindung || !ts.isBindingElement(bindung)) return null;
+  const finde = (n: ts.BindingName, name: string, d: ts.Node): ts.Node | undefined => {
+    if (ts.isIdentifier(n)) return n.text === name ? d : undefined;
+    for (const e of n.elements) {
+      if (ts.isOmittedExpression(e)) continue;
+      const fund = finde(e.name, name, e);
+      if (fund) return fund;
+    }
+    return undefined;
+  };
+  const sichtbar = (name: string, ort: ts.Node): ts.Node | undefined => {
+    for (let scope: ts.Node | undefined = ort.parent; scope; scope = scope.parent) {
+      if (ts.isFunctionLike(scope)) {
+        for (const p of scope.parameters) {
+          const d = finde(p.name, name, p);
+          if (d) return d;
+        }
+        if (
+          (ts.isFunctionDeclaration(scope) || ts.isFunctionExpression(scope)) &&
+          scope.name?.text === name
+        )
+          return scope;
+      }
+      if (ts.isCatchClause(scope) && scope.variableDeclaration) {
+        const d = finde(scope.variableDeclaration.name, name, scope.variableDeclaration);
+        if (d) return d;
+      }
+      if (
+        (ts.isForOfStatement(scope) || ts.isForInStatement(scope) || ts.isForStatement(scope)) &&
+        scope.initializer &&
+        ts.isVariableDeclarationList(scope.initializer)
+      ) {
+        for (const d of scope.initializer.declarations) {
+          const fund = finde(d.name, name, d);
+          if (fund) return fund;
+        }
+      }
+      if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+      const funde: ts.Node[] = [];
+      for (const s of scope.statements) {
+        if (ts.isVariableStatement(s)) {
+          for (const d of s.declarationList.declarations) {
+            const fund = finde(d.name, name, d);
+            if (fund) funde.push(fund);
+          }
+        } else if (
+          (ts.isFunctionDeclaration(s) || ts.isClassDeclaration(s)) &&
+          s.name?.text === name
+        )
+          funde.push(s);
+        else if (ts.isImportDeclaration(s)) {
+          if (s.importClause?.name?.text === name) funde.push(s.importClause);
+          const imports = s.importClause?.namedBindings;
+          if (imports && ts.isNamespaceImport(imports) && imports.name.text === name)
+            funde.push(imports);
+          if (imports && ts.isNamedImports(imports))
+            for (const e of imports.elements) if (e.name.text === name) funde.push(e);
+        }
+      }
+      if (funde.length) return funde.length === 1 ? funde[0] : undefined;
+    }
+    return undefined;
+  };
+  if (sichtbar(arg.text, arg) !== bindung) return null;
+  const mutiert = (d: ts.Node): boolean => {
+    let ja = false;
+    const ziel = (n: ts.Node): void => {
+      if (ts.isIdentifier(n) && sichtbar(n.text, n) === d) ja = true;
+      ts.forEachChild(n, ziel);
+    };
+    const suche = (n: ts.Node): void => {
+      if (
+        ts.isBinaryExpression(n) &&
+        n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        n.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      )
+        ziel(n.left);
+      if (
+        (ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) &&
+        (n.operator === ts.SyntaxKind.PlusPlusToken || n.operator === ts.SyntaxKind.MinusMinusToken)
+      )
+        ziel(n.operand);
+      if (ts.isDeleteExpression(n)) ziel(n.expression);
+      if (
+        (ts.isForOfStatement(n) || ts.isForInStatement(n)) &&
+        !ts.isVariableDeclarationList(n.initializer)
+      )
+        ziel(n.initializer);
+      ts.forEachChild(n, suche);
+    };
+    suche(sf);
+    return ja;
+  };
+  if (mutiert(bindung)) return null;
+  const tabelle = ohneHuelle(schleife.expression);
+  if (!ts.isArrayLiteralExpression(tabelle) || !tabelle.elements.length) return null;
+  const pfade: string[] = [];
+  for (const zeile of tabelle.elements) {
+    if (ts.isSpreadElement(zeile) || ts.isOmittedExpression(zeile)) return null;
+    const zellen = ohneHuelle(zeile);
+    if (
+      !ts.isArrayLiteralExpression(zellen) ||
+      zellen.elements.length !== spalten.length ||
+      zellen.elements.some((e) => ts.isSpreadElement(e) || ts.isOmittedExpression(e))
+    )
+      return null;
+    const zelle = zellen.elements[spalte];
+    if (!zelle) return null;
+    let wert: ts.Expression = ohneHuelle(zelle);
+    if (ts.isIdentifier(wert)) {
+      const d = sichtbar(wert.text, wert);
+      if (
+        !d ||
+        !ts.isVariableDeclaration(d) ||
+        !ts.isIdentifier(d.name) ||
+        !d.initializer ||
+        !ts.isVariableDeclarationList(d.parent) ||
+        !(d.parent.flags & ts.NodeFlags.Const) ||
+        d.getStart(sf) >= schleife.getStart(sf) ||
+        mutiert(d)
+      )
+        return null;
+      wert = ohneHuelle(d.initializer);
+    }
+    if (
+      !(ts.isStringLiteral(wert) || ts.isNoSubstitutionTemplateLiteral(wert)) ||
+      !wert.text.startsWith("/")
+    )
+      return null;
+    pfade.push(wert.text);
+  }
+  return pfade;
+}
+
 /** (2) Alle Registrierungen EINER Datei, samt der Stellen, die sie nicht lesen konnte. */
 export function erhebeRegistrierungen(datei: string, text: string): Dateierhebung {
   const registrierungen: Registrierung[] = [];
@@ -409,7 +605,8 @@ export function erhebeRegistrierungen(datei: string, text: string): Dateierhebun
         const empfaenger = n.expression.expression;
         // Nacharbeit 2: nicht mehr nur `app`, sondern jede erhobene Serverinstanz.
         const anApp = ts.isIdentifier(empfaenger) && instanzen.has(empfaenger.text);
-        if (pfad?.startsWith("/")) {
+        const tupelpfade = anApp ? pfadeAusTupelschleife(n, sf) : undefined;
+        if (tupelpfade === undefined && pfad?.startsWith("/")) {
           registrierungen.push({
             methode: name.text.toUpperCase(),
             pfad,
@@ -417,6 +614,16 @@ export function erhebeRegistrierungen(datei: string, text: string): Dateierhebun
             zeile: zeile(n.getStart(sf)),
             aufruf: n.getText(sf),
           });
+        } else if (tupelpfade) {
+          for (const pfad of tupelpfade) {
+            registrierungen.push({
+              methode: name.text.toUpperCase(),
+              pfad,
+              datei,
+              zeile: zeile(n.getStart(sf)),
+              aufruf: n.getText(sf),
+            });
+          }
         } else if (anApp) {
           unlesbar.push(
             `${datei}:${zeile(n.getStart(sf))} — ${empfaenger.getText(sf)}.${name.text}(…) an einer Serverinstanz mit einem Pfad, den die Erhebung nicht auflösen kann (weder Literal noch Konstante dieser Datei, oder kein "/"-Pfad).`,
