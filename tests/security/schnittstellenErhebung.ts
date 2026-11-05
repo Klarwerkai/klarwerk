@@ -728,6 +728,135 @@ function pfadAusFesterVorlage(
   return pfad.startsWith("/") ? pfad : undefined;
 }
 
+/** Nur direkte skalare const-Schleifen ueber vollstaendig feste Zeichenketten. */
+function pfadeAusZeichenkettenschleife(
+  aufruf: ts.CallExpression,
+  sf: ts.SourceFile,
+  instanzen: ReadonlySet<string>,
+): string[] | null | undefined {
+  const empfaenger = ts.isPropertyAccessExpression(aufruf.expression)
+    ? aufruf.expression.expression
+    : undefined;
+  if (!empfaenger || !ts.isIdentifier(empfaenger) || !instanzen.has(empfaenger.text))
+    return undefined;
+  const argument = aufruf.arguments[0];
+  if (!argument) return undefined;
+  const vorlage = ohneHuelle(argument);
+  if (!ts.isTemplateExpression(vorlage) || vorlage.templateSpans.length !== 1) return undefined;
+  const teil = vorlage.templateSpans[0];
+  if (!teil) return undefined;
+  const bezug = ohneHuelle(teil.expression);
+  if (!ts.isIdentifier(bezug)) return undefined;
+  let schleife: ts.ForOfStatement | undefined;
+  for (let raum: ts.Node | undefined = aufruf.parent; raum; raum = raum.parent) {
+    if (ts.isForOfStatement(raum)) {
+      schleife = raum;
+      break;
+    }
+  }
+  if (!schleife) return undefined;
+  if (!ts.isVariableDeclarationList(schleife.initializer)) return null;
+  const liste = schleife.initializer;
+  const dek = liste.declarations[0];
+  if (!dek || !ts.isIdentifier(dek.name)) return null;
+  if (dek.name.text !== bezug.text) return undefined;
+  if (
+    schleife.awaitModifier ||
+    liste.declarations.length !== 1 ||
+    dek.initializer ||
+    !(liste.flags & ts.NodeFlags.Const) ||
+    liste.getFirstToken(sf)?.kind !== ts.SyntaxKind.ConstKeyword
+  )
+    return null;
+  const satz = aufruf.parent;
+  if (
+    !ts.isExpressionStatement(satz) ||
+    satz.expression !== aufruf ||
+    !(
+      schleife.statement === satz ||
+      (ts.isBlock(schleife.statement) && satz.parent === schleife.statement)
+    )
+  )
+    return null;
+  for (let raum: ts.Node | undefined = aufruf.parent; raum; raum = raum.parent) {
+    if (
+      ts.isCaseBlock(raum) ||
+      ts.isClassDeclaration(raum) ||
+      ts.isClassExpression(raum) ||
+      ts.isModuleDeclaration(raum) ||
+      ts.isModuleBlock(raum) ||
+      ts.isEnumDeclaration(raum) ||
+      ts.isWithStatement(raum)
+    )
+      return null;
+  }
+  // Absichtlich dateiweit konservativ; diese Grenze gilt nur fuer den neuen Vorlagenweg.
+  const bindungen: ts.Node[] = [];
+  let unsicher = false;
+  const schreibziel = (n: ts.Node): void => {
+    if (ts.isIdentifier(n) && n.text === bezug.text) unsicher = true;
+    ts.forEachChild(n, schreibziel);
+  };
+  const suche = (n: ts.Node): void => {
+    if (ts.isWithStatement(n)) unsicher = true;
+    if (
+      ts.isVariableDeclaration(n) ||
+      ts.isBindingElement(n) ||
+      ts.isParameter(n) ||
+      ts.isFunctionDeclaration(n) ||
+      ts.isFunctionExpression(n) ||
+      ts.isClassDeclaration(n) ||
+      ts.isClassExpression(n) ||
+      ts.isEnumDeclaration(n) ||
+      ts.isEnumMember(n) ||
+      ts.isModuleDeclaration(n) ||
+      (ts.isImportClause(n) && !n.isTypeOnly) ||
+      (ts.isImportSpecifier(n) && !n.isTypeOnly && !n.parent.parent.isTypeOnly) ||
+      (ts.isNamespaceImport(n) && !n.parent.isTypeOnly) ||
+      (ts.isImportEqualsDeclaration(n) && !n.isTypeOnly)
+    ) {
+      if (
+        n.name &&
+        (ts.isIdentifier(n.name) || ts.isStringLiteral(n.name)) &&
+        n.name.text === bezug.text
+      )
+        bindungen.push(n);
+    }
+    if (
+      ts.isBinaryExpression(n) &&
+      n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      n.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    )
+      schreibziel(n.left);
+    if (
+      (ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) &&
+      (n.operator === ts.SyntaxKind.PlusPlusToken || n.operator === ts.SyntaxKind.MinusMinusToken)
+    )
+      schreibziel(n.operand);
+    if (ts.isDeleteExpression(n)) schreibziel(n.expression);
+    if (
+      (ts.isForOfStatement(n) || ts.isForInStatement(n)) &&
+      !ts.isVariableDeclarationList(n.initializer)
+    )
+      schreibziel(n.initializer);
+    ts.forEachChild(n, suche);
+  };
+  suche(sf);
+  if (unsicher || bindungen.length !== 1 || bindungen[0] !== dek) return null;
+  const tabelle = ohneHuelle(schleife.expression);
+  if (!ts.isArrayLiteralExpression(tabelle) || !tabelle.elements.length) return null;
+  const pfade: string[] = [];
+  for (const eintrag of tabelle.elements) {
+    if (ts.isSpreadElement(eintrag) || ts.isOmittedExpression(eintrag)) return null;
+    const wert = ohneHuelle(eintrag);
+    if (!(ts.isStringLiteral(wert) || ts.isNoSubstitutionTemplateLiteral(wert))) return null;
+    const pfad = vorlage.head.text + wert.text + teil.literal.text;
+    if (!pfad.startsWith("/")) return null;
+    pfade.push(pfad);
+  }
+  return pfade;
+}
+
 /** (2) Alle Registrierungen EINER Datei, samt der Stellen, die sie nicht lesen konnte. */
 export function erhebeRegistrierungen(datei: string, text: string): Dateierhebung {
   const registrierungen: Registrierung[] = [];
@@ -753,7 +882,9 @@ export function erhebeRegistrierungen(datei: string, text: string): Dateierhebun
         const empfaenger = n.expression.expression;
         // Nacharbeit 2: nicht mehr nur `app`, sondern jede erhobene Serverinstanz.
         const anApp = ts.isIdentifier(empfaenger) && instanzen.has(empfaenger.text);
-        const tupelpfade = anApp ? pfadeAusTupelschleife(n, sf) : undefined;
+        const zeichenpfade = anApp ? pfadeAusZeichenkettenschleife(n, sf, instanzen) : undefined;
+        const tupelpfade =
+          zeichenpfade === undefined && anApp ? pfadeAusTupelschleife(n, sf) : zeichenpfade;
         if (tupelpfade === undefined && pfad?.startsWith("/")) {
           registrierungen.push({
             methode: name.text.toUpperCase(),

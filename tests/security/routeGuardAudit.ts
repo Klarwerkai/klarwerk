@@ -2096,6 +2096,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/klara/wissen/import": { protection: "auth" },
   // requireUser vor kontogebundenem Import; Audioquelle und Notizspeicherung getrennt geprüft.
   "POST /api/me/klara/besprechungen/import": { protection: "auth" },
+  // Feste skalare Pfadschleifen: sieben Anmeldungswachen und dreimal ko.create.
+  "POST /api/me/klara/besprechungen/:id/lesen": { protection: "auth" },
+  "POST /api/me/klara/besprechungen/:id/korrektur": { protection: "auth" },
+  "POST /api/me/klara/besprechungen/:id/uebernehmen": { protection: "auth" },
+  "POST /api/me/klara/besprechungen/:id/fristquelle": { protection: "auth" },
+  "POST /api/me/klara/besprechungen/:id/teilschritt": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/unterbrechen": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fortsetzen": { protection: "auth" },
+  "POST /api/me/klara/notizen/:id/wissen/vorschau": { protection: "ko.create" },
+  "POST /api/me/klara/notizen/:id/wissen/pruefen": { protection: "ko.create" },
+  "POST /api/me/klara/notizen/:id/wissen/uebernehmen": { protection: "ko.create" },
   // requireUser vor quellgeschützter eigener Besprechungsnotiz und deren gespeichertem Audioanker.
   "GET /api/me/klara/besprechungen/:id/audio": { protection: "auth" },
   // G15 Quellrevision/Board2: tatsächliche frühe Leseguards und gemessene Zeilenrechte.
