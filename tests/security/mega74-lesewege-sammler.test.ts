@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/eingang/email": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Annahmebestätigung des Mailadapters, kein Wissensobjektinhalt: email-eingang-routes.ts:79-149 verlangt vor dem Bodyparser den gebundenen Dienstzugang und mail.entwurf, liest die Zuständigkeit neu und gibt sowohl beim gespeicherten Annahmebeleg (:117-123) als auch nach Entwurfsanlage, Originalbindung und Audit (:125-137) ausdrücklich nur entwurfId und neu zurück. Nachricht/Payload/Original/Fingerprint bleiben intern; originalBinden (:18-69) liefert keine HTTP-Daten. emailAlsEntwurf (email-eingang.ts:86-163) baut den eingehenden Entwurf, keine Bestandsauskunft; bekannte Eingangsfehler geben nur Codes, sonst sendError (http.ts:245-309). Tatsächliche build-app-Registrierung :5611 gelesen. Urteil aus dem Antwortkörper, keine Annahme über Mailkonfiguration, Adapterinstallation, Zustellung oder Allgemeinrechte.",
+  },
   "GET /api/kiosk/profil": {
     urteil: "KEIN_KO_INHALT",
     grund:
