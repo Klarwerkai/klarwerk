@@ -206,6 +206,31 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/notizen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Notizenliste: dienst.liste(requireUser.id,...) liest nur das Konto (klara-notiz.ts:145-170,261-271,498-506). Die echte Verdrahtung liefert QuellgeschuetzteKlaraNotizen; die Route filtert zusätzlich je Notiz über deps.lesbar vor sicht. build-app.ts:6292-6305 bindet diesen Port und bei wissensHerkunft KlaraWissensDienst.original mit heutigem darfSehen; kein gemeinsamer KO-Bestand.",
+  },
+  "POST /api/me/klara/notizen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Notizanlage: KlaraNotizDienst.lege erhält nur user.id, übernimmt eigene Eingabe oder Wortlaut/Bezug der eigenen gespeicherten Gesprächsnachricht und legt konto/vorgang-gebunden an (klara-notiz.ts:513-624). Die Antwort läuft über ausgabe(user,notiz) und den tatsächlich gebundenen lesbar-Port; QuellgeschuetzteKlaraNotizen schützt gebundene Herkunft (build-app.ts:2113-2145,6292-6305).",
+  },
+  "GET /api/me/klara/notizen/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Einzelnotiz: dienst.hole(user.id,id) über konto-gebundenes Memory/SQL-Repo, bei fremd/unbekannt404 (klara-notiz.ts:149-151,245-250,489-495). QuellgeschuetzteKlaraNotizen und ausgabe mit build-app-lesbar prüfen die vorhandene gebundene Herkunft vor Sicht; bei wissensHerkunft folgt original/darfSehen. Das Urteil beschreibt Eigenbestand, keine allgemeine Quellrechtsparität kopierten freien Kontexts.",
+  },
+  "PUT /api/me/klara/notizen/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Notizänderung: dienst.aendere(user.id,id,...) liest das eigene Original, bindet die gesehene Fassung und schreibt mit konto_id/Fassungsprüfung; Quelle/Rücklink bleiben erhalten (klara-notiz.ts:647-711,191-202,311-328). Vor Ausgabe folgt ausgabe(user,notiz) mit dem realen lesbar-/Quellschutzport; kein clientgewählter Eigentümer und kein gemeinsamer KO-Bestand.",
+  },
+  "DELETE /api/me/klara/notizen/:id": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Eigene Notizlöschung: Antwort nur geloescht:1 oder neutrales404, Audit nur Aktion/Kennung. build-app.ts:6297 bindet KlaraBesprechungsDienst.loesche(user.id,id): Rohnotiz und zugehörige Notizen/Aufgaben bleiben konto-gebunden, ggf. zugehörige Audioobjekte gelöscht; Fallback KlaraNotizDienst.loesche nutzt konto/id-gebundenes entferne (klara-besprechung.ts:748-769; klara-notiz.ts:205-211,331-336,714-715). Kein Notiz-/KO-Inhalt in der Antwort.",
+  },
   "GET /api/me/klara/aufgaben": {
     urteil: "EIGENER_BESTAND",
     grund:
