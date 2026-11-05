@@ -100,7 +100,28 @@ describe("Unabhaengige Erhebung · feste Tupelschleife", () => {
       "/beliebig/zwei",
     ]);
     // ENDE: die beiden konkret gemeldeten uebersehenen Bindungsraeume.
+    // BEGINN: nicht unterstuetzte Wertbindungsraeume und gleichnamige Wertdeklarationen.
+    const wertgegenformen = [
+      'const ZIEL="/koeder"; const C = class ZIEL { registriere(){ for(const [adresse,datei] of [[ZIEL,"a"]] as const){ app.get(adresse,handler); } } };',
+      'const ZIEL="/koeder"; function f(){ enum ZIEL { a } for(const [adresse,datei] of [[ZIEL,"a"]] as const){ app.get(adresse,handler); } }',
+      'const ZIEL="/koeder"; namespace N { const ZIEL=holePfad(); export function f(){ for(const [adresse,datei] of [[ZIEL,"a"]] as const){ app.get(adresse,handler); } } }',
+      'const ZIEL="/koeder"; function f(){ namespace ZIEL { export const wert=1; } for(const [adresse,datei] of [[ZIEL,"a"]] as const){ app.get(adresse,handler); } }',
+      'const ZIEL="/koeder"; function f(){ import ZIEL = Andere.Werte; for(const [adresse,datei] of [[ZIEL,"a"]] as const){ app.get(adresse,handler); } }',
+      'const ZIEL="/koeder"; with (objekt) { for(const [adresse,datei] of [[ZIEL,"a"]] as const){ app.get(adresse,handler); } }',
+      'class C { registriere(){ for(const [adresse,datei] of [["/literal","a"]] as const){ app.get(adresse,handler); } } }',
+      'const ZIEL="/koeder"; enum E { a = (() => { for(const [adresse,datei] of [[ZIEL,"a"]] as const){ app.get(adresse,handler); } return 1; })() }',
+    ];
+    const nurTypname = text.replace(
+      "function registriere(fassung) {",
+      "function registriere(fassung) { type ZIEL = string;",
+    );
+    expect(erhebe(nurTypname).registrierungen.map((r) => r.pfad)).toEqual([
+      "/beliebig/eins",
+      "/beliebig/zwei",
+    ]);
+    // ENDE: nicht unterstuetzte Wertbindungsraeume und gleichnamige Wertdeklarationen.
     for (const variante of [
+      ...wertgegenformen,
       ...gegenformen,
       text.replace("function registriere(fassung)", "function registriere(fassung, ZIEL)"),
       quelle("fremdeTabelle"),

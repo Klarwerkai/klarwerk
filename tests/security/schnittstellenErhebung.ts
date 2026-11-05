@@ -392,6 +392,14 @@ function pfadeAusTupelschleife(
 ): string[] | null | undefined {
   const arg = aufruf.arguments[0];
   if (!arg || !ts.isIdentifier(arg)) return undefined;
+  const unbekannterBindungsraum = (n: ts.Node): boolean =>
+    ts.isCaseBlock(n) ||
+    ts.isClassDeclaration(n) ||
+    ts.isClassExpression(n) ||
+    ts.isModuleDeclaration(n) ||
+    ts.isModuleBlock(n) ||
+    ts.isEnumDeclaration(n) ||
+    ts.isWithStatement(n);
   let schleife: ts.ForOfStatement | undefined;
   for (let ort: ts.Node | undefined = aufruf.parent; ort; ort = ort.parent) {
     if (!ts.isForOfStatement(ort) || !ts.isVariableDeclarationList(ort.initializer)) continue;
@@ -408,6 +416,10 @@ function pfadeAusTupelschleife(
     }
   }
   if (!schleife) return undefined;
+  // Die begrenzte Tupelbauform wird in diesen Wertbindungsraeumen nicht als gelesen behauptet.
+  for (let scope: ts.Node | undefined = aufruf.parent; scope; scope = scope.parent) {
+    if (unbekannterBindungsraum(scope)) return null;
+  }
   // null kennzeichnet eine erkannte, aber unlesbare Tupelbindung: kein alter Namenskoeder darf sie ersetzen.
   const satz = aufruf.parent;
   if (
@@ -458,8 +470,8 @@ function pfadeAusTupelschleife(
   };
   const sichtbar = (name: string, ort: ts.Node): ts.Node | undefined => {
     for (let scope: ts.Node | undefined = ort.parent; scope; scope = scope.parent) {
-      // Nicht unterstuetzte CaseBlock-Bindungen duerfen keine aeussere Koeederkonstante liefern.
-      if (ts.isCaseBlock(scope)) return undefined;
+      // Nicht unterstuetzte Wertbindungsraeume duerfen keine aeussere Koederkonstante liefern.
+      if (unbekannterBindungsraum(scope)) return undefined;
       if (ts.isFunctionLike(scope)) {
         // var gilt funktionsweit, auch in verschachtelten oder nie ausgefuehrten Zweigen.
         let gehoben = false;
@@ -505,7 +517,11 @@ function pfadeAusTupelschleife(
             if (fund) funde.push(fund);
           }
         } else if (
-          (ts.isFunctionDeclaration(s) || ts.isClassDeclaration(s)) &&
+          (ts.isFunctionDeclaration(s) ||
+            ts.isClassDeclaration(s) ||
+            ts.isEnumDeclaration(s) ||
+            ts.isModuleDeclaration(s) ||
+            ts.isImportEqualsDeclaration(s)) &&
           s.name?.text === name
         )
           funde.push(s);
