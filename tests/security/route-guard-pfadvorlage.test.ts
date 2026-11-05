@@ -47,15 +47,16 @@ describe(GRUPPE, () => {
       (r) => r.methode === "POST" && r.pfad === "/api/admin/wiederanlauf/freigabe",
     );
     const start = text.indexOf("app.post<{ Body: Record<string, unknown> | null }>(");
-    const ende = text.indexOf("\n  });", start) + "\n  })".length;
+    const ende = text.indexOf("\n  );", start);
     expect(start).toBeGreaterThan(0);
+    expect(ende).toBeGreaterThan(start);
     expect(teil.unlesbar).toEqual([]);
     expect(freigabe).toEqual({
       methode: "POST",
       pfad: "/api/admin/wiederanlauf/freigabe",
       datei,
       zeile: 299,
-      aufruf: text.slice(start, ende),
+      aufruf: text.slice(start, ende + "\n  )".length),
     });
     expect(freigabe && schutzartVon(freigabe.aufruf)).toBe("users.manage");
     expect(freigabe?.aufruf).toContain(
