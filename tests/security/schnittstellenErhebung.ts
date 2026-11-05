@@ -458,7 +458,20 @@ function pfadeAusTupelschleife(
   };
   const sichtbar = (name: string, ort: ts.Node): ts.Node | undefined => {
     for (let scope: ts.Node | undefined = ort.parent; scope; scope = scope.parent) {
+      // Nicht unterstuetzte CaseBlock-Bindungen duerfen keine aeussere Koeederkonstante liefern.
+      if (ts.isCaseBlock(scope)) return undefined;
       if (ts.isFunctionLike(scope)) {
+        // var gilt funktionsweit, auch in verschachtelten oder nie ausgefuehrten Zweigen.
+        let gehoben = false;
+        const sucheVar = (n: ts.Node): void => {
+          if (n !== scope && ts.isFunctionLike(n)) return;
+          if (ts.isVariableDeclarationList(n) && !(n.flags & ts.NodeFlags.BlockScoped)) {
+            for (const d of n.declarations) if (finde(d.name, name, d)) gehoben = true;
+          }
+          ts.forEachChild(n, sucheVar);
+        };
+        sucheVar(scope);
+        if (gehoben) return undefined;
         for (const p of scope.parameters) {
           const d = finde(p.name, name, p);
           if (d) return d;
@@ -511,9 +524,18 @@ function pfadeAusTupelschleife(
   };
   if (sichtbar(arg.text, arg) !== bindung) return null;
   const mutiert = (d: ts.Node): boolean => {
+    const name =
+      (ts.isBindingElement(d) || ts.isVariableDeclaration(d)) && ts.isIdentifier(d.name)
+        ? d.name.text
+        : undefined;
+    if (!name) return true;
     let ja = false;
     const ziel = (n: ts.Node): void => {
-      if (ts.isIdentifier(n) && sichtbar(n.text, n) === d) ja = true;
+      if (ts.isIdentifier(n) && n.text === name) {
+        const binding = sichtbar(n.text, n);
+        // Eine im nicht unterstuetzten Bindungsraum unklare Schreibstelle bleibt fail-closed.
+        if (!binding || binding === d) ja = true;
+      }
       ts.forEachChild(n, ziel);
     };
     const suche = (n: ts.Node): void => {

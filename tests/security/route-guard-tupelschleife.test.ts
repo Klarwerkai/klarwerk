@@ -77,7 +77,31 @@ describe("Unabhaengige Erhebung · feste Tupelschleife", () => {
       'function registriere(fassung) { const ZIEL = "/innen";',
     );
     expect(erhebe(lokal).registrierungen.map((r) => r.pfad)).toEqual(["/beliebig/eins", "/innen"]);
+    // BEGINN: die beiden konkret gemeldeten uebersehenen Bindungsraeume.
+    const gehobenesVar =
+      "const ZIEL='/koeder'; function f(){ if(flag){var ZIEL=holePfad();} for(const [adresse,datei] of [[ZIEL,'a']] as const){app.get(adresse,handler);} }";
+    const caseBindung =
+      "const ZIEL='/koeder'; function f(){switch(x){case 1: const ZIEL=holePfad(); for(const [adresse,datei] of [[ZIEL,'a']] as const){app.get(adresse,handler);}}}";
+    const gegenformen = [
+      gehobenesVar,
+      gehobenesVar.replace("if(flag)", "if(false)"),
+      caseBindung,
+      text.replace(
+        "function registriere(fassung) {",
+        "function registriere(fassung) { switch(fassung) { case 1: ZIEL = holePfad(); }",
+      ),
+    ];
+    const fremdeFunktion = text.replace(
+      "function registriere(fassung) {",
+      "function registriere(fassung) { function nebenbei() { if(flag) { var ZIEL = holePfad(); } }",
+    );
+    expect(erhebe(fremdeFunktion).registrierungen.map((r) => r.pfad)).toEqual([
+      "/beliebig/eins",
+      "/beliebig/zwei",
+    ]);
+    // ENDE: die beiden konkret gemeldeten uebersehenen Bindungsraeume.
     for (const variante of [
+      ...gegenformen,
       text.replace("function registriere(fassung)", "function registriere(fassung, ZIEL)"),
       quelle("fremdeTabelle"),
       text.replace(`${AUFRUF};`, `function spaeter(adresse) { ${AUFRUF}; }`),
