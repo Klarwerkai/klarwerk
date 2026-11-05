@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen/routinen/:id/word-lauf": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Lauf der eigenen Word-Routine: requireUser.id bindet den Routine-Lookup und die Siegel-/Zielprüfung; eigene Fassung, Hosttexte und Dokumentbindung werden geprüft, ein neues Gespräch entsteht mit user.id (assistenz-lernen-routes.ts:492-635). fuehreHostlaufAus/fuehreDurch verwenden r.kontoId für aktuelles Konto, Auftragsanlage/Wiederlesung und Ausführung; Rückgabe sind das eigene Laufergebnis, Kennungen, Status und gegebenenfalls Abweichungshinweise, kein roher Entwurf (assistenz-lernen-zeitsteuerung.ts:315-464). Die echte Verdrahtung liest den eigenen Auftrag und den Ergebnisentwurf über den normalen kontogebundenen Aufrufweg; pruefeEntwurf erzeugt nur Hinweise aus Plan/Feldname/Entwurfskennung (build-app.ts:6604-6681; assistenz-lernen-auftrag.ts:228-273). Kein gemeinsamer KO-Bestand; Eigentumsurteil ohne allgemeine Quellrechtsparität kopierter eigener Texte. Nur Codebefund, keine echte Word-/Host-/Laufprobe.",
+  },
   "POST /api/me/vormachen/routinen/:id/lauf": {
     urteil: "EIGENER_BESTAND",
     grund:
