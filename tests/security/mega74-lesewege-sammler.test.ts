@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/gaps/:id/zurueckweisen": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "Beanstandung zurückweisen: nach requirePermission ko.create und rejectBeanstandung antwortet die Route über vorgangSenden→beteiligterAus mit sichtbarkeitsfilterFuer(user), dieselbe Vorgangssicht wie die vorhandenen Übergabe-/Abschlusswege (ask-routes.ts:1970-1999,2227-2238). AskService.gapVorgang prüft Entwurf/Ergebnis und Beanstandungs-/Abschlussbezüge gegen beteiligter.sichtbar; ohne heutige Sicht bleibt der KO-Bezug unzugänglich bzw. Text/Quellkennung redigiert (service.ts:3321-3427; gap-vorgang.ts:464-486; antwort-beanstandung.ts:271-318). Kein Freibrief aus ko.create und keine rohe Gap-Ausgabe.",
+  },
   "PUT /api/me/gedaechtnis/:id": {
     urteil: "EIGENER_BESTAND",
     grund:
