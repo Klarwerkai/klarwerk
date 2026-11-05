@@ -569,7 +569,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // KLARWERK_PROVENANCE_ENABLED überhaupt registriert; das Recht ist dasselbe wie am Objekt selbst.
   // JOB 1331: DIES ist die Zeile, die JOB 658 D2 als Befund gemeldet hat — sie führte `ko.read`
   // ohne das seit mega74 zusätzlich wirkende `darfSehen` (provenance-routes.ts:105, Registrierung :89).
-  "GET /api/kos/:id/provenance": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // Die Paarwache in provenance-routes.ts:126 prüft zusätzlich beide Konfliktobjekte.
+  "GET /api/kos/:id/provenance": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen", "paarSichtbar"],
+  },
   "GET /api/evidence": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   // JOB 3326: die Lesevariante trägt Titel und Inhalt des Objekts in einer anderen Sprache. Wäre
   // sie leichter zu bekommen als das Original, wäre sie der Umweg um die Sichtbarkeitsregel — sie

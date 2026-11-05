@@ -265,7 +265,10 @@ describe("JOB 1331 · die Pruefliste fuehrt das Zeilenrecht mit", () => {
     // Der urspruengliche Befund, an seiner Stelle nachgeschlagen statt behauptet.
     const fund = MIT_ZEILENRECHT.find((f) => f.schluessel === "GET /api/kos/:id/provenance");
     expect(fund, "die Route, um die es in JOB 658 ging, muss in der Erhebung stehen").toBeDefined();
-    expect(fund?.praedikate).toEqual(["darfSehen"]);
-    expect(ROUTE_GUARD_MATRIX["GET /api/kos/:id/provenance"]?.zeilenrecht).toEqual(["darfSehen"]);
+    expect(fund?.praedikate).toEqual(["darfSehen", "paarSichtbar"]);
+    expect(ROUTE_GUARD_MATRIX["GET /api/kos/:id/provenance"]?.zeilenrecht).toEqual([
+      "darfSehen",
+      "paarSichtbar",
+    ]);
   });
 });
