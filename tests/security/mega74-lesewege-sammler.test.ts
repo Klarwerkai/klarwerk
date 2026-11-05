@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/erinnerungen/einstellungen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Persönliche Einrichtungsvorgaben des Sitzungskontos: klara-erinnerung-routes.ts:206-217 verlangt requireUser, übergibt ausschließlich user.id an dienst.einstellungen und entfernt kontoId vor der Antwort {einstellungen}. KlaraErinnerungDienst.einstellungen (klara-erinnerung.ts:2825-2838) liest ablage.einstellungen.hole(kontoId), sonst feste Werkvorgaben für dasselbe Konto. InMemory-Repo:1479-1493 map.get(kontoId); Pg-Repo:2138-2147 WHERE konto_id=$1. DTO:390-400 nur Zeitzone, Sommerzeit-/Verpasstregeln, Einrichtungszeit, Fassung und Änderungszeit. build-app.ts:4391-4400 und :6413-6423 binden dieselbe Ablage und denselben Dienst an die Route. Kein gemeinsamer Wissensbestand und keine allgemeine Quellrechtsparität; nur Quelltexturteil, kein echter HTTP-/PG-/Einrichtungs-/Schedulerlauf.",
+  },
   "POST /api/eingang/email": {
     urteil: "KEIN_KO_INHALT",
     grund:
