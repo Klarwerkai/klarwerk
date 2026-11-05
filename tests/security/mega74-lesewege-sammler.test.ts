@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/vormachen/routinen/:id/zustand": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Zustand der eigenen persönlichen Routine: requireUser.id geht an VormachenDienst.setzeRoutinenZustand; routine(kontoId,id) lädt ausschließlich das Konto und fremd/unbekannt ergibt404 (vormachen.ts:1343-1349,1454-1481). Memory.routine und vergleicheUndLege sowie Pg.routine und CAS-UPDATE binden kontoId/konto_id (vormachen.ts:423-432,504-523). Die echte Verdrahtung verwendet diese Routinen-Repos (build-app.ts:2106,2698,6525-6527); ausgegeben wird nur routineSicht mit eigenen Zustands-/Zeitplan-/Host-/Korrektur- und Fassungsdaten, keine gemeinsame KO-Grundmenge und keine Rohwerte der Zeitplaneingaben (assistenz-lernen-routes.ts:178-192,297-317). Eigentumsurteil, keine allgemeine Zusage zur späteren Quellrechtsänderung kopierter eigener Texte.",
+  },
   "POST /api/gaps/:id/zurueckweisen": {
     urteil: "PRAEDIKAT",
     grund:
