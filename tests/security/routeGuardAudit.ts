@@ -107,7 +107,8 @@ function schutzartAmBlock(block: string): Protection {
 }
 
 // Scannt eine einzelne Quelldatei: findet jede Routen-Registrierung, ihre URL und die im
-// Handler-Block verwendete Schutzart. Block = von einer app.<method>(-Stelle bis zur nächsten.
+// Handler-Block verwendete Schutzart. Der Block endet am tatsächlichen Registrierungsaufruf;
+// nachfolgende Helfer gehören nicht zu seinem Handler.
 //
 // R-1165: Dieser Scanner bleibt die Grundlage von `scanAllRoutes()` — und damit der Laufzeitproben,
 // die jede gefundene öffentliche Route gegen `buildApp` anklopfen (tests/demo-zugang-gaeste/). Er
@@ -128,6 +129,7 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const konstanten = zeichenkettenKonstanten(sf);
   const urlAn = new Map<number, string>();
+  const endeAn = new Map<number, number>();
   const helfer = new Map<string, string>();
   const besuche = (n: ts.Node): void => {
     if (
@@ -139,6 +141,7 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       const url = pfadVon(n.arguments[0], konstanten);
       if (url !== undefined) {
         urlAn.set(n.getStart(sf), url);
+        endeAn.set(n.getStart(sf), n.getEnd());
       }
     }
     if (ts.isFunctionDeclaration(n) && n.name && n.body) {
@@ -169,7 +172,7 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
     if (!mark) {
       continue;
     }
-    const end = marks[i + 1]?.idx ?? text.length;
+    const end = endeAn.get(mark.idx) ?? mark.idx;
     const block = text.slice(mark.idx, end);
     const url = urlAn.get(mark.idx) ?? "(unknown)";
     if (!/^\/[A-Za-z0-9/:_.-]+$/.test(url)) {
