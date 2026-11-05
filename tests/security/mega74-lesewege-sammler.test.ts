@@ -2176,10 +2176,10 @@ const REGISTER: Record<string, Eintrag> = {
       {
         datei: "services/app/src/services/answer-explanation.ts",
         funktion: "erklaere",
-        filter: { index: 1, eigenschaft: "sichtbar" },
+        filter: { index: 1, eigenschaft: "darfSehen" },
       },
     ],
-    anwendung: "sichtbar",
+    anwendung: "darfSehen",
     grund:
       "answer-explanation.ts — gehoertNutzer() als Eigentumstor, sichtbarkeitsfilterFuer schwaerzt je Beleg (Nacharbeit 19).",
   },
@@ -5054,5 +5054,60 @@ describe("JOB 1561 · B52/C Grenze 1: die Erhebung steigt wirklich ab", () => {
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }
+  });
+});
+
+describe("A5 G15 · Kalibrierung des echten Erklaerpfads", () => {
+  it("bindet darfSehen zentral und meldet ersetzte fehlende oder unaufgerufene Filter rot", () => {
+    const schluessel = "GET /api/klara/answers/:answerId/explanation";
+    const routeDatei = "services/app/src/routes/klara-answer-explanation-routes.ts";
+    const dienstDatei = "services/app/src/services/answer-explanation.ts";
+    const route = LIES_AUS_DEM_BAUM(routeDatei);
+    const dienst = LIES_AUS_DEM_BAUM(dienstDatei);
+    const zentral = LIES_AUS_DEM_BAUM("services/app/src/sichtbarkeit.ts");
+    const eintrag = REGISTER[schluessel];
+    expect(eintrag?.urteil).toBe("DIENST_FILTERT");
+    expect(eintrag?.entscheidung).toBe("sichtbarkeitsfilterFuer");
+    expect(eintrag?.kette).toEqual([
+      { datei: dienstDatei, funktion: "erklaere", filter: { index: 1, eigenschaft: "darfSehen" } },
+    ]);
+    expect(eintrag?.anwendung).toBe("darfSehen");
+    if (!eintrag) throw new Error("der echte Erklaerpfadeintrag fehlt");
+    const bindung = "darfSehen: sichtbarkeitsfilterFuer(user),";
+    const anwendung = "leser.darfSehen(ko)";
+    const dienstAufruf = "deps.explanations.erklaere(";
+    const dienstKopf = "  async erklaere(";
+    expect(route.split(bindung)).toHaveLength(2);
+    expect(dienst.split(anwendung)).toHaveLength(2);
+    expect(route.split(dienstAufruf)).toHaveLength(2);
+    expect(dienst.split(dienstKopf)).toHaveLength(2);
+    expect(zentral.split("return (ko) => darfSehen(user, ko);")).toHaveLength(2);
+    const zeileAufruf = route.slice(0, route.indexOf(dienstAufruf)).split("\n").length;
+    const zeileDienst = dienst.slice(0, dienst.indexOf(dienstKopf)).split("\n").length;
+    const pruefe = (routeText: string, dienstText: string): string[] => {
+      const erhoben = erhebeDatei(routeDatei, routeText);
+      expect(erhoben.unlesbar).toEqual([]);
+      expect(erhoben.zaehlerAbweichung).toEqual([]);
+      const funde = erhoben.funde.filter((f) => f.schluessel === schluessel);
+      expect(funde).toHaveLength(1);
+      const fund = funde[0];
+      if (!fund) throw new Error("der echte Erklaerpfad wurde nicht erhoben");
+      return pruefeDienstweg(schluessel, eintrag, fund, (datei) => {
+        expect(datei).toBe(dienstDatei);
+        return dienstText;
+      });
+    };
+    expect(pruefe(route, dienst)).toEqual([]);
+    for (const ungebunden of [
+      route.replace(bindung, "darfSehen: () => true,"),
+      route.replace(bindung, ""),
+    ]) {
+      expect(pruefe(ungebunden, dienst)).toEqual([
+        `${routeDatei}:${zeileAufruf} — ${schluessel}: erklaere(…) bekommt an der Filterstelle nicht die zentrale Entscheidung (fehlt, ersetzt oder nicht auflösbar).`,
+      ]);
+    }
+    expect(pruefe(route, dienst.replace(anwendung, "true"))).toEqual([
+      `${dienstDatei}:${zeileDienst} — ${schluessel}: erklaere ruft den übergebenen Filter leser.darfSehen nicht auf.`,
+    ]);
   });
 });
