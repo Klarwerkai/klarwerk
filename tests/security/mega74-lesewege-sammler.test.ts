@@ -3679,6 +3679,36 @@ interface Ausgangseintrag {
 }
 
 const AUSGAENGE: Record<string, Ausgangseintrag> = {
+  "services/app/src/routes/office-routes.ts::standardDiscovery#1": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Office-Discovery: standardDiscovery ruft nur die konfigurierte Discovery-Adresse mit Zeitgrenze ab, ohne Anfragekörper. office-artikel.ts bildet die Adresse aus der Betreiber-Herkunft und /hosting/discovery; kein Wissensobjekt oder Anhang wird übertragen.",
+  },
+  "services/notifications/src/push.ts::vapidPushSender#1": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "VAPID-Transporthülle: der Standard-PushFetch reicht URL und Init an fetch weiter. Der zugehörige send-Weg gibt ausschließlich den Geräteanstoß mit leerem Rumpf weiter; kein Titel, Text oder Wissensobjekt.",
+  },
+  "services/notifications/src/push.ts::send#1": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Geräte-Push: send akzeptiert nur ein PushAbo, prüft den Endpunkt und sendet POST mit body leer; VAPID-Ausweis, TTL und Urgency sind Transportdaten. Der angemeldete Client lädt die Inhalte selbst, kein Wissensobjektinhalt im Versand.",
+  },
+  "services/media/src/transcriber.ts::zeitAnfrage#1": {
+    urteil: "AUFTRAGSVERARBEITER",
+    grund:
+      "Zeitgebundene Transkription beim konfigurierten Verarbeitungsdienst: zeitAnfrage sendet Medienbytes, Modell, Sprache und Segmentanforderung als FormData. Aufrufer sind die bestehenden Transkriber; createCappedTranscriberFromEnv bindet den Egress-Wächter, Medienausgabe entscheidet beurteileAnhang.",
+  },
+  "services/media/src/transcriber.ts::transcribe#2": {
+    urteil: "AUFTRAGSVERARBEITER",
+    grund:
+      "Konfigurierter Transkriptionsdienst des lokalen Adapters: der zweite transcribe-Ausgang übergibt Medien als FormData an dessen Basisadresse. Nur bestätigte lokale Origins tragen lokal:true; sonst bleibt der bestehende cappedTranscriber scharf. Kein pauschaler Beleg, dass ein aktiver Dienst lokal ist.",
+  },
+  "services/reasoner/src/model-client.ts::einbetten#1": {
+    urteil: "AUFTRAGSVERARBEITER",
+    grund:
+      "Interner Embedding-Verarbeitungsdienst: der Client entsteht nur nach isConfirmedLocalOrigin und übergibt texte als input an /embeddings; Weiterleitungen werden mit redirect:error verworfen. Das Urteil benennt den Verarbeitungsweg, keine heutige Konfiguration oder erfolgreiche Modellprobe.",
+  },
   "services/app/src/wissensereignisse.ts::fetchZusteller#1": {
     urteil: "SCHUTZ_VOR_VERSAND",
     verbindung: "zusteller",
