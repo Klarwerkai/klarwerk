@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/vormachen/word-routinen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Liste der eigenen Word-Routinen: requireUser.id geht an VormachenDienst.uebersicht; dieser liest routinenRepo.routinen(kontoId), Memory filtert kontoId und Pg verlangt WHERE konto_id=$1 (assistenz-lernen-routes.ts:410-438; vormachen.ts:418-420,494-501,797-802). Die Route filtert host word und gibt routineSicht plus eigenen Titel, Umfang und anstehende Laufkennung/Übergabeart aus. wordUmfaenge liest nur r.schritte; zeitsteuerung.uebergabe/anstehend berechnen aus genau dieser eigenen Routine und jetzt, ohne fremden Bestand (assistenz-lernen-word.ts:70-84; assistenz-lernen-zeitsteuerung.ts:179-212). Tatsächliche Routinen-Repos sind in build-app.ts:2106,2698,6525-6527 verdrahtet. Kein gemeinsamer KO-Bestand; Eigentumsurteil ohne allgemeine Zusage zu späteren Quellrechtsänderungen kopierter eigener Texte, keine echte Word-/Hostprobe.",
+  },
   "PUT /api/me/vormachen/routinen/:id/host": {
     urteil: "EIGENER_BESTAND",
     grund:
