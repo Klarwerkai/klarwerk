@@ -973,6 +973,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Importbefunde: ko.read, dann je Kandidat der importierte darfKandidatSehen vor der Befundausgabe.
   // Dessen Sichtprüfung wirkt; G10 verfolgt importierte Helferrümpfe hier nicht als lokales Prädikat.
   "GET /api/library/import/candidates/befunde": { protection: "ko.read" },
+  // Office-Übernahme: ko.create; artikelOder404 prüft Anhang und darfSehen vor dem Host.
+  // Host/KO binden die Übernahme an die Fassung; die Sitzungsbasis folgt nach dem KO-Schreibvorgang.
+  "POST /api/kos/:id/office/:anhangId/uebernahme": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
   "GET /api/klara/sessions/:sessionId": { protection: "ko.read" },
   // (b) Zustimmung zur externen KI. Erteilt kein Recht auf KO-Inhalt, sondern hebt ausschliesslich
   // die Sperre für den externen Weg auf — der derzeit ohnehin nicht ausführbar ist.
