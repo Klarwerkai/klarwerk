@@ -194,7 +194,11 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       bisher === "public" && aufruf && hatWopiZugangsmarke(aufruf, sf, file)
         ? "wopi-zugangsmarke"
         : bisher;
-    out.push({ method: mark.method, url, protection, file });
+    const nachpruefung =
+      protection === "action-dispatched" && aufruf
+        ? schutzartNachpruefung(aufruf, sf, file)
+        : undefined;
+    out.push({ method: mark.method, url, protection: nachpruefung ?? protection, file });
   }
   return out;
 }
@@ -477,6 +481,437 @@ function hatWopiZugangsmarke(aufruf: ts.CallExpression, sf: ts.SourceFile, file:
       return true;
   }
   return false;
+}
+
+// Nur eine belegte Wiederprüfung derselben Eingangswache, keine Permission-Deduplizierung.
+// Der lokale Verbraucher muss nach einem await den Callback auswerten, bei !frisch abbrechen
+// und erst danach auf derselben Reply-Bindung senden. Begrenztes Syntaxmuster, keine Pfaddominanz.
+function schutzartNachpruefung(
+  aufruf: ts.CallExpression,
+  sf: ts.SourceFile,
+  file: string,
+): Protection | undefined {
+  type Funktion = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration;
+  const istFunktion = (n: ts.Node | undefined): n is Funktion =>
+    !!n && (ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isFunctionDeclaration(n));
+  const entpacke = (n: ts.Expression): ts.Expression => {
+    let cursor = n;
+    while (
+      ts.isParenthesizedExpression(cursor) ||
+      ts.isAsExpression(cursor) ||
+      ts.isSatisfiesExpression(cursor) ||
+      ts.isAwaitExpression(cursor)
+    )
+      cursor = cursor.expression;
+    return cursor;
+  };
+  const nennt = (n: ts.BindingName, name: string): boolean =>
+    ts.isIdentifier(n)
+      ? n.text === name
+      : n.elements.some((e) => !ts.isOmittedExpression(e) && nennt(e.name, name));
+  const bindung = (name: string, ort: ts.Node): ts.Node | undefined => {
+    for (let scope: ts.Node | undefined = ort.parent; scope; scope = scope.parent) {
+      if (ts.isFunctionLike(scope)) {
+        const p = scope.parameters.find((p) => nennt(p.name, name));
+        if (p) return p;
+        if (
+          (ts.isFunctionExpression(scope) || ts.isFunctionDeclaration(scope)) &&
+          scope.name?.text === name
+        )
+          return scope;
+      }
+      if (
+        ts.isCatchClause(scope) &&
+        scope.variableDeclaration &&
+        nennt(scope.variableDeclaration.name, name)
+      )
+        return scope.variableDeclaration;
+      if (
+        (ts.isForOfStatement(scope) || ts.isForInStatement(scope) || ts.isForStatement(scope)) &&
+        scope.initializer &&
+        ts.isVariableDeclarationList(scope.initializer)
+      ) {
+        const d = scope.initializer.declarations.find((d) => nennt(d.name, name));
+        if (d) return d;
+      }
+      if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+      const funde: ts.Node[] = [];
+      for (const s of scope.statements) {
+        if (ts.isVariableStatement(s)) {
+          for (const d of s.declarationList.declarations) if (nennt(d.name, name)) funde.push(d);
+        } else if (
+          (ts.isFunctionDeclaration(s) ||
+            ts.isClassDeclaration(s) ||
+            ts.isTypeAliasDeclaration(s) ||
+            ts.isInterfaceDeclaration(s)) &&
+          s.name?.text === name
+        )
+          funde.push(s);
+        else if (ts.isImportDeclaration(s)) {
+          if (s.importClause?.name?.text === name) funde.push(s.importClause);
+          const imports = s.importClause?.namedBindings;
+          if (imports && ts.isNamedImports(imports)) {
+            for (const e of imports.elements) if (e.name.text === name) funde.push(e);
+          }
+          if (imports && ts.isNamespaceImport(imports) && imports.name.text === name)
+            funde.push(imports);
+        }
+      }
+      if (funde.length) return funde.length === 1 ? funde[0] : undefined;
+    }
+    return undefined;
+  };
+  const konstante = (n: ts.Node | undefined): n is ts.VariableDeclaration =>
+    !!n &&
+    ts.isVariableDeclaration(n) &&
+    ts.isIdentifier(n.name) &&
+    ts.isVariableDeclarationList(n.parent) &&
+    (n.parent.flags & ts.NodeFlags.Const) !== 0;
+  const identisch = (n: ts.Expression | undefined, d: ts.Node): boolean => {
+    const e = n && entpacke(n);
+    return !!e && ts.isIdentifier(e) && bindung(e.text, e) === d;
+  };
+  const schreibCache: { d: ts.Node; felder: boolean; ja: boolean }[] = [];
+  const geschrieben = (d: ts.Node, felder = false): boolean => {
+    const bekannt = schreibCache.find((x) => x.d === d && x.felder === felder);
+    if (bekannt) return bekannt.ja;
+    let ja = false;
+    const suche = (n: ts.Node): void => {
+      if (
+        ts.isBinaryExpression(n) &&
+        n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        n.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      ) {
+        let links = entpacke(n.left);
+        if (felder)
+          while (ts.isPropertyAccessExpression(links) || ts.isElementAccessExpression(links))
+            links = links.expression;
+        if (ts.isIdentifier(links) && bindung(links.text, links) === d) ja = true;
+      }
+      ts.forEachChild(n, suche);
+    };
+    suche(sf);
+    schreibCache.push({ d, felder, ja });
+    return ja;
+  };
+  const wert = (n: ts.Expression | undefined): ts.Node | undefined => {
+    if (!n) return undefined;
+    const e = entpacke(n);
+    if (!ts.isIdentifier(e)) return e;
+    const d = bindung(e.text, e);
+    if (!d || geschrieben(d, true)) return undefined;
+    return konstante(d) && d.initializer ? entpacke(d.initializer) : d;
+  };
+  const funktion = (n: ts.Expression | undefined): Funktion | undefined => {
+    const f = wert(n);
+    return istFunktion(f) && f.body ? f : undefined;
+  };
+  const echteGuards = (d: ts.Node): boolean => {
+    if (
+      !ts.isParameter(d) ||
+      !d.type ||
+      !ts.isTypeReferenceNode(d.type) ||
+      !ts.isIdentifier(d.type.typeName)
+    )
+      return false;
+    const typ = bindung(d.type.typeName.text, d.type.typeName);
+    if (!typ || !ts.isImportSpecifier(typ) || (typ.propertyName ?? typ.name).text !== "Guards")
+      return false;
+    const importsatz = typ.parent.parent.parent;
+    return (
+      ts.isImportDeclaration(importsatz) &&
+      ts.isStringLiteral(importsatz.moduleSpecifier) &&
+      resolve(dirname(file), importsatz.moduleSpecifier.text).replace(/\.(?:[cm]?js|ts)$/, "") ===
+        resolve("services/app/src/http")
+    );
+  };
+  const permissionCalls = (n: ts.Node): ts.CallExpression[] => {
+    const calls: ts.CallExpression[] = [];
+    const suche = (x: ts.Node): void => {
+      if (
+        ts.isCallExpression(x) &&
+        ts.isPropertyAccessExpression(x.expression) &&
+        x.expression.name.text === "requirePermission"
+      )
+        calls.push(x);
+      ts.forEachChild(x, suche);
+    };
+    suche(n);
+    return calls;
+  };
+  const alle = permissionCalls(aufruf);
+  if (
+    alle.length !== 2 ||
+    [...aufruf.getText(sf).matchAll(/requirePermission\("([a-z.]+)"/g)].length !== 2
+  )
+    return undefined;
+  const guard = (n: ts.Expression, req: ts.ParameterDeclaration, rep: ts.ParameterDeclaration) => {
+    const call = entpacke(n);
+    if (
+      !ts.isCallExpression(call) ||
+      !ts.isPropertyAccessExpression(call.expression) ||
+      call.expression.name.text !== "requirePermission" ||
+      !ts.isIdentifier(call.expression.expression) ||
+      call.arguments.length !== 3
+    )
+      return undefined;
+    const recht = call.arguments[0];
+    const receiver = bindung(call.expression.expression.text, call.expression.expression);
+    if (
+      !recht ||
+      !ts.isStringLiteral(recht) ||
+      !KNOWN_PERMISSIONS.includes(recht.text as Protection) ||
+      !receiver ||
+      !echteGuards(receiver) ||
+      geschrieben(receiver, true) ||
+      !identisch(call.arguments[1], req) ||
+      !identisch(call.arguments[2], rep) ||
+      geschrieben(req) ||
+      geschrieben(rep, true)
+    )
+      return undefined;
+    return { call, receiver, recht: recht.text as Protection };
+  };
+  const rueckkehr = (n: ts.Statement, rep?: ts.ParameterDeclaration): boolean => {
+    const s = ts.isBlock(n) ? n.statements : [n];
+    const r = s[0];
+    return (
+      s.length === 1 &&
+      !!r &&
+      ts.isReturnStatement(r) &&
+      (!r.expression || (!!rep && identisch(r.expression, rep)))
+    );
+  };
+  const negativ = (n: ts.Expression, d: ts.Node): boolean => {
+    const e = entpacke(n);
+    return (
+      ts.isPrefixUnaryExpression(e) &&
+      e.operator === ts.SyntaxKind.ExclamationToken &&
+      identisch(e.operand, d)
+    );
+  };
+  type Feld = { key: string; value: ts.Expression };
+  const felder = (n: ts.Expression | undefined): Feld[] | undefined => {
+    const e = wert(n);
+    if (!e || !ts.isObjectLiteralExpression(e)) return undefined;
+    const out: Feld[] = [];
+    for (const p of e.properties) {
+      if (ts.isSpreadAssignment(p)) {
+        const x = entpacke(p.expression);
+        const a = ts.isConditionalExpression(x) ? felder(x.whenTrue) : felder(x);
+        const b = ts.isConditionalExpression(x) ? felder(x.whenFalse) : [];
+        if (!a || !b) return undefined;
+        out.push(...a, ...b);
+      } else if (
+        ts.isPropertyAssignment(p) &&
+        (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))
+      ) {
+        out.push({ key: p.name.text, value: p.initializer });
+      } else if (ts.isShorthandPropertyAssignment(p)) out.push({ key: p.name.text, value: p.name });
+      else return undefined;
+    }
+    return out;
+  };
+  const optionen = felder(aufruf.arguments[1]);
+  const hook = optionen?.filter((p) => p.key === "preValidation");
+  const hookFeld = hook?.[0];
+  const h = hookFeld && funktion(hookFeld.value);
+  const handler = funktion(aufruf.arguments[2]);
+  if (!hook || hook.length !== 1 || !h?.body || !ts.isBlock(h.body) || !handler?.body)
+    return undefined;
+  const eingangReq = h.parameters[0];
+  const eingangRep = h.parameters[1];
+  const handlerReq = handler.parameters[0];
+  const handlerRep = handler.parameters[1];
+  if (!eingangReq || !eingangRep || !handlerReq || !handlerRep) return undefined;
+  const eingaenge: NonNullable<ReturnType<typeof guard>>[] = [];
+  for (let i = 0; i + 1 < h.body.statements.length; i++) {
+    const s = h.body.statements[i];
+    const wenn = h.body.statements[i + 1];
+    if (!s || !ts.isVariableStatement(s) || s.declarationList.declarations.length !== 1) continue;
+    const d = s.declarationList.declarations[0];
+    if (
+      !konstante(d) ||
+      !d.initializer ||
+      !ts.isAwaitExpression(d.initializer) ||
+      !wenn ||
+      !ts.isIfStatement(wenn)
+    )
+      continue;
+    const g = guard(d.initializer, eingangReq, eingangRep);
+    if (
+      g &&
+      negativ(wenn.expression, d) &&
+      rueckkehr(wenn.thenStatement, eingangRep) &&
+      !geschrieben(d)
+    )
+      eingaenge.push(g);
+  }
+  const eingang = eingaenge[0];
+  if (eingaenge.length !== 1 || !eingang || !alle.includes(eingang.call)) return undefined;
+  let andereWache = false;
+  const weitere = (n: ts.Node): void => {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
+      const name = n.expression.name.text;
+      if (/^(requireUser|requireAdmin|requireVerzeichnisSchluessel|resolveAskUser)$/.test(name))
+        andereWache = true;
+      if (
+        ts.isIdentifier(n.expression.expression) &&
+        bindung(n.expression.expression.text, n.expression.expression) === eingang.receiver &&
+        name !== "requirePermission"
+      )
+        andereWache = true;
+    }
+    ts.forEachChild(n, weitere);
+  };
+  weitere(aufruf);
+  if (andereWache) return undefined;
+  const istPortzugriff = (
+    n: ts.Expression,
+    option: ts.ParameterDeclaration,
+    key: string,
+  ): boolean =>
+    ts.isPropertyAccessExpression(n) && n.name.text === key && identisch(n.expression, option);
+  const awaitVorhanden = (n: ts.Node): boolean => {
+    let ja = false;
+    const suche = (x: ts.Node): void => {
+      if (ts.isFunctionLike(x)) return;
+      if (ts.isAwaitExpression(x)) ja = true;
+      ts.forEachChild(x, suche);
+    };
+    suche(n);
+    return ja;
+  };
+  const sendet = (n: ts.Statement, rep: ts.ParameterDeclaration): boolean => {
+    if (
+      !ts.isExpressionStatement(n) ||
+      !ts.isCallExpression(n.expression) ||
+      !ts.isPropertyAccessExpression(n.expression.expression) ||
+      n.expression.expression.name.text !== "send"
+    )
+      return false;
+    const code = n.expression.expression.expression;
+    if (!ts.isCallExpression(code)) return false;
+    const status = code.arguments[0];
+    return (
+      ts.isPropertyAccessExpression(code.expression) &&
+      code.expression.name.text === "code" &&
+      identisch(code.expression.expression, rep) &&
+      code.arguments.length === 1 &&
+      !!status &&
+      ts.isNumericLiteral(status) &&
+      status.text === "200"
+    );
+  };
+  const verbraucher = (f: Funktion, key: string): boolean => {
+    if (
+      !f.body ||
+      !ts.isBlock(f.body) ||
+      f.parameters.length !== 4 ||
+      permissionCalls(f.body).length
+    )
+      return false;
+    const option = f.parameters[3];
+    const rep = f.parameters[2];
+    if (!option || !rep || geschrieben(option, true) || geschrieben(rep, true)) return false;
+    const saetze = f.body.statements;
+    for (let i = 0; i < saetze.length; i++) {
+      const s = saetze[i];
+      if (
+        !s ||
+        !ts.isIfStatement(s) ||
+        !istPortzugriff(entpacke(s.expression), option, key) ||
+        !ts.isBlock(s.thenStatement)
+      )
+        continue;
+      const a = s.thenStatement.statements[0];
+      const b = s.thenStatement.statements[1];
+      if (
+        !a ||
+        !ts.isVariableStatement(a) ||
+        a.declarationList.declarations.length !== 1 ||
+        !b ||
+        !ts.isIfStatement(b)
+      )
+        continue;
+      const frisch = a.declarationList.declarations[0];
+      if (!konstante(frisch) || !frisch.initializer || !ts.isAwaitExpression(frisch.initializer))
+        continue;
+      const cb = frisch.initializer.expression;
+      if (
+        ts.isCallExpression(cb) &&
+        cb.arguments.length === 0 &&
+        istPortzugriff(cb.expression, option, key) &&
+        negativ(b.expression, frisch) &&
+        rueckkehr(b.thenStatement) &&
+        !geschrieben(frisch, true) &&
+        saetze.slice(0, i).some(awaitVorhanden) &&
+        saetze.slice(i + 1).some((n) => sendet(n, rep))
+      )
+        return true;
+    }
+    return false;
+  };
+  const callbackCall = (f: Funktion): ts.Expression | undefined => {
+    if (f.parameters.length || !f.body) return undefined;
+    if (!ts.isBlock(f.body)) return entpacke(f.body);
+    const r = f.body.statements[0];
+    return f.body.statements.length === 1 && r && ts.isReturnStatement(r) && r.expression
+      ? entpacke(r.expression)
+      : undefined;
+  };
+  const paare: ts.CallExpression[] = [];
+  const besucht: Funktion[] = [];
+  let weitereAktion = false;
+  const innerhalb = (n: ts.Node): boolean => {
+    for (let p: ts.Node | undefined = n.parent; p; p = p.parent) if (p === handler) return true;
+    return false;
+  };
+  const laufe = (wurzel: ts.Node, tiefe: number): void => {
+    const suche = (n: ts.Node): void => {
+      if (ts.isFunctionLike(n)) return;
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
+        const f = funktion(n.expression);
+        if (f?.body) {
+          let belegt = false;
+          if (
+            n.arguments.length === 4 &&
+            identisch(n.arguments[1], handlerReq) &&
+            identisch(n.arguments[2], handlerRep)
+          ) {
+            const props = felder(n.arguments[3]);
+            for (const p of props ?? []) {
+              if (props?.filter((x) => x.key === p.key).length !== 1) continue;
+              const cb = funktion(p.value);
+              const call = cb && callbackCall(cb);
+              const nach = call && guard(call, handlerReq, handlerRep);
+              if (
+                nach &&
+                nach.receiver === eingang.receiver &&
+                nach.recht === eingang.recht &&
+                nach.call !== eingang.call &&
+                alle.includes(nach.call) &&
+                verbraucher(f, p.key)
+              ) {
+                paare.push(nach.call);
+                belegt = true;
+              }
+            }
+          }
+          if (!belegt && innerhalb(f) && tiefe === 0) {
+            if (!besucht.includes(f)) {
+              besucht.push(f);
+              laufe(f.body, 1);
+            }
+          } else if (!belegt && permissionCalls(f.body).length) weitereAktion = true;
+        }
+      }
+      ts.forEachChild(n, suche);
+    };
+    suche(wurzel);
+  };
+  laufe(handler.body, 0);
+  return paare.length === 1 && !weitereAktion ? eingang.recht : undefined;
 }
 
 // Alle Quelldateien mit Routen: App-Modulrouten + Auth-Routen + Composition-Root (inline Routen).
