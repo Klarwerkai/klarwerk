@@ -123,14 +123,15 @@ function schutzartAmBlock(block: string): Protection {
 // führte damit eine zweite, öffentliche `POST /api/ask`, die in `scanAllRoutes()` die echte
 // überschrieb. Jetzt: Literal oder Konstante derselben Datei im ersten Argument; was nicht in die
 // alte Zeichenklasse passt (`/addin/*`), bleibt wie bisher draußen — das deckt die selbst erhobene
-// Grundmenge. Lokale Helfer, die ein Block aufruft, liest die Schutzart für die Dienst-Schlüssel-Tür
-// mit (`zugang` in mcp-routes.ts).
+// Grundmenge. Die bisherige Dienst-Schlüssel-Helferregel (`zugang`) bleibt vorrangig.
+// Bleibt ein Call public, folgen die direkt aufgerufenen RBAC-Helfer am AST.
 export function scanRouteFile(text: string, file: string): ScannedRoute[] {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const konstanten = zeichenkettenKonstanten(sf);
   const urlAn = new Map<number, string>();
   const endeAn = new Map<number, number>();
-  const helfer = new Map<string, string>();
+  const aufrufAn = new Map<number, ts.CallExpression>();
+  const helfer = new Map<string, ts.Node>();
   const besuche = (n: ts.Node): void => {
     if (
       ts.isCallExpression(n) &&
@@ -142,10 +143,11 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       if (url !== undefined) {
         urlAn.set(n.getStart(sf), url);
         endeAn.set(n.getStart(sf), n.getEnd());
+        aufrufAn.set(n.getStart(sf), n);
       }
     }
     if (ts.isFunctionDeclaration(n) && n.name && n.body) {
-      helfer.set(n.name.text, n.body.getText(sf));
+      helfer.set(n.name.text, n.body);
     }
     if (
       ts.isVariableDeclaration(n) &&
@@ -153,7 +155,7 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       n.initializer &&
       (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))
     ) {
-      helfer.set(n.name.text, n.initializer.body.getText(sf));
+      helfer.set(n.name.text, n.initializer.body);
     }
     ts.forEachChild(n, besuche);
   };
@@ -180,10 +182,59 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
     }
     const aufgerufen = [...helfer.entries()]
       .filter(([name]) => new RegExp(`(^|[^\\w$.])${name.replace(/\$/g, "\\$")}\\(`).test(block))
-      .map(([, rumpf]) => rumpf);
-    out.push({ method: mark.method, url, protection: schutzartVon(block, aufgerufen), file });
+      .map(([, rumpf]) => rumpf.getText(sf));
+    const direkt = schutzartVon(block, aufgerufen);
+    const aufruf = aufrufAn.get(mark.idx);
+    const protection =
+      direkt === "public" && aufruf ? schutzartLokalerRechtehelfer(aufruf, helfer) : direkt;
+    out.push({ method: mark.method, url, protection, file });
   }
   return out;
+}
+
+// Nur nach bisherigem public: echte Aufrufe lokaler Helfer, keine Textköder oder Nachbarn.
+// Jeder gesammelte Helferrumpf zählt einmal; seine Permission-Aufrufe bleiben einzeln erhalten.
+function schutzartLokalerRechtehelfer(
+  aufruf: ts.CallExpression,
+  helfer: ReadonlyMap<string, ts.Node>,
+): Protection {
+  const namen: string[] = [];
+  const sammleAufrufe = (n: ts.Node): void => {
+    if (ts.isFunctionDeclaration(n)) return;
+    if (
+      ts.isVariableDeclaration(n) &&
+      n.initializer &&
+      (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))
+    ) {
+      return;
+    }
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
+      namen.push(n.expression.text);
+    }
+    ts.forEachChild(n, sammleAufrufe);
+  };
+  sammleAufrufe(aufruf);
+
+  const permissions: string[] = [];
+  const liesWachen = (n: ts.Node): void => {
+    if (ts.isFunctionLike(n)) return;
+    if (
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      n.expression.name.text === "requirePermission"
+    ) {
+      const recht = n.arguments[0];
+      if (recht && ts.isStringLiteral(recht) && /^[a-z.]+$/.test(recht.text)) {
+        permissions.push(recht.text);
+      }
+    }
+    ts.forEachChild(n, liesWachen);
+  };
+  for (const [name, rumpf] of helfer) {
+    if (namen.includes(name)) liesWachen(rumpf);
+  }
+  if (permissions.length > 1) return "action-dispatched";
+  return (permissions[0] as Protection | undefined) ?? "public";
 }
 
 // Alle Quelldateien mit Routen: App-Modulrouten + Auth-Routen + Composition-Root (inline Routen).
@@ -848,8 +899,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "DELETE /api/drafts/trash/:id": { protection: "ko.create" },
 
   // Kiosk-Profil: bindung prüft Profil, echte ko.read-Sitzung und profil.leserId.
-  // Der Scanner verfolgt nur Dienstschlüssel-Helfer; sein public-Befund bleibt hier offen.
+  // Der Scanner liest die aufgerufene ko.read-Wache dieses lokalen Helfers am AST.
   "GET /api/kiosk/profil": { protection: "ko.read" },
+
+  // Derselbe Helfer bindung trägt ko.read auch bei Vorprüfung, Handler und Nachprüfung.
+  "POST /api/kiosk/fragen": { protection: "ko.read" },
 
   // Mailadapter: global geprüfter Dienstschlüssel mit mail.entwurf; onRequest bindet die Dienst-ID.
   // Aktuelles Konto vor Capture, Originalanker und Annahmebeleg; keine Rechte aus Mailheadern.
@@ -984,6 +1038,19 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Importbefunde: ko.read, dann je Kandidat der importierte darfKandidatSehen vor der Befundausgabe.
   // Dessen Sichtprüfung wirkt; G10 verfolgt importierte Helferrümpfe hier nicht als lokales Prädikat.
   "GET /api/library/import/candidates/befunde": { protection: "ko.read" },
+  // vorFassungsschritt: ko.create, artikelOder404/darfSehen und direkter Schreibweg.
+  "POST /api/kos/:id/office/:anhangId/zurueckholen": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/kos/:id/office/:anhangId/gesichert": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/kos/:id/office/:anhangId/nachbearbeitung": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
   // Office-Übernahme: ko.create; artikelOder404 prüft Anhang und darfSehen vor dem Host.
   // Host/KO binden die Übernahme an die Fassung; die Sitzungsbasis folgt nach dem KO-Schreibvorgang.
   "POST /api/kos/:id/office/:anhangId/uebernahme": {
