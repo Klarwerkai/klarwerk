@@ -308,16 +308,24 @@ function hatWopiZugangsmarke(aufruf: ts.CallExpression, sf: ts.SourceFile, file:
     ts.isVariableDeclarationList(n.parent) &&
     (n.parent.flags & ts.NodeFlags.Const) !== 0;
   const entpacke = (n: ts.Expression): ts.Expression => {
-    while (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isSatisfiesExpression(n)) {
-      n = n.expression;
+    let cursor = n;
+    while (
+      ts.isParenthesizedExpression(cursor) ||
+      ts.isAsExpression(cursor) ||
+      ts.isSatisfiesExpression(cursor)
+    ) {
+      cursor = cursor.expression;
     }
-    return n;
+    return cursor;
   };
   const beschrieben = (deklaration: ts.Node): boolean => {
     let ja = false;
     const links = (n: ts.Expression): void => {
-      while (ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n)) n = n.expression;
-      if (ts.isIdentifier(n) && bindung(n.text, n) === deklaration) ja = true;
+      let cursor = n;
+      while (ts.isPropertyAccessExpression(cursor) || ts.isElementAccessExpression(cursor)) {
+        cursor = cursor.expression;
+      }
+      if (ts.isIdentifier(cursor) && bindung(cursor.text, cursor) === deklaration) ja = true;
     };
     const suche = (n: ts.Node): void => {
       if (

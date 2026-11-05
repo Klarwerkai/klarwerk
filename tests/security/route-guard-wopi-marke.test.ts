@@ -8,7 +8,7 @@ const pruefung = `const ergebnis = kontrolliere(marke, request.params.id, schlue
   if (!ergebnis.gueltig) { reply.code(401).send(); return reply; }`;
 const waechter = (rumpf: string = pruefung) =>
   `const tor = async (request, reply) => { ${rumpf} };`;
-const route = (optionen: string = "optionen", handler: string = "return {};") =>
+const route = (optionen = "optionen", handler = "return {};") =>
   `app.get("/beliebiger-tokenweg", ${optionen}, async (request, reply) => { ${handler} });`;
 
 describe("Route-Guard-Scanner · WOPI-Zugangsmarke im onRequest", () => {
@@ -42,7 +42,7 @@ describe("Route-Guard-Scanner · WOPI-Zugangsmarke im onRequest", () => {
       `${port} ${waechter()} ${route("{}")}`,
       `${port.replace("../office-wopi", "../anderer-port")} ${waechter()} ${route("{ onRequest: tor }")}`,
       `function kontrolliere() { return { gueltig: true }; } ${waechter()} ${route("{ onRequest: tor }")}`,
-      `${port} ${waechter("const kontrolliere = () => ({ gueltig: true }); " + pruefung)} ${route("{ onRequest: tor }")}`,
+      `${port} ${waechter(`const kontrolliere = () => ({ gueltig: true }); ${pruefung}`)} ${route("{ onRequest: tor }")}`,
       `${port} ${waechter()} const offen = async () => undefined; ${route("{ onRequest: offen }")}`,
       `${port} ${waechter("kontrolliere(marke, request.params.id, schluessel, jetzt());")} ${route("{ onRequest: tor }")}`,
       `${port} ${waechter()} ${route("{ preValidation: tor }")}`,
@@ -71,8 +71,8 @@ describe("Route-Guard-Scanner · WOPI-Zugangsmarke im onRequest", () => {
       ]);
     }
     for (const bindung of [
-      `const optionen = { onRequest: tor }; optionen.onRequest = async () => undefined;`,
-      `const optionen = { onRequest: tor, ...unbekannt };`,
+      "const optionen = { onRequest: tor }; optionen.onRequest = async () => undefined;",
+      "const optionen = { onRequest: tor, ...unbekannt };",
     ]) {
       expect(schutz(`${port} ${waechter()} ${bindung} ${route()}`)).toEqual(["public"]);
     }
