@@ -847,6 +847,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/drafts/:id/restore": { protection: "ko.create" },
   "DELETE /api/drafts/trash/:id": { protection: "ko.create" },
 
+  // Kiosk-Profil: bindung prüft Profil, echte ko.read-Sitzung und profil.leserId.
+  // Der Scanner verfolgt nur Dienstschlüssel-Helfer; sein public-Befund bleibt hier offen.
+  "GET /api/kiosk/profil": { protection: "ko.read" },
+
   // Mailadapter: global geprüfter Dienstschlüssel mit mail.entwurf; onRequest bindet die Dienst-ID.
   // Aktuelles Konto vor Capture, Originalanker und Annahmebeleg; keine Rechte aus Mailheadern.
   "POST /api/eingang/email": { protection: "dienst-schluessel" },
