@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/kiosk/profil": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Profil-Metadaten des Kioskzugangs: nach bindung/requirePermission ko.read und Abgleich user.id===profil.leserId gibt der Handler ausdrücklich nur profilId, revision und zugang sitzung aus (kiosk-routes.ts:17-36). Kein Profil-Spread, keine quellen/koId/Fassung, kein Freigabebeleg, kein Wissensobjektinhalt; Fehler sind feste Sperrtexte. leseKioskProfil validiert die injizierte Profilquelle, Gültigkeit und Quellenliste, gibt aber selbst keine HTTP-Antwort (kiosk-profil.ts:16-42); build-app.ts:5785 bindet opts.kioskProfil. Urteil aus dem tatsächlichen Antwortkörper, nicht aus ko.read als Kuratorenrecht. Keine Aussage, ob ein Betriebsprofil installiert ist; Frageweg POST /api/kiosk/fragen separat und unverändert.",
+  },
   "POST /api/me/vormachen/routinen/:id/word-lauf": {
     urteil: "EIGENER_BESTAND",
     grund:
