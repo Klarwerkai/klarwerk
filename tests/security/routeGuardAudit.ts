@@ -847,6 +847,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/drafts/:id/restore": { protection: "ko.create" },
   "DELETE /api/drafts/trash/:id": { protection: "ko.create" },
 
+  // Mailadapter: global geprüfter Dienstschlüssel mit mail.entwurf; onRequest bindet die Dienst-ID.
+  // Aktuelles Konto vor Capture, Originalanker und Annahmebeleg; keine Rechte aus Mailheadern.
+  "POST /api/eingang/email": { protection: "dienst-schluessel" },
+
   // --- Ask (ask-routes.ts) ---
   // JOB 1591 D2 (W5): Die Route entscheidet seit D1 ZUSAETZLICH je Zeile — auf dem
   // Session-Panel-Weg (`mode: "retrieval-only"`) reicht sie `sichtbarkeitsfilterFuer(user)` in den
