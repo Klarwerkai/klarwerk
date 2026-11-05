@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/vormachen/routinen/:id/ausfuehrung": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Übergabeart der eigenen persönlichen Routine: die Route übergibt nur requireUser.id an VormachenDienst.setzeAusfuehrung und antwortet mit routineSicht (assistenz-lernen-routes.ts:178-192,382-403). Der Dienst liest routine(kontoId,id), validiert den Modus und schreibt über schreibeRoutine/CAS; fremd und unbekannt ergeben404 (vormachen.ts:1343-1349,1524-1542,1571-1578). Memory.routine/vergleicheUndLege und Pg.routine/UPDATE binden Konto und gelesenen Stand (vormachen.ts:423-432,504-523), mit echter build-app-Verdrahtung:2106,2698,6525-6527,6687-6698. Ausgabe sind persönliche Routine-, Host-, Korrektur- und Fassungsdaten, Zeitplaneingaben nur als Namen; kein gemeinsamer KO-Bestand. Eigentumsurteil ohne allgemeine Zusage zu späteren Quellrechtsänderungen kopierter eigener Texte.",
+  },
   "PUT /api/me/vormachen/routinen/:id/zustand": {
     urteil: "EIGENER_BESTAND",
     grund:
