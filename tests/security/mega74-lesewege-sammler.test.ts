@@ -104,6 +104,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { REPO_WURZEL } from "../support/repoPfad";
 import {
+  erhebeRegistrierungen,
   pfadVon,
   routenquellen,
   serverInstanzen,
@@ -2931,11 +2932,15 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
     const gelesen = new Set<number>();
     // Nacharbeit 2: die Serverinstanzen dieser Datei, unabhängig vom Namen (schnittstellenErhebung.ts).
     const instanzen = serverInstanzen(sf);
+    let bekannteRegistrierungen:
+      | ReturnType<typeof erhebeRegistrierungen>["registrierungen"]
+      | undefined;
     const besuche = (n: ts.Node): void => {
       if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
         const methode = n.expression.name.text;
         const pfad = pfadVon(n.arguments[0], konstanten);
         const empfaenger = n.expression.expression;
+        const pfade = pfad?.startsWith("/") ? [pfad] : [];
         if (METHODEN.has(methode)) {
           gelesen.add(n.expression.name.getStart(sf));
         }
@@ -2945,11 +2950,42 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
           ts.isIdentifier(empfaenger) &&
           instanzen.has(empfaenger.text)
         ) {
-          unlesbar.push(
-            `${datei}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1} — ${empfaenger.text}.${methode}(…) mit einem Pfad, den der Sammler nicht auflösen kann (weder Literal noch Konstante dieser Datei). Ein Leseweg ohne Urteil wäre unsichtbar.`,
-          );
+          const zeile = sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+          const aufrufText = n.getText(sf);
+          let zeugen = 0;
+          const zaehleZeugen = (knoten: ts.Node): void => {
+            if (
+              ts.isCallExpression(knoten) &&
+              ts.isPropertyAccessExpression(knoten.expression) &&
+              knoten.expression.name.text === methode &&
+              sf.getLineAndCharacterOfPosition(knoten.getStart(sf)).line + 1 === zeile &&
+              knoten.getText(sf) === aufrufText
+            )
+              zeugen++;
+            ts.forEachChild(knoten, zaehleZeugen);
+          };
+          zaehleZeugen(sf);
+          if (zeugen === 1) {
+            bekannteRegistrierungen ??= erhebeRegistrierungen(datei, text).registrierungen;
+            pfade.push(
+              ...bekannteRegistrierungen
+                .filter(
+                  (r) =>
+                    r.datei === datei &&
+                    r.methode === methode.toUpperCase() &&
+                    r.zeile === zeile &&
+                    r.aufruf === aufrufText,
+                )
+                .map((r) => r.pfad),
+            );
+          }
+          if (pfade.length === 0) {
+            unlesbar.push(
+              `${datei}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1} — ${empfaenger.text}.${methode}(…) mit einem Pfad, den der Sammler nicht auflösen kann (weder Literal noch Konstante dieser Datei). Ein Leseweg ohne Urteil wäre unsichtbar.`,
+            );
+          }
         }
-        if (METHODEN.has(methode) && pfad?.startsWith("/")) {
+        for (const pfad of METHODEN.has(methode) ? pfade : []) {
           let praedikatImAufruf = false;
           const rechte = new Set<string>();
           const aufrufe = new Set<string>();
@@ -5109,5 +5145,198 @@ describe("A5 G15 · Kalibrierung des echten Erklaerpfads", () => {
     expect(pruefe(route, dienst.replace(anwendung, "true"))).toEqual([
       `${dienstDatei}:${zeileDienst} — ${schluessel}: erklaere ruft den übergebenen Filter leser.darfSehen nicht auf.`,
     ]);
+  });
+});
+
+describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
+  it("bindet fuenf echte Aufrufstellen an dreizehn ganze Funds und bewahrt Legacy sowie failclosed Grenzen", () => {
+    const bild = (fund: Fund) => ({
+      ...fund,
+      ausgefuehrteAufrufe: fund.ausgefuehrteAufrufe?.map((c) => c.getText(c.getSourceFile())),
+    });
+    const aufrufAn = (sf: ts.SourceFile, position: number): ts.CallExpression => {
+      const funde: ts.CallExpression[] = [];
+      const suche = (n: ts.Node): void => {
+        if (
+          ts.isCallExpression(n) &&
+          ts.isPropertyAccessExpression(n.expression) &&
+          n.getStart(sf) === position
+        )
+          funde.push(n);
+        ts.forEachChild(n, suche);
+      };
+      suche(sf);
+      expect(funde).toHaveLength(1);
+      const fund = funde[0];
+      if (!fund) throw new Error("der gebundene AST-Aufruf fehlt");
+      return fund;
+    };
+    const pruefe = (
+      datei: string,
+      text: string,
+      methode: string,
+      zeile: number,
+      aufrufText: string,
+      pfade: readonly string[],
+    ): void => {
+      expect(text.split(aufrufText)).toHaveLength(2);
+      const start = text.indexOf(aufrufText);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const sf = ts.createSourceFile(datei, text, ts.ScriptTarget.Latest, true);
+      const aufruf = aufrufAn(sf, start);
+      expect(aufruf.getEnd()).toBeGreaterThan(start);
+      expect(text.slice(start, aufruf.getEnd())).toBe(aufrufText);
+      expect(sf.getLineAndCharacterOfPosition(start).line + 1).toBe(zeile);
+      const arg = aufruf.arguments[0];
+      if (!arg) throw new Error("das gebundene Pfadargument fehlt");
+      const erhoben = erhebeDatei(datei, text);
+      expect(erhoben.unlesbar).toEqual([]);
+      expect(erhoben.zaehlerAbweichung).toEqual([]);
+      const aktuelle = erhoben.funde.filter(
+        (f) => f.datei === datei && f.zeile === zeile && f.aufrufText === aufrufText,
+      );
+      expect(aktuelle.map((f) => f.schluessel)).toEqual(pfade.map((pfad) => `${methode} ${pfad}`));
+      for (const [index, pfad] of pfade.entries()) {
+        // Unabhaengiger Literal-Kontrollweg: die alte Strecke baut alle Schutzmetadaten.
+        // Nur das Pfadargument wird im Quelltext ersetzt; die erwarteten Pfade stammen aus
+        // gebundenen Quellbelegen bzw. den festen Fixtures, niemals aus dem neuen Fallback.
+        const literalText = `${text.slice(0, arg.getStart(sf))}${JSON.stringify(pfad)}${text.slice(arg.getEnd())}`;
+        const literalSf = ts.createSourceFile(datei, literalText, ts.ScriptTarget.Latest, true);
+        const literalAufruf = aufrufAn(literalSf, start).getText(literalSf);
+        const referenzen = erhebeDatei(datei, literalText).funde.filter(
+          (f) =>
+            f.zeile === zeile &&
+            f.schluessel === `${methode} ${pfad}` &&
+            f.aufrufText === literalAufruf,
+        );
+        expect(referenzen).toHaveLength(1);
+        const referenz = referenzen[0];
+        const fund = aktuelle[index];
+        if (!referenz || !fund) throw new Error("vollstaendiger Fund oder Literalreferenz fehlt");
+        const erwartet = {
+          ...bild(referenz),
+          aufrufText,
+          ausgefuehrteAufrufe: referenz.ausgefuehrteAufrufe?.map((c) => {
+            const callText = c.getText(c.getSourceFile());
+            return callText === literalAufruf ? aufrufText : callText;
+          }),
+        };
+        expect(fund.ausgefuehrteAufrufe).toBeDefined();
+        expect(bild(fund)).toEqual(erwartet);
+      }
+    };
+    const echte = [
+      {
+        datei: "services/app/src/routes/klara-besprechung-routes.ts",
+        zeile: 27,
+        methode: "POST",
+        aufruf:
+          'app.post<{ Params: { id: string } }>(\n        `/api/me/klara/besprechungen/:id/${weg}`,\n        async (req, reply) => {\n          const u = await guards.requireUser(req, reply);\n          if (!u) return;\n          try {\n            return weg === "lesen"\n              ? await d.sicht(u.id, req.params.id)\n              : weg === "korrektur"\n                ? await d.korrektur(u.id, req.params.id, req.body)\n                : weg === "fristquelle"\n                  ? await d.fristquelle(u.id, req.params.id, req.body)\n                  : weg === "teilschritt"\n                    ? await d.teilschritt(u.id, req.params.id, req.body)\n                    : await d.uebernehmen(u.id, req.params.id, req.body);\n          } catch (e) {\n            if (e instanceof WissensFehler) {\n              reply.code(e.status).send({\n                error: e.status === 404 ? "NOT_FOUND" : "BESPRECHUNG",\n                message: e.message,\n              });\n              return;\n            }\n            sendError(reply, e);\n          }\n        },\n      )',
+        pfade: [
+          "/api/me/klara/besprechungen/:id/lesen",
+          "/api/me/klara/besprechungen/:id/korrektur",
+          "/api/me/klara/besprechungen/:id/uebernehmen",
+          "/api/me/klara/besprechungen/:id/fristquelle",
+          "/api/me/klara/besprechungen/:id/teilschritt",
+        ],
+      },
+      {
+        datei: "services/app/src/routes/klara-gespraech-routes.ts",
+        zeile: 413,
+        methode: "POST",
+        aufruf:
+          'app.post<{ Params: { id: string; auftragId: string }; Body: { auftragFassung?: unknown } }>(\n        `/api/me/klara/gespraeche/:id/auftraege/:auftragId/${weg}`,\n        async (request, reply) => {\n          const user = await guards.requireUser(request, reply);\n          if (!user) return;\n          try {\n            const auftrag = await dienst.unterbrecheAuftrag(\n              user.id,\n              request.params.id,\n              request.params.auftragId,\n              weg === "fortsetzen",\n              request.body?.auftragFassung,\n            );\n            await audit.record({\n              actor: user.id,\n              action: `klara.auftrag.${weg}`,\n              target: `klara-auftrag:${auftrag.id}`,\n            });\n            reply.code(200).send({ auftrag: auftragMitVerlauf(auftrag) });\n          } catch (fehler) {\n            antworteMitFehler(reply, fehler);\n          }\n        },\n      )',
+        pfade: [
+          "/api/me/klara/gespraeche/:id/auftraege/:auftragId/unterbrechen",
+          "/api/me/klara/gespraeche/:id/auftraege/:auftragId/fortsetzen",
+        ],
+      },
+      {
+        datei: "services/app/src/routes/klara-wissen-routes.ts",
+        zeile: 34,
+        methode: "POST",
+        aufruf:
+          'app.post<{ Params: { id: string }; Body: { fassung?: unknown; ziel?: unknown } }>(\n        `/api/me/klara/notizen/:id/wissen/${weg}`,\n        async (req, reply) => {\n          const u = await guards.requirePermission("ko.create", req, reply);\n          if (!u) return;\n          try {\n            const x = req.body ?? {};\n            if (weg === "vorschau")\n              return await dienst.vorschau(u, req.params.id, x.fassung, wissensZiel(x.ziel));\n            if (weg === "pruefen") return await dienst.pruefe(u, req.params.id);\n            return await dienst.uebernehmen(u, req.params.id, x);\n          } catch (e) {\n            fehler(reply, e);\n          }\n        },\n      )',
+        pfade: [
+          "/api/me/klara/notizen/:id/wissen/vorschau",
+          "/api/me/klara/notizen/:id/wissen/pruefen",
+          "/api/me/klara/notizen/:id/wissen/uebernehmen",
+        ],
+      },
+      {
+        datei: "services/app/src/web-static.ts",
+        zeile: 95,
+        methode: "GET",
+        aufruf:
+          'app.get(pfad, async (_request, reply) => {\n      let roh: string;\n      try {\n        roh = await readFile(join(dist, "word-addin", datei), "utf8");\n      } catch {\n        // LAUT scheitern, nie still als SPA-HTML: ein fehlendes Add-in im Build ist ein Defekt,\n        // kein Navigationspfad (dieselbe Entscheidung wie bei den Assets unten).\n        reply.code(404).type("text/plain").send("Not Found");\n        return;\n      }\n      const koerper = stempleFassung(roh, version);\n      reply\n        .header("Cache-Control", "no-cache")\n        .header(KLARA_FASSUNG_KOPF, version)\n        // Der Validator über den GESENDETEN Körper — s. Kopfkommentar.\n        .header("ETag", `"${createHash("sha256").update(koerper).digest("hex").slice(0, 32)}"`)\n        .type("text/html; charset=utf-8")\n        .send(koerper);\n    })',
+        pfade: ["/word-addin/taskpane.html", "/word-addin/begleitung.html"],
+      },
+      {
+        datei: "services/app/src/wiederanlauf.ts",
+        zeile: 299,
+        methode: "POST",
+        aufruf:
+          'app.post<{ Body: Record<string, unknown> | null }>(\n    `${WIEDERANLAUF_PFAD}/freigabe`,\n    async (request, reply) => {\n      const user = await guards.requirePermission("users.manage", request, reply);\n      if (!user) {\n        return;\n      }\n      const body = request.body && typeof request.body === "object" ? request.body : {};\n      const fehlend = FREIGABE_BESTAETIGUNGEN.filter((b) => body[b] !== true);\n      if (fehlend.length > 0) {\n        reply.code(400).send({\n          error: "BESTAETIGUNG_FEHLT",\n          message:\n            "Die Freigabe braucht alle vier Bestätigungen: Integrität geprüft, Rechteentzüge und Löschmarkierungen nachgeführt, Außenaktionen geprüft.",\n          fehlend,\n        });\n        return;\n      }\n      // Ohne Sicherungsstand gibt es keine Grenze, gegen die „nachgeführt" bestätigt werden könnte.\n      if (!sicherungsstand) {\n        reply.code(409).send({\n          error: "SICHERUNGSSTAND_UNBEKANNT",\n          message: `Der Sicherungsstand ist unbekannt — die Nachführung hat keine Grenze. Mit ${SICHERUNGSSTAND_ENV}=<Sicherungsname oder UTC-Zeit> neu starten.`,\n        });\n        return;\n      }\n      const bericht = await deps.audit.verifyReport();\n      const integritaet = {\n        eintraege: bericht.count,\n        linkageBreaks: bericht.linkageBreaks,\n        unresolvedDeviations: bericht.unresolvedDeviations,\n        uncheckedDeviations: bericht.uncheckedDeviations,\n      };\n      if (\n        bericht.linkageBreaks !== 0 ||\n        bericht.unresolvedDeviations !== 0 ||\n        bericht.uncheckedDeviations !== 0\n      ) {\n        reply.code(409).send({\n          error: "INTEGRITAET",\n          message:\n            "Die Auditkette trägt nicht (Kettenbruch oder unerklärte/ungeprüfte Abweichung) — keine Freigabe.",\n          integritaet,\n        });\n        return;\n      }\n      await deps.audit.recordOnce(`${AKTION_WIEDERANLAUF_FREIGEGEBEN}:${kennung}`, {\n        actor: user.id,\n        action: AKTION_WIEDERANLAUF_FREIGEGEBEN,\n        target: "wiederanlauf",\n        payload: {\n          kennung,\n          bestaetigt: [...FREIGABE_BESTAETIGUNGEN],\n          integritaet,\n          nachfuehrungsgrenze: sicherungsstand,\n        },\n      });\n      freigegeben = true;\n      reply.code(200).send(await auskunft());\n    },\n  )',
+        pfade: ["/api/admin/wiederanlauf/freigabe"],
+      },
+    ] as const;
+    let anzahl = 0;
+    for (const fall of echte) {
+      pruefe(
+        fall.datei,
+        LIES_AUS_DEM_BAUM(fall.datei),
+        fall.methode,
+        fall.zeile,
+        fall.aufruf,
+        fall.pfade,
+      );
+      anzahl += fall.pfade.length;
+    }
+    expect(echte).toHaveLength(5);
+    expect(anzahl).toBe(13);
+    const handler =
+      'async (req, reply) => { const user = await guards.requirePermission("ko.read", req, reply); if (!user) return; if (!darfSehen(user, ko)) return; return reply.send(ko); }';
+    const tupelAufruf = `tor.get(pfad, ${handler})`;
+    const tupel = `function montiere(tor: FastifyInstance) {\nfor (const [pfad, fremd] of [["/fremd/eins", dynamisch], ["/fremd/zwei", anders], ["/fremd/eins", dritt]] as const) {\n${tupelAufruf};\n}\n}`;
+    pruefe("tupel.ts", tupel, "GET", 3, tupelAufruf, ["/fremd/eins", "/fremd/zwei", "/fremd/eins"]);
+    const skalarPfad = "`/anders/${teil}/spur`";
+    const skalarAufruf = `api.post(${skalarPfad}, ${handler})`;
+    const skalar = `function montiere(api: FastifyInstance) {\nfor (const teil of ["rot", "blau"] as const) {\n${skalarAufruf};\n}\n}`;
+    pruefe("skalar.ts", skalar, "POST", 3, skalarAufruf, ["/anders/rot/spur", "/anders/blau/spur"]);
+    const festeVorlage = "`${WURZEL}/fertig`";
+    const festAufruf = `api.patch(${festeVorlage}, ${handler})`;
+    const fest = `const WURZEL = "/prima";\nfunction montiere(api: FastifyInstance) {\n${festAufruf};\n}`;
+    pruefe("fest.ts", fest, "PATCH", 3, festAufruf, ["/prima/fertig"]);
+    for (const text of [
+      `function montiere(api: FastifyInstance) { for (const teil of unbekannt) { ${skalarAufruf}; } }`,
+      `function montiere(api: FastifyInstance) { for (const teil of ["rot", dynamisch]) { ${skalarAufruf}; } }`,
+      `const teil = "/koeder"; function montiere(api: FastifyInstance) { for (const teil of ["rot"]) { ${skalarAufruf}; } }`,
+      `function montiere(tor: FastifyInstance) { for (const [pfad] of [["/gut"], [dynamisch]]) { ${tupelAufruf}; } }`,
+      `let WURZEL = "/beweglich"; function montiere(api: FastifyInstance) { ${festAufruf}; }`,
+      `const WURZEL = "/koeder"; function montiere(api: FastifyInstance, WURZEL: string) { ${festAufruf}; }`,
+      `function montiere(api: FastifyInstance) { class Andere { static { for (const teil of ["rot"]) { ${skalarAufruf}; } } } }`,
+    ]) {
+      const teil = erhebeDatei("unklar.ts", text);
+      expect(teil.funde).toEqual([]);
+      expect(teil.unlesbar.length).toBeGreaterThan(0);
+    }
+    const doppeltPfad = "`${Z}/y`";
+    const doppeltAufruf = `app.get(${doppeltPfad}, ${handler})`;
+    const doppelt = `const Z = "/x"; function montiere(app: FastifyInstance) { ${doppeltAufruf}; ${doppeltAufruf}; }`;
+    const mehrdeutig = erhebeDatei("mehrdeutig.ts", doppelt);
+    expect(mehrdeutig.funde).toEqual([]);
+    expect(mehrdeutig.unlesbar).toHaveLength(2);
+    const unbekanntPfad = "`${UNBEKANNT}/y`";
+    const unbekanntAufruf = `app.get(${unbekanntPfad}, ${handler})`;
+    const gleicheZeile = `const Z = "/x"; function montiere(app: FastifyInstance) { ${doppeltAufruf}; ${unbekanntAufruf}; }`;
+    const getrennt = erhebeDatei("gleiche-zeile.ts", gleicheZeile);
+    expect(getrennt.funde.map((f) => f.schluessel)).toEqual(["GET /x/y"]);
+    expect(getrennt.funde[0]?.aufrufText).toBe(doppeltAufruf);
+    expect(getrennt.unlesbar).toHaveLength(1);
+    const fremderAufruf = `sammlung.get(pfad, ${handler})`;
+    const fremd = `function montiere(tor: FastifyInstance) { for (const [pfad] of [["/nicht"]] as const) { ${fremderAufruf}; } }`;
+    expect(erhebeDatei("fremd.ts", fremd).funde).toEqual([]);
+    const legacyAufruf = `sammlung.get("/legacy", ${handler})`;
+    pruefe("legacy.ts", `${legacyAufruf};`, "GET", 1, legacyAufruf, ["/legacy"]);
   });
 });
