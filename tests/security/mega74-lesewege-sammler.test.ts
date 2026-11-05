@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/klara/erinnerungen/einstellungen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Rückgabe eigener gespeicherter Einrichtungsvorgaben: klara-erinnerung-routes.ts:219-246 verlangt requireUser und übergibt user.id an dienst.setzeEinstellungen. KlaraErinnerungDienst.setzeEinstellungen (klara-erinnerung.ts:2844-2884) liest zuerst die Vorgaben desselben Kontos, prüft die erwartete Fassung und bildet neu mit genau diesem kontoId und validierten Einstellungsfeldern; Ablageschreiben muss gelingen, sonst Konflikt. InMemory-Repo:1479-1493 schreibt map.set(e.kontoId,e) mit Fassungsprüfung; Pg-Repo:2149-2163 insert auf konto_id oder update WHERE konto_id und Vorfassung. Nach Audit wird kontoId entfernt und nur {einstellungen} zurückgegeben. DTO:390-400; tatsächliche Dienst-/Routenverdrahtung build-app.ts:4391-4400 und :6413-6423. Keine bestehenden Erinnerungen oder gemeinsamen Wissensobjekte ausgegeben/geändert; keine allgemeine Quellrechtsparität. Nur Quelltexturteil, kein echter PUT-/PG-/Einrichtungs-/Schedulerlauf.",
+  },
   "GET /api/me/klara/erinnerungen/einstellungen": {
     urteil: "EIGENER_BESTAND",
     grund:
