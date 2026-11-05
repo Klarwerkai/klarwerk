@@ -8,6 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import { readdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { pfadVon, zeichenkettenKonstanten } from "./schnittstellenErhebung";
 
@@ -26,6 +27,7 @@ import { pfadVon, zeichenkettenKonstanten } from "./schnittstellenErhebung";
 //  - "verzeichnis"        : R-0556 — nur mit dem Verzeichnisschlüssel des Unternehmensverzeichnisses
 //                           (requireVerzeichnisSchluessel, SCIM). Kein Nutzerkonto, aber auch nie
 //                           öffentlich: ohne Schlüssel 401, ohne konfigurierten Schlüssel gar keine Route.
+// "wopi-zugangsmarke": importierter Tokenprüfer im gebundenen onRequest-Callback mit 401-Rückweg.
 export type Protection =
   | "public"
   | "auth"
@@ -40,7 +42,8 @@ export type Protection =
   | "conflict.resolve"
   | "users.manage"
   | "action-dispatched"
-  | "dienst-schluessel";
+  | "dienst-schluessel"
+  | "wopi-zugangsmarke";
 
 export const KNOWN_PERMISSIONS: readonly Protection[] = [
   "ko.read",
@@ -185,8 +188,12 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       .map(([, rumpf]) => rumpf.getText(sf));
     const direkt = schutzartVon(block, aufgerufen);
     const aufruf = aufrufAn.get(mark.idx);
-    const protection =
+    const bisher =
       direkt === "public" && aufruf ? schutzartLokalerRechtehelfer(aufruf, helfer) : direkt;
+    const protection =
+      bisher === "public" && aufruf && hatWopiZugangsmarke(aufruf, sf, file)
+        ? "wopi-zugangsmarke"
+        : bisher;
     out.push({ method: mark.method, url, protection, file });
   }
   return out;
@@ -237,6 +244,233 @@ function schutzartLokalerRechtehelfer(
   return (permissions[0] as Protection | undefined) ?? "public";
 }
 
+// Begrenzter syntaktischer Beleg: gebundener onRequest-Callback, echter Tokenport,
+// dessen const-Ergebnis unmittelbar bei !gueltig mit 401 und return verworfen wird.
+// Keine transitive Kontrollfluss- oder allgemeine Sicherheitszusage.
+function hatWopiZugangsmarke(aufruf: ts.CallExpression, sf: ts.SourceFile, file: string): boolean {
+  const nennt = (n: ts.BindingName, name: string): boolean =>
+    ts.isIdentifier(n)
+      ? n.text === name
+      : n.elements.some((e) => !ts.isOmittedExpression(e) && nennt(e.name, name));
+  const bindung = (name: string, ort: ts.Node): ts.Node | undefined => {
+    for (let scope: ts.Node | undefined = ort.parent; scope; scope = scope.parent) {
+      if (ts.isFunctionLike(scope)) {
+        const parameter = scope.parameters.find((p) => nennt(p.name, name));
+        if (parameter) return parameter;
+        if (
+          (ts.isFunctionExpression(scope) || ts.isFunctionDeclaration(scope)) &&
+          scope.name?.text === name
+        )
+          return scope;
+      }
+      if (
+        ts.isCatchClause(scope) &&
+        scope.variableDeclaration &&
+        nennt(scope.variableDeclaration.name, name)
+      )
+        return scope.variableDeclaration;
+      if (
+        (ts.isForOfStatement(scope) || ts.isForInStatement(scope) || ts.isForStatement(scope)) &&
+        scope.initializer &&
+        ts.isVariableDeclarationList(scope.initializer)
+      ) {
+        const d = scope.initializer.declarations.find((d) => nennt(d.name, name));
+        if (d) return d;
+      }
+      if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+      const funde: ts.Node[] = [];
+      for (const s of scope.statements) {
+        if (ts.isVariableStatement(s)) {
+          for (const d of s.declarationList.declarations) if (nennt(d.name, name)) funde.push(d);
+        } else if (
+          (ts.isFunctionDeclaration(s) || ts.isClassDeclaration(s) || ts.isEnumDeclaration(s)) &&
+          s.name?.text === name
+        ) {
+          funde.push(s);
+        } else if (ts.isImportDeclaration(s)) {
+          if (s.importClause?.name?.text === name) funde.push(s.importClause);
+          const imports = s.importClause?.namedBindings;
+          if (imports && ts.isNamedImports(imports)) {
+            for (const e of imports.elements) if (e.name.text === name) funde.push(e);
+          }
+          if (imports && ts.isNamespaceImport(imports) && imports.name.text === name) {
+            funde.push(imports);
+          }
+        }
+      }
+      if (funde.length) return funde.length === 1 ? funde[0] : undefined;
+    }
+    return undefined;
+  };
+  const konstante = (n: ts.Node | undefined): n is ts.VariableDeclaration =>
+    !!n &&
+    ts.isVariableDeclaration(n) &&
+    ts.isVariableDeclarationList(n.parent) &&
+    (n.parent.flags & ts.NodeFlags.Const) !== 0;
+  const entpacke = (n: ts.Expression): ts.Expression => {
+    while (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isSatisfiesExpression(n)) {
+      n = n.expression;
+    }
+    return n;
+  };
+  const beschrieben = (deklaration: ts.Node): boolean => {
+    let ja = false;
+    const links = (n: ts.Expression): void => {
+      while (ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n)) n = n.expression;
+      if (ts.isIdentifier(n) && bindung(n.text, n) === deklaration) ja = true;
+    };
+    const suche = (n: ts.Node): void => {
+      if (
+        ts.isBinaryExpression(n) &&
+        n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        n.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      )
+        links(n.left);
+      if (
+        (ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) &&
+        (n.operator === ts.SyntaxKind.PlusPlusToken || n.operator === ts.SyntaxKind.MinusMinusToken)
+      ) {
+        links(n.operand);
+      }
+      if (ts.isDeleteExpression(n)) links(n.expression);
+      ts.forEachChild(n, suche);
+    };
+    suche(sf);
+    return ja;
+  };
+  const loese = (ausdruck: ts.Expression): ts.Node | undefined => {
+    const n = entpacke(ausdruck);
+    if (!ts.isIdentifier(n)) return n;
+    const d = bindung(n.text, n);
+    if (!d || beschrieben(d)) return undefined;
+    return konstante(d) && ts.isIdentifier(d.name) && d.initializer ? entpacke(d.initializer) : d;
+  };
+  const optionenArg = aufruf.arguments[1];
+  const optionen = optionenArg && loese(optionenArg);
+  if (
+    !optionen ||
+    !ts.isObjectLiteralExpression(optionen) ||
+    optionen.properties.some(ts.isSpreadAssignment)
+  )
+    return false;
+  const option = optionen.properties.filter(
+    (p) =>
+      ts.isPropertyAssignment(p) &&
+      (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) &&
+      p.name.text === "onRequest",
+  );
+  const eintrag = option[0];
+  if (option.length !== 1 || !eintrag || !ts.isPropertyAssignment(eintrag)) return false;
+  const callback = loese(eintrag.initializer);
+  if (
+    !callback ||
+    !(
+      ts.isArrowFunction(callback) ||
+      ts.isFunctionExpression(callback) ||
+      ts.isFunctionDeclaration(callback)
+    ) ||
+    !callback.body ||
+    !ts.isBlock(callback.body)
+  )
+    return false;
+  const antwortParameter = callback.parameters[1];
+  if (!antwortParameter || !ts.isIdentifier(antwortParameter.name) || beschrieben(antwortParameter))
+    return false;
+  const istAntwort = (n: ts.Expression): boolean =>
+    ts.isIdentifier(n) && bindung(n.text, n) === antwortParameter;
+  const sendet401 = (n: ts.Expression): boolean => {
+    if (
+      !ts.isCallExpression(n) ||
+      !ts.isPropertyAccessExpression(n.expression) ||
+      n.expression.name.text !== "send"
+    )
+      return false;
+    const code = n.expression.expression;
+    if (!ts.isCallExpression(code)) return false;
+    const status = code.arguments[0];
+    return (
+      ts.isPropertyAccessExpression(code.expression) &&
+      code.expression.name.text === "code" &&
+      istAntwort(code.expression.expression) &&
+      code.arguments.length === 1 &&
+      !!status &&
+      ts.isNumericLiteral(status) &&
+      status.text === "401"
+    );
+  };
+  const verwirft = (n: ts.Statement): boolean => {
+    const s = ts.isBlock(n) ? n.statements : [n];
+    const erst = s[0];
+    if (s.length === 1 && erst && ts.isReturnStatement(erst) && erst.expression) {
+      return sendet401(erst.expression);
+    }
+    const ende = s[1];
+    return (
+      s.length === 2 &&
+      !!erst &&
+      ts.isExpressionStatement(erst) &&
+      sendet401(erst.expression) &&
+      !!ende &&
+      ts.isReturnStatement(ende) &&
+      (!ende.expression || istAntwort(ende.expression))
+    );
+  };
+  const istPort = (n: ts.Expression): boolean => {
+    if (!ts.isCallExpression(n) || !ts.isIdentifier(n.expression) || n.arguments.length !== 4)
+      return false;
+    const d = bindung(n.expression.text, n.expression);
+    if (
+      !d ||
+      !ts.isImportSpecifier(d) ||
+      d.isTypeOnly ||
+      beschrieben(d) ||
+      (d.propertyName ?? d.name).text !== "pruefeZugangsmarke"
+    )
+      return false;
+    const importsatz = d.parent.parent.parent;
+    return (
+      ts.isImportDeclaration(importsatz) &&
+      !importsatz.importClause?.isTypeOnly &&
+      ts.isStringLiteral(importsatz.moduleSpecifier) &&
+      resolve(dirname(file), importsatz.moduleSpecifier.text).replace(/\.(?:[cm]?js|ts)$/, "") ===
+        resolve("services/app/src/office-wopi")
+    );
+  };
+  const saetze = callback.body.statements;
+  for (let i = 0; i + 1 < saetze.length; i++) {
+    const s = saetze[i];
+    if (s && (ts.isReturnStatement(s) || ts.isThrowStatement(s))) break;
+    if (!s || !ts.isVariableStatement(s) || s.declarationList.declarations.length !== 1) continue;
+    const ergebnis = s.declarationList.declarations[0];
+    if (
+      !konstante(ergebnis) ||
+      !ts.isIdentifier(ergebnis.name) ||
+      !ergebnis.initializer ||
+      !istPort(entpacke(ergebnis.initializer)) ||
+      beschrieben(ergebnis)
+    )
+      continue;
+    const wenn = saetze[i + 1];
+    if (!wenn || !ts.isIfStatement(wenn)) continue;
+    const bedingung = entpacke(wenn.expression);
+    if (
+      !ts.isPrefixUnaryExpression(bedingung) ||
+      bedingung.operator !== ts.SyntaxKind.ExclamationToken
+    )
+      continue;
+    const wert = bedingung.operand;
+    if (
+      ts.isPropertyAccessExpression(wert) &&
+      wert.name.text === "gueltig" &&
+      ts.isIdentifier(wert.expression) &&
+      bindung(wert.expression.text, wert.expression) === ergebnis &&
+      verwirft(wenn.thenStatement)
+    )
+      return true;
+  }
+  return false;
+}
+
 // Alle Quelldateien mit Routen: App-Modulrouten + Auth-Routen + Composition-Root (inline Routen).
 export function routeSourceFiles(): string[] {
   const routesDir = "services/app/src/routes";
@@ -278,6 +512,11 @@ export interface ExpectedRoute {
 }
 
 export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
+  // WOPI: markenRiegel verwirft die importierte Tokenprüfung im onRequest mit 401.
+  "GET /wopi/files/:anhangId": { protection: "wopi-zugangsmarke" },
+  "GET /wopi/files/:anhangId/contents": { protection: "wopi-zugangsmarke" },
+  "POST /wopi/files/:anhangId": { protection: "wopi-zugangsmarke" },
+  "POST /wopi/files/:anhangId/contents": { protection: "wopi-zugangsmarke" },
   // --- Auth (services/auth/src/routes.ts) ---
   "POST /api/auth/register": {
     protection: "public",
