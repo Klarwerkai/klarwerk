@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/vormachen/routinen/:id/zeitplan": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Zeitplan der eigenen persönlichen Routine: requireUser.id bindet sowohl vormachen.routine/setzeZeitplan als auch das gegebenenfalls neu angelegte eigene Gespräch klara.beginne; die Antwort läuft nur über routineSicht, Zeitplaneingaben erscheinen darin als Namen ohne Werte (assistenz-lernen-routes.ts:178-192,320-379; klara-gespraech.ts:670-692). setzeZeitplan liest routine(kontoId,id) und schreibt über schreibeRoutine/CAS (vormachen.ts:1343-1349,1487-1516,1571-1578). Memory und Pg lesen und vergleichen mit kontoId/konto_id (vormachen.ts:423-432,504-523), tatsächlich in build-app.ts:2106,2698,6525-6527,6687-6698 verdrahtet. Ausgabe nur eigene Routine-/Zeitplan-/Host-/Korrektur-/Fassungsdaten, kein gemeinsamer KO-Bestand. Eigentumsurteil ohne allgemeine Zusage zu späteren Quellrechtsänderungen kopierter eigener Texte.",
+  },
   "PUT /api/me/vormachen/routinen/:id/ausfuehrung": {
     urteil: "EIGENER_BESTAND",
     grund:
