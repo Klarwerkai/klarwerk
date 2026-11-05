@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen/routinen/:id/korrektur": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Korrektur der eigenen persönlichen Routine: requireUser.id geht an VormachenDienst.korrigiereRoutine; vor der Änderung liest routine(kontoId,id) nur das eigene Konto, prüft Ableitung und gesehene Fassung und schreibt mit schreibeRoutine/CAS (assistenz-lernen-routes.ts:643-677; vormachen.ts:1272-1310,1343-1349,1571-1578). Memory/Pg binden kontoId/konto_id und gelesenen Stand (vormachen.ts:423-432,504-523), tatsächlich in build-app.ts:2106,2698,6525-6527,6687-6698 verdrahtet. Die Antwort enthält routineSicht, die geänderte eigene Ableitung und die eigene Korrekturquelle; aendereBestaetigteAbleitung konstruiert sie aus dieser Ableitung und der Kontokennung (assistenz-lernen-vorfuehrungen.ts:327-365). Kein gemeinsamer KO-Bestand; Eigentumsurteil ohne allgemeine Zusage zu späteren Quellrechtsänderungen kopierter eigener Texte.",
+  },
   "GET /api/me/vormachen/word-routinen": {
     urteil: "EIGENER_BESTAND",
     grund:
