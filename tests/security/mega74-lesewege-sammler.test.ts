@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/gedaechtnis/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Gedächtnisänderung: dienst.aendere erhält nur requireUser.id und sucht den Eintrag in eigene(kontoId), mit Ablauf-/Fassungsbindung (interaktionsgedaechtnis.ts:602-685). Memory.eigene/aendere und Pg.eigene/aendere/mutiere binden das Konto vor Schreiben. Ausgabe läuft über ausgabe(user.id,eintrag): bei Antwortherkunft nur nach dem echten build-app-antwortLesbar-Port (Antwortbeleg des Kontos und heutige Quellrechte); sonst Antwort und Antwortkennung neutralisiert (gedaechtnis-routes.ts:80-87; build-app.ts:6061-6063). Folgerichtig zum bestehenden GET/POST-Eigenbestandsurteil; kein gemeinsamer KO-Bestand.",
+  },
   "GET /api/me/klara/notizen": {
     urteil: "EIGENER_BESTAND",
     grund:
