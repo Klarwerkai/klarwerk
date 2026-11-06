@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "DELETE /api/me/vormachen": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Eigene Löschzähler statt Wissensobjektinhalt: vormachen-routes.ts230-247 bindet requireUser/user.id an privatLoeschen, schreibt dessen Ergebnis als Auditpayload und sendet nur geloescht mit sitzungen/routinen. privatLoeschen(vormachen.ts1725-1738) vermerkt optional zuerst eine Löschmarkierung, entfernt eigene Lernsitzungen und Ausführungsmetadaten und liefert nur zwei Zahlen. Ablage.entferneAlle376-384 sowie RoutinenRepo405/InMemory443-452/PG535-539 liefern Zähler (kontoId-Filter, PG nur rowCount); keine Notiz-, Rohwert-, Ziel-, Routine- oder KO-Inhalte werden zurückgesendet. Route/Dienst sind echte Schreib-/Lösch-/Auditwege, hier ausschließlich gelesen. Fehlerhelfer unverändert; keine tatsächliche Löschmarkierungs-/Lösch-/Audit-/HTTP-/PG-/DB-/Hostprobe, keine Lauf- oder PG-Paritätszusage und keine allgemeine Lösch-, Datenschutz- oder Rechtewiderrufsgarantie.",
+  },
   "POST /api/me/vormachen/:id/abbruch": {
     urteil: "KEIN_KO_INHALT",
     grund:
