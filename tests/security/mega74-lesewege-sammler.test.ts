@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/unterbrechen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Unterbrechen eines eigenen gespeicherten Gesprächsauftrags: klara-gespraech-routes.ts:412–437 bindet requireUser an dienst.unterbrecheAuftrag(user.id,gespraechId,auftragId,false,auftragFassung); Antwort nur auftragMitVerlauf(auftrag), Audit nur Kennung/Ereignis. KlaraGespraechDienst.unterbrecheAuftrag:1171–1187 liest und ersetzt über aendere:745–764 ausschließlich das eigene Gespräch via hole:661–668; Repo hole bindet id UND kontoId (Memory:261–264, PG:336–341), fremd/unbekannt 404. auftragIn:954–960 wählt nur einen Auftrag dieser eigenen Ablage. unterbrechung (klara-auftrag.ts:1401–1431) prüft die übergebene Auftragsfassung und beendet/unterbrochen, erhält gespeicherte Inhalte und Resultate, setzt bei Bedarf Pause und eigenen Verlauf; keine neue Wissensabfrage. auftragMitVerlauf (klara-aktionsverlauf.ts:337–343) gibt den gespeicherten Auftrag mit rein abgeleiteten Ergebnis-/Schrittständen aus. Tatsächliche Dienstbindung build-app.ts:6074–6095. EIGENER_BESTAND bedeutet hier einschließlich bereits kopierter Objektbezüge, Markierungsausschnitte, Plantexte und Ergebnisse im eigenen Auftrag; kein frisches Lesen des gemeinsamen KO-Bestands, aber auch keine neue Prüfung heutiger Rechte an solchen Kopien oder abschließendes nochAktuell. U4 und allgemeine Widerrufsparität bleiben offen. Nur statisches Leseurteil dieses einen POST-Wegs; keine Abnahme der Pausen-/Fortsetzungswirkung, CAS-/PG-/Audit-/Hostqualität und keine Produkt- oder Policyänderung. Kein Auftrag tatsächlich unterbrochen und keine Konto-, KO-, Quellen-, Rechte-, API-, DB-, SDK- oder Hostprobe.",
+  },
   "GET /api/me/klara/normereignisse/:id/fassungen/:koId/:fassung": {
     urteil: "DIENST_FILTERT",
     kette: [
