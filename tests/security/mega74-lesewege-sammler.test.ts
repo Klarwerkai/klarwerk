@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/kalender/anbindungen/:id/entfernen": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Nur feste Entfernbestätigung: klara-kalender-routes.ts:177-199 verlangt requireUser und übergibt user.id, Anbindungskennung und bestaetigt an dienst.entferneAnbindung; nach dem Audit antwortet die Route ausschließlich 200 {entfernt:true}. KalenderAnbindungDienst in klara-kalender-anbindung.ts:1547-1552 verlangt bestaetigt===true, ruft nur das eigene Repo auf und liefert void; kein Anbieteraufruf. Memory:1170-1188 und Pg:1300-1348 binden kontoId+id, liefern nur boolean und sperren offene Entscheidungen mit festem Fehlertext; unbekannt/fremd ergibt festen404, fehlende Bestätigung festen400. Fehlerport routes:61-82/http:245ff und reale build-app-Bindung2151/2714,4419-4425,6400-6408 gelesen. Antwort enthält keine Kalender-/Termin-/Teilnehmer-/Quelleninhalte. Nur Code-Leseurteil, keine tatsächliche Entfernung, Transaktions-/PG-/Anbieter-/Hostabnahme.",
+  },
   "GET /api/me/klara/erinnerungen/ueberwachung": {
     urteil: "KEIN_KO_INHALT",
     grund:
