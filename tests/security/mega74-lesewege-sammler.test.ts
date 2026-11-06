@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/klara/sessions/:sessionId/office-kontext/ziel": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Nur begrenzte Zielprüfmetadaten: office-kontext-routes.ts:232-288 verlangt ko.read, prüft signierte Kontextmarke, Konto/Sitzung/Instanz/Dokument, Pflicht-Herkunft, getSession und zuletzt gemerkte Auswahlsequenz/Zielprüfsumme. Erfolg sendet nur200 {gueltig:true,verbindung:aktiv,bestaetigung:zweiter-klick,sequenz:pruefung.inhalt.seq}; weder SessionView noch Marke/Prüfsumme/Dokument-/Auswahltext ausgegeben. nichtGueltig:140-147 sendet409 nur Status, festen Grund/Folgeaktion/Verbindung, Herkunft112-127 festen403. office-kontext.ts260-290/297-365 liefert feste Prüfgründe; Sequenz stammt aus der vor Signatur mit pruefeMeldung:162-164 als positive sichere Ganzzahl geprüften Meldung (Routen170-207). getSession ohne Touch bleibt nicht schreibfrei, vorhandene Sitzungszustandspflege möglich. Herkunft/Sitzungsbindung und reale build-app-Bindung4481-4489 gelesen. Nur Antworturteil, keine Sicherheitsgesamt-/Host-/Einfüge-/Endeabnahme; keine echte Marke/Sitzung/POST-/HTTP-/Office-/Word-/DB-/Modellprobe.",
+  },
   "DELETE /api/klara/sessions/:sessionId/office-kontext": {
     urteil: "KEIN_KO_INHALT",
     grund:
