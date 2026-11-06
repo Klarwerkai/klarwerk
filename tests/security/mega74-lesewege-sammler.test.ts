@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/besprechungen/:id/korrektur": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Besprechungskorrekturantwort: klara-besprechung-routes.ts27-53 bindet requireUser/u.id an korrektur398-426. hole376-388 lädt die kontoId-gebundene, quellgeschützte Besprechungsnotiz; Vollständigkeit/Fassung/eigeneSegmentkennung/Text werden geprüft. GleicherText liefert sicht389-397, sonst steigt transkriptFassung um1 und nur gewählter eigener Segmenttext/Unsicherheitsmarker ändern sich. speichere320-374/transkriptText310-319 erzeugt daraus eigene Notizherkunft mit vorherigeNotiz; KlaraNotizDienst.lege513-641 liefert eine neue oder wiederholte eigene Notiz über denselben geschützten Repo-Port. Antwort enthält eigene Notiz/Wiederholungsflag/gespeichertenVerarbeitungsstand/deterministischeSegmentergebnisse/Fristenhinweis, keine Bestandsaggregation. build-app2113-2145/6278-6286 und QuellgeschuetzteKlaraNotizen binden kontoId sowie vorhandene Herkunfts-/Audio-/KO-Rechteprüfung. Nur Eigentumsraum-Leseurteil, U4/allgemeine Schutzparität kopierter Inhalte offen; keine Schemahärtungs-/Transaktions-/PG-/ASR-/Modellqualitätszusage/neuePolicy. Keine echte Korrektur/Notizschreibung/Hash-/Quellrechts-/Audio-/ASR-/Modell-/HTTP-/DB-/SDK-/Hostprobe.",
+  },
   "POST /api/me/klara/besprechungen/:id/lesen": {
     urteil: "EIGENER_BESTAND",
     grund:
