@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "DELETE /api/me/vormachen/:id": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Feste Löschbestätigung statt Wissensobjektinhalt: vormachen-routes.ts367-383 bindet über requireUser user.id an dienst.verwerfeNotiz(user.id,id), schreibt einen Auditnachweis nur mit Akteur/Aktion/Zielkennung und sendet literal200 {geloescht:1}. verwerfeNotiz(vormachen.ts1338-1341) prüft eigeneSitzung780-786 mit kontogebundenem Ablagezugriff362-374 und entfernt nur die Sitzung/Notiz; Rückgabewert oder Notizinhalt werden nicht gesendet. eigeneSitzung führt zuvor fristen766-778 aus, also kein schreibfreier Weg. Nicht gefunden ergibt den festen VormachenFehler404 ohne zusätzliche details; antworteMitFehler76-87 und zentrale sendError(http.ts245-310) bleiben unverändert. Nur Antwort-Leseurteil, keine tatsächliche Lösch-/Frist-/Abbruch-/Audit-/HTTP-/DB-/Hostprobe und keine allgemeine Lösch-, Datenschutz- oder Rechtewiderrufsgarantie.",
+  },
   "POST /api/auth/me/email/confirm": {
     urteil: "KEIN_KO_INHALT",
     grund:
