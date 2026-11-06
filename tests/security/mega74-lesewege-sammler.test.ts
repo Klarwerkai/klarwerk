@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/fristen/:id/aktion": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Fristaktionsantwort ohne Quellinhalt: klara-fristen-routes.ts:80–98 verlangt requireUser, ruft aendere(user,id,body) und projiziert die Erfolgsantwort ausschließlich auf id, fassung und stand; Audit verwendet dieselben Metadaten. aendere (klara-fristen-dienst.ts:258–292) lädt den eigenen Bestand über repo.hole(user.id), findet die Frist darin, verlangt aktuelle Quellenlesbarkeit und passende Fristfassung und lässt nur verwerfen/korrigieren/erledigen zu. Die Helfer in klara-fristen.ts:466–510/196–233 erhalten die Kennung und erzeugen die bestehenden Zustandswerte; das ganze Fristobjekt einschließlich Herkunft, Wortlaut, Datum und Verlauf wird von der Route nicht ausgegeben. Vor Speicherung werden die gebundenen Herkunftsquellen erneut gelesen und deren bestehende Schreibbedingungen an das eigene Repo weitergereicht. InMemory/Pg klara-fristen-ablage.ts bindet den Bestand an kontoId und Vorfassung. Fehlerroutine:7–14/zentraler Sender unverändert; keine pauschale Fehlersystem- oder Geheimhaltungszusage. Nur Codebindung dieser Metadatenantwort, keine Fristaktions-, Quellen-/Schreib-/CAS-/Transaktions-, Zeit-/DST-, PG- oder Hostabnahme; U4 bleibt offen. Keine echte Fristaktion, Quellenlesung, Schreibung, Audit-, Konto-, API- oder Datenbankprobe ausgeführt.",
+  },
   "POST /api/me/klara/erinnerungen/:id/uebergabe": {
     urteil: "EIGENER_BESTAND",
     grund:
