@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/besprechungen/:id/teilschritt": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigener Besprechungs-Teilstand: klara-besprechung-routes.ts27-53 bindet requireUser/u.id an teilschritt605-747. teilQuelle571-588 lädt die eigene quellgeschützte Notiz, verlangt fortsetzbare Originalaudioquelle95-98 und prüft Objektowner/purposeklara_audio sowie gespeicherten Quellabdruck; teilSpeichern589-603 ersetzt denselben eigenen Notizstand über den geschützten Port und liest ihn wieder. Aktion/Fassung/Lauf-/Pausen-/Abbruchzustand werden geprüft; der Analysezweig verarbeitet nur den nächsten Abschnitt derselben Audio-ID und prüft Quelle/Fassung vor und nach der Analyse. Alle Rückgabepfade gehen über sicht389-397: eigene Notiz samt Transkript, deterministischen Ergebnissen, Verarbeitungsstand und festem Fristenhinweis; kein reines Metadatenurteil. Fehlergrund des Analysezweigs wird fest auf anbieterfehler/keine_ki abgebildet, zentralerSender unverändert. Nur heutige eigene Antwort-/Quellbindung klassifiziert, keine ASR-/Modell-/Egress-/Abbruch-/CAS-/PG-/Transaktions- oder allgemeine Schutzparitätsabnahme(U4 offen), keine neuePolicy. Keine Teilquelle, Analyse, Aktion, Notizschreibung, Hash-/Decoder-/Quellrechts-/Audio-/HTTP-/DB-/SDK-/Hostfunktion ausgeführt.",
+  },
   "GET /api/me/klara/besprechungen/:id/audio": {
     urteil: "EIGENER_BESTAND",
     grund:
