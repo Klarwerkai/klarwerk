@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen/routinen/:id/schritte/:schrittId/freigabe": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Schrittfreigabeantwort der eigenen Routine: vormachen-routes.ts385-417 bindet requireUser/user.id an gibSchrittFrei1368-1428. routine1343-1349 liest kontoId-gebunden über RoutinenRepo (InMemory423-426/PG504-509) und verweigert fehlende/Beschaffungsroutine; Schritt wird nur in dieser Routine gesucht. Ohne Außenwirkung enthält200 das Ergebnis-zur-Prüfung samt eigenem Schritt. Andernfalls gibt409 zunächst eigene Ausführungskennungs-/Routine-/Schritt-/Fassungs-/Fristmetadaten aus; bestätigterZweig prüft Konto/Routine/Schritt/Fassung/Frist, verbraucht Kennung und liefert200 mit eigenem Schritt/Ausführungskennung. Ablaufbereinigung1351-1357 kann abgelaufene Einträge der dienstweiten Map entfernen; keine Nebenwirkungsfreiheit behauptet. Nur Eigentumsraum-Leseurteil, U4/Quellrechts-,Vertraulichkeits-,Widerrufsparität kopierter Schrittinhalte offen; keine pauschale Rohdaten-/Geheimhaltungs-/Schemahärtungs-/CAS-/PG-Paritätszusage/neuePolicy. Keine echte Freigabe, Bestätigung, Kennungsanlage/-verbrauch, Bereinigung, Außenaktion, Audit, HTTP/DB/Host/SDK-Ausführung.",
+  },
   "POST /api/me/vormachen/:id/bestaetigung": {
     urteil: "EIGENER_BESTAND",
     grund:
