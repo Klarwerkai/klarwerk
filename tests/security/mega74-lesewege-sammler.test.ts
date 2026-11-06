@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/normereignisse/:id/annahme": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Normannahme-Antwort: klara-normereignis-routes.ts:163–186 verlangt requirePermission(ko.validate), ruft nehmeAbloesungAn(user.id,...) und auditiert nur eine neue Annahme. Dienst:1176–1367 prüft heutigen Nutzer/ko.validate und erlaubte Eingabefelder fassung/bisher/nachfolger/geltung/begruendung/bestaetigt samt konkreten KO-Fassungsreferenzen. Eigene repo.hole(kontoId) und sicht/stand liefern nur eigenes heute quellenlesbares Normmaterial; stand filtert Annahmen über beide heutigen KO-Referenzen. Eine schon passende Annahme nach bisher/nachfolger, normalisierter Geltung und aktueller Klärungskennung kommt früh als gespeicherter Wert/wiederholt:true, vor neuer Vorfassungs-, Fachquellen-, Fassungsbeleg-, Personen- und nochAktuell-Prüfung; andere neue Begründung macht keine neue Annahme. Für neue Annahme: eigene Vorfassung, passende geklärte Ereignisgeltung, fachQuellen:1141–1173, beide heute lesbaren konkreten Anleitungsfassungen mit gespeicherter Normzuordnung und passenden fachlichen Auditbelegen; genehmigte Person/Rolle erneut und alle Quellen nochAktuell. Vorhandener bedingter Konto-/Vorfassungsschreibweg bindet Quellen- und KO-/historische Snapshotbedingungen. normAbloesungsbeleg (klara-normereignisse.ts:105–123; NormAbloesung55–70) baut eigene Geltung/Begründung, serverseitige Person/Zeit, bisher/nachfolger, fachfreigabe-Auditkennungen und ggf.Klärungskennung; Antwort nur {fassung,annahme,wiederholt}. Eigene Textangaben und gespeicherte Wiederholung werden nicht neu inhaltlich bereinigt, keine reine Metadaten- oder allgemeine JSON-Projektionszusage. Statisches Eigenbestands-Leseurteil, keine fachliche Annahme-/Belegqualitäts-, Schreib-/CAS-/Transaktions-/Audit-/PG-/Hostabnahme oder allgemeine Widerrufsparität; U4 offen. Keine echte Annahme, Schreibung, Quellen-, Konto-, Rechte-, Audit-, API- oder Datenbankprobe ausgeführt.",
+  },
   "POST /api/me/klara/normereignisse/:id/klaerung": {
     urteil: "EIGENER_BESTAND",
     grund:
