@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/erinnerungen/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Erinnerungseinzelansicht: klara-erinnerung-routes.ts329-344 bindet requireUser/user.id an dienst.eintrag2788-2794. Repo.hole bindet id+kontoId (InMemory993-996, PG1662-1668); lesbar2803-2805 verlangt den vorhandenen Quellschutz, sonst fester404. build-app4380-4400/6413-6423 injiziert KlaraErinnerungQuellen.pruefe. Erst der gelesene eigene Eintrag geht an sicht162-168: höchstens50 Läufe für dessen erinnerung.id, Anzeige/Lage aus eigenem Plan/Steuerstand/Läufen, optional Name nur des gespeicherten Übergabeziels. erinnerungSicht85-123/laufSicht73-83 projizieren eigene Inhalte/Bezug/Routine/Ergebnisse, ohne Kontokennung; kein Metadatenurteil. Fachfehler/zentralerSender unverändert. Nur heutige eigene Antwort-/Quellbindung, keine allgemeine Quellrechts-/Vertraulichkeits-/Widerrufsparität kopierter Inhalte oder historischer Laufergebnisse(U4 offen), keine neuePolicy/Scheduler-/Zeit-/DST-/PG-/CAS-/Transaktionsabnahme. Keine Erinnerung, Läufe, Namen, Quellschutz, Anzeige/Zeitfunktion, API/DB/SDK/Host oder Scheduler tatsächlich aufgerufen.",
+  },
   "POST /api/me/klara/besprechungen/import": {
     urteil: "EIGENER_BESTAND",
     grund:
