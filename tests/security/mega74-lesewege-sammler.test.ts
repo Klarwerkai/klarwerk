@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/vormachen/:id/vorschau": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Vorschau aus eigener Lernsitzung: vormachen-routes.ts289-303 verlangt requireUser und ruft vorschau(user.id,id), Antwort no-store mit vorschau. vorschau(vormachen.ts1094-1096) nutzt offeneSitzung789-795/eigeneSitzung780-786 und kontoId-gefilterte Ablage362-374. baueVorschau1064-1092 verwendet nur diesen Datensatz: Zweck/Host/Schrittbeschreibungen aus lernnotiz1047-1062, Zähler/Standhash und optionale Ableitung. leiteAb(assistenz-lernen-vorfuehrungen.ts225-285) bindet dieselbe Sitzung/KontoId und ihre Beobachtungen/Korrekturen; vorfuehrungenAus180-198 und quellenAbschnitt291-308 nutzen nur deren gespeicherte Beobachtungen, optional einschließlich KO-Kennungen/Fassungen. Eigene Inhalte und gespeicherte Bezüge, keine inhaltsfreie Bestätigung und kein zentraler KO-Sichtfilter. U4/Quellrechts-/Vertraulichkeits-/Widerrufsparität kopierter Inhalte bleibt offen. Nur Code-Leseurteil, keine tatsächliche Vorschau-/Ableitungs-/Hash-/Frist-/Auth-/HTTP-/DB-/Hostprobe oder neue Tenant-/Modell-/Providerannahme.",
+  },
   "PUT /api/me/vormachen/:id/zustand": {
     urteil: "EIGENER_BESTAND",
     grund:
