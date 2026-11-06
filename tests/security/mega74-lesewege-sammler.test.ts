@@ -5224,6 +5224,7 @@ describe("mega74 E · der Sammler über alle Lesewege", () => {
     );
     expect(direkt.praedikatImAufruf).toBe(true);
     expect(direkt.aufrufe.has("bearbeite")).toBe(true);
+    if (!direkt.ausgefuehrteAufrufe) throw new Error("Aufrufliste der Proberoute fehlt");
     expect(direkt.ausgefuehrteAufrufe.map((k) => aufgerufenerName(k.expression))).toContain(
       "darfSehen",
     );
