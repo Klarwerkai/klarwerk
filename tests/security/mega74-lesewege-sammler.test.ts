@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen/:id/beobachtungen": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Nur Annahmenummer statt Wissensobjektinhalt: vormachen-routes.ts249-265 bindet requireUser/user.id und übergibt Beobachtung plus abgeleiteten Clientschlüssel an beobachte; Antwort201 sendet ausschließlich nr. beobachte(vormachen.ts981-997) nutzt die eigene offeneSitzung und lehnt serverseitige Vorgänge mit festem422 ab; nimmAn890-960 prüft Zustand/Host/Sichtbarkeit/Vorgang/Eingabe/Limit und liefert ausschließlich beobachtungen.length+1. Beobachtung, Beschreibung, Rohwert, Felder, Ziele und Clientschlüssel werden nicht zurückgesendet. Sämtliche direkten VormachenFehler sind feste400/404/409/422 ohne Zusatzdetails; zentrale Fehlerbehandlung unverändert. Dienst kann Fristen/Zähler und eigene Beobachtungen ändern; nur Antwort-Code-Leseurteil, keine tatsächliche Mitschreib-/Annahme-/Token-/Auth-/Host-/Audit-/HTTP-/DB-Probe und keine allgemeine Datenschutz-, Geheimhaltungs-, Sichtbarkeits- oder Rechtewiderrufsgarantie.",
+  },
   "DELETE /api/me/vormachen": {
     urteil: "KEIN_KO_INHALT",
     grund:
