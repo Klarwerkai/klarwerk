@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/besprechungen/:id/audio": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigener Besprechungston: klara-besprechung-routes.ts54-79 bindet requireUser/u.id an hole376-388 und damit die eigene quellgeschützte Besprechungsnotiz. build-app6278-6286 injiziert denselben geschützten Notiz-Port; dessen Callback2113-2145 verlangt bei audioId vorhandene Objektmetadaten mit lifecycle.owner gleich kontoId und purpose klara_audio. Nur die Audio-ID dieser Notiz wird an ObjectStore.read gegeben; read/metadata führen über denselben findById-Port, InMemory/PG nach dieser ID. Route prüft vorhandenes Objekt/Data-URL und audio-MIME, liefert dekodierte gespeicherte Bytes mit no-store/private/nosniff; Fachfehler feste404, zentralerSender unverändert. Kein zentraler KO-Sichtfilter am Audio-Port und keine neuePolicy; heutige Notiz-/Quellschutzbindung klassifiziert, keine allgemeine Schutzparität kopierter Inhalte(U4 offen), atomare Metadaten/Byte-Parität oder Audio-/ASR-/Modell-/PG-/Hostabnahme. Kein Audio/Objekt/Metadatenleser/Decoder/Quellrecht/Hash/HTTP/DB/SDK/Host tatsächlich ausgeführt.",
+  },
   "POST /api/me/klara/besprechungen/:id/uebernehmen": {
     urteil: "KEIN_KO_INHALT",
     grund:
