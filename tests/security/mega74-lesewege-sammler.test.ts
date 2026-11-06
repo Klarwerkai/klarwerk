@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/vormachen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Lernsitzungen/Routinen: vormachen-routes.ts149-181 bindet requireUser/user.id an uebersicht797-803; LernsitzungAblage357-360 und InMemoryRoutinenRepo418-421 filtern kontoId, PgRoutinenRepo494-502 bindet konto_id=$1 (nur Quellbefund, keine PG-Probe). Antwort no-store mit sitzungSicht110-123/lernnotiz1047-1062 sowie routineSicht125-146 einschließlich gespeicherter Schritte/Herkunft/Ableitung/Versionen/Übergabebezug, plus festen Katalogwerten und Sichtbar-Boolean. Nur Eigentumsraum-Leseurteil; U4/Quellrechts-,Vertraulichkeits-,Widerrufsparität kopierter Inhalte offen, keine pauschale Rohdaten-/Geheimhaltungs-/Schemahärtungszusage. uebersicht wendet Fristen an; optionales anzeige meldet Sichtbarkeit konto/host/client-gebunden745-752: daher kein nebenwirkungsfreier GET behauptet. Kein echter Übersichts-/Projektor-/Sichtbarkeits-/Frist-/Auth-/HTTP-/DB-/Hostaufruf, keine neue Policy.",
+  },
   "PUT /api/me/vormachen/:id/korrektur": {
     urteil: "EIGENER_BESTAND",
     grund:
