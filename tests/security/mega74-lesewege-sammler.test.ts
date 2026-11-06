@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/vormachen/:id/zustand": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Lernsitzung samt Lernnotiz: vormachen-routes.ts267-287 bindet requireUser/user.id an setzeZustand und sendet sitzungSicht110-123. setzeZustand(vormachen.ts1037-1045) akzeptiert lernt/pausiert, nutzt offeneSitzung789-795/eigeneSitzung780-786 mit kontoId-gefilterter Ablage362-374 und aktualisiert genau diesen Datensatz. Antwort enthält eigene Kennung/Host/Vorgänge/Zweck/Abbruchregel/Zustand/Zähler/Fristen sowie lernnotiz1047-1062 mit Beschreibungen und Korrekturmarken; daher eigener Bestand, nicht bloß inhaltsfreie Bestätigung. Rohwerte/Rohfelder/Zielobjekte werden vom gelesenen Projektor nicht zurückgesendet. Feste400/404/409 und zentrale Fehlerbehandlung unverändert. Nur Eigentumsraum-Leseurteil des heutigen Codes; keine allgemeine Quellrechts-/Vertraulichkeits-/Widerrufsparität kopierter Inhalte (U4 bleibt offen), keine tatsächliche Zustands-, Mitschreib-, Frist-, Audit-, Auth-, HTTP-, DB- oder Hostprobe.",
+  },
   "POST /api/me/vormachen/:id/beobachtungen": {
     urteil: "KEIN_KO_INHALT",
     grund:
