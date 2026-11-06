@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Startantwort der eigenen Lernsitzung: vormachen-routes.ts183-227 bindet requireUser/user.id an starte805-878. Der Dienst prüft Host/Vorgänge/Zweck/Abbruchregel, berücksichtigt eigene Fristen/offene Sitzungen und legt den neuen Datensatz mit kontoId sowie leeren Beobachtungen/Korrekturen/Zielen an. Antwort201 projiziert sitzungSicht110-123/lernnotiz1047-1062: eigene Startangaben, Status/Zähler/Fristen und leere Lernschritte. Optionaler Auftrag wird nur aus eigener Eingabe/Herkunft abgeleitet (assistenz-lernen-lernauftrag.ts ganz, hostDerAnfrage255-273);422-Klärung enthält art/frage/optionen, die Frage kann den selbst genannten Anwendungsnamen zitieren. Nur Eigentumsraum-Leseurteil, keine inhaltsfreie Bestätigung oder pauschale Rohdaten-/Geheimhaltungs-/Schemahärtungszusage; U4/Quellrechtsparität kopierter Inhalte offen. Keine Sitzung/Fristen/Audit/Beobachtung/Host tatsächlich gestartet oder Parser/HTTP/DB/SDK ausgeführt; Produktsoll unverändert.",
+  },
   "GET /api/me/vormachen": {
     urteil: "EIGENER_BESTAND",
     grund:
