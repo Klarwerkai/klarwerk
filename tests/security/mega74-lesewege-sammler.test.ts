@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/admin/wiederanlauf/freigabe": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Administrative Freigabeantwort: wiederanlauf.ts299-359 verlangt users.manage. Fehlerantworten enthalten feste Codes/Texte, fehlende Namen aus der festen Viererliste oder genau vier numerische Audit-Integritätswerte (count/linkageBreaks/unresolvedDeviations/uncheckedDeviations); verifyReport liest die Auditkette, deren Einträge und firstDeviation werden nicht gesendet (audit/src/service.ts230-232, chain.ts284-293). Erfolg sendet auskunft361-399: Betriebskennung/-zustand, Sicherungszeitgrenze, feste Schritte/Aktionsnamen, Zeitpunkte und Lösch-/Replay-Metadaten einschließlich Ablageort sowie Ziel-/Kennungspaaren; kein KO-Körper. Der Handler schreibt nach Bestätigungen und Integritätsprüfung einen Auditnachweis und setzt freigegeben; dieser Schreib-/Freigabepfad wird nur gelesen, niemals ausgeführt. Nur Antwort-Leseurteil, keine Wiederanlauf-, Integritäts-, Datenschutz-/Zugriffsgesamt- oder Korrupte-Daten-Validierungszusage und keine TeilB/B3-Freigabeentscheidung.",
+  },
   "GET /api/admin/wiederanlauf": {
     urteil: "KEIN_KO_INHALT",
     grund:
