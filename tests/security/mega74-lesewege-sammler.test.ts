@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/wissen/ziele": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Ziel-Spaces für die Wissensübernahme: klara-wissen-routes.ts:14–22 verlangt requirePermission(ko.create), liest ausschließlich spaces.aktuelle(), filtert mit darfSpaceInhalteLesen(s,u.id) UND darfInSpaceSchreiben(s,u) und projiziert explizit nur id,name,version,zugang. Keine Wissensobjekt-Abfrage, kein KO-Titel/-Inhalt, keine Notiz-, Import-, Modell- oder Schreibfunktion dieses Routers wird hier aufgerufen; keine Ausbreitung des ganzen Space-Datensatzes. Reale Bindung build-app.ts:6277 über services.spaces und guards. SpacesRepo.aktuelle (spaces.ts:637–640; Memory:677–686; PG:763–775) liefert jüngste Space-Fassungen ohne gelöschte Spaces; der PG-Weg wählt zuerst die jüngste Fassung, dann den Löschvermerk aus. darfSpaceInhalteLesen:534–538 prüft offenen Zugang, Zuständigkeit oder direkte/Team-Mitgliedschaft; darfInSpaceSchreiben:550–567 prüft Archivstatus sowie Zuständigkeit, direktes/Team-Schreibrecht oder offenen Zugang mit ko.create. KEIN_KO_INHALT ist hier ein Leseurteil über die vier Space-Metadatenfelder und kein Eigenbestands- oder Dienstfilterurteil über Wissensobjektinhalte. Keine Zusage atomarer Space-/Rollen-/Antwortbindung oder nachgelagerter Import-/Quellrechts-/PG-/Hostqualität; keine Produkt- oder Policyänderung. U4 und allgemeine Widerrufsparität bleiben offen. Nur Quelltext gelesen; keine echten Spaces, Konten, Rechte, Wissensobjekte, Importe, APIs, Datenbanken, SDKs oder Hosts abgefragt.",
+  },
   "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fortsetzen": {
     urteil: "EIGENER_BESTAND",
     grund:
