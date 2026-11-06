@@ -206,6 +206,18 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /wopi/files/:anhangId/contents": {
+    urteil: "DIENST_FILTERT",
+    grund:
+      "WOPI-Dateiabruf GET /wopi/files/:anhangId/contents an office-routes.ts:395 liefert echte Dokumentbytes (office-wopi-host.ts:260–274), nicht KEIN_KO_INHALT. markenRiegel und wopi prüfen Konfiguration, signierte unabgelaufene anhanggebundene Marke; Host liest heutigen Artikel/Anhang/Objekt/Office-Format und fragt deps.rechte frisch ab. In office-routes.ts:218–222 liest rechte als Objekt-Property-Callback das freigegebene, nicht abgelaufene Konto mit Rolle/Spaces und den heutigen KO; rechteFuer(:183–188) bindet Lesen an ko.read und darfSehen, officeSchreibweg sperrt ohne Lesbarkeit. Dienstkette wopi→bearbeite→bearbeiteSeriell→rechte→rechteFuer→darfSehen. GET contents liest bei laufender Sitzung den Arbeitsstand, sonst das aktuelle Anhangsobjekt; 200 liefert application/octet-stream mit X-WOPI-ItemVersion aus Artikelversion/Objektkennung, fehlendes Objekt404. Testsammler misst benannte Aufrufe dieser Kette, keine komplette Argument-/Dominanz-/Datenfluss- oder Rechte-/Hostabnahme. Der gemeinsame Wrapper kann bereits vor der frischen vollständigen Host-Rechteprüfung einen beendeten/abgelaufenen Arbeitsstand sichern und Sitzung entfernen; getrennte Schritte, keine gemeinsame Transaktion/Mehrprozess-Serialisierung oder durchgängige Widerrufsgarantie. U4/Kopien/Herkunft und getrennte GET_LOCK/UNLOCK-Produktfrage bleiben offen. Nur statische Quellbindung und synthetische lokale Sammlertests; kein tatsächlicher GET, keine echte Marke/Schlüssel/Signatur-, Dokument-, KO-, Objekt-, Beleg-, Sitzungs-, DB-, API-, Office-, SDK-, Modell-, Native-, Netz- oder Hostprobe. Keine Produkt-/Policyänderung.",
+    entscheidung: "darfSehen",
+    kette: [
+      { datei: "services/app/src/office-wopi-host.ts", funktion: "bearbeite" },
+      { datei: "services/app/src/office-wopi-host.ts", funktion: "bearbeiteSeriell" },
+      { datei: "services/app/src/routes/office-routes.ts", funktion: "rechte" },
+      { datei: "services/app/src/routes/office-routes.ts", funktion: "rechteFuer" },
+    ],
+  },
   "POST /wopi/files/:anhangId": {
     urteil: "KEIN_KO_INHALT",
     grund:
@@ -3545,6 +3557,125 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
     let bekannteRegistrierungen:
       | ReturnType<typeof erhebeRegistrierungen>["registrierungen"]
       | undefined;
+    const registrierungsHandler = (ref: ts.Identifier): ts.Node | undefined => {
+      const bindet = (name: ts.BindingName): boolean =>
+        ts.isIdentifier(name)
+          ? name.text === ref.text
+          : name.elements.some((e) => ts.isBindingElement(e) && bindet(e.name));
+      for (let bereich: ts.Node | undefined = ref.parent; bereich; bereich = bereich.parent) {
+        if (ts.isWithStatement(bereich) || ts.isCaseBlock(bereich)) return undefined;
+        if (
+          (ts.isFunctionLike(bereich) && bereich.parameters.some((p) => bindet(p.name))) ||
+          ((ts.isFunctionExpression(bereich) || ts.isClassExpression(bereich)) &&
+            bereich.name?.text === ref.text) ||
+          (ts.isCatchClause(bereich) &&
+            bereich.variableDeclaration &&
+            bindet(bereich.variableDeclaration.name))
+        ) {
+          return undefined;
+        }
+        if (
+          ts.isForStatement(bereich) ||
+          ts.isForInStatement(bereich) ||
+          ts.isForOfStatement(bereich)
+        ) {
+          const init = bereich.initializer;
+          if (
+            init &&
+            ts.isVariableDeclarationList(init) &&
+            init.declarations.some((d) => bindet(d.name))
+          ) {
+            return undefined;
+          }
+        }
+        if (!(ts.isBlock(bereich) || ts.isSourceFile(bereich) || ts.isModuleBlock(bereich))) {
+          continue;
+        }
+        const bindungen = new Set<ts.Node>();
+        for (const s of bereich.statements) {
+          if (ts.isVariableStatement(s)) {
+            for (const d of s.declarationList.declarations) {
+              if (bindet(d.name)) bindungen.add(d);
+            }
+          } else if (
+            (ts.isFunctionDeclaration(s) ||
+              ts.isClassDeclaration(s) ||
+              ts.isEnumDeclaration(s) ||
+              ts.isModuleDeclaration(s)) &&
+            s.name?.text === ref.text
+          ) {
+            bindungen.add(s);
+          } else if (ts.isImportEqualsDeclaration(s) && s.name.text === ref.text) {
+            bindungen.add(s);
+          } else if (ts.isImportDeclaration(s) && s.importClause) {
+            const k = s.importClause;
+            const namen = k.namedBindings;
+            if (
+              k.name?.text === ref.text ||
+              (namen && ts.isNamespaceImport(namen) && namen.name.text === ref.text) ||
+              (namen &&
+                ts.isNamedImports(namen) &&
+                namen.elements.some((e) => e.name.text === ref.text))
+            ) {
+              bindungen.add(s);
+            }
+          }
+        }
+        const sammleVar = (k: ts.Node): void => {
+          if (k !== bereich && ts.isFunctionLike(k)) return;
+          if (
+            ts.isVariableDeclaration(k) &&
+            ts.isVariableDeclarationList(k.parent) &&
+            !(k.parent.flags & ts.NodeFlags.BlockScoped) &&
+            bindet(k.name)
+          ) {
+            bindungen.add(k);
+          }
+          ts.forEachChild(k, sammleVar);
+        };
+        sammleVar(bereich);
+        if (bindungen.size === 0) continue;
+        if (bindungen.size !== 1) return undefined;
+        let geaendert = false;
+        const nennt = (k: ts.Node): boolean =>
+          (ts.isIdentifier(k) && k.text === ref.text) || ts.forEachChild(k, nennt) === true;
+        const pruefeSchreiben = (k: ts.Node): void => {
+          if (
+            (istZuweisung(k) && nennt(k.left)) ||
+            ((ts.isForInStatement(k) || ts.isForOfStatement(k)) &&
+              !ts.isVariableDeclarationList(k.initializer) &&
+              nennt(k.initializer)) ||
+            ((ts.isPrefixUnaryExpression(k) || ts.isPostfixUnaryExpression(k)) &&
+              ts.isIdentifier(k.operand) &&
+              k.operand.text === ref.text &&
+              (k.operator === ts.SyntaxKind.PlusPlusToken ||
+                k.operator === ts.SyntaxKind.MinusMinusToken))
+          ) {
+            geaendert = true;
+          }
+          ts.forEachChild(k, pruefeSchreiben);
+        };
+        pruefeSchreiben(bereich);
+        if (geaendert) return undefined;
+        const d = [...bindungen][0];
+        if (d && ts.isFunctionDeclaration(d) && d.body) return d.body;
+        if (
+          d &&
+          ts.isVariableDeclaration(d) &&
+          ts.isIdentifier(d.name) &&
+          ts.isVariableDeclarationList(d.parent) &&
+          d.parent.flags & ts.NodeFlags.Const &&
+          d.getStart(sf) < ref.getStart(sf) &&
+          d.initializer &&
+          (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer))
+        ) {
+          return d.initializer.body;
+        }
+        return undefined;
+      }
+      return undefined;
+    };
+
     const besuche = (n: ts.Node): void => {
       if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
         const methode = n.expression.name.text;
@@ -3608,26 +3739,33 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
           // NACHARBEIT 3 (Befund ben): und nur in AUSGEFÜHRTEN Rümpfen — ein im Handler bloss
           // definierter Helfer (`const unbenutzt = () => darfSehen(…)`) schützt nichts
           // (`laufeAusgefuehrt`, s. dort).
-          laufeAusgefuehrt(
-            n,
-            lokaleHelfer,
-            (x) => {
-              if (ts.isCallExpression(x)) {
-                ausgefuehrteAufrufe.push(x);
-                const name = aufgerufenerName(x.expression);
-                if (name !== undefined) {
-                  aufrufe.add(name);
-                  if (PRAEDIKAT_NAMEN.test(name)) {
-                    praedikatImAufruf = true;
+          const argument = n.arguments[n.arguments.length - 1];
+          const handler =
+            argument && ts.isIdentifier(argument) ? registrierungsHandler(argument) : undefined;
+          if (handler) mitgelesen.push(handler);
+          // Nur der gebundene Handler wird zusätzlich ausgeführt; keine globale Helfer-Namenskarte.
+          for (const wurzel of handler ? [n, handler] : [n]) {
+            laufeAusgefuehrt(
+              wurzel,
+              wurzel === n ? lokaleHelfer : new Map<string, ts.Node>(),
+              (x) => {
+                if (ts.isCallExpression(x)) {
+                  ausgefuehrteAufrufe.push(x);
+                  const name = aufgerufenerName(x.expression);
+                  if (name !== undefined) {
+                    aufrufe.add(name);
+                    if (PRAEDIKAT_NAMEN.test(name)) {
+                      praedikatImAufruf = true;
+                    }
                   }
                 }
-              }
-              if (ts.isStringLiteral(x) && /^(ko|users|conflict)\.[a-z]+$/.test(x.text)) {
-                rechte.add(x.text);
-              }
-            },
-            (rumpf) => mitgelesen.push(rumpf),
-          );
+                if (ts.isStringLiteral(x) && /^(ko|users|conflict)\.[a-z]+$/.test(x.text)) {
+                  rechte.add(x.text);
+                }
+              },
+              (rumpf) => mitgelesen.push(rumpf),
+            );
+          }
           // Das geforderte Routenrecht (KURATORENTOR) wird wie bisher am ganzen Aufruf gelesen —
           // es ist eine Angabe der Registrierung, kein Schutz, der ausgeführt werden müsste.
           const sammleRechte = (x: ts.Node): void => {
@@ -3738,7 +3876,9 @@ function funktionsRumpf(sf: ts.SourceFile, name: string): Funktionsfund | undefi
       return;
     }
     if (
-      (ts.isVariableDeclaration(n) || ts.isPropertyDeclaration(n)) &&
+      (ts.isVariableDeclaration(n) ||
+        ts.isPropertyDeclaration(n) ||
+        (ts.isPropertyAssignment(n) && ts.isIdentifier(n.name))) &&
       heisst(n.name) &&
       n.initializer &&
       (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))
@@ -4997,6 +5137,129 @@ describe("mega74 E · der Sammler über alle Lesewege", () => {
       .filter(([, e]) => !ZENTRALE_ENTSCHEIDUNGEN.has(e.entscheidung ?? ""))
       .map(([schluessel, e]) => `${schluessel}: ${e.entscheidung ?? "(keine)"}`);
     expect(abweichend).toEqual([]);
+  });
+
+  it("KALIBRIERUNG — Arrow-Objektcallbacks binden darfSehen", () => {
+    const eintrag: Eintrag = {
+      urteil: "DIENST_FILTERT",
+      grund: "Probe.",
+      entscheidung: "darfSehen",
+      kette: [
+        { datei: "probe/callback.ts", funktion: "rechte" },
+        { datei: "probe/callback.ts", funktion: "rechteFuer" },
+      ],
+    };
+    const pruefe = (text: string, route = "deps.rechte();"): string[] =>
+      pruefeDienstweg("GET /probe", eintrag, probeRoute(route), () => text);
+    const hilfe = "function rechteFuer() { return darfSehen(user, ko); }";
+    const mitEntscheidung = `const deps = { rechte: async () => rechteFuer() }; ${hilfe}`;
+    expect(pruefe(mitEntscheidung)).toEqual([]);
+    for (const ohneEntscheidung of [
+      mitEntscheidung.replace("darfSehen(user, ko)", "true"),
+      mitEntscheidung.replace("darfSehen", "isConfidential"),
+      mitEntscheidung.replace("darfSehen(user, ko)", "darfSehen"),
+      mitEntscheidung.replace("rechteFuer()", "andere()"),
+    ]) {
+      expect(pruefe(ohneEntscheidung)).not.toEqual([]);
+    }
+    expect(pruefe(mitEntscheidung, "void deps.rechte;")).not.toEqual([]);
+    expect(pruefe(mitEntscheidung, "deps.andere();")).not.toEqual([]);
+    for (const ohneBenannteProperty of [
+      mitEntscheidung.replace("rechte:", "andere:"),
+      mitEntscheidung.replace("rechte:", "[name]:"),
+      mitEntscheidung.replace("rechte:", "'rechte':"),
+      `const deps = { get rechte() { return rechteFuer(); } }; ${hilfe}`,
+    ]) {
+      expect(pruefe(ohneBenannteProperty)).not.toEqual([]);
+    }
+  });
+
+  it("KALIBRIERUNG — FunctionExpression-Objektcallbacks binden darfSehen", () => {
+    const eintrag: Eintrag = {
+      urteil: "DIENST_FILTERT",
+      grund: "Probe.",
+      entscheidung: "darfSehen",
+      kette: [
+        { datei: "probe/callback.ts", funktion: "rechte" },
+        { datei: "probe/callback.ts", funktion: "rechteFuer" },
+      ],
+    };
+    const pruefe = (text: string, route = "deps.rechte();"): string[] =>
+      pruefeDienstweg("GET /probe", eintrag, probeRoute(route), () => text);
+    const hilfe = "function rechteFuer() { return darfSehen(user, ko); }";
+    const mitEntscheidung = `const deps = { rechte: function () { return rechteFuer(); } }; ${hilfe}`;
+    expect(pruefe(mitEntscheidung)).toEqual([]);
+    for (const ohneEntscheidung of [
+      mitEntscheidung.replace("darfSehen(user, ko)", "true"),
+      mitEntscheidung.replace("darfSehen", "isConfidential"),
+      mitEntscheidung.replace("darfSehen(user, ko)", "darfSehen"),
+      mitEntscheidung.replace("rechteFuer()", "andere()"),
+    ]) {
+      expect(pruefe(ohneEntscheidung)).not.toEqual([]);
+    }
+    expect(pruefe(mitEntscheidung, "void deps.rechte;")).not.toEqual([]);
+    expect(pruefe(mitEntscheidung, "deps.andere();")).not.toEqual([]);
+    for (const ohneBenannteProperty of [
+      mitEntscheidung.replace("rechte:", "andere:"),
+      mitEntscheidung.replace("rechte:", "[name]:"),
+      mitEntscheidung.replace("rechte:", "'rechte':"),
+      `const deps = { get rechte() { return rechteFuer(); } }; ${hilfe}`,
+    ]) {
+      expect(pruefe(ohneBenannteProperty)).not.toEqual([]);
+    }
+  });
+
+  it("KALIBRIERUNG — benannte Registrierungs-Handler bleiben an Ausfuehrung und Dominanz gebunden", () => {
+    const erhebe = (text: string): Fund => {
+      const teil = erhebeDatei("probe-routes.ts", text);
+      expect(teil.unlesbar).toEqual([]);
+      expect(teil.zaehlerAbweichung).toEqual([]);
+      expect(teil.funde).toHaveLength(1);
+      const fund = teil.funde[0];
+      if (!fund) throw new Error("die benannte Proberoute fehlt");
+      return fund;
+    };
+    const direkt = erhebe(
+      'const handler = () => { darfSehen(user, ko); return dienst.bearbeite(); }; app.get("/probe", {}, handler);',
+    );
+    expect(direkt.praedikatImAufruf).toBe(true);
+    expect(direkt.aufrufe.has("bearbeite")).toBe(true);
+    expect(direkt.ausgefuehrteAufrufe.map((k) => aufgerufenerName(k.expression))).toContain(
+      "darfSehen",
+    );
+    expect(direkt.bedingt).toEqual([]);
+    const bedingt = erhebe(
+      'const handler = () => erlaubt ? darfSehen(user, ko) : kos; app.get("/probe", handler);',
+    );
+    expect(bedingt.praedikatImAufruf).toBe(true);
+    expect(bedingt.bedingt.length).toBeGreaterThan(0);
+    expect(
+      erhebe('app.get("/probe", handler); function handler() { return darfSehen(user, ko); }')
+        .praedikatImAufruf,
+    ).toBe(true);
+    for (const ohneBindung of [
+      'const handler = () => darfSehen(user, ko); app.get("/probe", () => kos);',
+      'const handler = () => { const fremd = () => darfSehen(user, ko); void fremd; return kos; }; app.get("/probe", handler);',
+      'const handler = () => darfSehen(user, ko); dispatch(handler); app.get("/probe", () => kos);',
+      'app.get("/probe", handler);',
+      'function fremd() { const handler = () => darfSehen(user, ko); } app.get("/probe", handler);',
+      'const handler = () => darfSehen(user, ko); const handler = () => kos; app.get("/probe", handler);',
+      'const handler = () => darfSehen(user, ko); function install(handler) { app.get("/probe", handler); }',
+      'const handler = () => darfSehen(user, ko); { const handler = () => kos; app.get("/probe", handler); }',
+      'function handler() { return darfSehen(user, ko); } handler = () => kos; app.get("/probe", handler);',
+      'app.get("/probe", handler); const handler = () => darfSehen(user, ko);',
+      'import { handler } from "fremd"; app.get("/probe", handler);',
+      'const handler = () => darfSehen(user, ko); try {} catch (handler) { app.get("/probe", handler); }',
+      'const handler = () => darfSehen(user, ko); for (const handler of liste) { app.get("/probe", handler); }',
+      'const handler = () => darfSehen(user, ko); const K = class handler { m() { app.get("/probe", handler); } };',
+      'const handler = () => darfSehen(user, ko); { namespace handler {} app.get("/probe", handler); }',
+      'function handler() { return darfSehen(user, ko); } for (handler of liste) {} app.get("/probe", handler);',
+      'function handler() { return darfSehen(user, ko); } for (handler in liste) {} app.get("/probe", handler);',
+    ]) {
+      const fund = erhebe(ohneBindung);
+      expect(fund.praedikatImAufruf).toBe(false);
+      expect(fund.aufrufe.has("darfSehen")).toBe(false);
+    }
   });
 
   it("KALIBRIERUNG — ein entfernter Dienstfilter oder eine blosse Erwähnung wird rot", () => {
