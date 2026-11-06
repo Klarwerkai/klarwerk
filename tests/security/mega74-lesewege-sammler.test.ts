@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/funktionen/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Einzelne eigene persönliche Funktion: persoenliche-funktionen-routes.ts:199–210 verlangt requireUser, ruft dienst.hole(user.id,params.id) und antwortet nur mit sicht(dienst,funktion):102–121. Reale Bindung build-app.ts:6512–6521 ist FunktionenDienst mit RoutinenFunktionenRepo(services.vormachenRoutinen). FunktionenDienst.hole (persoenliche-funktionen.ts:898–904) gibt ohne Treffer dieselbe feste 404 zurück; RoutinenFunktionenRepo.hole:243–245 liest ausschließlich routinen.routine(kontoId,id)?.beschaffung. Der konkrete Routinenport bindet diese Lesung an Konto UND Kennung (vormachen.ts:423–426 Memory, PG:504–510 WHERE id=$1 AND konto_id=$2). sicht liefert den gespeicherten eigenen Funktionsdatensatz mit aktueller/allen Fassungen, Zeitauftrag, umgekehrten gespeicherten Läufen, Revision/Zeitpunkten sowie Fähigkeits- und berechneten Termindaten; die Kontokennung wird nicht als eigenes Ausgabefeld projiziert. aktuelleFassung:789–791, offeneFaehigkeiten:813–815 und vorschau:1230–1232/naechsteTermine:531–557 in persoenliche-funktionen.ts lesen nur diese gespeicherten Daten bzw. berechnen daraus Termine. Dieser GET ruft weder quellenLeser noch eine neue KO-Lesung, Import-, Schreib-, Lauf- oder Außenaktion auf. EIGENER_BESTAND schließt gespeicherte Fassungen und Läufe mit früher kopiertem Text oder Quellenständen ein; heutige Quellrechte daran werden hier nicht erneut geprüft. U4 und allgemeine Widerrufsparität bleiben offen. Keine atomare Konto-/Ablage-/Antwortzusage oder Funktions-/Termin-/Fähigkeits-/Scheduler-/CAS-/PG-/Hostqualitätsabnahme und keine Produkt-/Policyänderung. Nur Quelltext gelesen, keine echte Funktion, Routine, Konten, Quellen, Rechte, APIs, Datenbanken, SDKs oder Hosts abgefragt.",
+  },
   "GET /api/me/funktionen": {
     urteil: "EIGENER_BESTAND",
     grund:
