@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/vorfuehrung/frage": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Öffentliche Frageroute ausschließlich über fiktive Vorführungsinhalte: vorfuehrung-routes.ts:48–60 antwortet bei ausgeschaltetem schalterAn(vorfuehrung) nur404 {error:VORFUEHRUNG_AUS}; sonst nimmt sie request.query.q nur als String, andernfalls leeren String, und sendet200 {fiktiv:true,kennzeichnung:KENNZEICHNUNG[l],treffer} aus beantworte(frage,l). vorfuehrung/inhalte.ts:169–190 begrenzt die Frage über slice(0,FRAGE_MAX_ZEICHEN=300), zerlegt sie mit woerter:148–152 in Wort-/Zahlzeichen (Länge mindestens4, feste Füllwörter ausgeschlossen), vergleicht mit passt:155–160 nur die festen Titel/Aussagen von INHALTE[sprache], bewertet Worttreffer, verwirft Nulltreffer und gibt höchstens3 nach Trefferzahl sortierte ursprüngliche Beispiele zurück; ohne Suchwörter leere Liste. INHALTE und KENNZEICHNUNG:26–111 sind deutsche/englische/niederländische Literale mit erfundenen Musterwerk-Beispielen, das vollständige191-Zeilen-Modul hat keine Importe. Keine Unternehmens-/KO-/Konto-/Gesprächsbestände, generierte Modellantworten oder Weiterleitung an Suche/externen Dienst. sprache über services/auth/index.ts aus services/auth/src/routes.ts:233–249 wählt nur de/en/nl aus Accept-Language, sonstde. feature-flags.ts:102/196–201/251–259 bindet vorfuehrung an KLARWERK_VORFUEHRUNG_ANONYM mit Vorgabeaus, nur1/true aktiv; tatsächlicher Flag-/Umgebungswert hier nicht abgefragt oder geändert. Reale Registrierung build-app.ts:6833–6836. Dieser Handler/Antworthelfer hat keinen Speicher-, Audit-, Lauf-, Modell- oder Außenaufruf. Nur statisches Leseurteil KEIN_KO_INHALT am gebundenen Quellstand, keine Laufzeit-Unveränderlichkeits-/Demo-/Suchrelevanz-/Sprachwahl-/Betriebs-/Hostabnahme und keine Änderung der bestehenden Anonym-/Rechte-/Modellpolitik. Kein echter GET, keine Frage/Vorführung ausgeführt und keine Nutzer-/Quellen-/API-/DB-/SDK-/Server-/Hostabfrage. U4 und globale Quellrechtsreste bleiben unberührt.",
+  },
   "GET /api/vorfuehrung": {
     urteil: "KEIN_KO_INHALT",
     grund:
