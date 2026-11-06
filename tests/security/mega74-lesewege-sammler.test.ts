@@ -208,6 +208,14 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 const REGISTER: Record<string, Eintrag> = {
   "GET /api/me/klara/normereignisse/:id/fassungen/:koId/:fassung": {
     urteil: "DIENST_FILTERT",
+    kette: [
+      {
+        datei: "services/app/src/klara-normereignisse-dienst.ts",
+        funktion: "fachfassung",
+      },
+      { datei: "services/app/src/klara-fristen-quellen.ts", funktion: "lies" },
+    ],
+    entscheidung: "darfSehen",
     grund:
       "Einzelne belegte Anleitungsfassung: klara-normereignis-routes.ts:187–205 bindet requireUser an dienst.fachfassung(user.id,normId,koId,Number(fassung)). fachfassung (klara-normereignisse-dienst.ts:976–1035) verlangt heutigen Nutzer, eigene über sicht/stand heute quellenlesbare Norm und sichere positive Fassungszahl. Zulässig ist entweder die konkrete Referenz einer sichtbaren eigenen Annahme oder, ohne solchen Bezug, ko.validate und genau diese angebotene Fachoption (fachoptionen:925–973). In jedem erfolgreichen Zweig folgt quellen.lies(user,wissensobjekt,koId), nur danach ko.get; der konkrete Leser KlaraFristenQuellen.lies:74–110 aktualisiert Nutzer/Spaces und verwirft ohne darfSehen am heutigen KO (build-app:4362–4371/6350). Danach nur die gewünschte aktuelle Fassung oder ihr vorhandener versionsOf-Snapshot. Passender fachlicher Auditbeleg dieser Version erforderlich, bei vorhandener Referenz mit gleicher seq/hash. Antwort explizit koId,fassung,titel,aussage,freigegebenAm; echter Inhalt genau eines KOs, keine Eigenbestands- oder reine Metadatenantwort. Fachoptionen kann im ungebundenen Berechtigungszweig intern den KO-Bestand durchgehen, ausgegeben wird hier nur diese einzelne Fassung. Rechteprüfung betrifft den heutigen KO; historische Aussage/Titel stammen unverändert aus dem Snapshot, historische Rechte werden nicht eigens neu ausgewertet. Kein abschließender nochAktuell-Aufruf, keine atomare Rechte-/Snapshot-/Audit-/Auslieferungs- oder allgemeine historische Widerrufsparität behauptet; U4 offen. Nur Code-Leseurteil zum konkreten Dienstfilter, keine Fassungs-/Fachfreigabe-/Audit-/PG-/Hostqualitätsabnahme. Keine echte Fassung, Quellen-, Konto-, Rechte-, Audit-, API- oder Datenbankprobe gelesen oder aufgerufen.",
   },
