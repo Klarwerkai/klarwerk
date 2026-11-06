@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/erinnerungen/:id/status": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Erinnerungsstatusantwort: klara-erinnerung-routes.ts471-490 bindet requireUser/user.id an dienst.status3458-3512. Sechs erlaubte Aktionen werden geprüft; mitFassung3401-3412 lädt über eintrag den eigenen kontoId-/quellschutzgebundenen Eintrag und prüft die gesehene Fassung. Statusübergang/Zukunft werden geprüft; schreibe3376-3399 erhält id/kontoId und schreibt Status/Fassung/Steuerstand über denselben Eigentums-/Fassungspfad. beenden bearbeitet nur Läufe der vorher gebundenen Erinnerungs-ID (höchstens500). Route protokolliert über geaendert170-176 und sendet sicht162-168 mit eigener Erinnerung/Inhalten/Routine/bis50 Laufergebnissen, optional gespeichertem Empfängernamen; kein Metadatenurteil. Vorhandener Quellschutz/build-app-Bindung und Fachfehler/zentralerSender unverändert. Nur heutige eigene Antwort-/Quellbindung, keine pauschale Quellprüfung historischer Laufergebnisse oder allgemeine Schutzparität kopierter Inhalte(U4 offen), keine neuePolicy/Status-/Abbruch-/Scheduler-/Zeit-/DST-/PG-/CAS-/Transaktionsabnahme. Keine Statusaktion/Schreibung/Laufänderung/Audit/Uhr/Quellrecht/Anzeige/API/DB/SDK/Host tatsächlich ausgeführt.",
+  },
   "GET /api/me/klara/erinnerungen/:id": {
     urteil: "EIGENER_BESTAND",
     grund:
