@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/normereignisse": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigener Normereignisstand: klara-normereignis-routes.ts:79–87 bindet requireUser an dienst.stand(user.id). stand in klara-normereignisse-dienst.ts:870–922 verlangt heutigen Nutzer über quellen.nutzer, sonst leeren Stand, und liest repo.hole(kontoId) des eigenen Fristenbestands. normQuellen:112–128 sammelt alle Bekanntmachungsherkünfte und gespeicherten Prüfeingangs-Abhängigkeiten; eine Norm wird nur mit mindestens einer und sämtlich heute lesbaren Quellen ausgegeben. quellen.lies ist konkret in build-app:4362–4371/6350 und klara-fristen-quellen.ts an heutigen Nutzer/Quellrechte gebunden. normQuellstand in klara-normereignisse.ts:422–439 markiert abweichende Belegfassungen nur aktuell:false; alte Wortlaute und gespeicherte Norm-/Ereignis-/Prüfeingangs-/Klärungsdaten werden nicht neu projiziert oder inhaltlich bereinigt. Annahmen werden einzeln nur bei heute lesbarem bisher/nachfolger übernommen, sonst annahmeUngeprueft:true. Antwort ist eigene Fassung und Normgeschichten mit Widerspruch/Konfliktarten/aktueller Klärungskennung sowie fachannahmeErlaubt aus ko.validate; kein gemeinsamer KO-Bestand. Nur Lesen, keine Erkennung, Bindungsschreibung, Auftragserzeugung oder Handleraudit. Das ist ein statisches Eigenbestands-Leseurteil, keine Norm-/Erkennungs-/Fachfreigabe-/PG-/Hostqualitätsabnahme und keine allgemeine Widerrufsparität kopierter Texte; U4 offen. Keine echte Quellen-, Konto-, Rechte-, API- oder Datenbankprobe ausgeführt.",
+  },
   "POST /api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag": {
     urteil: "KEIN_KO_INHALT",
     grund:
