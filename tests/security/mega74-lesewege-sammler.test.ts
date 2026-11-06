@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/besprechungen/:id/lesen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Besprechungssicht: klara-besprechung-routes.ts27-53 bindet requireUser/u.id an sicht389-397; hole376-388 liest den Notiz-Port kontoId-gebunden und verlangt Besprechungsherkunft. Antwort enthält diese eigene Notiz, deterministische Segmentergebnisse42-85, gespeicherten Verarbeitungsstand und festen Fristenhinweis, keine Bestandsaggregation. build-app.ts6278-6286 verdrahtet services.klaraNotizen aus2113-2145: QuellgeschuetzteKlaraNotizen.hole/lesbar ruft bei gebundener Herkunft den erlauben-Callback; dieser prüft zugelassenes Konto, Antwortquellen, gegebenenfalls Quellnotiz/Audioeigentum+Zweck und referenzierte KOs mit darfSehen. Basis InMemory149-152/PG245-251 in klara-notiz.ts filtert kontoId; notizIstQuellengebunden77-83 erfasst wissensHerkunft. Nur Eigentumsraum-Leseurteil mit vorhandener Quellschutzbindung, keine pauschale Quellrechts-/Vertraulichkeits-/Widerrufsparität kopierter Inhalte (U4), Rohdaten-/Schemahärtungs- oder PG-/ASR-/Modellqualitätszusage/neuePolicy. Keine echte Besprechungssicht/Repo-/Quellrechts-/Audio-/ASR-/Modell-/HTTP-/DB-/SDK-/Hostprobe.",
+  },
   "POST /api/me/vormachen/routinen/:id/firmenuebergabe": {
     urteil: "EIGENER_BESTAND",
     grund:
