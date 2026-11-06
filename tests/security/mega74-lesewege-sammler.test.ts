@@ -206,6 +206,12 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/reasoner/verhaltensartefakte": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund:
+      "Administrativer Volltext-/Verlaufsabruf von Verhaltensartefakten hinter dem bestehenden Recht users.manage: reasoner-routes.ts:1827–1837 registriert den GET bei injiziertem verhalten, verlangt unmittelbar guards.requirePermission(users.manage), kehrt ohne Nutzer zurück und liest erst danach verhalten.geltende()/verlauf(). Der bestehende Wächter http.ts:354–379 verlangt requireUser und can(user.role,permission), sonst403; rbac/index.ts exportiert can aus policy.ts:83–87, ROLE_PERMISSIONS:30–43 gibt users.manage nur admin, unbekannte Rollen sperren. Daher KURATORENTOR mit recht:users.manage, kein inhaltsfreies oder eigenes-Konto-Urteil. Antwort200 enthält vollständige gespeicherte Artefakttexte/Metadaten (schluessel,version,aufgabe,art,inhalt,status,herkunftsfall,angelegtVon,angelegtAm), auch möglicherweise administrativ hineinkopierten Inhalt; keine Behauptung vertraulichkeitsfreier Daten. services/reasoner/index.ts:150–167 exportiert Dienst und Ablagen aus verhaltensartefakte.ts; verlauf:238–241 liest repo.alle und sortiert Schlüssel/Fassung, geltende:244–246/209–218 liest separat repo.alle und nimmt je Schlüssel die höchste Version unabhängig vom Freigabestatus. Das ist nicht wirksameFuer und keine Behauptung nur freigegebener Inhalte. InMemoryRepo.alle:105–107 kopiert gespeicherte Fassungen, PgRepo.alle:154–169 liest SELECT aus verhaltensartefakte und projiziert obige Felder. Zwei getrennte Lesungen, keine atomare gemeinsame Momentaufnahme zugesagt. Reale Bindung build-app.ts:1726–1729/2101/2692/6724–6726, kein Modell- oder Provideraufruf durch diesen GET, kein Speichern/Audit/Fortführen. Nur statische Quellbindung und vorhandene Tor-Messung, keine neue Rechte-/Rollen-/Freigabe-/Modell-/Aufbewahrungsentscheidung und keine Artefakt-/Historien-/Konsistenz-/Mandanten-/PG-/Betriebs-/Hostqualitätsabnahme. Kein echter GET, kein Admin-/Modell-/Provider-/API-/Datenbank-/SDK-/Server-/Hostaufruf. U4 und globale Rechte-/Widerrufsreste bleiben unberührt.",
+  },
   "GET /api/vorfuehrung/frage": {
     urteil: "KEIN_KO_INHALT",
     grund:
