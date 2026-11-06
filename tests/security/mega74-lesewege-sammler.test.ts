@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Referenzantwort einer eigenen Norm-Prüfauftragsverknüpfung: klara-normereignis-routes.ts:60–78 bindet requireUser an verknuepfePruefauftrag(user.id,...). Dienst:783–868 verlangt zunächst pruefbezug:698–704 (heutiger Nutzer/eigenes quellenlesbares Normereignis), validiert Bestätigung, IDs und Fassung. Bereits gleich gebundener Auftrag antwortet früh mit gespeichertem pruefauftrag und wiederholt:true, ohne neue Vorfassungs-/Planprüfung; anderer Originalauftrag oder bestehender kanonischer Eingang ergibt festen409. Neue Bindung verlangt eigene Bestandfassung, eigenes Gespräch und passenden heutigen Notizplan, aktuelle Bekanntmachungsfassungen und nochAktuell, dann den bestehenden bedingten Konto-/Vorfassungsschreibweg. Neue Referenz wird explizit aus gespraechId, auftragId, nr:1, schluessel aufgebaut; Antwort nur {pruefauftrag,wiederholt:false}. NormPruefauftragRef:49–54 enthält diese vier Referenzfelder, keine KO-Aussage, Auftragstitel, Notiz- oder Schrittergebnisinhalte. Wiederholungszweig gibt den gespeicherten Referenzwert unverändert zurück, keine neue Einzelfeldprojektion oder allgemeine JSON-Sanitisierungszusage. Dieser Weg bindet nur ein bestehendes Journaloriginal und erzeugt/führt keinen Auftrag aus; kein Audit im Handler. Quell-/Schreib-/CAS-/Transaktions-/Norm-/Auftrags-/PG-/Hostqualität und allgemeine Widerrufsparität bleiben unbewertet, U4 offen. Keine echte Verknüpfung, Schreibung, Quellen-, Notiz-, Gesprächs-, Konto-, Rechte-, API- oder Datenbankprobe ausgeführt.",
+  },
   "GET /api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag": {
     urteil: "EIGENER_BESTAND",
     grund:
