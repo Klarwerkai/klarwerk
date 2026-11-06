@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/begleiter/auftraege/:schluessel/klaeren": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Begrenzte Klärung einer Begleiter-Beauftragung: klara-begleiter-routes.ts:162-187 verlangt requireUser und ruft kanal.klaeren(user.id,schluessel,body). Bei angenommen antwortet der Handler nur stand, instanz, aktionSicht(aktion) und kanal.epoche, sonst nur stand; Cache-Control no-store. aktionSicht:49-57 wählt id/art/stand/auswahlStand/optionalen Abbruchmarker und lässt text, ergebnis, grund, Dokument-/Auswahlinhalt und Auftragsschlüssel draußen. BegleiterKanal.klaeren (klara-begleiter.ts:967-989) liest nur auftraege.get(konto).get(schluessel), berücksichtigt eigene Fenster-/Kanal-/Fristlage und setzt nötigenfalls einen kontogebundenen Nichtanlagevermerk (:432-471); Zustände:329-343. Ein unbekannter/offener früherer Stand beweist keine Annahme oder Ausführung. Tatsächliche Verdrahtung build-app.ts:6496. Nur Antworturteil ohne Wissensobjektinhalt; keine echte Klärungs-/Vermerk-/Adapter-/Aktions-/Word-/Office-/Host-/Sitzungs-/API-Probe oder Ende-/Ausführungsabnahme.",
+  },
   "POST /api/me/klara/begleiter/adapter/:instanz/aktionen/:aktion/stopp": {
     urteil: "KEIN_KO_INHALT",
     grund:
