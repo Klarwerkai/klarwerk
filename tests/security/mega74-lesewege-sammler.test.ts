@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/erinnerungen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene und bewusst übernommene Erinnerungsübersicht: klara-erinnerung-routes.ts:179–203 bindet beide Listen an requireUser/user.id. dienst.liste und uebernommene (klara-erinnerung.ts:2796–2818) lesen nach kontoId bzw. gespeicherter zustaendig.kontoId und filtern jeden Ausgangseintrag mit sichtbare/lesbar und dem vorhandenen Quellschutz. InMemory:1011–1018/1134–1141 und PG:1686–1693/1838–1846 tragen die beiden Kontobindungen. Eigene Einträge gehen über sicht in erinnerungSicht mit Inhalten, Routine und bis 50 Läufen derselben Eintrags-ID; Namen stammen nur vom gespeicherten Übergabeziel. Übernommene gehen in uebernommeneSicht:129–147 mit ID, Titel, Zone, Plan, Status, abgeleiteter Lage/Anzeige und Übergabezeit/Name des gespeicherten Eigentümers; ohne Notiz-, Bezug-, Objektbezug-, Routine- oder Laufergebnisfelder. lageVon gibt Zustandswerte aus, anzeigeVon Plan-/Zeitangaben. Keine frische Einzelquellprüfung historischer Ergebnisse oder allgemeine Schutzparität kopierter Inhalte behauptet, U4 offen. Nur Codebindung der Übersicht, keine Vollständigkeits-, Listenlimit-, Zeit-/DST-, Scheduler-, PG- oder Hostabnahme. Keine echte Listen-, Lauf-, Namen-, Konto-, Quellrechts-, Uhr-, API-, Datenbank- oder Hostprobe ausgeführt.",
+  },
   "PUT /api/me/klara/erinnerungen/:id": {
     urteil: "EIGENER_BESTAND",
     grund:
