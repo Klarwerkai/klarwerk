@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene bestehende Norm-Prüfaufträge: klara-normereignis-routes.ts:46–59 bindet requireUser an dienst.pruefauftraege(user.id,normId,ereignisId). pruefbezug:698–704 verlangt heutigen Nutzer und Ereignis in sicht/stand:693–696/870–922 des eigenen kontoId-Fristenbestands; normQuellen:112–128/stand lesen alle Herkunfts- und gespeicherten Abhängigkeitsquellen unter heutigen Rechten. pruefauftraege:736–780 liest nur eigenes gebundenes/Eingangs-/aktuelles Gespräch. Ungebundene Kandidaten brauchen pruefplan:706–733 (eigener Verantwortlicher, ein persönlicher Aufgabenplan mit erlaubter Notiz, heutige Notizfassung und passendes Ereignis); gebundene Originalzeilen bleiben auch bei negativem Plancheck mit quelleAktuell:false sichtbar. Antwort enthält gespeicherte Referenz, Auftragstitel/Fassung/Stand, Schlüssel, Schrittstand/ausgangUnklar und unverändertes gespeichertes Schritt-Ergebnis einschließlich Titel/Pfad, keine reine Metadaten- oder heutige Inhaltssanitisierungszusage. Persönliche Aufgabe wird nur für ergebnisVorhanden kontoId-gebunden nachgesehen; Aufgabeninhalt selbst wird nicht zurückgegeben. Gesprächs-/Aufgabenrepos und konkrete build-app:4362–4371/6350 binden eigene Bestände. Nur Lesen, keine Auftragserzeugung/Verknüpfung/Ausführung/Auditwirkung. Norm-/Erkennungs-/Auftrags-/PG-/Hostqualität und allgemeine Quellrechts-/Widerrufsparität kopierter Journaltexte bleiben offen, U4 offen. Keine echte Quellen-, Notiz-, Gesprächs-, Aufgaben-, Konto-, Rechte-, API- oder Datenbankprobe ausgeführt.",
+  },
   "POST /api/me/klara/fristen/aktualisieren": {
     urteil: "EIGENER_BESTAND",
     grund:
