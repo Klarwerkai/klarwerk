@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/funktionen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Liste eigener persönlicher Funktionen: persoenliche-funktionen-routes.ts:134–145 verlangt requireUser, ruft dienst.eigene(user.id) und bildet nur diese Treffer über sicht:102–121 ab. Reale Bindung build-app.ts:6512–6521 ist FunktionenDienst mit RoutinenFunktionenRepo(services.vormachenRoutinen). FunktionenDienst.eigene (persoenliche-funktionen.ts:894–896) delegiert an das eigene Repo; RoutinenFunktionenRepo.eigene:238–242 liest routinen(kontoId) und kopiert nur vorhandene beschaffung-Teile. Der konkrete Routinenport bindet die Liste an kontoId (vormachen.ts:418–421 Memory-Filter, PG:494–502 WHERE konto_id=$1). sicht gibt Kennung, Art, Stand, aktuelle und gespeicherte Fassungen, Zeitauftrag, umgekehrte gespeicherte Läufe, Revision/Zeitpunkte sowie Fähigkeitsangaben aus. aktuelleFassung:789–791 nimmt die letzte gespeicherte Fassung; offeneFaehigkeiten:813–815 filtert vorhandene Fähigkeitsdaten; vorschau:1230–1232 berechnet Termine nur aus dem gespeicherten Zeitauftrag über naechsteTermine:531–557. Dieser GET ruft weder quellenLeser noch eine neue KO-Lesung, Import-, Schreib-, Lauf- oder Außenaktion auf. EIGENER_BESTAND umfasst die ganzen eigenen gespeicherten Fassungen/Läufe mit möglicherweise früher kopiertem Text und Quellenständen; heutige Quellrechte an diesen Kopien werden hier nicht erneut geprüft. U4 und allgemeine Widerrufsparität bleiben offen. Keine atomare Konto-/Ablage-/Antwortzusage, keine Funktions-, Termin-, Fähigkeits-, Scheduler-, CAS-, PG- oder Hostqualitätsabnahme und keine Produkt-/Policyänderung. Nur Quelltext gelesen, keine echten Funktionen, Routinen, Konten, Quellen, Rechte, APIs, Datenbanken, SDKs oder Hosts abgefragt.",
+  },
   "GET /api/me/klara/wissen/ziele": {
     urteil: "KEIN_KO_INHALT",
     grund:
