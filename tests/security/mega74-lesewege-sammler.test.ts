@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /ready": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Nur feste Bereitschaftsauskunft: build-app.ts:4190-4198 registriert öffentlich GET /ready. Einzige Antwort ist HTTP200 {status:ok} oder HTTP503 {status:unavailable}; services.readiness liefert nur den Bereitschaftswahrwert, Fehler werden ohne Datenbank-/Verbindungsdetails gefangen. AppServices.readiness:808-809 und reale Bindung:2759 gelesen. readiness.ts:1-35 liefert aus dem bestehenden Pool SELECT1 nur true/false, höchstens eine Abfrage im Flug und eine Frist; weder Queryergebnis noch Fehlermeldung werden in die Antwort übernommen. Ohne Callback gilt im Code bereit=true. Keine KO-/Konto-/Quellen-/Inhalts-/Anbieter-/Konfigurationsdaten in der Antwort. Nur Code-Leseurteil; keine echte /ready-/HTTP-/PG-/Pool-/Frist-/Serverprobe oder Betriebsbereitschaftsabnahme.",
+  },
   "POST /api/me/klara/kalender/anbindungen/:id/entfernen": {
     urteil: "KEIN_KO_INHALT",
     grund:
