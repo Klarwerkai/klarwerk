@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/fristen/aktualisieren": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Fristenaktualisierungs-Antwort: klara-fristen-routes.ts:64–79 bindet requireUser an dienst.aktualisieren(user), danach Audit nur eigener Zielkennung/Fassung und Rückgabe des Standes. aktualisieren:212–232 lädt je höchstens drei Versuchen nur repo.hole(user.id) oder eigenen Leerstand, verlangt aktive eigene Regel und liest deren ausgewählte Quellen mit quellen:90–110 über den bestehenden heutigen Nutzer-/Quellenleser. identitaetsLesungen:113–154 bindet nötige Altherkunft aus eigenem Bestand; auswerten:156–178 bildet Fristen aus den gelesenen Belegen. Nach nochAktuell-Prüfung folgt bei unverändertem Stand ohne Speichern, sonst bei erfolgreichem kontoId-/Vorfassungs-gebundenem Speichern die eigene sicht; kein Qualitätsbeleg für CAS, Wiederholungen oder Transaktionen. sicht/filterSicht:243–256 prüft jede ausgegebene Frist auf sämtliche unterschiedlichen Herkunftsquellen, lässt herkunftslose/unlesbare Fristen weg und entfernt normereignisse. Antwort ist eigener Stand mit Regel und gefilterten Fristen samt Belegwortlaut/Herkunft/Verlauf, keine Metadatenantwort. Übrige eigene Standfelder/Regelauswahlkennungen bleiben erhalten; kein allgemeiner JSON-/Regelmetadatenfilter. Kontoablage und konkrete build-app:6344–6348/heutiger Quellenleser gebunden. Nur Codezuordnung der eigenen Antwort, keine Erkennungs-/Importidentitäts-/Vollständigkeits-/Zeit-/DST-/CAS-/PG-/Scheduler-/Modell-/Host- oder allgemeine Widerrufsabnahme; U4 offen, keine atomare Speichern-/Audit-/Antwortzusage. Keine echte Aktualisierung, Schreibung, Audit-, Quellen-, Konto-, Rechte-, API- oder Datenbankprobe ausgeführt.",
+  },
   "PUT /api/me/klara/fristen/regel": {
     urteil: "EIGENER_BESTAND",
     grund:
