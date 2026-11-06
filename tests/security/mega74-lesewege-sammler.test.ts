@@ -206,6 +206,18 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /wopi/files/:anhangId": {
+    urteil: "DIENST_FILTERT",
+    grund:
+      "WOPI-Dateiauskunft CheckFileInfo: GET /wopi/files/:anhangId an office-routes.ts:394 nutzt onRequest markenRiegel(:374–392) und den lokalen Bezeichner-Handler wopi(:299–369), der host.bearbeite aufruft. markenRiegel prüft eingerichtete Umgebung und gültige unabgelaufene Signaturmarke für genau diesen Anhang vor dem Rohparser, sonst404/401; wopi liest die Marke erneut. Host bearbeite(office-wopi-host.ts:387–406) prüft festen Pfadregex und serialisiert je Anhang zu bearbeiteSeriell(:210–258). Dieser prüft Marke, heutigen Artikel und Anhang mit Objekt/Office-Format; deps.rechte liest in office-routes.ts:218–222 das heutige freigegebene, nicht abgelaufene Konto mit Rolle/Spaces und den aktuellen KO, rechteFuer(:183–188) bindet darfLesen an ko.read und darfSehen. officeSchreibweg(office-wopi.ts:121–135) liefert ohne darfLesen kein-zugang, Host dann404 vor der CheckFileInfo-Ausgabe. Genau diese namensgebundene Kette bearbeite→bearbeiteSeriell→rechte→rechteFuer→darfSehen ist Grundlage von DIENST_FILTERT; keine vollständige Daten-/Argumentfluss- oder Sicherheits-/Hostabnahme. GET ohne /contents liest das aktuelle Objekt (Arbeitsstand einer laufenden Sitzung, sonst Anhangsobjekt) und dekodiert es, um die tatsächliche Bytezahl zu bestimmen; fehlende Bytes404. Die200-JSON-Antwort stammt aus checkFileInfo(office-wopi.ts:286–309): BaseFileName=Anhangsname, OwnerId=Artikelautor, Size=Dateibytes.length, UserId/Name=Markennutzer und frisch gelesener Kontoname, Version=Artikelfassung-Objektkennung, ReadOnly/UserCanWrite/SupportsUpdate aus Marken-Schreibflag UND heutigem direktem Schreibweg, SupportsLocks=true, UserCanNotWriteRelative=true, SupportsRename=false, optional PostMessageOrigin. Es werden hier keine Dokumentbytes oder Belegausschnitte ausgeliefert; die genannten Datei-/Konto-/Objekt-/Fassungsmetadaten sind dennoch geschützte Ausgabe, keine öffentliche oder metadatenfreie Antwort. Grenzen: vor und nach dem Host kann der gemeinsame Wrapper abschliessenRoh(:155–178) einen beendeten/abgelaufenen Arbeitsstand sichern und die Sitzung danach entfernen; der erste Abschluss liegt VOR der frischen vollständigen Host-Rechteprüfung. Vorab-Sicherungsfehler503 ohne Host, nachträglicher Fehler nur geloggt. Prozesslokale Serialisierung, getrennte KO-/Objekt-/Sitzungs-/Ablageschritte ohne gemeinsame Transaktion und ohne erneute volle Rechteprüfung nach allen awaits; keine durchgängige Widerrufs-/Mehrprozessgarantie. Die Property-Auflösung nimmt den ersten gleichnamigen Treffer der Datei, heute eindeutig. U4 und getrennte GET_LOCK/UNLOCK-Produktfrage bleiben offen. Nur statische Quelllektüre und lokale synthetische Tests des Sammlers; kein tatsächlicher HTTP/WOPI-Aufruf, keine echte Marke, Schlüsselwerte, Signatur-, Datei-, KO-, Objekt-, Beleg-, Sitzungs-, DB-, API-, Office-, SDK-, Modell-, Native-, Netz-, Auth- oder Hostprobe; keine Produkt-/Policyänderung.",
+    entscheidung: "darfSehen",
+    kette: [
+      { datei: "services/app/src/office-wopi-host.ts", funktion: "bearbeite" },
+      { datei: "services/app/src/office-wopi-host.ts", funktion: "bearbeiteSeriell" },
+      { datei: "services/app/src/routes/office-routes.ts", funktion: "rechte" },
+      { datei: "services/app/src/routes/office-routes.ts", funktion: "rechteFuer" },
+    ],
+  },
   "GET /wopi/files/:anhangId/contents": {
     urteil: "DIENST_FILTERT",
     grund:
