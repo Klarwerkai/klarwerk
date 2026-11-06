@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen/:id/abbruch": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Abbruchmetadaten statt Wissensobjektinhalt: vormachen-routes.ts345-365 bindet requireUser/user.id an brecheAb und sendet nur dessen AbbruchErgebnis; derselbe dreifeldrige Wert geht in den Auditnachweis. brecheAb(vormachen.ts1333-1335) nutzt offeneSitzung789-795/eigeneSitzung780-786 mit kontogebundener Ablage362-374. Nichtgefunden404 und bereits abgebrochen409 sind feste VormachenFehler ohne Zusatzdetails. abbrechenNachRegel1313-1331 liefert in beiden Zweigen nur regel, rohdatenEntfernt als Anzahl und notizBehalten als Boolean (Typ665-670); keine Beobachtungen, Rohwerte, Felder, Notizinhalte oder Ziele werden zurückgesendet. Der Dienst kann Fristen anwenden und Sitzung/Notiz entfernen oder ändern; nur Code-Leseurteil der Antwort, keine tatsächliche Abbruch-/Lösch-/Frist-/Audit-/HTTP-/DB-/Hostprobe und keine allgemeine Lösch-, Datenschutz-, Rechtewiderrufs- oder Korrupte-Daten-Validierungszusage.",
+  },
   "DELETE /api/me/vormachen/:id": {
     urteil: "KEIN_KO_INHALT",
     grund:
