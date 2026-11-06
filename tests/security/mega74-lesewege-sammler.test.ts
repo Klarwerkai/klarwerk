@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/normereignisse/:id/klaerung": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Normkonfliktklärungsantwort: klara-normereignis-routes.ts:139–162 verlangt requirePermission(ko.validate), übergibt user.id an klaereKonflikt und sendet dessen Ergebnis; nur bei neuer Klärung wird der vorhandene Auditweg aufgerufen. Dienst:1038–1139 verlangt nochmals heutigen Nutzer/ko.validate, erlaubte Eingabefelder fassung/auswahl/begruendung/bestaetigt und serverseitige Person/Zeit; repo.hole(kontoId) und sicht/stand binden das eigene heute quellenlesbare Normmaterial. fachQuellen:1141–1173 liest sämtliche Ereignisbelegquellen, gleicht heutige Erkennung mit gespeicherten aktuellen Belegkennungen ab; Konto-Freigabe/Rolle werden erneut gelesen und alle nochAktuell geprüft. Gleiche aktuelle Auswahl und getrimmte Begründung antworten mit gespeicherter Klärung/wiederholt:true vor erneuter Vorfassungsprüfung. Neue Klärung entsteht über normKonfliktbeleg (klara-normereignisse.ts:403–419): Auswahl, eigene Begründung, serverseitige Personen-/Zeitangaben, Grundlage und Belegkennungen; bedingter eigener Konto-/Vorfassungs-Schreibweg, dann {fassung,klaerung,wiederholt:false}. Keine neue Bekanntmachung oder Annahme einer Anleitung. Die Begründung bleibt eigener übergebener Text; Wiederholung gibt gespeicherten Klärungswert zurück, keine neue Einzelfeldprojektion oder allgemeine Inhaltssanitisierung. Nur statische Eigenbestands-Antwortzuordnung, keine Fachentscheidungs-, Erkennungs-, Schreib-/CAS-/Transaktions-/Audit-/PG-/Hostqualitätsabnahme oder allgemeine Widerrufsparität, U4 offen. Keine echte Klärung, Schreibung, Quellen-, Konto-, Rechte-, Audit-, API- oder Datenbankprobe ausgeführt.",
+  },
   "GET /api/me/klara/normereignisse": {
     urteil: "EIGENER_BESTAND",
     grund:
