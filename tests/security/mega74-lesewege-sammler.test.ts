@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/fristen/vorschau": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Fristenvorschau: klara-fristen-routes.ts:36–44 bindet requireUser an dienst.vorschau(user, regel). vorschau:180–189 liest nur repo.hole(user.id) oder eigenen Leerstand, validiert die übergebene persönliche Regel mit fristenRegelAus:107–182 und liest deren ausgewählte Quellen über quellen:90–110 und den bestehenden heutigen Nutzer-/Quellenleser (build-app:6344–6348, klara-fristen-quellen.ts:59–209). identitaetsLesungen:113–154 bindet nötige Altherkunft anhand des eigenen Bestands und heutiger Importbelege. auswerten:156–178/erkenneFristen:220–303/verarbeiteFristenQuelle:286–464 bilden daraus in der Vorschau Fristen mit Belegwortlaut; dieser Weg speichert nicht. filterSicht:248–256 prüft jede Frist nochmals über sämtliche Herkunftsquellen, lässt nicht lesbare oder herkunftslose Fristen weg und entfernt normereignisse. Die Antwort enthält eigenen Stand, persönliche Vorschau-Regel und gefilterte Fristen samt Herkunft/Verlauf, keine reine Metadatenantwort. Andere eigene Standfelder bleiben erhalten; keine allgemeine JSON-Bereinigung oder Regelauswahl-Sanitisierung behauptet. Kontoablage ist kontoId-gebunden. Nur Codezuordnung, keine Fristenerkennungs-/Importidentitäts-, Vollständigkeits-, Zeit-/DST-, PG-, Transaktions-, Modell-/Host- oder allgemeine Quellrechts-/Widerrufsabnahme; U4 offen. Keine echte Vorschau, Quellenlesung, Datums-, Konto-, Rechte-, API- oder Datenbankprobe ausgeführt.",
+  },
   "GET /api/me/klara/fristen": {
     urteil: "EIGENER_BESTAND",
     grund:
