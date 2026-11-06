@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/vormachen/:id/korrektur": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Korrigierte Vorschau aus eigener Lernsitzung: vormachen-routes.ts305-321 bindet requireUser/user.id an korrigiere und sendet vorschau. korrigiere(vormachen.ts1099-1132) lädt die eigene offeneSitzung, ändert nur deren Schrittbeschreibung/Entferntmarke und liefert baueVorschau; der Ableitungszweig1139-1162 ändert nur ableitungsAenderungen desselben Datensatzes und liefert denselben Projektor1064-1092. ausSatzOderWahl1169-1189 nutzt einen Schritt dieser eigenen Ableitung; Klärungsfehler400/422 geben grund/nr/optionen aus der eigenen Eingabe mit festen Texten zurück (deuteKorrektur, assistenz-lernen-korrektur.ts92-129). Vorschau enthält eigene Beschreibungen/Stand/Zähler und optionale Ableitung samt gespeicherten Quellkennungen/Fassungen aus derselben Sitzung. Nur Eigentumsraum-Leseurteil; keine neue Policy, kein zentraler KO-Sichtfilter oder allgemeine Quellrechts-/Vertraulichkeits-/Widerrufsparität kopierter Inhalte (U4 offen). Echte Korrektur-/Ableitungs-/Hash-/Frist-/Auth-/HTTP-/DB-/Hostwege werden nicht ausgeführt; keine pauschale Rohdaten-/Geheimhaltungs-/Schemahärtungszusage.",
+  },
   "GET /api/me/vormachen/:id/vorschau": {
     urteil: "EIGENER_BESTAND",
     grund:
