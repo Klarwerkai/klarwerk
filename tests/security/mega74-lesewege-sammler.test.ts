@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen/:id/bestaetigung": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Bestätigungsantwort der eigenen Lernsitzung: vormachen-routes.ts322-343 bindet requireUser/user.id an bestaetige1196-1261 und gibt201 routineSicht125-146 aus. bestaetige lädt die kontoId-gefilterte offene Sitzung, baut deren Vorschau1064-1092, prüft Stand/nichtleereSchritte/eigeneRoutineanzahl/Titel und erzeugt daraus eine neue kontoId-gebundene Routine mit eigenen Beschreibungen/Herkunft und optionalen Ableitungsteilen; nach erfolgreichem schreibeRoutine1571-1578 wird die eigene Sitzung entfernt. Antwort enthält diese Routine, keine bloße inhaltsfreie Bestätigung. Nur Eigentumsraum-Leseurteil; gespeicherte Schritte/Parameter/Korrekturquellen bzw. Quellbezüge bleiben unter U4, keine pauschale Rohdaten-/Geheimhaltungs-/Schemahärtungs- oder Quellrechts-/Vertraulichkeits-/Widerrufsparitätszusage und keine neuePolicy. CAS-/PG-Code nur gelesen, keine Laufparität. Keine Routine/Sitzung bestätigt/geschrieben/entfernt oder Vorschau/Ableitung/Hash/Fristen/Audit/HTTP/DB/SDK/Host ausgeführt.",
+  },
   "POST /api/me/vormachen": {
     urteil: "EIGENER_BESTAND",
     grund:
