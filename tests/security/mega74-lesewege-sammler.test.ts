@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/erinnerungen/:id/uebergabe/zurueckgeben": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Rückgabebestätigung ohne Wissensinhalt: klara-erinnerung-routes.ts:396–416 verlangt requireUser und ruft gibZurueck(user.id, params.id). Der Dienst (klara-erinnerung.ts:2945–2951) lädt holeSystem(id), verlangt die gespeicherte zustaendig.kontoId des anfragenden Kontos, sonst feste 404, und schreibt nur zustaendig:null über schreibe(..., false). Dieser erhält die Eigentümerkennung und nutzt ersetze mit Eigentums- und Fassungsprüfung; dies ist keine Transaktions- oder Rückgabeabnahme. Die Route protokolliert nur Kennung und zurueckgegeben:true und antwortet 200 mit der festen Bestätigung {zurueckgegeben:true}; keine sicht, Inhalte, Titel, Namen oder Laufergebnisse. Domänenfehler und zentraler Sender bleiben unverändert. Keine zusätzliche Quellschutzprüfung, gesehene Clientfassung oder allgemeine Schutzparität behauptet; U4 offen. Nur Code gelesen, keine Rückgabe, Schreibung, Audit-, API-, Datenbank- oder Hostprobe ausgeführt.",
+  },
   "POST /api/me/klara/erinnerungen/:id/status": {
     urteil: "EIGENER_BESTAND",
     grund:
