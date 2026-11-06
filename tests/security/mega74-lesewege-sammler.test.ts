@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/vormachen/routinen/:id/firmenuebergabe": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Firmenübergabeantwort der eigenen Routine: vormachen-routes.ts419-457 verlangt ko.create und liest dienst.routine(user.id,id), kontoId-gebunden1343-1349/Repo423-426,504-509. Bereits vermerkte Übergabe liefert200 routineSicht(r)/neu:false. Sonst gehen eigener Titel/Zweck/HTML-escaped Schrittbeschreibungen als vertraulicher Entwurf mit author user.id an den gebundenen Draft-Port62-66; nur dessen id wird in vermerkeFirmenuebergabe1713-1718 am eigenen Datensatz ergänzt. Nach CAS und Audit enthält201 routineSicht(neu)/neu:true, also eigene Routine samt Entwurfskennung/Zeit, keine Entwurfsinhalte nachgelesen. Nur Eigentumsraum-Leseurteil; U4/Quellrechts-,Vertraulichkeits-,Widerrufsparität kopierter Inhalte offen, keine pauschale Rohdaten-/Geheimhaltungs-/Schemahärtungs-,Idempotenz-/Transaktions-/PG-/CAS-Paritätszusage/neuePolicy oder Abnahme des gesamten Draftweges. Keine echte Firmenübergabe/Entwurfserzeugung/Marker-/CAS-Schreibung/Audit/HTTP/DB/SDK/Host-Ausführung.",
+  },
   "POST /api/me/vormachen/routinen/:id/schritte/:schrittId/freigabe": {
     urteil: "EIGENER_BESTAND",
     grund:
