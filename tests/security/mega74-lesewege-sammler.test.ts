@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/begleiter/adapter/:instanz/aktionen/:aktion/stopp": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Nur Stopp-/Aktionsmetadaten: klara-begleiter-routes.ts:192-208 verlangt requireUser, ruft kanal.stoppen(user.id,instanz,aktion) und gibt ausschließlich {aktion:aktionSicht(aktion)} zurück. aktionSicht:49-57 wählt nur id, art, stand, auswahlStand und gegebenenfalls abbruchAngefordert; text, ergebnis, grund, Auswahl-/Dokumentinhalt und Auftragsschlüssel bleiben draußen. BegleiterKanal.stoppen (klara-begleiter.ts:1003-1023) sucht im kontogebundenen Adaptereintrag, setzt offen auf gestoppt oder fordert bei uebergeben nur Abbruch an. eintrag:474-480/aufraeumen:408-430 greifen auf konten.get(konto) und dessen Instanz zu. HTTP202 bei uebergeben bestätigt kein tatsächliches Ende, sonst200; Fehlerport Route:36-46/http.sendError. Tatsächliche Verdrahtung build-app.ts:6496 neuer BegleiterKanal. Nur Antworturteil, kein echter Stopp-/Abbruch-/Adapter-/Word-/Office-/Host-/API-Lauf und kein Beleg eines ausgeführten oder beendeten Vorgangs.",
+  },
   "DELETE /api/me/klara/erinnerungen/:id": {
     urteil: "KEIN_KO_INHALT",
     grund:
