@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "DELETE /api/me/funktionen/:id/zeitauftrag": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Antwort beim Entfernen eines eigenen Funktions-Zeitauftrags: persoenliche-funktionen-routes.ts:266–286 verlangt requireUser, wandelt query.rev in Number um und ruft dienst.entferneZeitauftrag(user.id,params.id,rev); nach dem eigenen Auditereignis folgt nur sicht(dienst,funktion):102–121. FunktionenDienst.entferneZeitauftrag (persoenliche-funktionen.ts:1214–1228) liest über holeMitRev:1051–1064 die an Konto und Kennung gebundene eigene Funktion; fehlend/fremd ist feste 404 über hole:898–904 und RoutinenFunktionenRepo.hole:243–245 (vormachen.ts:423–426 Memory, PG:504–510 WHERE id AND konto_id). Ungültige oder veraltete Revisionsmarken ergeben 400/409. Der Dienst übernimmt den eigenen Datensatz, setzt zeitauftrag:null, erhöht rev und geaendertAm, schreibt über schreibe:1035–1049 und gibt diesen eigenen neuen Stand zurück. RoutinenFunktionenRepo.schreibe:246–272 prüft die gespeicherte Beschaffungsrevision und nutzt die vorhandene vergleicheUndLege-Regel der eigenen Routinenablage. Speicher- und Auditaufrufe sind echte Wirkungen dieses DELETE im Produkt; hier keine Ausführung, keine Nebenwirkungsfreiheit und keine atomare Speicher-/Audit-/Antwortzusage. Die Antwort enthält weiterhin eigene gespeicherte Fassungen/Läufe und Fähigkeitsangaben; die Terminvorschau ist bei null-Zeitauftrag leer (vorschau:1230–1232). Kein neuer quellenLeser-/KO-, Import-, Modell-, Lauf- oder Außenaufruf dieses Wegs. EIGENER_BESTAND umfasst frühere kopierte Texte und Quellenstände; deren heutige Quellrechte werden hier nicht erneut geprüft. U4 und allgemeine Widerrufsparität bleiben offen. Reale Bindung build-app.ts:6512–6521. Nur statisches Leseurteil über diese Antwort, keine Zeitauftragsentfernungs-/Funktions-/Scheduler-/Revisions-/CAS-/Audit-/PG-/Hostqualitätsabnahme oder Produkt-/Policyänderung. Kein echter Zeitauftrag gelöscht und keine Funktionen, Routinen, Konten, Quellen, Rechte, APIs, Datenbanken, SDKs oder Hosts abgefragt.",
+  },
   "GET /api/me/funktionen/:id": {
     urteil: "EIGENER_BESTAND",
     grund:
