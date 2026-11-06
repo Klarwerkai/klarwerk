@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "DELETE /api/me/klara/erinnerungen/:id": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Inhaltslose Löschbestätigung: klara-erinnerung-routes.ts:566-588 verlangt requireUser, übergibt user.id/id an dienst.loesche und antwortet nach Audit ausschließlich mit {geloescht:1}; bei false fester 404-NOT_FOUND-Text. KlaraErinnerungDienst.loesche (klara-erinnerung.ts:3868-3872) verlangt angebundenes entferneKomplett(kontoId,id) und liefert nur boolean. Memory-Anschluss:1572-1576; Pg-Anschluss:2224-2237 begrenzt den Eltern-DELETE auf id und konto_id und gibt nur EXISTS als boolean zurück. Kein Titel, Notiz, Bezug, Lauf-/Meldungsinhalt oder Wissensobjekt in der HTTP-Antwort; Fehlerport antworteMitFehler/sendError (Route:61-71/http.ts:245-309). Tatsächliche Dienst-/Routenverdrahtung build-app.ts:4391-4400/6413-6423. Nur Antworturteil aus dem Quelltext, keine tatsächliche Löschung, kein Löschvollständigkeits-/Atomaritäts- oder PG-Laufzeitnachweis.",
+  },
   "POST /api/me/klara/erinnerungen/vorschau": {
     urteil: "KEIN_KO_INHALT",
     grund:
