@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/erinnerungen/vorschau": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Zeitvorschau ohne Bestandsauskunft: klara-erinnerung-routes.ts:248-261 verlangt requireUser und reicht nur den übergebenen Rumpf an dienst.vorschau. KlaraErinnerungDienst.vorschau (klara-erinnerung.ts:2745-2786) validiert Zeitzone und übergebenen Zeitplan oder deutet den Freitext, berechnet mit der Dienstuhr die Anzeige und gibt nur {deutung, zeitzone, zeitplan, anzeige} zurück. DTO:2716-2721; anzeigeVon:2324-2365 und vorkommenVon:467-506 rechnen über den übergebenen Plan, Zeit-/Serien-/Frist-/Sommerzeithinweise und feste Ziel-/Ergebniskennungen. deuteZeitangabe (klara-erinnerung-zeit.ts:509-566) liefert Deutungsart/Grund/Datums-/Uhrzeitoptionen, keine Wissensobjekte. Kein Ablage-/Konto-/KO-Lesen oder -Schreiben und kein Modellauftrag in diesem Weg; tatsächliche Dienst-/Routenbindung build-app.ts:4391-4400/6413-6423. Nur Quelltexturteil, keine echte Vorschau-/HTTP-/Zeitgeber-/Scheduler-/PG-/Modell-/Hostprobe; Wissenspflege-Vorschau ist separat.",
+  },
   "PUT /api/me/klara/erinnerungen/einstellungen": {
     urteil: "EIGENER_BESTAND",
     grund:
