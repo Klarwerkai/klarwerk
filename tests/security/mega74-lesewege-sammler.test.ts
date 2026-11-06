@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/validation/board/count": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "Begrenzter Board-Zähler mit zentralem Sichtprädikat: validation-routes.ts:213-220 verlangt ko.read und ruft vor der Ausgabe unbedingt validation.boardCount(sichtbarkeitsfilterFuer(user)) auf; Antwort nur200 {length}. ValidationService.boardCount in services/validation/src/service.ts:1218-1222 liest listForSearch({status:offen}), wendet den übergebenen Filter an und bildet erst danach .length; kein Board-Anreicherungs-/Neueinreihungsweg. sichtbarkeit.ts:203-211 bindet den Filter an darfSehen(user,ko), bestehende Prädikat-Aufruf-/Dominanzwächter im Sammler bleiben unverändert. Reale build-app-Bindung1806-1820/5340-5354 gelesen. Urteil über vorhandenen zentralen Aufruf und Zählweg, keine pauschale Rechte-/PG-/Performanceabnahme; Bibliotheks-Abnahme bleibt erhalten. Kein echter Board-/GET-/HTTP-/PG-/Modell-/Hostlauf.",
+  },
   "POST /api/klara/sessions/:sessionId/office-kontext/ziel": {
     urteil: "KEIN_KO_INHALT",
     grund:
