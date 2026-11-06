@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/besprechungen/import": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigener Besprechungsimport: klara-besprechung-routes.ts13-25 bindet requireUser/u.id an importiere110-309. Bestätigter Import/Titel/Datum/Zone/Text/VTT bzw. Audio-ID werden geprüft; Audio verlangt ownergleichKonto/purposeklara_audio/audio-MIME. Wiederholung sucht nur im eigenen geschützten Notizbestand; vorherigeNotiz läuft über eigenes hole und muss zur meetingId passen. Text/VTT/Audio- oder segmentierter Start werden über speichere320-374 und KlaraNotizDienst.lege desselben geschützten Konto-Ports als eigene neue/wiederholte Notiz mit Herkunft abgelegt. Antwort enthält eigene Notiz, Wiederholungs-/Verarbeitungsangaben, eigene Segmentergebnisse und festen Fristenhinweis; Wiederholungszweig nutzt eigene sicht. WAV/VTT-Helfer nur statisch gelesen, Fachfehler/zentralerSender unverändert. Kein reines Metadatenurteil und keine allgemeine Objekt-/Quellrechtsparität(U4 offen), atomare Metadaten/Bytes-, Import-/Parser-/ASR-/Modell-/Egress-/PG-/Transaktions- oder Qualitätsabnahme; keine neuePolicy. Kein Import, Audio/Objekt/Metadaten-/Decoder-/WAV-/VTT-/Hash-/Analyse-/Notizschreib-/HTTP-/DB-/SDK-/Hostaufruf ausgeführt.",
+  },
   "POST /api/me/klara/besprechungen/:id/teilschritt": {
     urteil: "EIGENER_BESTAND",
     grund:
