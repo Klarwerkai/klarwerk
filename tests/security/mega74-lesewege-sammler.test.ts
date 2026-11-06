@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "DELETE /api/klara/sessions/:sessionId/office-kontext": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Nur feste Trennbestätigung: office-kontext-routes.ts:290-309 verlangt ko.read, prüft getSession(sessionId,bindungAus(request,user)) und Pflicht-Herkunft, verwirft danach den prozesslokalen staende-Eintrag und sendet ausschließlich200 {verbindung:getrennt}. bindungAus:99-105 nutzt user.id/Instanz-/Dokumentkopf; SessionView wird nicht in Antwort übernommen. getSession im klara-session-service.ts:885-886 ruft sitzungsstand(...,false); laden:1531-1545/1635-1647 prüft Konto, Instanz, Dokument und Gültigkeit mit generischen404/409. Ohne Touch bedeutet dabei nicht schreibfrei: bestehende Zustimmungs-/Policy-/Endprotokollpflege kann im Sitzungskern stattfinden. Herkunft:office-kontext.ts436-461 und Routen112-127 liefert bei Ablehnung festen403. Reale build-app-Bindung4481-4489 und allgemeiner Fehlerport gelesen. Keine KO-/Dokument-/Kontext-/Sitzungsinhalte in dieser Antwort; kein echter DELETE-/Sitzungs-/Office-/Word-/Host-/Rechte-/DB-Lauf und keine Host- oder Endeabnahme.",
+  },
   "GET /word-addin/begleitung.html": {
     urteil: "KEIN_KO_INHALT",
     grund:
