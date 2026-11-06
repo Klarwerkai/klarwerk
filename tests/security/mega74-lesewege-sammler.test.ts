@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /word-addin/begleitung.html": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Nur statische Dokumentantwort: web-static.ts:65-70/91-114 bindet den Tupelpfad /word-addin/begleitung.html fest an word-addin/begleitung.html im Build und Fassung1.0.0.1. Der Handler ignoriert die Anfrage, liest nur diese Datei, ersetzt ausschließlich __KW_FASSUNG__ und sendet HTML mit Versionskopf/ETag; Lesefehler liefert fest404 Not Found. Serverbindung server.ts:122-128 setzt apps/web/dist. Die vollständige Quellseite apps/web/public/word-addin/begleitung.html enthält nur statisches HTML mit leeren Kontext-/Antwortfeldern und Skriptverweisen, keinen gespeicherten KO-/Dokument-/Kontoinhalt; kein Wissens- oder Sitzungsdienst wird im Handler gelesen. Urteil nur über diese HTML-Antwort, nicht spätere Skriptanfragen oder Hostfunktionen. Kein echter HTTP-/Word-/Office-/Host-/Build-/Dateiauslieferungslauf; Fassungen und Assets bleiben unverändert.",
+  },
   "GET /ready": {
     urteil: "KEIN_KO_INHALT",
     grund:
