@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/erinnerungen/ueberwachung": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Nur Zähl-/Zeitmetadaten: klara-erinnerung-routes.ts:309-328 verlangt requireUser und gibt dienst.ueberwachung(user.id) sowie steuerung mit taktSekunden und letzterLauf aus. Dienst:klara-erinnerung.ts:3893-3912 liefert nur rueckstau{anzahl,aelteste} und Laufzahlen je Status; Konto und bei angebundenem Quellschutz sichtbare Erinnerungskennungen werden an beide Zähler übergeben. Memory-rueckstau:1121-1132/zaehle:1361-1381 und Pg:1822-1836/2017-2035 begrenzen nach Konto und optionaler Kennungsmenge. Wichtig: letzterLauf ist zusätzlich der prozessweite, nicht kontoeigene Taktbericht; KlaraErinnerungLaufbericht:4005-4023 und dessen Aufbau4099-4118/Abschluss4162-4164 enthalten nur Beginn/Ende und Zahlen, keine Titel/Notizen/Bezüge/Quellen-/Ergebnisinhalte. Verdrahtung build-app.ts:6413-6423 liest letzterBericht/taktSekunden. Urteil aus diesem begrenzten Antwortkörper, keine pauschale Eigenbestands- oder Gesamtrechtebehauptung; kein echter Überwachungs-/GET-/PG-/Steuerungs-/Modell-/Hostlauf.",
+  },
   "POST /api/me/klara/begleiter/auftraege/:schluessel/klaeren": {
     urteil: "KEIN_KO_INHALT",
     grund:
