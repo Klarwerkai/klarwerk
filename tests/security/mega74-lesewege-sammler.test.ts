@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/klara/fristen/regel": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Fristenregel-Antwort: klara-fristen-routes.ts:45–63 bindet requireUser und gesehene nichtnegative Regelfassung an dienst.konfigurieren, danach Audit nur eigener Zielkennung/Fassung/Aktivwert und Rückgabe des Standes. konfigurieren:191–210 validiert persönliche Regel mit fristenRegelAus:107–182, lädt nur repo.hole(user.id) oder eigenen Leerstand und prüft die Vorfassung. Nur bei aktiver Regel werden ausgewählte Quellen über quellen:90–110/heutigen fristenQuellen-Leser gelesen und ausgewertet; bei inaktiver Regel bleiben die ausgewählten Quellkennungen ohne diesen neuen Abruf bestehen. Nötige Import-Altherkunft:113–154, nochAktuell und kontoId-/Vorfassungs-gebundener Speicherweg sind im Code vorhanden, keine Transaktions-/PG-Abnahme. Rückgabe über sicht/filterSicht:243–256 prüft jede ausgegebene Frist auf sämtliche unterschiedlichen Herkunftsquellen, lässt herkunftslose/unlesbare Fristen weg und entfernt normereignisse. Antwort ist eigener Stand mit Regel und gefilterten Fristen samt Belegwortlaut/Herkunft/Verlauf, keine Metadatenantwort; übrige eigene Standfelder/Regelauswahlkennungen bleiben erhalten, kein allgemeiner JSON-/Regelmetadatenfilter. Kontoablage und konkrete build-app:6344–6348/heutiger Leser sind gebunden. Nur Codezuordnung der eigenen Antwort; keine Konfigurations-/Erkennungs-/Importidentitäts-/Vollständigkeits-/Zeit-/DST-/CAS-/PG-/Modell-/Host- oder allgemeine Widerrufsabnahme, U4 offen. Keine echte Konfiguration, Schreibung, Audit-, Quellen-, Konto-, Rechte-, API- oder Datenbankprobe ausgeführt.",
+  },
   "POST /api/me/klara/fristen/vorschau": {
     urteil: "EIGENER_BESTAND",
     grund:
