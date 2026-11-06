@@ -206,6 +206,16 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/kos/:id/office/:anhangId/ergaenzung/vorschau": {
+    urteil: "DIENST_FILTERT",
+    grund:
+      "PP-06-Ergänzungsvorschau als quellverfolgter Dienstweg: praesentation-daten-routes.ts:335–357 verlangt ko.read, validiert leseErgaenzungsSuche und die passende Anhang-ID, setzt no-store und ruft ergaenzungsVorschau(id,suche,umgebung(user),ablage,jetzt). Die Route übergibt eine DatenUmgebung, keinen separat erzeugten Filtercallback; deshalb DIENST_FILTERT mit bestehender Kette ergaenzungsVorschau (praesentation-ergaenzung.ts) → artikel (praesentation-daten-routes.ts) → darfSehen, ohne anwendung/filter/weiterleitung zu erfinden. Der vorhandene Dienstweg-Wächter misst diese Aufrufe syntaktisch; kein behaupteter Argumentbindungs-, Dominanz- oder Datenflussbeweis. ergaenzungsVorschau:156–258 liest zuerst u.artikel und u.folien, ohne lesbares Ziel/PPTX wirft kein_zugriff (Route404). datenUmgebung.artikel:107–109 liefert heutiges KO nur bei can(ko.read) UND darfSehen(user,ko); folien nutzt dasselbe Tor. umgebung:167–184 verweigert ein erkanntes negatives Snapshoturteil; keine Manifestpflicht für jede gewöhnliche Datei. Vorschau nur für nichtleeres Textfeld bis2000Zeichen,keine Tabellenzelle. Suche enthält maximal10 bestehende Quellartikel,keine Recherche. Dienst prüft je Ziel/Quellartikel u.artikel vor vonArtikel; je Datenpunkt sicht→vollLesbar,sonst überspringen; maximal200 Kandidaten. Vorhandene Herkunfts-/meta-Grenzen bleiben: Heimat/Quellen/Korrekturhistorie/vorhandene Eingaben geprüft,fehlende historische Eingabereferenz nicht allein durch if(ein && ...) abgewiesen;meta ohne eigenes darfSehen nur nach Sichtprüfung für Status-/Schutzdaten. verwendbarIn:112–146 prüft zusätzlich Quellenrechte gegen das Ziel (Space,Schutzrang,Autor,Leserkreis,rekursive Eingaben); Ablehnung markiert Kandidat unpassend und entfernt ihn nicht aus der für den heutigen Nutzer lesbaren Vorschau. Antwort enthält echte Datenpunktsicht/Kontrollen,Wert und Rahmen,Gründe,alten Zieltext,Ziel-/Dateifassung,neuen Vorschlag und SHA-Abdruck; der token ist ein Kontextabdruck,keine Zugangsmarke oder Autorisierung. Passend ist keine fachliche Freigabe und führt zu keiner Übernahme. Keine gespeicherten Änderungen,Aufträge,Dateien oder Modell-/Netzaufrufe in diesem Weg; ergaenzungsAuftrag ist hier nicht aufgerufen. Reale Registrierung build-app.ts:5430–5441 mit ko/objects/datenpunkte/Kontenfunktion/guards. Kein tatsächlicher POST/KO-/Objekt-/Folien-/Datenpunkt-/API-/DB-/Office-/Host-/Modellaufruf,keine neue Policy-/Rechteentscheidung. Keine atomare Rechte-/Datei-/Datenmomentaufnahme,keine lückenlose Herkunfts-/Übernahme-/Berechnungs-/Fach-/Mandanten-/PG-/Host-/PP06-Originalgesamtabnahme;U4 und globale Widerrufsreste offen.",
+    entscheidung: "darfSehen",
+    kette: [
+      { datei: "services/app/src/praesentation-ergaenzung.ts", funktion: "ergaenzungsVorschau" },
+      { datei: "services/app/src/routes/praesentation-daten-routes.ts", funktion: "artikel" },
+    ],
+  },
   "POST /api/kos/:id/office/:anhangId/vortrag": {
     urteil: "PRAEDIKAT",
     grund:
