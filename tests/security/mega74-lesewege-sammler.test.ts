@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/auth/me/email/confirm": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Eigene Kontodaten statt Wissensobjektinhalt: routes.ts885-904 bindet den Aufruf über requireUser450-464 an user.id; fehlende Sitzung401 bzw. fehlender Token400 liefern Fehlercode/Katalogsatz. confirmEmailChange(service.ts1725-1738) verwendet userId, Hash und Ablaufzeit für takeEmailChange, vergleicht die bisherige Mail und gibt correctAccountData1740-1783 zurück: vorhandenes bzw. aktualisiertes Konto über toPublic217-220. toPublic entfernt passwordSalt/passwordHash; PublicUser ist der übrige User-Typ(types.ts32-96/134), einschließlich persönlicher und Berechtigungsmetadaten. AuthError läuft über sendError256-269 als Code/Katalogsatz, unerwarteter Fehler über maskiertes500. Dienst verbraucht tatsächlich einen Bestätigungseintrag und schreibt gegebenenfalls Konto/Audit; ausschließlich Code-Leseurteil der Antwort, keine tatsächliche Anmeldung, Token-/Mail-/Profil-/Audit-/DB-Probe und keine pauschale Datenschutz-/Authentifizierungs- oder Schemahärtungszusage.",
+  },
   "POST /api/admin/wiederanlauf/freigabe": {
     urteil: "KEIN_KO_INHALT",
     grund:
