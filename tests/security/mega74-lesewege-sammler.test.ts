@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/erinnerungen/:id/vorkommen/:termin": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Erinnerung nach Einzelterminänderung: klara-erinnerung-routes.ts:492–512 bindet requireUser/user.id an dienst.vorkommen, protokolliert eigene Eintragsmetadaten und antwortet mit sicht(eintrag). vorkommen (klara-erinnerung.ts:3577–3618) lässt vier feste Aktionen zu und lädt zuerst über mitFassung:3401–3412 den eigenen beim Lesen quellschutzgeprüften Ausgangseintrag mit gesehener Fassung. offenesVorkommen:3540–3559 sucht den Termin aus dessen Plan (findeVorkommen:509–524, aufgeloest:446–460), liest nur die so bestimmte Lauf-ID und verweigert vergangene/bearbeitete Termine. nichtInFolgeserie:3565–3574 benutzt die gebundene Erinnerungs-ID nur für die bestehende Folgeseriensperre mit festem Konflikttext. Geändert wird ausschließlich der eigene Ausnahmeeintrag; schreibe:3376–3399 erhält Kennung/Eigentümer/Bezug/Routine und nutzt die bestehende Eigentums-/Vorfassungsprüfung. Die Antwort bleibt die eigene Sicht mit Inhalten, Routine, bis 50 Läufen derselben ID und gespeichertem Empfängernamen. Keine neue Quellprüfung nach dem Schreiben oder jedes historischen Ergebnisses behauptet; U4 offen. Nur Codezuordnung der Antwort, keine Terminaktions-, Plan-/Zeit-/DST-, CAS-/Transaktions-, Scheduler-, PG- oder Hostabnahme. Keine echte Terminaktion, Schreibung, Audit-, Lauf-, Konto-, Uhr-, API-, Datenbank- oder Hostprobe ausgeführt.",
+  },
   "GET /api/me/klara/erinnerungen": {
     urteil: "EIGENER_BESTAND",
     grund:
