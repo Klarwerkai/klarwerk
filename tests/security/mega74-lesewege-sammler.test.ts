@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/besprechungen/:id/fristquelle": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Fristquellenantwort nur mit Metadaten: klara-besprechung-routes.ts27-53 bindet requireUser/u.id an fristquelle519-563. Eigene quellgeschützte Besprechungsnotiz wird geladen; Vollständigkeit/bewussteAuswahl/Fassung/eigeneOriginalsegmente/Unsicherheit/Überlappung werden geprüft. Aus gewählten eigenen Passagen entsteht über denselben geschützten KlaraNotizDienst.lege-Port eine neue oder wiederholte eigene Quellnotiz mit Herkunft; nur deren notizId/fassung/wiederholt werden zurückgegeben(562). Kein KO-, Transkript- oder Segmentwortlaut in dieser Erfolgsausgabe; direkte Fachfehler feste400/409, zentralerSender unverändert. Nur Antwortklassifizierung, nicht Abnahme von Schreiben/Fristenauswertung/ASR/Modellqualität/PG-/Transaktionsparität oder allgemeiner Schutzparität kopierter Inhalte(U4 offen); keine neuePolicy. Keine echte Fristquelle/Notiz/Frist/Erinnerung angelegt, kein Leser/Hash/Quellrechts-/Audio-/ASR-/Modell-/HTTP-/DB-/SDK-/Hostaufruf.",
+  },
   "POST /api/me/klara/besprechungen/:id/korrektur": {
     urteil: "EIGENER_BESTAND",
     grund:
