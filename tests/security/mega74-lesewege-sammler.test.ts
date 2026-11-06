@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/erinnerungen/:id/uebergabe": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Erinnerung nach bewusster Übergabe: klara-erinnerung-routes.ts:368–394 bindet requireUser/user.id an uebergib und sendet nur sicht(eintrag), nicht das gefundene Personenobjekt. uebergib (klara-erinnerung.ts:2897–2942) lädt über mitFassung zuerst den eigenen beim Lesen quellschutzgeprüften Eintrag mit gesehener Fassung. an:null löscht nur dessen Zuständigkeit; der neue Übergabezweig verlangt Aktion erinnern, löst die angegebene normalisierte Adresse über den vorhandenen Personenport auf und prüft kontoHeuteAktiv:2706–2714 sowie nicht eigenes Konto. Ein vorhandener Quellschutz muss den Empfänger zulassen; unbekannt, nicht zugelassen und gesperrte Quelle erhalten denselben festen Empfängerfehler. schreibe(...,false) erhält Kennung/Eigentümer/Inhalte und nutzt Eigentums-/Vorfassungsprüfung; geändert wird zustaendig. Audit trägt nur Zielkennung, Empfängerkennung/null und Fassung. Erfolgsantwort bleibt eigene Sicht mit Inhalten, Routine, bis 50 Läufen derselben ID und Name des gespeicherten Übergabeziels; keine freie Personenliste. Keine pauschale Quellprüfung historischer Ergebnisse oder nach Schreiben behauptet, U4 offen. Nur Codebindung, keine Übergabe-, Kontenzugangs-/Ablaufvalidierungs-, Audit-, Zeit-/DST-, CAS-/Transaktions-, PG- oder Hostabnahme. Keine echte Übergabe, Personensuche, Schreibung, Rechte-, Uhr-, API- oder Datenbankprobe ausgeführt.",
+  },
   "POST /api/me/klara/erinnerungen/:id/vorkommen/:termin": {
     urteil: "EIGENER_BESTAND",
     grund:
