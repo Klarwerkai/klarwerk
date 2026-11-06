@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/admin/wiederanlauf": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Administrative Betriebsmetadaten: wiederanlauf.ts:291-297 verlangt users.manage und sendet auskunft():361-399. Ausgabe nur Wiederanlaufkennung/-zustand, Sicherungszeitgrenze, feste Bestätigungsschritte/Aktionsnamen, letzte Zeitpunkte, Löschmarkierungsnachführung und Replay-Metadaten; kein Wissensobjektkörper. audit.list liest HINTERGRUNDLAUF_AUDIT, davon wird nur der jüngste at-Zeitpunkt übernommen. Nachführung gemäß loeschmarkierungen.ts128-149 enthält ausdrücklich Ablageort sowie zwei Zahlen; Replay gemäß wissensereignisse.ts706-721/737-826 enthält unterdrückte Kennungen, geschlossene Ziel-/Kennungs-Paare und Zeitstempel. Ort/Zielangaben sind Verwaltungsmetadaten, keine pauschale Datenschutz-/Zugriffszusage; bestehender persistierter DTO-Pfad unverändert. Statische Listen55-84, makeGuards199-200 und reale Serverbindung266-275 gelesen. GET führt nicht den POST-Freigabeweg aus. Nur Code-Leseurteil, keine echte Status-/Audit-/Wiederanlauf-/Restore-/Lösch-/Freigabe-/Außenaktions-/HTTP-/Hostprobe.",
+  },
   "GET /api/validation/board/count": {
     urteil: "PRAEDIKAT",
     grund:
