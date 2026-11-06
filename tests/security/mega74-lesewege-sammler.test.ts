@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/fristen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene gefilterte Fristenübersicht: klara-fristen-routes.ts:27–35 bindet requireUser an dienst.sicht(user). sicht/filterSicht (klara-fristen-dienst.ts:243–256) lädt nur repo.hole(user.id) oder den eigenen Leerstand und prüft jede Frist mit lesbar:234–241 auf alle unterschiedlichen gespeicherten Herkunftsquellen; ohne Herkunft oder bei fehlender Quellenlesbarkeit fällt sie weg. InMemory/Pg klara-fristen-ablage.ts bindet den Bestand an kontoId; build-app:6344–6348 verdrahtet den vorhandenen heutigen Nutzer-/Quellenleser. Die Antwort enthält eigenen FristenStand mit Regel und den so gefilterten Fristen einschließlich ihrer Herkunft/Verläufe, also kein Metadatenurteil. Das separate Feld normereignisse wird ausdrücklich entfernt; verbleibende eigene Standfelder bleiben erhalten, keine allgemeine JSON-Sanitisierung behauptet. fristZeitstand:206–210 passt nur den bestehenden Zeitstand der Sicht an, ohne hier ins Repo zu schreiben. Fehlerroutine/zentraler Sender unverändert. Nur Codebindung der eigenen Antwort, keine allgemeine Quellrechts-/Widerrufsparität, Fristen-Vollständigkeits-, Regelmetadaten-, Zeit-/DST-, PG- oder Hostabnahme; U4 offen. Keine echte Sicht-, Quellen-, Konto-, Rechte-, Uhr-, API- oder Datenbankprobe ausgeführt.",
+  },
   "POST /api/me/klara/fristen/:id/aktion": {
     urteil: "KEIN_KO_INHALT",
     grund:
