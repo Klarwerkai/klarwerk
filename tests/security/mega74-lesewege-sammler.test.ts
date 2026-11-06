@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fortsetzen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Fortsetzen eines eigenen gespeicherten Gesprächsauftrags: klara-gespraech-routes.ts:412–437 bindet requireUser an dienst.unterbrecheAuftrag(user.id,gespraechId,auftragId,true,auftragFassung); Antwort nur auftragMitVerlauf(auftrag), Audit nur Kennung/Ereignis. KlaraGespraechDienst.unterbrecheAuftrag:1171–1187 liest und ersetzt über aendere:745–764 ausschließlich das eigene Gespräch via hole:661–668; Repo hole bindet id UND kontoId (Memory:261–264, PG:336–341), fremd/unbekannt 404. auftragIn:954–960 wählt nur einen Auftrag dieser eigenen Ablage. unterbrechung (klara-auftrag.ts:1401–1431) prüft Auftragsfassung und beendeten Zustand, entfernt bei vorhandener Pause unterbrochenAm und ergänzt fortgesetzt im eigenen Verlauf; ohne Pause bleibt der Auftrag dort unverändert. Gespeicherte Inhalte und Resultate bleiben erhalten, keine neue Wissensabfrage oder Schrittausführung in diesem Weg. auftragMitVerlauf (klara-aktionsverlauf.ts:264–343) gibt den gespeicherten Auftrag mit rein abgeleiteten Ergebnis-/Schrittständen aus. Tatsächliche Dienstbindung build-app.ts:6074–6095. EIGENER_BESTAND umfasst bereits kopierte Objektbezüge, Markierungsausschnitte, Plantexte und Ergebnisse im eigenen Auftrag; kein frisches Lesen des gemeinsamen KO-Bestands, aber auch keine erneute Prüfung heutiger Rechte an solchen Kopien oder abschließendes nochAktuell. U4 und allgemeine Widerrufsparität bleiben offen. Eigener Speicher- und Auditweg sind Wirkungen des POST, keine Nebenwirkungsfreiheit oder atomare Speicher-/Audit-/Antwortzusage. Nur statisches Leseurteil dieses einen Fortsetzen-Wegs, keine Abnahme der Pausen-/Fortsetzungswirkung, CAS-/PG-/Audit-/Hostqualität und keine Produkt- oder Policyänderung. Kein Auftrag tatsächlich fortgesetzt und keine Konto-, KO-, Quellen-, Rechte-, API-, DB-, SDK- oder Hostprobe.",
+  },
   "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/unterbrechen": {
     urteil: "EIGENER_BESTAND",
     grund:
