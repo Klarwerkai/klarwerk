@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "POST /api/me/klara/besprechungen/:id/uebernehmen": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Übernahmeantwort nur mit Metadaten: klara-besprechung-routes.ts27-53 bindet requireUser/u.id an uebernehmen427-516. Eigene quellgeschützte Besprechungsnotiz, Vollständigkeit, bewusste Auswahl/aktuelle Fassung und Ergebnis-IDs werden geprüft; Aufgaben verlangen eigeneAufgaben. Eigene Aufgaben werden kontoId-gebunden wiederverwendet oder über KlaraAufgabeDienst.lege aus derselben geschützten Notiz angelegt; Abweichung erhält den alten Inhalt. Eigene Übergabenotiz wird über denselben geschützten KlaraNotizDienst.lege-Port neu oder wiederholt gespeichert. Antwort509-515 enthält nur notizId, Aufgaben-IDs/wiederholt/abweichung, privat und feste gemeinsam/fristenNormen-Texte, keinen KO-/Transkript-/Segment-/Aufgabenwortlaut. Fachfehler/zentralerSender unverändert. Nur Antwortklassifizierung; keine Schreib-/Aufgaben-/Fristen-/ASR-/Modell-/PG-/Transaktionsabnahme oder allgemeine Schutzparität kopierter Inhalte(U4 offen), keine neuePolicy. Keine Übernahme/Notiz/Aufgabe ausgeführt, kein Produkt-/Hash-/Quellrechts-/Audio-/Modell-/HTTP-/DB-/SDK-/Hostaufruf.",
+  },
   "POST /api/me/klara/besprechungen/:id/fristquelle": {
     urteil: "KEIN_KO_INHALT",
     grund:
