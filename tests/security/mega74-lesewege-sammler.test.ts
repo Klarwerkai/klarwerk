@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/vorfuehrung": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Öffentliche Auskunft ausschließlich über fiktive Vorführungsinhalte: vorfuehrung-routes.ts:38–46 antwortet bei ausgeschaltetem schalterAn(vorfuehrung) nur404 {error:VORFUEHRUNG_AUS}; sonst200 {fiktiv:true,kennzeichnung:KENNZEICHNUNG[l],eintraege:INHALTE[l]}. KENNZEICHNUNG und INHALTE sind in vorfuehrung/inhalte.ts:26–111 als deutsche/englische/niederländische Literale mit erfundenen Musterwerk-Beispielen hinterlegt; das vollständige Modul importiert keinen Wissensspeicher, keine Suche oder Modell-/Außenanbindung. Dieser GET liest nur diese Sprachvariante, keine Wissensobjekte, Unternehmens-/Konto-/Gesprächsbestände oder Nutzereingabetexte. sprache wird über services/auth/index.ts aus services/auth/src/routes.ts:233–249 exportiert und wählt nur de/en/nl aus Accept-Language, sonst de. feature-flags.ts:102/196–201/251–259 bindet vorfuehrung an KLARWERK_VORFUEHRUNG_ANONYM mit Vorgabe aus, Aktivierung nur1/true; hier wurden kein tatsächlicher Flagwert und keine Umgebung/Zugänge abgefragt oder geändert. Reale Registrierung build-app.ts:6833–6836 über vorfuehrungRoutes(). Keine KO-Kennung, Inhaltsübernahme, Speicherung, Audit-/Lauf-, Such-, Modell- oder externer Dienstaufruf dieses Handlers. Nur statisches Leseurteil KEIN_KO_INHALT am gebundenen Quellstand; keine Laufzeit-Unveränderlichkeits-, Demo-/Sprachwahl-/Betriebs-/Schalter-/Produkt-/Hostqualitätsabnahme und keine Änderung der bestehenden Anonym-/Rechte-/Modellpolitik. Kein echter GET oder Vorführungsaufruf; keine Nutzer-/Quellen-/API-/Datenbank-/SDK-/Server-/Hostabfrage. U4 und die übrigen globalen Quellrechtsreste bleiben unberührt.",
+  },
   "POST /api/me/funktionen/:id/laeufe": {
     urteil: "EIGENER_BESTAND",
     grund:
