@@ -206,6 +206,11 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "PUT /api/me/klara/erinnerungen/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Eigene Erinnerungsänderungsantwort: klara-erinnerung-routes.ts:346–365 verlangt requireUser, ruft aendere(user.id, id, rumpf(body)), protokolliert geaendert und antwortet mit sicht(eintrag). aendere (klara-erinnerung.ts:3415–3455) bindet über mitFassung:3401–3412 zuerst den eigenen, beim Lesen quellschutzgeprüften Ausgangseintrag und die gesehene Fassung. Es übernimmt nur die aufgeführten eigenen Titel-/Notiz-/Plan-/Zonen-/Regel-/Ausnahmefelder; id, kontoId, Bezug und Routine bleiben im vorhandenen Schreiber:3376–3399 erhalten. ersetze filtert Eigentümer und Vorfassung (InMemory:1036–1043, PG:1724–1743). Die Antwort ist die eigene Sicht: Inhalte, Routine, bis 50 Läufe derselben gebundenen Erinnerungs-ID und gegebenenfalls der Name des gespeicherten Übergabeziels. Kein Metadatenurteil und keine neue Quellprüfung jedes historischen Laufergebnisses oder nach dem Schreiben behauptet; U4 offen. Nur Antwortzuordnung aus dem Code, keine Änderungs-, Plan-/Ausnahme-, Zeit-/DST-, CAS-/Transaktions-, Scheduler- oder Hostabnahme. Keine Änderung, Schreibung, Audit-, Konto-, Quellrechts-, API-, Datenbank- oder Hostprobe ausgeführt.",
+  },
   "POST /api/me/klara/erinnerungen/:id/uebergabe/zurueckgeben": {
     urteil: "KEIN_KO_INHALT",
     grund:
