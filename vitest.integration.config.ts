@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { streckeBenannt } from "./tests/neuinstallation/kundeninstallation/pflicht";
 import { PgLaufMelder } from "./tests/pg-laufbeleg/melder";
 
@@ -14,7 +14,7 @@ export const integrationsReporter = () => ["default" as const, new PgLaufMelder(
 // (Begruendung in tests/neuinstallation/kundeninstallation/pflicht.ts). Nur der Hauptprozess kennt
 // die Kommandozeile; die Testarbeiter erben diese Umgebung.
 if (streckeBenannt(process.argv.slice(2))) {
-  process.env.KLARWERK_KUNDENINSTALLATION ??= "pflicht";
+  process.env.KLARWERK_KUNDENINSTALLATION = "pflicht";
 }
 
 // Eigener Lauf für Integrationstests gegen echte Infrastruktur (Postgres via Testcontainers).
@@ -26,6 +26,15 @@ export default defineConfig({
     allowOnly: false,
     passWithNoTests: false,
     include: ["services/**/*.integration.test.ts", "tests/**/*.integration.test.ts"],
+    // Die eigenständige Installationsstrecke nur bei ausdrücklicher Pflicht sammeln.
+    // Die Vitest-Standardausschlüsse bleiben in beiden Aufrufen vollständig erhalten.
+    exclude:
+      process.env.KLARWERK_KUNDENINSTALLATION === "pflicht"
+        ? configDefaults.exclude
+        : [
+            ...configDefaults.exclude,
+            "tests/neuinstallation/kundeninstallation-strecke.integration.test.ts",
+          ],
     // WP-SHIP8-HOTFIX-ITEST: DASSELBE Dev-/Test-Setup wie die Unit-Suite (setup-env.ts schaltet
     // NUR die Selbstregistrierung frei — build-app.integration.test.ts legt seine Nutzer über
     // POST /api/auth/register an; ohne das Flag antwortet das WP-VIP2-GATE fail-closed 403).
