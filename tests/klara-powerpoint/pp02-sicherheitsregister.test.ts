@@ -6,7 +6,7 @@
 // `route-guard-audit.test.ts` und `g10-herkunft-zentrum-vertraulich.test.ts` sind am Basisstand aus
 // FREMDEN Gründen rot (unbeurteilte Routen anderer Aufträge). Sie bleiben unverändert. Diese Datei
 // prüft mit DENSELBEN Helfern genau den Teil, den PP-02 beiträgt — sie erklärt nichts Fremdes grün:
-//   R1  die selbst erhobene Grundmenge findet in praesentation-daten-routes.ts genau die acht Routen;
+//   R1  die Grundmenge trennt exakt acht PP-02-Routen von drei benannten anderen Aufträgen;
 //   R2  jede steht in der Routenmatrix mit dem Recht, das die Registrierung wirklich fordert, und mit
 //       dem Zeilenrecht `darfSehen`;
 //   R3  jede trägt im mega74-Register das Urteil PRAEDIKAT. Dass dieses Urteil stimmt, misst der
@@ -31,13 +31,25 @@ const ERWARTET: Record<string, string> = {
   "POST /api/kos/:id/office/:anhangId/folien-abgleich": "ko.read",
 };
 
+// Nur die drei durch Quellhistorie belegten Beiträge anderer Aufträge.
+// Beide Gruppen bleiben vollständig geprüft; unbekannte Routen werden nicht verworfen.
+const ANDERE_AUFTRAEGE = {
+  "POST /api/kos/:id/office/:anhangId/ergaenzung/vorschau": "PP-06",
+  "POST /api/kos/:id/office/:anhangId/vortrag": "PP-08",
+  "POST /api/kos/:id/office/:anhangId/aenderungsvorschau": "PP-07",
+} as const;
+
+function pruefeRoutenbestand(gefunden: string[]): void {
+  const andere = new Set(Object.keys(ANDERE_AUFTRAEGE));
+  expect(gefunden.filter((k) => !andere.has(k)).sort()).toEqual(Object.keys(ERWARTET).sort());
+  expect(gefunden.filter((k) => andere.has(k)).sort()).toEqual([...andere].sort());
+}
+
 const FUNDE = erhebeSchnittstellen().registrierungen.filter((r) => r.datei === DATEI);
 
 describe("PP-02 · Sicherheitsregister", () => {
   it("R1 · die Erhebung findet genau die acht PP-02-Routen", () => {
-    expect(FUNDE.map((r) => routeKey(r.methode, r.pfad)).sort()).toEqual(
-      Object.keys(ERWARTET).sort(),
-    );
+    pruefeRoutenbestand(FUNDE.map((r) => routeKey(r.methode, r.pfad)));
   });
 
   it.each(Object.entries(ERWARTET))(
@@ -63,5 +75,37 @@ describe("PP-02 · Sicherheitsregister", () => {
         /^"[^"]+": \{\s+urteil: "PRAEDIKAT",/,
       );
     }
+  });
+
+  it("K1 · unbekannte und doppelte Routen bleiben rot", () => {
+    const gefunden = FUNDE.map((r) => routeKey(r.methode, r.pfad));
+    expect(() =>
+      pruefeRoutenbestand([...gefunden, "GET /api/pp02-kalibrierung/unbekannt"]),
+    ).toThrow();
+    expect(() => pruefeRoutenbestand([...gefunden, "GET /api/datenpunkte/:dpId"])).toThrow();
+    expect(() =>
+      pruefeRoutenbestand([...gefunden, "POST /api/kos/:id/office/:anhangId/vortrag"]),
+    ).toThrow();
+  });
+
+  it("K2 · fehlende und umbenannte Routen bleiben rot", () => {
+    const gefunden = FUNDE.map((r) => routeKey(r.methode, r.pfad));
+    expect(() =>
+      pruefeRoutenbestand(gefunden.filter((k) => k !== "GET /api/datenpunkte/:dpId")),
+    ).toThrow();
+    expect(() =>
+      pruefeRoutenbestand(
+        gefunden.filter((k) => k !== "POST /api/kos/:id/office/:anhangId/aenderungsvorschau"),
+      ),
+    ).toThrow();
+    expect(() =>
+      pruefeRoutenbestand(
+        gefunden.map((k) =>
+          k === "POST /api/kos/:id/office/:anhangId/ergaenzung/vorschau"
+            ? "POST /api/kos/:id/office/:anhangId/ergaenzung/vorschau-umbenannt"
+            : k,
+        ),
+      ),
+    ).toThrow();
   });
 });
