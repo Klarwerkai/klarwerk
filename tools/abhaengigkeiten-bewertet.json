@@ -350,5 +350,16 @@
     "begruendung": "Primaerquelle https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249 (27.10.2026; Datenbank aktualisiert30.10.2026): kontrollierbares Pattern bei optimizationLevel>=2 verstaerkt globParts; betroffen<11.0.1,10.2.5 bleibt betroffen. Glob13.0.6 setzt tatsaechlich optimizationLevel2; dessen Fehlen ist NICHT die Begruendung. Der gebundene transitive Weg @fastify/static -> glob -> minimatch wird im heutigen dynamischen Wildcardzweig nicht aufgerufen. Der einzige Globaufruf liegt in wildcard=false und nutzt das feste Pattern **/**; dieser Zweig ist im Produkt nicht aktiviert, kein fremdes globIgnore. Der HTTP-Regressionstest prueft spaet angelegte Assets und eine echte wildcard=false-Kontrolle; bei Aenderung dieser Kette neu bewerten.",
     "beleg": "https://github.com/advisories/GHSA-g3hv-75wg-m249; tests/produktionsabhaengigkeiten/README.md, Nachtrag31.10.2026; tests/abhaengigkeiten-vor-auslieferung/static-glob-exposition-20261031.test.ts; gebundene oeffentliche @fastify/static9.1.3/index.js (Wildcardzweig und einziger glob-Aufruf).",
     "bewertet_am": "2026-10-31"
+  },
+  {
+    "bestand": "web",
+    "kennung": "GHSA-6jcc-5g8w-32mx",
+    "paket": "i18next",
+    "ort": "node_modules/i18next",
+    "version": "23.16.8",
+    "urteil": "nicht exponiert",
+    "begruendung": "Advisory setzt fremde verschachtelte Daten in addResourceBundle mit deep=true und overwrite=true voraus. Alle sechs expliziten Aufrufe unter apps/web/src wurden gelesen: ImportSelect und AdminKiDetails liefern ausschliesslich feste flache String-Konstanten, keine Nutzereingaben. Der Test erfasst alle sechs per AST, verwirft verschachtelte/dynamische Daten, bindet installierte Version und Lockknoten und fuehrt die echten Bundle-Aufrufe aus. Servergepflegte Texte laufen einzeln ueber addResource (textpflege.ts); Backend-Nachladen nutzt den Standardpfad ohne deep/overwrite. Die Version bleibt betroffen, keine Behauptung einer Paketbehebung. Neue Aufrufwege verlangen neue Bewertung.",
+    "beleg": "https://github.com/advisories/GHSA-6jcc-5g8w-32mx; tests/abhaengigkeiten-vor-auslieferung/i18next-flache-buendel-20261124.test.ts; tests/produktionsabhaengigkeiten/README.md, Nachtrag 24.11.2026",
+    "bewertet_am": "2026-11-24"
   }
 ]

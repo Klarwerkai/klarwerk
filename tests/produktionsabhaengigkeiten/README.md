@@ -742,3 +742,28 @@ Produktcode und Version bleiben unverändert; alte Bewertungen und historische
 Messgrenzen bleiben erhalten. Der normale Pflichtlauf und der danach einmalige echte
 Registryaudit liefern die jeweiligen Laufresultate im SICHERHEIT1/P-Nachweis.
 Eine Gesamtsicherheitsabnahme oder Betriebsmessung folgt daraus nicht.
+
+
+## 10. Nachtrag 24.11.2026 — i18next 23.16.8
+
+[GHSA-6jcc-5g8w-32mx](https://github.com/advisories/GHSA-6jcc-5g8w-32mx)
+setzt laut Primärquelle fremde verschachtelte Daten in `addResourceBundle` mit
+`deep=true` und `overwrite=true` voraus. Die gebundene Webfassung 23.16.8 bleibt
+von der Paketmeldung betroffen; behoben ist sie erst ab 26.3.4.
+
+Im heutigen Produkt gibt es sechs explizite Bundle-Aufrufe: je drei in
+ImportSelect und AdminKiDetails. Alle liefern feste, flache String-Konstanten
+aus der Quelldatei. ImportSelect setzt beide Optionen, AdminKiDetails nur deep.
+Die servergepflegten Texte werden in textpflege.ts einzeln über addResource
+übernommen. Der Sprach-Backend erhält nur mitgelieferte Wörterbücher; i18next
+übergibt dessen Ergebnis ohne deep/overwrite an den ResourceStore.
+
+Der kausale Test i18next-flache-buendel-20261124.test.ts erfasst alle expliziten
+Aufrufe im Webquellbaum per AST, prüft jedes Bündel auf literale Stringwerte
+ohne verschachtelte Werte, Spread oder dynamische Schlüssel und führt diese
+Bündel mit den tatsächlichen Optionen an der gebundenen i18next-Instanz aus.
+Übersetzung und unveränderte Built-ins werden geprüft; Lock und Installation
+sind an 23.16.8 gebunden. Ein neues Bündel oder ein nichtliteraler Wert macht
+die Prüfung rot und verlangt eine erneute Bewertung. Es wird kein Angriff
+gegen die laufende Anwendung ausgeführt und keine allgemeine Aussage zu
+anderen i18next-Meldungen getroffen.
