@@ -78,7 +78,7 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
 import { BibliothekFlaeche } from "../../apps/web/src/components/bibliothek/BibliothekFlaeche";
 import i18n from "../../apps/web/src/i18n";
 import {
@@ -98,6 +98,11 @@ const SICHTEN = "klarwerk.library.views.u1";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot> | null = null;
 
+function Routeradresse() {
+  const { pathname, search, hash } = useLocation();
+  return createElement("output", { "data-testid": "routeradresse" }, pathname + search + hash);
+}
+
 function mount(entry = "/bibliothek"): void {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -109,7 +114,12 @@ function mount(entry = "/bibliothek"): void {
       createElement(
         QueryClientProvider,
         { client: qc },
-        createElement(MemoryRouter, { initialEntries: [entry] }, createElement(BibliothekFlaeche)),
+        createElement(
+          MemoryRouter,
+          { initialEntries: [entry] },
+          createElement(BibliothekFlaeche),
+          createElement(Routeradresse),
+        ),
       ),
     );
   });
@@ -141,6 +151,12 @@ afterEach(() => {
 });
 
 describe("K2 · Fachgebiet als eigene Facette der Bibliothek", () => {
+  it("bewahrt den Satzanker der gespeicherten Fassung beim Einlesen der Facetten", () => {
+    const adresse = "/wissen/k1?fassung=1&ansicht=gespeichert#zitat=Guest+Wi-Fi";
+    mount(adresse);
+    expect(container.querySelector('[data-testid="routeradresse"]')?.textContent).toBe(adresse);
+  });
+
   it("D1 · Auswahl im Menü grenzt unabhängig von der Kategorie ein; zwei Werte = Vereinigung", () => {
     mount();
     expect(sortiert()).toEqual(["k1", "k2", "k3"]);

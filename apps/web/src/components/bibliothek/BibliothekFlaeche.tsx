@@ -591,31 +591,31 @@ export function BibliothekFlaeche({
     if (urlSeed !== null) {
       return;
     }
+    const fromUrl = facetSelectionFromParams(params, LIBRARY_FACET_PARAM_KEYS);
+    const rangeFromUrl = facetRangeFromParams(
+      params,
+      LIBRARY_RANGE_FROM_PARAM,
+      LIBRARY_RANGE_TO_PARAM,
+    );
+    if (
+      serializeFacetSelection(fromUrl, LIBRARY_FACET_PARAM_KEYS) ===
+        serializeFacetSelection(facetSel, LIBRARY_FACET_PARAM_KEYS) &&
+      serializeFacetRange(rangeFromUrl) === serializeFacetRange(range)
+    ) {
+      // Auch setParams(prev => prev) navigiert und entfernt dabei den Satzanker der Fassung.
+      return;
+    }
     setParams(
-      (prev) => {
-        const fromUrl = facetSelectionFromParams(prev, LIBRARY_FACET_PARAM_KEYS);
-        const rangeFromUrl = facetRangeFromParams(
-          prev,
-          LIBRARY_RANGE_FROM_PARAM,
-          LIBRARY_RANGE_TO_PARAM,
-        );
-        const same =
-          serializeFacetSelection(fromUrl, LIBRARY_FACET_PARAM_KEYS) ===
-            serializeFacetSelection(facetSel, LIBRARY_FACET_PARAM_KEYS) &&
-          serializeFacetRange(rangeFromUrl) === serializeFacetRange(range);
-        if (same) {
-          return prev;
-        }
-        return writeFacetRangeToParams(
+      (prev) =>
+        writeFacetRangeToParams(
           writeFacetSelectionToParams(prev, facetSel, LIBRARY_FACET_PARAM_KEYS),
           range,
           LIBRARY_RANGE_FROM_PARAM,
           LIBRARY_RANGE_TO_PARAM,
-        );
-      },
+        ),
       { replace: true },
     );
-  }, [facetSel, range, setParams, urlSeed]);
+  }, [facetSel, params, range, setParams, urlSeed]);
 
   const conflicts = useConflicts();
   const debouncedQ = useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS);
