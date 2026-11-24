@@ -21,10 +21,11 @@
 //     Abgleich gegen den Inhaltsabdruck der Revision; beim Abschnitt des Absatzes geöffnet;
 //   · keines von beiden — ausdrücklich „nicht erhalten“.
 // Das Original in der Quelle bleibt als Verweis daneben und ist als HEUTIGER Stand benannt.
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useKoVersions, useQuellrevision } from "../api/hooks";
 import type { KoVersionSnapshot, QuellrevisionInhalt } from "../api/types";
+import { eindeutigeZitatstelle, markiereFundstelle } from "../lib/belegstelle";
 import { formatKoTimestamp } from "../lib/koDates";
 import { quellabschnitteAus } from "../lib/quellabschnitt";
 import { SanitizedHtml } from "./SanitizedHtml";
@@ -47,14 +48,59 @@ function sichererVerweis(url: string | null): string | null {
   return url && /^https?:\/\//i.test(url) ? url : null;
 }
 
+function Fassungswortlaut({
+  aussage,
+  html,
+  zitat,
+}: { aussage: string; html: string | null; zitat: string }): JSX.Element {
+  const aussageRef = useRef<HTMLParagraphElement>(null);
+  const koerperRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const koerper = koerperRef.current;
+    const text = aussageRef.current;
+    if (!koerper || !text || !zitat) return;
+    const fund = eindeutigeZitatstelle(koerper, text, zitat);
+    if (!fund) return;
+    const marken = markiereFundstelle(koerper.contains(fund.start.knoten) ? koerper : text, fund);
+    for (const marke of marken) {
+      marke.className =
+        "rounded-sm bg-amber-200 text-slate-950 underline decoration-amber-700 decoration-2 underline-offset-2";
+    }
+    marken[0]?.scrollIntoView?.({ block: "center" });
+    return () => {
+      for (const marke of marken) {
+        marke.replaceWith(...marke.childNodes);
+      }
+    };
+  }, [zitat]);
+  return (
+    <>
+      <p
+        ref={aussageRef}
+        className="mt-1 text-[13px] text-muted"
+        data-testid={`${GESPEICHERT_MARKE}-aussage`}
+      >
+        {aussage}
+      </p>
+      <div ref={koerperRef}>
+        {html ? (
+          <SanitizedHtml html={html} className="prose-kw mt-2 text-[13px] text-muted" />
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 export function GespeicherteFassungAnsicht({
   fassung,
   ankerId,
+  zitat = "",
   lage,
   quellinhalt,
 }: {
   fassung: number;
   ankerId: string | null;
+  zitat?: string;
   lage: GespeicherteFassungLage;
   /** Fehlt er (reine Anzeige), steht bei einer Revision nur ihr Stand, kein Öffnungsweg. */
   quellinhalt?: QuellinhaltPlatz;
@@ -106,12 +152,12 @@ export function GespeicherteFassungAnsicht({
       >
         {ko.title}
       </h2>
-      <p className="mt-1 text-[13px] text-muted" data-testid={`${GESPEICHERT_MARKE}-aussage`}>
-        {ko.statement}
-      </p>
-      {ko.bodyHtml ? (
-        <SanitizedHtml html={ko.bodyHtml} className="prose-kw mt-2 text-[13px] text-muted" />
-      ) : null}
+      <Fassungswortlaut
+        key={`${satz.koId}:${satz.version}`}
+        aussage={ko.statement}
+        html={ko.bodyHtml ?? null}
+        zitat={zitat}
+      />
       {abschnitte === null ? (
         <p className={`mt-2 ${HINWEIS}`} data-testid={`${GESPEICHERT_MARKE}-quellen-unbekannt`}>
           {t("quellen.abschnitteUnbekannt")}
@@ -268,10 +314,12 @@ export function GespeicherteFassung({
   koId,
   fassung,
   ankerId,
+  zitat = "",
 }: {
   koId: string;
   fassung: number;
   ankerId: string | null;
+  zitat?: string;
 }): JSX.Element {
   const abfrage = useKoVersions(koId);
   const lage: GespeicherteFassungLage = abfrage.isError
@@ -283,6 +331,7 @@ export function GespeicherteFassung({
     <GespeicherteFassungAnsicht
       fassung={fassung}
       ankerId={ankerId}
+      zitat={zitat}
       lage={lage}
       quellinhalt={(sourceRecordId, gewaehlt) => (
         <DamaligerQuellinhalt koId={koId} sourceRecordId={sourceRecordId} anfangsOffen={gewaehlt} />

@@ -575,6 +575,24 @@ describe("Direktvergleich in der Klara-App", () => {
     expect(q(widerspruch, "ai-generated-notice")?.textContent).toBe(i18n.t("ai.generatedNotice"));
     expect(q(document, "begleiter-verfuegbarkeit")).toBeNull();
     expect(widerspruch.querySelector("h3")?.textContent).toContain("Contradicts the source");
+    const g = q(document, "begleiter-gespraech") as HTMLElement;
+    const schalter = q<HTMLInputElement>(g, "begleiter-vorfuehransicht") as HTMLInputElement;
+    expect(schalter.labels?.[0]?.textContent).toContain("Presentation view");
+    expect(schalter.checked).toBe(false);
+    const anzahlVorUmschalten = draht.aufrufe.filter((a) => a.url.endsWith("/aktionen")).length;
+    await tippe(feld, "My unsent question");
+    await klick(schalter);
+    expect(g.dataset.vorfuehrung).toBe("an");
+    expect(schalter.checked).toBe(true);
+    expect(feld.value).toBe("My unsent question");
+    await taste(schalter, "Escape");
+    expect(g.dataset.vorfuehrung).toBe("aus");
+    expect(schalter.checked).toBe(false);
+    expect(q(document, "begleiter-gespraech")).toBe(g);
+    expect(draht.aufrufe.filter((a) => a.url.endsWith("/aktionen"))).toHaveLength(
+      anzahlVorUmschalten,
+    );
+    await klick(schalter);
     expect(Array.from(widerspruch.querySelectorAll("mark"), (m) => m.textContent)).toEqual([
       "must provide",
       "not",
@@ -584,6 +602,7 @@ describe("Direktvergleich in der Klara-App", () => {
     expect(quelllink?.textContent).toBe(quelle.titel);
     expect(quelllink?.pathname).toBe(`/wissen/${quelle.koId}`);
     expect(quelllink?.search).toBe("?fassung=1&ansicht=gespeichert");
+    expect(new URLSearchParams(quelllink?.hash.slice(1)).get("zitat")).toBe(original);
     expect(widerspruch.textContent).toContain("Version 1");
 
     await klick(q(widerspruch, "begleiter-vergleich-zeigen"));
@@ -613,6 +632,7 @@ describe("Direktvergleich in der Klara-App", () => {
     await gespraechOffen();
     await bis(() => Boolean(q(document, "begleiter-fenster")), 160);
     expect(q(document, "begleiter-direktvergleich")).toBeNull();
+    expect(q<HTMLInputElement>(document, "begleiter-vorfuehransicht")?.checked).toBe(true);
     const neuFeld = q<HTMLInputElement>(document, "begleiter-eingabe") as HTMLInputElement;
     for (const [index, art] of (["bestaetigt", "offen"] as const).entries()) {
       await tippe(neuFeld, "Is this correct?");

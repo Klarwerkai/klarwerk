@@ -17,6 +17,7 @@ import {
 } from "../../apps/web/src/components/GespeicherteFassung";
 import { LesestandAnsicht } from "../../apps/web/src/components/gesamtanweisung/LesestandAnsicht";
 import i18n from "../../apps/web/src/i18n";
+import { zitatAusFragment, zitatFragment } from "../../apps/web/src/lib/belegstelle";
 import { leseGespeicherteFassung } from "../../apps/web/src/lib/objektbezug";
 import { quellabschnitteAus as webAbschnitte } from "../../apps/web/src/lib/quellabschnitt";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -265,6 +266,59 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
     const danach = await f.dienst.lesen(f.anweisung.id, OFFEN);
     expect(danach.bausteine).toHaveLength(0);
     expect(JSON.stringify(danach)).not.toContain("W3 Quelltext 7");
+  });
+
+  it("markiert das eindeutige Klara-Zitat nur in der bestellten Fassung, über Inline-Elemente hinweg", async () => {
+    const f = await bestand();
+    const versionen = (await f.services.ko.versionsOf(f.id)) as KoVersionSnapshot[];
+    const [alt] = versionen;
+    if (!alt) throw new Error("Fassung 1 fehlt");
+    const zitat = "Guest Wi-Fi must not provide access.";
+    const fassungen = [
+      {
+        ...alt,
+        snapshot: {
+          ...alt.snapshot,
+          statement: zitat,
+          bodyHtml: "<p>Guest <b>Wi-Fi</b> must<br>not provide access.</p><p>Other sentence.</p>",
+        },
+      },
+      ...versionen.slice(1),
+    ];
+    const anzeigen = (fassung: number, text: string, html = fassungen[0]?.snapshot.bodyHtml) =>
+      zeichne(
+        createElement(GespeicherteFassungAnsicht, {
+          fassung,
+          ankerId: null,
+          zitat: zitatAusFragment(zitatFragment(text)),
+          lage: {
+            art: "da",
+            fassungen: [
+              { ...alt, snapshot: { ...alt.snapshot, statement: zitat, bodyHtml: html ?? null } },
+              ...fassungen.slice(1),
+            ],
+          },
+        }),
+      );
+    const treffer = (c: HTMLElement) =>
+      Array.from(c.querySelectorAll("mark[data-bib-belegstelle]"));
+    const richtig = await anzeigen(1, zitat);
+    expect(treffer(richtig).map((m) => m.textContent)).toEqual([
+      "Guest ",
+      "Wi-Fi",
+      " must",
+      "not provide access.",
+    ]);
+    expect(marke(richtig, "-aussage")?.querySelector("mark")).toBeNull();
+    expect(treffer(await anzeigen(1, zitat, "<p>Other sentence.</p>"))[0]?.textContent).toBe(zitat);
+    expect(treffer(await anzeigen(1, zitat, `<p>${zitat}</p><p>${zitat}</p>`))).toHaveLength(0);
+    expect(treffer(await anzeigen(2, zitat))).toHaveLength(0);
+    expect(treffer(await anzeigen(1, "must provide access"))).toHaveLength(0);
+    expect(treffer(await anzeigen(1, "uest Wi-Fi"))).toHaveLength(0);
+    expect(treffer(await anzeigen(1, "access.Other"))).toHaveLength(0);
+    expect(treffer(await anzeigen(1, ""))).toHaveLength(0);
+    expect(zitatFragment("x".repeat(601))).toBe("");
+    expect(zitatAusFragment("#zitat=one&zitat=two")).toBe("");
   });
 
   it("alte Anker bleiben ungeprüft und eine fehlende gebundene Fassung bleibt ohne Ersatz", async () => {

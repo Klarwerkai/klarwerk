@@ -57,6 +57,7 @@ export default {
     "begleiter.vergleich.fehlt":
       "Die freigegebenen Firmenquellen reichen für dieses Urteil nicht aus.",
     "begleiter.vergleich.leeren": "Leeren",
+    "begleiter.vergleich.vorfuehransicht": "Vorführansicht",
     "begleiter.vergleich.stelleFehlt":
       "Die geprüfte Stelle lässt sich in Word nicht mehr zeigen. Bitte prüfe den aktuellen Text erneut.",
     "begleiter.vergleich.quelllink": "Quelle {{nummer}} öffnen",
@@ -225,6 +226,7 @@ export default {
     "begleiter.vergleich.fehlt":
       "The approved company sources do not establish whether this statement is correct.",
     "begleiter.vergleich.leeren": "Clear",
+    "begleiter.vergleich.vorfuehransicht": "Presentation view",
     "begleiter.vergleich.stelleFehlt":
       "This passage can no longer be shown in Word. Check the current text again.",
     "begleiter.vergleich.quelllink": "Open source {{nummer}}",
@@ -379,6 +381,7 @@ export default {
     "begleiter.vergleich.fehlt":
       "De goedgekeurde bedrijfsbronnen geven onvoldoende houvast om deze uitspraak te beoordelen.",
     "begleiter.vergleich.leeren": "Wissen",
+    "begleiter.vergleich.vorfuehransicht": "Presentatieweergave",
     "begleiter.vergleich.stelleFehlt":
       "Deze passage kan niet meer in Word worden getoond. Controleer de huidige tekst opnieuw.",
     "begleiter.vergleich.quelllink": "Bron {{nummer}} openen",

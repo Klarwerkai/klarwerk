@@ -1,0 +1,45 @@
+[data-vorfuehrung="an"] .begleiter-direktvergleich {
+  width: 100%;
+  max-width: 56rem;
+  margin-inline: auto;
+  overflow-wrap: anywhere;
+}
+
+[data-vorfuehrung="an"] .begleiter-direktvergleich h3 {
+  align-items: baseline;
+  padding: 0.75rem 1rem;
+  font-size: clamp(1.625rem, 3vw, 2rem);
+  line-height: 1.2;
+}
+
+[data-vorfuehrung="an"] .begleiter-direktvergleich h3 > span {
+  font-size: inherit;
+}
+
+[data-vorfuehrung="an"] .begleiter-direktvergleich > div {
+  padding: 1rem;
+}
+
+[data-vorfuehrung="an"] .begleiter-direktvergleich dt {
+  font-size: 1rem;
+}
+
+[data-vorfuehrung="an"] .begleiter-direktvergleich dd {
+  margin-top: 0.25rem;
+  font-size: clamp(1.375rem, 2.5vw, 1.75rem);
+  line-height: 1.4;
+}
+
+[data-vorfuehrung="an"] .begleiter-direktvergleich dl > div + div {
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+[data-vorfuehrung="an"] .begleiter-quellverweis {
+  margin-top: 0.75rem;
+  font-size: 1rem;
+}
+
+[data-vorfuehrung="an"] .begleiter-direktvergleich :is(button, p, .begleiter-ki-hinweis) {
+  font-size: 0.9375rem;
+}

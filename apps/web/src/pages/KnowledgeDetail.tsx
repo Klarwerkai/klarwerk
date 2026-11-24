@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useKo } from "../api/hooks";
 import { useRole } from "../app/RoleContext";
@@ -14,7 +14,7 @@ import { SpaceZeile } from "../components/SpaceZeile";
 import { VorlagenHerkunft } from "../components/VorlagenHerkunft";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
-import { STELLE_PARAM } from "../lib/belegstelle";
+import { STELLE_PARAM, zitatAusFragment } from "../lib/belegstelle";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
 import {
   ANKER_PARAM,
@@ -65,6 +65,7 @@ export function KnowledgeDetail(): JSX.Element {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const { hash } = useLocation();
   // produkt:20261007:artikel-gemeinsam: der Weg zum gemeinsamen Entwurf nur für Bearbeitende.
   const darfBearbeiten = useRole().role !== "viewer";
   // `edit=1` gehört zu GENAU DEM Eintrag, für den der Deep-Link kam (SCRUM-417). Bliebe er beim
@@ -215,6 +216,7 @@ export function KnowledgeDetail(): JSX.Element {
           koId={id}
           fassung={gespeichert.fassung}
           ankerId={gespeichert.ankerId}
+          zitat={zitatAusFragment(hash)}
         />
       ) : null}
       {/* R-1107: ist dieser Eintrag in einem Führungsartikel aufgegangen, sagt die Zeile worin. */}

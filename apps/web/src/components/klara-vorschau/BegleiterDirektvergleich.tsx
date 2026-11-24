@@ -3,10 +3,12 @@ import { useTranslation } from "react-i18next";
 import { endpoints } from "../../api/endpoints";
 import { useSession } from "../../app/AuthContext";
 import type { BegleiterVergleich } from "../../lib/begleiter";
+import { zitatFragment } from "../../lib/belegstelle";
 import { gespeicherteFassungHref } from "../../lib/objektbezug";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { koDetailUrl } from "../../lib/wordAddin";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
+import "./BegleiterDirektvergleich.css";
 
 const URTEIL = {
   bestaetigt: { symbol: "✓", farbe: "bg-trust-pos-bg text-trust-pos-text" },
@@ -41,7 +43,8 @@ function Quellverweis({
   id,
   fassung,
   nummer,
-}: { id: string; fassung: number | undefined; nummer: number }): JSX.Element {
+  zitat,
+}: { id: string; fassung: number | undefined; nummer: number; zitat: string }): JSX.Element {
   const { t } = useTranslation();
   const { user } = useSession();
   const name = useAuthorName();
@@ -55,10 +58,12 @@ function Quellverweis({
   const quelle =
     beleg.isSuccess && beleg.data?.id === id && beleg.data.fassung === fassung ? beleg.data : null;
   return (
-    <div className="mt-1.5 text-[12px] leading-snug">
+    <div className="begleiter-quellverweis mt-1.5 text-[12px] leading-snug">
       <a
         href={
-          fassung ? gespeicherteFassungHref(id, fassung) : koDetailUrl(window.location.origin, id)
+          fassung
+            ? gespeicherteFassungHref(id, fassung) + zitatFragment(zitat)
+            : koDetailUrl(window.location.origin, id)
         }
         target="_blank"
         rel="noopener noreferrer"
@@ -97,7 +102,7 @@ export function BegleiterDirektvergleich({
     <section
       data-testid="begleiter-direktvergleich"
       data-urteil={vergleich.art}
-      className="overflow-hidden rounded-card border border-hairline bg-surface"
+      className="begleiter-direktvergleich overflow-hidden rounded-card border border-hairline bg-surface"
     >
       <h3 className={`flex items-center gap-2 px-3 py-2 text-[14px] font-semibold ${farbe}`}>
         <span aria-hidden="true" className="text-base">
@@ -132,6 +137,7 @@ export function BegleiterDirektvergleich({
                     key={id}
                     id={id}
                     nummer={quellen.indexOf(id) + 1}
+                    zitat={beleg.woertlich && beleg.quellen.length === 1 ? beleg.text : ""}
                     fassung={vergleich.quellfassungen?.find((stand) => stand.id === id)?.fassung}
                   />
                 ))}
@@ -142,7 +148,9 @@ export function BegleiterDirektvergleich({
         {vergleich.art === "offen" ? (
           <p className="text-[12px] text-muted">{t("begleiter.vergleich.fehlt")}</p>
         ) : null}
-        {vergleich.aiGenerated === true ? <AiGeneratedNotice className="block" /> : null}
+        {vergleich.aiGenerated === true ? (
+          <AiGeneratedNotice className="begleiter-ki-hinweis block" />
+        ) : null}
         {zeigen && vergleich.zeigbar ? (
           <button
             type="button"

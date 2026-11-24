@@ -142,6 +142,7 @@ const RING: Record<string, string> = {
 
 /** Die Bedienvorliebe „reduzierte Bewegung" — im Browser gemerkt, kein Inhalt. */
 const REDUZIERT_SPEICHER = "klarwerk.begleiter.reduziert";
+const VORFUEHRUNG_SPEICHER = "klarwerk.begleiter.vorfuehransicht";
 
 function leseReduziert(): boolean {
   try {
@@ -157,9 +158,9 @@ function leseReduziert(): boolean {
     : false;
 }
 
-function merkeReduziert(an: boolean): void {
+function merkeDarstellung(schluessel: string, an: boolean): void {
   try {
-    localStorage.setItem(REDUZIERT_SPEICHER, an ? "an" : "aus");
+    localStorage.setItem(schluessel, an ? "an" : "aus");
   } catch {
     // gilt dann bis zum Neuladen
   }
@@ -235,6 +236,18 @@ function BegleiterInhalt(): JSX.Element {
 
   const [offen, setOffen] = useState(false);
   const [reduziert, setReduziert] = useState(leseReduziert);
+  const [vorfuehrung, setVorfuehrung] = useState(() => {
+    try {
+      return localStorage.getItem(VORFUEHRUNG_SPEICHER) === "an";
+    } catch {
+      return false;
+    }
+  });
+  const aktuellerVergleichRef = useRef<HTMLLIElement>(null);
+  const setzeVorfuehrung = (an: boolean): void => {
+    setVorfuehrung(an);
+    merkeDarstellung(VORFUEHRUNG_SPEICHER, an);
+  };
   // Nacharbeit 5 (UI-MIN-12): EIN Entwurf, kontogebunden in der Sitzung, samt Ursprung
   // (`lib/begleiterEntwurf.ts`) — übersteht Einklappen, Wiederöffnen und Neuladen.
   const entwurf = useBegleiterEntwurf();
@@ -647,12 +660,20 @@ function BegleiterInhalt(): JSX.Element {
   const adapter: BegleiterAdapter | null = waehleAdapter(kontext, gewaehlt);
   const auswahl = gueltigeAuswahl(adapter);
   const passage = kontextBestaetigt && adapter?.aktiv ? adapter.passage : null;
-  const sichtbareAktionen = (adapter?.aktionen ?? []).filter(
-    (aktion) =>
-      !(entwurf.kontoId === kontoId && entwurf.ausgeblendet.includes(aktion.id)) &&
-      (aktion.art !== "zeigen" || aktion.stand === "fehler" || aktion.stand === "abgelehnt"),
-  );
-  const letzteWordFrage = [...sichtbareAktionen].reverse().find((aktion) => aktion.art === "frage");
+  const sichtbareAktionen = (adapter?.aktionen ?? [])
+    .filter(
+      (aktion) =>
+        !(entwurf.kontoId === kontoId && entwurf.ausgeblendet.includes(aktion.id)) &&
+        (aktion.art !== "zeigen" || aktion.stand === "fehler" || aktion.stand === "abgelehnt"),
+    )
+    .reverse();
+  const letzteWordFrage = sichtbareAktionen.find((aktion) => aktion.art === "frage");
+  const vergleichId = sichtbareAktionen.find((aktion) => aktion.vergleich)?.id;
+  useEffect(() => {
+    if (vorfuehrung && offen && !menueSeite && vergleichId) {
+      aktuellerVergleichRef.current?.scrollIntoView?.({ block: "start" });
+    }
+  }, [vorfuehrung, offen, menueSeite, vergleichId]);
   const adapterRef = useRef(adapter);
   adapterRef.current = adapter;
   /** Das Word-Ziel in diesem Augenblick — Fenster, Host, Titel, Auswahlstand (kein Text). */
@@ -717,7 +738,7 @@ function BegleiterInhalt(): JSX.Element {
 
   const setzeReduziert = useCallback((an: boolean): void => {
     setReduziert(an);
-    merkeReduziert(an);
+    merkeDarstellung(REDUZIERT_SPEICHER, an);
   }, []);
 
   useEffect(
@@ -971,9 +992,8 @@ function BegleiterInhalt(): JSX.Element {
 
   // Was eingefügt würde: die jüngste Antwort aus Word, sonst die jüngste Antwort im Gespräch.
   const wordAntwort =
-    [...sichtbareAktionen]
-      .reverse()
-      .find((a) => a.art === "frage" && a.stand === "erledigt" && a.ergebnis)?.ergebnis ?? null;
+    sichtbareAktionen.find((a) => a.art === "frage" && a.stand === "erledigt" && a.ergebnis)
+      ?.ergebnis ?? null;
   const gespraechAntwort =
     letzteKlara && (letzteKlara.modus === "ki" || letzteKlara.modus === "ohne_ki")
       ? letzteKlara.text
@@ -1411,6 +1431,7 @@ function BegleiterInhalt(): JSX.Element {
       data-oberflaeche="minimal"
       data-seite={menueSeite ?? "gespraech"}
       data-darstellung={dunkel ? "dunkel" : "hell"}
+      data-vorfuehrung={vorfuehrung ? "an" : "aus"}
       data-einwilligung={echt.gespraech?.einwilligungAm ? "ja" : "nein"}
       className="flex h-screen w-screen flex-col overflow-hidden rounded-card border border-hairline bg-page text-text shadow-lg"
       style={farbStil}
@@ -1425,6 +1446,8 @@ function BegleiterInhalt(): JSX.Element {
         } else if (menueOffen) {
           setMenueOffen(false);
           menueKnopfRef.current?.focus({ preventScroll: true });
+        } else if (vorfuehrung) {
+          setzeVorfuehrung(false);
         } else {
           setOffen(false);
         }
@@ -1745,6 +1768,21 @@ function BegleiterInhalt(): JSX.Element {
             </div>
           </details>
 
+          {passage || vergleichId || vorfuehrung ? (
+            <div className="flex justify-end border-b border-hairline bg-surface px-3">
+              <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 text-[13px] font-semibold text-ink">
+                <input
+                  type="checkbox"
+                  data-testid="begleiter-vorfuehransicht"
+                  checked={vorfuehrung}
+                  onChange={(event) => setzeVorfuehrung(event.target.checked)}
+                  className="size-4 accent-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                />
+                {t("begleiter.vergleich.vorfuehransicht")}
+              </label>
+            </div>
+          ) : null}
+
           {/* 3 · Gespräch */}
           <div
             data-testid="begleiter-gespraechsbereich"
@@ -1836,9 +1874,13 @@ function BegleiterInhalt(): JSX.Element {
 
             {adapter && sichtbareAktionen.length > 0 ? (
               <ol className="space-y-1" data-testid="begleiter-aktionen">
-                {[...sichtbareAktionen].reverse().map((a) =>
+                {sichtbareAktionen.map((a) =>
                   a.art === "frage" && a.stand === "erledigt" && a.vergleich ? (
-                    <li key={a.id} data-stand={a.stand}>
+                    <li
+                      key={a.id}
+                      data-stand={a.stand}
+                      ref={a.id === vergleichId ? aktuellerVergleichRef : undefined}
+                    >
                       <BegleiterDirektvergleich
                         vergleich={a.vergleich}
                         zeigen={

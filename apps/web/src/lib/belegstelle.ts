@@ -37,6 +37,18 @@ export function passageNormal(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+/** Wörtliches Klara-Zitat als Fragment: Es erreicht weder HTTP-Zugriffslog noch Referrer. */
+export function zitatFragment(text: string): string {
+  const stelle = passageNormal(text);
+  return stelle && stelle.length <= STELLE_MAX ? `#${new URLSearchParams({ zitat: stelle })}` : "";
+}
+
+export function zitatAusFragment(hash: string): string {
+  const werte = new URLSearchParams(hash.slice(1)).getAll("zitat");
+  const zitat = werte.length === 1 ? passageNormal(werte[0] ?? "") : "";
+  return zitat.length <= STELLE_MAX ? zitat : "";
+}
+
 /**
  * Die Adresse des Objekts samt Belegstelle. Ohne verwertbare Passage (leer oder länger als
  * `STELLE_MAX`) bleibt es die blosse Objektadresse — ein abgeschnittener Anker fände nichts
@@ -79,18 +91,54 @@ export interface Fundstelle {
  * Ähnlichkeit.
  */
 export function findePassage(wurzel: Node, passage: string): Fundstelle | null {
-  const ziel = passageNormal(passage);
-  if (ziel.length === 0) {
-    return null;
-  }
+  return fundstellen(wurzel, passage, false)[0] ?? null;
+}
+
+/** Der Originalkörper ist maßgeblich. Oft wiederholt die Kernaussage denselben ganzen Text. */
+export function eindeutigeZitatstelle(
+  koerper: Node,
+  aussage: Node,
+  zitat: string,
+): Fundstelle | null {
+  const imKoerper = fundstellen(koerper, zitat, true);
+  const treffer = imKoerper.length ? imKoerper : fundstellen(aussage, zitat, true);
+  return treffer.length === 1 ? (treffer[0] ?? null) : null;
+}
+
+const TEXTBLOCK = "p,li,dt,dd,h1,h2,h3,h4,h5,h6,td,th,blockquote,pre,div,figcaption";
+const WORTZEICHEN = /[\p{L}\p{M}\p{N}_]/u;
+
+function lesetext(wurzel: Node, mitBlockgrenzen: boolean) {
   const doc = wurzel.ownerDocument ?? (wurzel as Document);
-  const gang = doc.createTreeWalker(wurzel, 4 /* NodeFilter.SHOW_TEXT */);
+  const gang = doc.createTreeWalker(
+    wurzel,
+    mitBlockgrenzen ? 5 : 4 /* SHOW_TEXT [+ SHOW_ELEMENT] */,
+  );
   // Der normalisierte Gesamttext und je Zeichen seine Herkunft (Knoten, Versatz).
   let normal = "";
-  const herkunft: Array<{ knoten: Text; versatz: number }> = [];
+  const herkunft: Array<Fundstelle["start"] | undefined> = [];
   let letztesLeer = true;
+  let letzterBlock: Element | null = null;
   for (let n = gang.nextNode(); n !== null; n = gang.nextNode()) {
+    if (n.nodeType === 1) {
+      if (n.nodeName === "BR" && !letztesLeer) {
+        normal += " ";
+        herkunft.push(undefined);
+        letztesLeer = true;
+      }
+      continue;
+    }
     const knoten = n as Text;
+    if (mitBlockgrenzen) {
+      const block = knoten.parentElement?.closest(TEXTBLOCK) ?? null;
+      if (normal && block !== letzterBlock) {
+        // Ein Zitat darf nicht durch das Zusammenkleben verschiedener Absätze entstehen.
+        normal += "\n";
+        herkunft.push(undefined);
+        letztesLeer = true;
+      }
+      letzterBlock = block;
+    }
     const text = knoten.data;
     for (let i = 0; i < text.length; i += 1) {
       const zeichen = text[i] ?? "";
@@ -107,19 +155,31 @@ export function findePassage(wurzel: Node, passage: string): Fundstelle | null {
       herkunft.push({ knoten, versatz: i });
     }
   }
-  const beginn = normal.indexOf(ziel);
-  if (beginn < 0) {
-    return null;
+  return { normal, herkunft };
+}
+
+function fundstellen(wurzel: Node, passage: string, zitat: boolean): Fundstelle[] {
+  const ziel = passageNormal(passage);
+  if (!ziel) return [];
+  const { normal, herkunft } = lesetext(wurzel, zitat);
+  const funde: Fundstelle[] = [];
+  for (let beginn = normal.indexOf(ziel); beginn >= 0; beginn = normal.indexOf(ziel, beginn + 1)) {
+    const ende = beginn + ziel.length;
+    const erstes = herkunft[beginn];
+    const letztes = herkunft[ende - 1];
+    if (!erstes || !letztes) continue;
+    if (zitat && WORTZEICHEN.test(ziel.charAt(0)) && WORTZEICHEN.test(normal.charAt(beginn - 1)))
+      continue;
+    if (
+      zitat &&
+      WORTZEICHEN.test(ziel.charAt(ziel.length - 1)) &&
+      WORTZEICHEN.test(normal.charAt(ende))
+    )
+      continue;
+    funde.push({ start: erstes, ende: { knoten: letztes.knoten, versatz: letztes.versatz + 1 } });
+    if (!zitat || funde.length === 2) break;
   }
-  const erstes = herkunft[beginn];
-  const letztes = herkunft[beginn + ziel.length - 1];
-  if (!erstes || !letztes) {
-    return null;
-  }
-  return {
-    start: { knoten: erstes.knoten, versatz: erstes.versatz },
-    ende: { knoten: letztes.knoten, versatz: letztes.versatz + 1 },
-  };
+  return funde;
 }
 
 /**
