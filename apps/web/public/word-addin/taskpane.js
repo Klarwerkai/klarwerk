@@ -703,6 +703,12 @@
             if (belegt && (!absaetze || absaetze.length > 0)) { // R-0310: ohne belegten Absatz wird nichts ausgegeben; die Lage oben bleibt am Koerper geprueft
               // JOB 3366: `abgeschnitten` reist NUR MIT, wenn es eine Tatsache ist — nie als Gegenaussage „vollstaendig" (§9; Spiegelvertrag word-addin-ask Teil 3).
               var fragmentFeld = abgeschnitten ? { abgeschnitten: true } : {};
+              // Nur der Server kennzeichnet den ersten belegten Absatz als lokalisiertes Urteil.
+              var urteil = result.dokumentUrteil;
+              if (urteil && (urteil.art === "bestaetigt" || urteil.art === "widersprochen") &&
+                  urteil.texte && absaetze && absaetze.length > 1 && absaetze[0].text === urteil.texte[locale]) {
+                fragmentFeld.dokumentUrteil = urteil;
+              }
               return Object.assign(fragmentFeld, {
                 kind: "answered",
                 ...(typeof body.answerId === "string" ? { answerId: body.answerId } : {}),
@@ -873,16 +879,19 @@
       return truncatedNote && truncatedNote.trim().length > 0 ? withEvidence + "\n" + truncatedNote : withEvidence;
     }
 
-    function newestSourceDateLabel(dates) {
+    function newestSourceDateLabel(dates, locale) {
       var best = null;
       for (var i = 0; i < dates.length; i += 1) {
         var parsed = dates[i] ? Date.parse(dates[i]) : NaN;
         if (isFinite(parsed) && (best === null || parsed > best)) { best = parsed; }
       }
-      return best === null ? null : formatAskDateLabel(new Date(best));
+      return best === null ? null : formatAskDateLabel(new Date(best), locale);
     }
 
-    function formatAskDateLabel(date) {
+    function formatAskDateLabel(date, locale) {
+      if (locale === "en" || locale === "nl") {
+        return date.toLocaleDateString(locale === "en" ? "en-GB" : "nl-NL", { day: "numeric", month: "short", year: "numeric" });
+      }
       function pad(n) { return n < 10 ? "0" + n : String(n); }
       return pad(date.getDate()) + "." + pad(date.getMonth() + 1) + "." + date.getFullYear();
     }
@@ -915,10 +924,10 @@
     }
 
     function composeAnswerOutput(input) {
-      var standLabel = newestSourceDateLabel(input.sourceDates);
+      var standLabel = newestSourceDateLabel(input.sourceDates, input.locale);
       var sourceLine = standLabel
         ? buildAskSourceLine(input.sourceTitles, standLabel, input.texts.sourceLine)
-        : buildAskSourceLine(input.sourceTitles, formatAskDateLabel(input.now), input.texts.sourceLineRetrieved);
+        : buildAskSourceLine(input.sourceTitles, formatAskDateLabel(input.now, input.locale), input.texts.sourceLineRetrieved);
       var evidenceNote = answerInsertEvidenceNote(input.grade, {
         verified: input.texts.verified,
         unverified: input.texts.unverified,
@@ -2674,7 +2683,22 @@
       },
     };
 
-    var lang = "de";
+    // Same preference as the web app. Word's display language can first become
+    // available in onReady; a deliberate pane choice also works with storage blocked.
+    function wordAnzeigesprache() {
+      try {
+        var code = window.Office.context.displayLanguage.toLowerCase().split("-")[0];
+        return code === "en" || code === "nl" ? code : "de";
+      } catch (_) { return "de"; }
+    }
+    function wordSprachwahlLesen() {
+      try {
+        var code = window.localStorage.getItem("kw.sprache");
+        return code === "de" || code === "en" || code === "nl" ? code : null;
+      } catch (_) { return null; }
+    }
+    var wordSprachwahl = wordSprachwahlLesen();
+    var lang = wordSprachwahl || wordAnzeigesprache();
     var signedIn = false;
 
     // WP-KLARA-1b (K5): Office-Verfuegbarkeit ist ein EIGENER, ehrlicher Zustand. officeChecked wird
@@ -2882,12 +2906,17 @@
       // zugaengliche Name des Felds; der runde Sende-Pfeil traegt seinen Wortlaut askCta als
       // aria-label (kein data-t: das wuerde das SVG durch Text ersetzen).
       document.getElementById("ask-input").setAttribute("aria-label", t("askTitle"));
+      document.getElementById("ask-btn").setAttribute("aria-label", askLaeuft ? t("askBusy") : t("askCta"));
       // JOB 3056 K1: die Symbolknoepfe des Kopfs, der Schalter und der Server-Host tragen ihren
       // Wortlaut als aria-label bzw. als Wert — kein data-t (das ersetzte das SVG durch Text).
       document.getElementById("kw-zurueck").setAttribute("aria-label", t("einstZurueck"));
       document.getElementById("kw-zahnrad").setAttribute("aria-label", t("einstTitel"));
       document.getElementById("einst-mitlesen").setAttribute("aria-label", t("einstMitlesen"));
       document.getElementById("einst-sprache-wert").textContent = KW_SPRACHNAMEN[lang] || lang;
+      ["de", "en", "nl"].forEach(function (code) {
+        document.getElementById("lang-" + code).className =
+          code === lang ? "einst-zeile active" : "einst-zeile";
+      });
       document.getElementById("einst-sprache-wahl").setAttribute("aria-label", t("einstSprache")); // K22
       document.getElementById("einst-server-wert").textContent = window.location.host || "–";
       document.getElementById("ka1-block").setAttribute("aria-label", t("ka1Title"));
@@ -2911,19 +2940,26 @@
     // sprachneutral, deshalb kein Woerterbuch-Schluessel.
     var KW_SPRACHNAMEN = { de: "Deutsch", en: "English", nl: "Nederlands" };
 
+    function wordSpracheWaehlen(next) {
+      if (!Object.prototype.hasOwnProperty.call(KW_SPRACHNAMEN, next)) { return; }
+      wordSprachwahl = next;
+      try { window.localStorage.setItem("kw.sprache", next); } catch (_) { /* choice remains active in this pane */ }
+      setLang(next);
+    }
+
     function setLang(next) {
+      if (next !== "de" && next !== "en" && next !== "nl") { return; }
       lang = next;
       if (window.kwWordUi) window.kwWordUi.setLanguage(next);
-      ["de", "en", "nl"].forEach(function (code) {
-        document.getElementById("lang-" + code).className =
-          code === lang ? "einst-zeile active" : "einst-zeile";
-      });
       renderStatics(); // mega75 Block A: die KI-Lage in der neuen Sprache (Zustand bleibt, Text
                        // wechselt) — sie haengt jetzt IN renderStatics, s. dort.
       // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: Vorbehalt, Konfliktlage und Ausschnitt sind Texte zu
       // einem GEHALTENEN Zustand (currentAskOutcome). Ohne diese Zeile stuenden sie nach einem
       // Sprachwechsel in der alten Sprache da — dieselbe Falle, die refreshAnswerToggleLabel loest.
       renderAskEvidence();
+      askUebersetzeAktuellesUrteil();
+      if (currentAskSourcesResolved) { renderAskSources(askQuellenAufgeloest, askQuellenTragend); }
+      updateAskSourceNote();
       renderAskHerkunft(); // JOB 3092 S6: Herkunftszeilen und Ungeprueft-Satz in der neuen Sprache
       if (askEinschubQuelle) { askEinschubOeffnen(askEinschubQuelle); } // R-0329: Einschub ebenso
       renderAskUngeprueft();
@@ -2936,8 +2972,16 @@
       renderCaptureDubletten(); // JOB 3092 S6: die Dublettenauskunft — gehaltener Stand, neuer Text
       rwZeichnen(); // JOB 3667: Rueckweg-Kasten und sein Satz in der neuen Sprache, Zustand bleibt
       updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
+      document.dispatchEvent(new Event("kw-word-language"));
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
     }
+
+    window.addEventListener("storage", function (event) {
+      if (event.key !== "kw.sprache") { return; }
+      wordSprachwahl = wordSprachwahlLesen();
+      var next = wordSprachwahl || wordAnzeigesprache();
+      if (next !== lang) { setLang(next); }
+    });
 
     // ---- AUFTRAG-mega75 Block A: der oeffentliche KI-Zustand -----------------------------------
     // Ueber den VORHANDENEN Vertrag GET /api/reasoner/status — same-origin, mit derselben Sitzung,
@@ -5779,6 +5823,28 @@
       return document.getElementById("ask-answer-edit").value;
     }
 
+    function askUrteilUebersetzen(outcome, sprache) {
+      var urteil = outcome && outcome.dokumentUrteil;
+      if (!urteil) { return null; }
+      var alt = outcome.absaetze[0].text;
+      var neu = urteil.texte[sprache];
+      if (typeof neu !== "string" || !neu || neu === alt || !outcome.answer.startsWith(alt + "\n\n")) { return null; }
+      outcome.absaetze[0].text = neu;
+      outcome.answer = neu + outcome.answer.slice(alt.length);
+      return { alt: alt, neu: neu };
+    }
+
+    function askUebersetzeAktuellesUrteil() {
+      var wechsel = askUrteilUebersetzen(currentAskOutcome, lang);
+      if (!wechsel) { return; }
+      var feld = document.getElementById("ask-answer-edit");
+      // Das Feld ist editierbar. Eine eigene Umformulierung und der gesamte Rest bleiben erhalten.
+      if (feld.value.startsWith(wechsel.alt + "\n\n")) {
+        feld.value = wechsel.neu + feld.value.slice(wechsel.alt.length);
+        passeAntwortfeldAn();
+      }
+    }
+
     // Aufnahme 20260922 · antwort-quellenanzeige (R-0329): das hinterlegte Original eines Objekts —
     // dieselbe Regel wie `originalweg`/`objectRawHref` im Web: ein Anhang mit gueltiger Kennung UND
     // Namen, bevorzugt der, auf den eine Quelle zeigt; sonst null (die Flaeche sagt es dann ehrlich).
@@ -5913,7 +5979,7 @@
       // Das belegte Stand-Datum (WP-KLARA-ASK-FIX Fix 3) — nur, wenn das Objekt eines traegt.
       var stand = quelle.standDate ? new Date(quelle.standDate) : null;
       if (stand !== null && !isNaN(stand.getTime())) {
-        teile.push(t("askChipStand", { date: formatAskDateLabel(stand) }));
+        teile.push(t("askChipStand", { date: formatAskDateLabel(stand, lang) }));
       }
       var zeile = document.createElement("li");
       zeile.textContent = teile.join(" · ");
@@ -6036,7 +6102,7 @@
           : t("askHerkunftVersion", { n: String(quelle.version) })
       );
       var stand = quelle.standDate ? new Date(quelle.standDate) : null;
-      if (stand !== null && !isNaN(stand.getTime())) { teile.push(t("askChipStand", { date: formatAskDateLabel(stand) })); }
+      if (stand !== null && !isNaN(stand.getTime())) { teile.push(t("askChipStand", { date: formatAskDateLabel(stand, lang) })); }
       return teile;
     }
 
@@ -6438,6 +6504,7 @@
       // dieser Funktion — nicht nur ueber den, an den gerade jemand gedacht hat.
       renderAiNotice(outcome);
       if (outcome.kind === "answered") {
+        if (outcome.dokumentUrteil) { askUrteilUebersetzen(outcome, lang); }
         currentAskTruncated = truncated;
         document.getElementById("ask-answer-block").className = "";
         // JOB 3056 K1: die gestellte Frage steht als gedaempfte Zeile ueber der Karte; das
@@ -6618,6 +6685,7 @@
       askWartezustand(true);
       var klick = Date.now();
       var minimalEpoch = ++askMinimalEpoch;
+      askMinimalTurn = null;
       askMinimalController = new AbortController();
       var minimalController = askMinimalController;
       var lauf = { offen: true, timer: null };
@@ -6682,6 +6750,7 @@
       // Fail-open: ein synchroner Fehler — aus getSelectedDataAsync selbst oder aus dem Absenden
       // vor dem Fetch — beendet den Lauf, gibt das Fenster frei und sagt, was war.
       var fehlerVorDemFetch = function (err) {
+        if (minimalEpoch !== askMinimalEpoch) return;
         laufBeenden();
         askWartezustand(false);
         showAskStatus("warn", t("askError", { detail: err && err.message ? err.message : "office" }));
@@ -6733,6 +6802,7 @@
     function composeOutputText(body) {
       return composeAnswerOutput({
         body: body,
+        locale: lang,
         sourceTitles: askDokumentQuellenTitel(askQuellenTragend),
         sourceDates: [],
         truncated: currentAskTruncated,
@@ -7101,9 +7171,11 @@
     });
     document.getElementById("ask-luecke-frage-aendern").addEventListener("click", askFrageAendern);
 
-    document.getElementById("lang-de").addEventListener("click", function () { setLang("de"); });
-    document.getElementById("lang-en").addEventListener("click", function () { setLang("en"); });
-    document.getElementById("lang-nl").addEventListener("click", function () { setLang("nl"); });
+    ["de", "en", "nl"].forEach(function (code) {
+      document.getElementById("lang-" + code).addEventListener("click", function () {
+        wordSpracheWaehlen(code);
+      });
+    });
     document.getElementById("login-btn").addEventListener("click", function () {
       // WP-KLARA-1c: KEINE eigene Passwort-Maske und KEINE Navigation des Panels mehr — die App zeigt
       // ihren Login-Gate auf jeder Route; sie oeffnet in einem eigenen Fenster, das Panel pollt.
@@ -7245,6 +7317,9 @@
       var officeTimer = setTimeout(function () { markOfficeChecked(false); }, OFFICE_READY_TIMEOUT_MS);
       Office.onReady(function () {
         clearTimeout(officeTimer);
+        if (!wordSprachwahl && wordAnzeigesprache() !== lang) {
+          setLang(wordAnzeigesprache());
+        }
         markOfficeChecked(Boolean(Office.context && Office.context.document));
       });
     } else {
@@ -7688,9 +7763,8 @@
           var ka1Quelle = KA1_TEXTE[ka1Code];
           STRINGS[ka1Code].ka1Title = ka1Quelle.ka1Title;
           STRINGS[ka1Code].ka1Hint = ka1Quelle.ka1Hint;
-          var ka1Knopf = document.getElementById("lang-" + ka1Code);
-          if (ka1Knopf) { ka1Knopf.addEventListener("click", ka1Neuzeichnen); }
         }
+        document.addEventListener("kw-word-language", ka1Neuzeichnen);
         if (typeof renderStatics === "function") { renderStatics(); }
       }
       // Der ehrliche Ausgangszustand steht ab dem ersten Bildaufbau da; sobald Office geklaert ist,
@@ -8375,12 +8449,7 @@
     // Der echte Word-Host meldet `onReady` verzoegert; beim ersten Fokus ist er sicher da. Kein
     // eigener Timer — der waere genau das Dauerfeuer, das dieser Block vermeidet.
     window.addEventListener("focus", ka3EreignisBinden);
-    // Der Sprachwechsel wird HIER mitgehoert statt in `setLang` — der Rueckruf laeuft nach dem
-    // bestehenden, `lang` steht also schon auf der neuen Sprache.
-    ["de", "en", "nl"].forEach(function (ka3Code) {
-      var knopf = document.getElementById("lang-" + ka3Code);
-      if (knopf) { knopf.addEventListener("click", ka3Neuzeichnen); }
-    });
+    document.addEventListener("kw-word-language", ka3Neuzeichnen);
     // KW-KA3-KARTEN-END
 
     // KW-M5-BILD-START
@@ -9067,10 +9136,7 @@
     if (typeof document !== "undefined" && document.getElementById("ask-ruhe")) {
       m5KnopfElement().addEventListener("click", m5Suchen);
       m5Zeichnen();
-      ["de", "en", "nl"].forEach(function (code) {
-        var knopf = document.getElementById("lang-" + code);
-        if (knopf) { knopf.addEventListener("click", m5Zeichnen); }
-      });
+      document.addEventListener("kw-word-language", m5Zeichnen);
       // Der Knopf folgt Sitzung und Office — `updateAskState` ist die Stelle, an der beides
       // zusammenlaeuft (checkSession → updateSendState → updateAskState; markOfficeChecked ebenso).
       // Wrapper wie bei renderAskSources/renderAskOutcome: Original zuerst, danach der Nachtrag.
@@ -9666,12 +9732,7 @@
         })(KA6_ZURUFE[ka6i]);
       }
       document.getElementById("ka6-insert-btn").addEventListener("click", ka6Einfuegen);
-      // Der Sprachwechsel wird HIER mitgehoert (Bauform aus KA3) — der Rueckruf laeuft nach dem
-      // bestehenden, `lang` steht also schon auf der neuen Sprache.
-      ["de", "en", "nl"].forEach(function (ka6Code) {
-        var knopf = document.getElementById("lang-" + ka6Code);
-        if (knopf) { knopf.addEventListener("click", ka6Neuzeichnen); }
-      });
+      document.addEventListener("kw-word-language", ka6Neuzeichnen);
       // ============================================================================================
       // WARUM HIER EIN WRAPPER STEHT UND KEIN TAKT.
       // ============================================================================================
@@ -10278,10 +10339,7 @@
       document.getElementById("ka6-memo-btn").addEventListener("click", ka6MemoAnfordern);
       document.getElementById("ka6-memo-einfuegen").addEventListener("click", ka6MemoEinfuegen);
       document.getElementById("ka6-memo-verwerfen").addEventListener("click", ka6MemoVerwerfen);
-      ["de", "en", "nl"].forEach(function (code) {
-        var knopf = document.getElementById("lang-" + code);
-        if (knopf) { knopf.addEventListener("click", ka6MemoNeuzeichnen); }
-      });
+      document.addEventListener("kw-word-language", ka6MemoNeuzeichnen);
       // Die Quellen sind die EINE Datengrundlage des Angebots. `renderAskSources` ist die Stelle, an
       // der sie aufgeloest (mit Status) ankommen — Wrapper wie bei renderKlaraS4/renderAskOutcome:
       // Original zuerst und unveraendert, danach der eigene Nachtrag.
@@ -10635,11 +10693,7 @@
 
     if (document.getElementById("bestand-btn")) {
       document.getElementById("bestand-btn").addEventListener("click", bestandPruefen);
-      // Der Sprach-Rueckruf laeuft NACH `setLang` (spaeter registriert): `lang` steht schon um.
-      ["de", "en", "nl"].forEach(function (bestandCode) {
-        var knopf = document.getElementById("lang-" + bestandCode);
-        if (knopf) { knopf.addEventListener("click", bestandNeuzeichnen); }
-      });
+      document.addEventListener("kw-word-language", bestandNeuzeichnen);
       bestandZeichnen();
     }
     // KW-N1-BESTAND-END

@@ -76,9 +76,13 @@
       }
     },
     onAccountChange: () => askMinimalAbbrechen(),
-    setLanguage: (value) => setLang(value),
+    setLanguage: (value) => wordSpracheWaehlen(value),
     reset: () => {
       if (!askLaeuft) resetAskResult();
+    },
+    clear: () => {
+      askMinimalAbbrechen();
+      askNeueFrage();
     },
     onPageHide: [
       () => {

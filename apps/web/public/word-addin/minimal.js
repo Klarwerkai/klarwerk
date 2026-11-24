@@ -8,6 +8,7 @@
       menu: "Menü",
       back: "Zurück zum Gespräch",
       new: "Neues Gespräch",
+      clear: "Leeren",
       history: "Verlauf",
       functions: "Meine Funktionen",
       settings: "Einstellungen",
@@ -102,6 +103,7 @@
       menu: "Menu",
       back: "Back to conversation",
       new: "New conversation",
+      clear: "Clear",
       history: "History",
       functions: "My functions",
       settings: "Settings",
@@ -196,6 +198,7 @@
       menu: "Menu",
       back: "Terug naar gesprek",
       new: "Nieuw gesprek",
+      clear: "Wissen",
       history: "Geschiedenis",
       functions: "Mijn functies",
       settings: "Instellingen",
@@ -318,6 +321,9 @@
     let conversationCreation = 0;
     let profile = null;
     let beforeTurn = Number.POSITIVE_INFINITY;
+    // Nach „Leeren“ beginnt die sichtbare Unterhaltung bei der nächsten gespeicherten Frage.
+    // Der vollständige, ausdrücklich gespeicherte Verlauf bleibt über das Menü erreichbar.
+    let feedWindow = null;
     let writeQueue = Promise.resolve();
     let navigating = false;
     const rooms = new Map();
@@ -356,7 +362,20 @@
     menuButton.setAttribute("aria-expanded", "false");
     menuButton.setAttribute("aria-controls", "mini-menu");
     const head = node("header", "mini-head");
-    head.append(back, avatar, title, menuButton);
+    head.append(back, avatar, title);
+    const clearButton = config.clear
+      ? button("clear", () => {
+          closeMenu();
+          feedWindow = { firstMessage: null };
+          config.clear();
+          notify("");
+          renderFeed();
+          viewport.scrollTop = 0;
+          config.input.focus();
+        })
+      : null;
+    if (clearButton) head.append(clearButton);
+    head.append(menuButton);
     // Der alte Kopf lebt für seine bestehenden Status-/Profil-Handler in den Kontextdetails weiter.
     const menu = node("nav", "mini-menu");
     menu.id = "mini-menu";
@@ -376,6 +395,7 @@
     ongoing.id = "mini-active";
     ongoing.setAttribute("aria-live", "polite");
     ongoing.setAttribute("aria-label", t("stop"));
+    ongoing.dataset.miniLabel = "stop";
     const viewport = node("main", "mini-viewport");
     const home = node("section", "mini-home");
     const feed = node("div", "mini-feed");
@@ -463,13 +483,15 @@
       const el = node("section", "mini-room");
       el.id = `mini-page-${key}`;
       el.hidden = key !== page;
-      el.setAttribute("aria-label", t(key));
+      el.dataset.miniLabel = key.replace("tool-", "");
+      el.setAttribute("aria-label", t(el.dataset.miniLabel));
       rooms.set(key, el);
       viewport.append(el);
       return el;
     }
     function paint() {
       back.hidden = page === "home";
+      if (clearButton) clearButton.hidden = page !== "home";
       title.textContent =
         page === "home" ? profile?.name || t("name") : t(page.replace("tool-", ""));
       context.textContent = config.contextText?.() || t("word");
@@ -640,7 +662,9 @@
       }
     }
     function renderFeed() {
-      renderMessages(feed, (conversation?.nachrichten || []).slice(0, beforeTurn));
+      const messages = conversation?.nachrichten || [];
+      const start = feedWindow ? messages.findIndex((m) => m.id === feedWindow.firstMessage) : 0;
+      renderMessages(feed, start < 0 ? [] : messages.slice(start, beforeTurn));
     }
     function renderHistory() {
       const el = room("history");
@@ -696,6 +720,7 @@
               if (stamp !== generation) return;
               conversation = null;
               beforeTurn = Number.POSITIVE_INFINITY;
+              feedWindow = null;
               renderFeed();
               renderData();
             });
@@ -708,8 +733,8 @@
         el.type = "button";
         el.setAttribute("aria-pressed", String(locale === lang));
         el.addEventListener("click", () => {
-          setLanguage(lang);
-          config.setLanguage?.(lang);
+          if (config.setLanguage) config.setLanguage(lang);
+          else setLanguage(lang);
         });
         languages.append(el);
       }
@@ -742,6 +767,7 @@
             if (stamp !== generation) return;
             conversation = result.gespraech;
             beforeTurn = Number.POSITIVE_INFINITY;
+            feedWindow = null;
             config.reset?.();
             renderFeed();
             show("home");
@@ -799,6 +825,7 @@
       conversation = null;
       profile = null;
       beforeTurn = Number.POSITIVE_INFINITY;
+      feedWindow = null;
       for (const key of [
         "history",
         "notes",
@@ -827,6 +854,7 @@
       renderFeed();
       const snapshot = {
         generation,
+        feedWindow,
         id: conversation?.id,
         consent: !!conversation?.einwilligungAm,
         reference: reference(),
@@ -839,12 +867,14 @@
           .then(async () => {
             if (snapshot.generation !== generation) return;
             const path = `${base}/gespraeche/${encodeURIComponent(snapshot.id)}`;
-            await request(`${path}/nachrichten`, "POST", {
+            const posted = await request(`${path}/nachrichten`, "POST", {
               von: "du",
               modus: "frage",
               text,
               objektbezug: snapshot.reference,
             });
+            if (snapshot.feedWindow && !snapshot.feedWindow.firstMessage)
+              snapshot.feedWindow.firstMessage = posted.nachricht?.id;
             await request(`${path}/schritt`, "PUT", {
               art: "frage",
               text,
@@ -854,7 +884,8 @@
             snapshot.saved = true;
           })
           .catch(() => {
-            if (snapshot.generation === generation) notify(t("storageError"));
+            if (snapshot.generation === generation && snapshot.feedWindow === feedWindow)
+              notify(t("storageError"));
           });
       }
       return snapshot;
@@ -890,10 +921,12 @@
           conversation = data.gespraech;
           renderFeed();
           if (page === "history") renderHistory();
-          if (!result.answerId && !result.stopped) notify(t("storageError"));
+          if (!result.answerId && !result.stopped && snapshot.feedWindow === feedWindow)
+            notify(t("storageError"));
         })
         .catch(() => {
-          if (snapshot.generation === generation) notify(t("storageError"));
+          if (snapshot.generation === generation && snapshot.feedWindow === feedWindow)
+            notify(t("storageError"));
         });
       return writeQueue;
     }
@@ -903,7 +936,9 @@
       active.delete(id);
       if (stop) {
         const row = node("div", "mini-active-row");
-        row.append(node("span", "", label), button("stop", stop));
+        const description = node("span", "", label);
+        if (id === "frage") description.dataset.miniText = "working";
+        row.append(description, button("stop", stop));
         active.set(id, row);
         ongoing.prepend(row);
       }

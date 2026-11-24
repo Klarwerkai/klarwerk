@@ -2539,6 +2539,10 @@ export type KiErsatzGrund =
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
+  dokumentUrteil?: {
+    art: "bestaetigt" | "widersprochen";
+    texte: Record<"de" | "en" | "nl", string>;
+  };
   knowledgeClass: KnowledgeClass;
   trust: number;
   // Die HERANGEZOGENEN Quellen — was das Ranking dem Antwortweg vorgelegt hat.

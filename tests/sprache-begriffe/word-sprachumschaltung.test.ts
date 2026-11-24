@@ -242,11 +242,10 @@ describe("K22 · package:sprache — die Word-Sprachumschaltung lässt keine Spr
     for (const sprache of SPRACHEN) {
       expect(panelHtml, `taskpane.html: Knopf ${sprache}`).toContain(`id="lang-${sprache}"`);
       expect(anmeldung, `anmeldung.html: Knopf ${sprache}`).toContain(`id="lang-${sprache}"`);
-      const klick =
-        `getElementById("lang-${sprache}").addEventListener("click", ` +
-        `function () { setLang("${sprache}"); });`;
-      expect(panelJs, `taskpane.js: Klick ${sprache}`).toContain(klick);
     }
+    expect(panelJs).toContain('document.getElementById("lang-" + code).addEventListener("click"');
+    expect(panelJs).toContain("wordSpracheWaehlen(code)");
+    expect(panelJs).toContain("setLang(next);");
     // setLang zeichnet die festen Texte neu und setzt die Dokumentsprache (R-0911 im Fenster).
     expect(panelJs).toContain("function setLang(next) {");
     expect(panelJs).toContain("renderStatics();");

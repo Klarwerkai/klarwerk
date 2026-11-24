@@ -224,23 +224,18 @@ function leseDokumentAntwort(roh: string): { urteil: DokumentUrteil; belege: str
   }
 }
 
-function dokumentUrteilText(urteil: DokumentUrteil, locale: ReasonerLocale): string {
-  if (urteil === "bestaetigt") {
-    return locale === "de"
-      ? "KI-Abgleich: Die markierte Aussage stimmt mit den herangezogenen Firmenquellen überein."
-      : locale === "nl"
-        ? "AI-vergelijking: de geselecteerde uitspraak komt overeen met de geraadpleegde bedrijfsbronnen."
-        : "AI comparison: the selected statement agrees with the company sources consulted.";
-  }
-  if (urteil === "widersprochen") {
-    return locale === "de"
-      ? "KI-Abgleich: Die markierte Aussage widerspricht den herangezogenen Firmenquellen."
-      : locale === "nl"
-        ? "AI-vergelijking: de geselecteerde uitspraak is in strijd met de geraadpleegde bedrijfsbronnen."
-        : "AI comparison: the selected statement contradicts the company sources consulted.";
-  }
-  return "";
-}
+const DOKUMENT_URTEIL_TEXTE = {
+  bestaetigt: {
+    de: "KI-Abgleich: Die markierte Aussage stimmt mit den herangezogenen Firmenquellen überein.",
+    en: "AI comparison: the selected statement agrees with the company sources consulted.",
+    nl: "AI-vergelijking: de geselecteerde uitspraak komt overeen met de geraadpleegde bedrijfsbronnen.",
+  },
+  widersprochen: {
+    de: "KI-Abgleich: Die markierte Aussage widerspricht den herangezogenen Firmenquellen.",
+    en: "AI comparison: the selected statement contradicts the company sources consulted.",
+    nl: "AI-vergelijking: de geselecteerde uitspraak is in strijd met de geraadpleegde bedrijfsbronnen.",
+  },
+} satisfies Record<"bestaetigt" | "widersprochen", Record<ReasonerLocale, string>>;
 
 // ================================================================================================
 // JOB 2659 D1 — EINE MARKE IST KEIN BELEG (Review EXT1-20260828, Befunde 4, 6, 7).
@@ -2979,13 +2974,20 @@ export class ModelProvider implements ReasonerProvider {
         demo: false,
       };
     }
-    const urteilText = dokumentAntwort ? dokumentUrteilText(dokumentAntwort.urteil, locale) : "";
+    const art = dokumentAntwort?.urteil;
+    const dokumentUrteil =
+      art === "bestaetigt" || art === "widersprochen"
+        ? { art, texte: DOKUMENT_URTEIL_TEXTE[art] }
+        : undefined;
     const urteilQuellen = relevant
       .flatMap((ref, i) => (cited.includes(ref.id) ? [`[${i + 1}]`] : []))
       .join("");
     return {
       answered: true,
-      answer: urteilText ? `${urteilText} ${urteilQuellen}\n\n${answerText}` : answerText,
+      answer: dokumentUrteil
+        ? `${dokumentUrteil.texte[locale]} ${urteilQuellen}\n\n${answerText}`
+        : answerText,
+      ...(dokumentUrteil ? { dokumentUrteil } : {}),
       // JOB 3366: HIER und nur hier — dies ist der einzige Ausgang, der den MODELLTEXT ausliefert.
       // Die Rückfallausgänge oben geben den Wortlaut einer Quelle aus (vollständig) oder gar keine
       // Antwort; ein Unvollständigkeits-Hinweis an ihnen wäre eine Aussage über einen Text, den

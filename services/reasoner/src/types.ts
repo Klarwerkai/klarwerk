@@ -161,6 +161,11 @@ export interface AbbruchBefund {
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
+  /** Lokalisierbarer erster Absatz einer belegten Dokumentprüfung. Quellzitate bleiben im Original. */
+  dokumentUrteil?: {
+    art: "bestaetigt" | "widersprochen";
+    texte: Record<ReasonerLocale, string>;
+  };
   knowledgeClass: KnowledgeClass;
   trust: number;
   // Die HERANGEZOGENEN Quellen — alles, was das Ranking dem Antwortweg vorgelegt hat. Unverändert

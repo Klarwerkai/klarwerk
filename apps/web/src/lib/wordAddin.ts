@@ -5,7 +5,7 @@
 // Fassungen auf denselben Fixtures aus und pinnt identisches Verhalten (kleinste ehrliche Lösung —
 // kein Build-Generator für eine einzelne statische Seite).
 
-import type { ReasonerStatus } from "../api/types";
+import type { AnswerResult, ReasonerStatus } from "../api/types";
 // AUFTRAG-mega75 Block B: KEINE zweite Wahrheit. Die beiden Funktionen, an denen auch AiModelInfo
 // in der Anwendung hängt, werden hier IMPORTIERT und AUFGERUFEN — nicht nachgebaut.
 import { deriveAiAvailable } from "./aiAvailability";
@@ -370,7 +370,8 @@ export function prepareAskQuestion(selectionText: string, manualText: string): P
 // Deutsch nach." Das war bewusst so gebaut und genau der Grund, warum im Word-Handlauf vom 28.07.
 // die niederlaendische Oberflaeche deutsche Antwortkoerper zurueckbekam. Der Server-Vertrag kennt
 // seit mega52 drei Sprachen — die Oberflaeche muss nicht mehr luegen.
-export function askLocale(lang: string): "de" | "en" | "nl" {
+type AskLocale = "de" | "en" | "nl";
+export function askLocale(lang: string): AskLocale {
   if (lang === "en") {
     return "en";
   }
@@ -513,6 +514,7 @@ export interface AskEvidence {
 
 export interface AskOutcome {
   kind: AskOutcomeKind;
+  dokumentUrteil?: AnswerResult["dokumentUrteil"];
   // R-0310/R-0325: an der Lücke — kein Absatz belegt UND keine tragende Quelle (Zuordnung unbekannt).
   zuordnungUnbekannt?: true;
   answer?: string;
@@ -997,8 +999,17 @@ export function performAsk(
         // R-0310: mit Absatzzuordnung wird nur ausgegeben, wenn mindestens ein Absatz belegt ist —
         // sonst ist es eine Wissenslücke (unten). Die Lage oben bleibt am Antwortkörper geprüft.
         if (result && belegt && typeof answer === "string" && (!absaetze || absaetze.length > 0)) {
+          const urteil = result.dokumentUrteil as AskOutcome["dokumentUrteil"];
           return {
             kind: "answered",
+            ...(urteil &&
+            (urteil.art === "bestaetigt" || urteil.art === "widersprochen") &&
+            urteil.texte &&
+            absaetze &&
+            absaetze.length > 1 &&
+            absaetze[0]?.text === urteil.texte[locale]
+              ? { dokumentUrteil: urteil }
+              : {}),
             // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text — Markdown-Zeichen raus.
             // R-0310: mit Absatzzuordnung NUR die belegten Absätze.
             answer: absaetze
@@ -1098,8 +1109,15 @@ export function buildAnswerInsertText(
     : withEvidence;
 }
 
-// Stand-Datum der Quellen-Zeile (dd.mm.yyyy — Dokument-Artefakt, bewusst EIN Format).
-export function formatAskDateLabel(date: Date): string {
+// Use the pane language for both the visible source date and its Word output.
+export function formatAskDateLabel(date: Date, locale?: AskLocale): string {
+  if (locale === "en" || locale === "nl") {
+    return date.toLocaleDateString(locale === "en" ? "en-GB" : "nl-NL", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
   const day = date.getDate();
   const month = date.getMonth() + 1;
   const pad = (n: number): string => (n < 10 ? `0${n}` : String(n));
@@ -1110,7 +1128,10 @@ export function formatAskDateLabel(date: Date): string {
 // aufgeloesten Quell-KOs (Validierungs-/Aenderungsdatum aus history, sonst createdAt) — nur ein
 // parsebares Datum zaehlt. null = kein Beleg → der Aufrufer schreibt ehrlich
 // "abgerufen am <heute>" statt eines erfundenen Standes.
-export function newestSourceDateLabel(dates: readonly (string | undefined)[]): string | null {
+export function newestSourceDateLabel(
+  dates: readonly (string | undefined)[],
+  locale?: AskLocale,
+): string | null {
   let best: number | null = null;
   for (const raw of dates) {
     const parsed = raw ? Date.parse(raw) : Number.NaN;
@@ -1118,7 +1139,7 @@ export function newestSourceDateLabel(dates: readonly (string | undefined)[]): s
       best = parsed;
     }
   }
-  return best === null ? null : formatAskDateLabel(new Date(best));
+  return best === null ? null : formatAskDateLabel(new Date(best), locale);
 }
 
 // AUFTRAG-mega35 A1 — DIE EINE STELLE, AN DER DER AUSZUGEBENDE TEXT ENTSTEHT.
@@ -1129,6 +1150,7 @@ export function newestSourceDateLabel(dates: readonly (string | undefined)[]): s
 // Quellen-Zeile werden im AUGENBLICK des Kopierens/Einfuegens angesetzt und koennen deshalb nicht
 // fehlen. Rein und DOM-frei — die Laufzeit reicht Zustand und uebersetzte Texte herein.
 export interface AnswerOutputInput {
+  locale?: AskLocale;
   // Der BEARBEITETE Antwortkoerper aus dem Feld (nicht die Originalantwort).
   body: string;
   sourceTitles: readonly string[];
@@ -1193,12 +1215,12 @@ export function stripComposedMetaLines(body: string, texts: AnswerOutputInput["t
 }
 
 export function composeAnswerOutput(input: AnswerOutputInput): string {
-  const standLabel = newestSourceDateLabel(input.sourceDates);
+  const standLabel = newestSourceDateLabel(input.sourceDates, input.locale);
   const sourceLine = standLabel
     ? buildAskSourceLine(input.sourceTitles, standLabel, input.texts.sourceLine)
     : buildAskSourceLine(
         input.sourceTitles,
-        formatAskDateLabel(input.now),
+        formatAskDateLabel(input.now, input.locale),
         input.texts.sourceLineRetrieved,
       );
   const evidenceNote = answerInsertEvidenceNote(input.grade, {

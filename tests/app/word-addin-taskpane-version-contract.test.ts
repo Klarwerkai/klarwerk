@@ -259,8 +259,13 @@ describe("JOB 1077 D7 · A — die Fassungskette in EINEM Ablauf", () => {
     expect(modul.kwWechselOffen(geladen, verfuegbar)).toBe(true);
   });
 
-  it("A5 · der echte Serverdefault meldet 3 für geladenes 2 und vollzieht genau einen bewussten Wechsel", async () => {
-    const serverAlt = await auslieferung("1.0.0.2");
+  it("A5 · der echte Serverdefault meldet die Manifestfassung für das bisherige Word-Fenster und vollzieht genau einen bewussten Wechsel", async () => {
+    const bisher = "1.0.0.4";
+    const manifest = readFileSync(MANIFEST, "utf8");
+    const ziel = /<Version>([^<]+)<\/Version>/.exec(manifest)?.[1];
+    expect(ziel).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
+    expect(ziel).not.toBe(bisher);
+    const serverAlt = await auslieferung(bisher);
     const serverNeu = Fastify();
     await registerWebStatic(serverNeu, distMit(readFileSync(QUELLE, "utf8")));
     try {
@@ -268,7 +273,7 @@ describe("JOB 1077 D7 · A — die Fassungskette in EINEM Ablauf", () => {
       expect(lieferungAlt.statusCode).toBe(200);
       const modul = schneideFassungsmodul(lieferungAlt.body);
       let geladen = modul.kwGeladeneFassungAus(alsDokument(lieferungAlt.body));
-      expect(geladen).toBe("1.0.0.2");
+      expect(geladen).toBe(bisher);
 
       const protokoll: Array<{ url: string; method: string }> = [];
       const roh = fetchGegen(serverNeu);
@@ -283,8 +288,8 @@ describe("JOB 1077 D7 · A — die Fassungskette in EINEM Ablauf", () => {
         modul.KW_TASKPANE_PFAD,
       );
       expect(protokoll).toEqual([{ url: KLARA_TASKPANE_PFAD, method: "HEAD" }]);
-      expect(verfuegbar).toBe("1.0.0.3");
-      expect(geladen).toBe("1.0.0.2");
+      expect(verfuegbar).toBe(ziel);
+      expect(geladen).toBe(bisher);
       expect(modul.kwWechselOffen(geladen, verfuegbar)).toBe(true);
 
       // Erst die bewusste Produktaktion holt die echte neue Lieferung.
@@ -293,7 +298,7 @@ describe("JOB 1077 D7 · A — die Fassungskette in EINEM Ablauf", () => {
         nachladungen.push(
           roh(modul.KW_TASKPANE_PFAD).then(async (antwort) => {
             expect(antwort.status).toBe(200);
-            expect(antwort.headers.get(KLARA_FASSUNG_KOPF)).toBe("1.0.0.3");
+            expect(antwort.headers.get(KLARA_FASSUNG_KOPF)).toBe(ziel);
             return antwort.text();
           }),
         );
@@ -306,10 +311,10 @@ describe("JOB 1077 D7 · A — die Fassungskette in EINEM Ablauf", () => {
       expect(koerper).not.toContain(KLARA_FASSUNG_PLATZHALTER);
       const dokument = alsDokument(koerper);
       expect(dokument.querySelector('script[src^="taskpane.js?"]')?.getAttribute("src")).toBe(
-        "taskpane.js?v=1.0.0.3",
+        `taskpane.js?v=${ziel}`,
       );
       geladen = modul.kwGeladeneFassungAus(dokument);
-      expect(geladen).toBe("1.0.0.3");
+      expect(geladen).toBe(ziel);
       expect(modul.kwWechselOffen(geladen, verfuegbar)).toBe(false);
       expect(modul.kwWechselAusloesen(geladen, verfuegbar, neuLaden)).toBe(false);
       expect(nachladungen).toHaveLength(1);

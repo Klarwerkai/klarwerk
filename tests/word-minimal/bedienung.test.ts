@@ -107,7 +107,7 @@ const office = String.raw`
     AsyncResultStatus: { Succeeded: "succeeded", Failed: "failed" },
     CoercionType: { Text: "text", Html: "html", Ooxml: "ooxml" }, FileType: { Compressed: "compressed" },
     EventType: { DocumentSelectionChanged: "selection" },
-    context: { document, host: "Word", platform: "OfficeOnline", displayLanguage: "de-DE",
+    context: { document, host: "Word", platform: "OfficeOnline", displayLanguage: "__DISPLAY_LANGUAGE__",
       requirements: { isSetSupported: () => true }, diagnostics: { version: "fiktiv", host: "Word" },
       ui: { displayDialogAsync: (...args) => args.at(-1)({ status: "failed" }) } },
     onReady: (cb) => { if (cb) queueMicrotask(() => cb({ host: "Word", platform: "OfficeOnline" }));
@@ -224,6 +224,7 @@ beforeAll(async () => {
         return json({
           id: "source-ui",
           title: "Wartungsquelle",
+          createdAt: "2026-11-24T12:00:00Z",
           version: 1,
           statement: "Wartung nur bei Stillstand.",
           status: "validiert",
@@ -321,7 +322,12 @@ afterAll(async () => {
       server.close((error) => (error ? reject(error) : resolve())),
     );
 });
-async function open(file = "taskpane.html", dark = false, host = ""): Promise<Page> {
+async function open(
+  file = "taskpane.html",
+  dark = false,
+  host = "",
+  displayLanguage = "de-DE",
+): Promise<Page> {
   const page = await browser.newPage({
     viewport: { width: 320, height: 640 },
     colorScheme: dark ? "dark" : "light",
@@ -331,7 +337,9 @@ async function open(file = "taskpane.html", dark = false, host = ""): Promise<Pa
     if (url.startsWith("https://appsforoffice.microsoft.com/"))
       return route.fulfill({
         contentType: "text/javascript",
-        body: office + (host ? officeExtra.replaceAll("__HOST__", host) : ""),
+        body:
+          office.replace("__DISPLAY_LANGUAGE__", displayLanguage) +
+          (host ? officeExtra.replaceAll("__HOST__", host) : ""),
       });
     return url.startsWith(origin) ? route.continue() : route.abort();
   });
@@ -345,6 +353,40 @@ async function choose(page: Page, name: string) {
   await page.locator(`#mini-menu-${name}`).click();
 }
 describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand", () => {
+  it("Word-Sprache bestimmt Bedienung und Frage; ausdrückliche Sprachauswahl hält beim erneuten Öffnen", async () => {
+    const page = await open("taskpane.html", false, "", "en-GB");
+    try {
+      expect(await page.locator("html").getAttribute("lang")).toBe("en");
+      expect(await page.evaluate("localStorage.getItem('kw.sprache')")).toBeNull();
+      const input = page.locator("#ask-input");
+      const submit = page.getByRole("button", { name: "Ask Klara", exact: true });
+      await input.fill("Is this correct?");
+      const sent = page.waitForRequest((request) => request.url().endsWith("/execute"));
+      await submit.click();
+      expect((await sent).postDataJSON().locale).toBe("en");
+      await page.getByRole("button", { name: "Draft a memo from this source" }).waitFor();
+      expect(await page.locator("#ask-herkunft").textContent()).toContain("as of 24 Nov 2026");
+      expect(await page.locator("#ask-mehr-btn").textContent()).toBe("More");
+      await choose(page, "settings");
+      await page.getByRole("button", { name: "Nederlands", exact: true }).first().click();
+      await page.keyboard.press("Escape");
+      expect(await page.locator("#ask-mehr-btn").textContent()).toBe("Meer");
+      expect(await page.locator("#ka6-memo-btn").textContent()).toBe("Memo uit deze bron");
+      expect(await page.locator("#ask-herkunft").textContent()).toContain("Bron:");
+      expect(await page.locator("#ask-btn").getAttribute("aria-label")).toBe("Klara vragen");
+      expect(await page.evaluate("localStorage.getItem('kw.sprache')")).toBe("nl");
+      await page.reload();
+      await page.getByRole("button", { name: "Klara vragen", exact: true }).waitFor();
+      expect(await page.locator("html").getAttribute("lang")).toBe("nl");
+      await input.fill("Klopt dit?");
+      const next = page.waitForRequest((request) => request.url().endsWith("/execute"));
+      await page.locator("#ask-btn").click();
+      expect((await next).postDataJSON().locale).toBe("nl");
+      await page.locator("#ask-mehr-btn").waitFor();
+    } finally {
+      await page.close();
+    }
+  });
   it.each([false, true])(
     "320px, dunkel=%s: vier Bereiche, Eingabe erreichbar, Werkzeuge und Entwurf bleiben",
     async (dark) => {
@@ -432,6 +474,79 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         calls.some((call) => call.path.endsWith("/nachrichten") && call.body.modus === "frage"),
       ).toBe(true);
       await page.screenshot({ path: join(images, "word-final-320-hell.png") });
+    } finally {
+      await page.close();
+    }
+  });
+  it("Clear leert Entwurf, Antwort, Quellen und Lücke direkt im Word-Fenster; der Verlauf bleibt abrufbar", async () => {
+    conversation = null;
+    const page = await open();
+    try {
+      await choose(page, "settings");
+      await page.getByRole("button", { name: "Gespräch auf diesem Konto speichern" }).click();
+      await page.getByRole("button", { name: "Gesprächsspeicherung widerrufen" }).waitFor();
+      await page.getByRole("button", { name: "English", exact: true }).click();
+      await page.keyboard.press("Escape");
+      const clear = page.getByRole("button", { name: "Clear", exact: true });
+      const input = page.locator("#ask-input");
+      await input.fill("First saved question");
+      await page.locator("#ask-btn").click();
+      await page.locator("#ask-answer-block").waitFor();
+      await page.waitForFunction("currentAskSourcesResolved === true");
+      await input.fill("Unsent draft");
+      await clear.click();
+      expect(await input.inputValue()).toBe("");
+      expect(await page.evaluate("document.activeElement.id")).toBe("ask-input");
+      expect(await page.locator("#ask-answer-block").isVisible()).toBe(false);
+      expect(await page.locator("#ask-sources").textContent()).toBe("");
+      expect(await page.locator("#mini-feed").textContent()).toBe("");
+      expect(await page.evaluate("currentAskOutcome")).toBe(null);
+      expect(await page.evaluate("document.documentElement.lang")).toBe("en");
+      await choose(page, "history");
+      await page.locator("#mini-page-history").getByText("First saved question").waitFor();
+      await page.keyboard.press("Escape");
+      await page.route("**/execute", (route) =>
+        route.fulfill({ json: { result: { answered: false, sources: [] } } }),
+      );
+      await input.fill("Next question, same selection");
+      const request = page.waitForRequest((r) => r.url().endsWith("/execute"));
+      await page.locator("#ask-btn").click();
+      expect((await request).postDataJSON().selection).toBe("Fiktive Wartung");
+      await page.locator("#ask-gap-block").waitFor();
+      expect(await page.locator("#mini-feed").textContent()).toBe("");
+      await clear.click();
+      expect(await page.locator("#ask-gap-block").isVisible()).toBe(false);
+      expect(await input.inputValue()).toBe("");
+      expect(await page.evaluate("window.__wordWrites")).toEqual([]);
+      expect(consent).toBe(true);
+    } finally {
+      await page.close();
+      conversation = null;
+    }
+  });
+  it("Leeren während einer laufenden Frage hält auch nach ihrem Rücklauf das Feld frei", async () => {
+    const page = await open();
+    try {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route("**/execute", async (route) => {
+        await held;
+        await route.fulfill({ json: { result: { answered: false, sources: [] } } });
+      });
+      const request = page.waitForRequest((r) => r.url().endsWith("/execute"));
+      await page.locator("#ask-input").fill("Fiktive langsame Frage");
+      await page.locator("#ask-btn").click();
+      await request;
+      const finished = page.waitForEvent("requestfailed", (r) => r.url().endsWith("/execute"));
+      await page.getByRole("button", { name: "Leeren", exact: true }).click();
+      release();
+      await finished;
+      expect(await page.locator("#ask-gap-block").isVisible()).toBe(false);
+      expect(await page.locator("#ask-input").inputValue()).toBe("");
+      expect(await page.locator("#ask-input").isEnabled()).toBe(true);
+      expect(await page.locator("#mini-active").isVisible()).toBe(false);
     } finally {
       await page.close();
     }

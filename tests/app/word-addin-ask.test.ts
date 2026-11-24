@@ -1251,6 +1251,7 @@ interface Ka6Dokument {
 interface Ka6Fenster {
   Office?: unknown;
   Word?: unknown;
+  localStorage: { setItem(key: string, value: string): void; removeItem(key: string): void };
   addEventListener(typ: string, fn: unknown): void;
   removeEventListener(typ: string, fn: unknown): void;
   // JOB 1153 D2: das echte Ereignis wird mit dem Konstruktor DES FENSTERS gebaut — ein
@@ -1565,6 +1566,8 @@ function ka6Erlaubt(over: Partial<Ka6Lage> = {}): Ka6Lage {
 
 describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () => {
   beforeEach(() => {
+    // Die Herkunftsprüfungen vergleichen den deutschen Wortlaut; jeder Fall startet mit eigener Wahl.
+    umgebung.window.localStorage.setItem("kw.sprache", "de");
     vi.useFakeTimers({ shouldAdvanceTime: true });
     ka6WordRunGesamt = 0;
     ka6InsertText = 0;
@@ -1576,6 +1579,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
   });
 
   afterEach(() => {
+    umgebung.window.localStorage.removeItem("kw.sprache");
     for (const z of ka6Zuhoerer) {
       umgebung.window.removeEventListener(z.typ, z.fn);
     }

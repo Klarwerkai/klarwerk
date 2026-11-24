@@ -49,8 +49,8 @@ const FREIGEGEBEN = {
   validatedOnly: true,
 } as const;
 
-async function wordWeg(alt = false) {
-  const bestand = await aufbau();
+async function wordWeg(alt = false, modellantwort?: string) {
+  const bestand = await aufbau(modellantwort);
   const repo = new InMemoryKlaraSessionRepo();
   const policy = () => ({
     choice: "cloud" as const,
@@ -116,49 +116,96 @@ async function wordWeg(alt = false) {
 }
 
 describe("Klara: natürliche Frage zur freigegebenen Word-Markierung", () => {
-  it("zeigt das Prüfungsurteil auch nach dem echten Word-Antwortleser", async () => {
-    const w = await wordWeg();
-    try {
-      const html = panelQuelleAus("apps/web/public/word-addin/taskpane.html");
-      const schnitt = (von: string, bis: string) => {
-        const start = html.indexOf(von);
-        const ende = html.indexOf(bis, start);
-        expect(start).toBeGreaterThan(0);
-        expect(ende).toBeGreaterThan(start);
-        return html.slice(start, ende);
-      };
-      const umgebung = {
-        askGradeOf: () => "unverified",
-        setTimeout: () => 1,
-        clearTimeout: () => undefined,
-        AbortController,
-        fetch: async () => {
-          const response = await w.fragen();
-          return {
-            ok: response.statusCode === 200,
-            status: response.statusCode,
-            json: async () => response.json(),
-          };
-        },
-      };
-      const lesen = new Function(
-        "umgebung",
-        `with (umgebung) {
+  it.each([
+    { art: "bestaetigt", selection: PASSAGE, heading: "agrees with" },
+    {
+      art: "widersprochen",
+      selection: "Guest Wi-Fi must provide access to the internal staff network",
+      heading: "contradicts",
+    },
+  ])(
+    "übersetzt das belegte Word-Urteil $art auch nach dem Abruf",
+    async ({ art, selection, heading }) => {
+      const w = await wordWeg(false, JSON.stringify({ urteil: art, belege: `${REGEL} [1]` }));
+      try {
+        const html = panelQuelleAus("apps/web/public/word-addin/taskpane.html");
+        const schnitt = (von: string, bis: string) => {
+          const start = html.indexOf(von);
+          const ende = html.indexOf(bis, start);
+          expect(start).toBeGreaterThan(0);
+          expect(ende).toBeGreaterThan(start);
+          return html.slice(start, ende);
+        };
+        const feld = { value: "" };
+        const umgebung = {
+          dokumentSprache: "de",
+          selection,
+          kopf: {
+            "x-klara-session": w.view.sessionId,
+            "x-klara-instance": w.bindung.addinInstanceId,
+            "x-klara-document": w.bindung.documentContextId,
+          },
+          document: { getElementById: () => feld },
+          passeAntwortfeldAn: () => {},
+          askGradeOf: () => "unverified",
+          setTimeout: () => 1,
+          clearTimeout: () => undefined,
+          AbortController,
+          fetch: async (url: string, init: { headers: Record<string, string>; body: string }) => {
+            const response = await w.app.inject({
+              method: "POST",
+              url,
+              headers: init.headers,
+              payload: init.body,
+            });
+            return {
+              ok: response.statusCode === 200,
+              status: response.statusCode,
+              json: async () => response.json(),
+            };
+          },
+        };
+        const lesen = new Function(
+          "umgebung",
+          `with (umgebung) {
         ${schnitt("    function stripAskAnswerMarkdown(answer) {", "    // R-0310 (Spiegel von wordAddin.ts#askAbsaetzeLesen):")}
         ${schnitt("    function askAbsaetzeLesen(body, cited) {", "    // AUFTRAG-JOB507-D4 — Retry-After")}
         ${schnitt("// KW-KLARA-AI-MARK-START", "// KW-KLARA-AI-MARK-END")}
         ${schnitt("// KW-KLARA-ASK-FETCH-START", "// KW-KLARA-ASK-FETCH-END")}
-        return performAsk("is this correct", "en", fetch, 5000);
+        ${schnitt("    function askUrteilUebersetzen(", "    // Aufnahme 20260922 · antwort-quellenanzeige (R-0329): das hinterlegte Original")}
+        let currentAskOutcome;
+        let lang = dokumentSprache;
+        return {
+          frage: async () => currentAskOutcome = await performAsk("is this correct", lang, fetch, 5000, kopf, selection, "manual"),
+          wechseln: (sprache) => { lang = sprache; askUebersetzeAktuellesUrteil(); }
+        };
       }`,
-      );
-      const sicht: { kind: string; answer?: string } = await lesen(umgebung);
-      expect(sicht.kind).toBe("answered");
-      expect(sicht.answer).toContain("AI comparison: the selected statement agrees");
-      expect(sicht.answer).toContain(REGEL);
-    } finally {
-      await w.app.close();
-    }
-  });
+        );
+        const panel = lesen(umgebung);
+        const sicht = await panel.frage();
+        expect(sicht.kind).toBe("answered");
+        expect(sicht.answer).toContain("KI-Abgleich:");
+        feld.value = sicht.answer;
+        panel.wechseln("en");
+        expect(feld.value).toBe(
+          `AI comparison: the selected statement ${heading} the company sources consulted.\n\n${REGEL}`,
+        );
+        expect(sicht.absaetze.map((a: { quellen: string[] }) => a.quellen)).toEqual([
+          [w.quelle.id],
+          [w.quelle.id],
+        ]);
+        feld.value += "\nEigenes Ergebnis";
+        panel.wechseln("nl");
+        expect(feld.value).toBe(`${sicht.dokumentUrteil.texte.nl}\n\n${REGEL}\nEigenes Ergebnis`);
+        feld.value = "Mein eigener erster Absatz.";
+        panel.wechseln("de");
+        expect(feld.value).toBe("Mein eigener erster Absatz.");
+        expect(w.aufrufe).toHaveLength(1);
+      } finally {
+        await w.app.close();
+      }
+    },
+  );
   it.each(["is this correct", "Ist das richtig?", "Klopt dit?"])(
     "%s erreicht das Modell mit Frage, Passage und bestätigter Quelle",
     async (frage) => {
