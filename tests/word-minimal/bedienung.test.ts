@@ -93,6 +93,7 @@ const office = String.raw`
   const paragraph = { ...range, uniqueLocalId: "p-ui-1", style: "Normal" };
   range.paragraphs = { items: [paragraph], load: noop };
   window.__wordWrites = [];
+  window.__wordSelections = [];
   const document = {
     url: "https://example.test/word/Fiktiv.docx", body: range,
     properties: { lastSaveTime: new Date("2026-10-29T10:00:00Z"), load: noop },
@@ -106,6 +107,12 @@ const office = String.raw`
   if (caret) {
     const paragraphs = caret.paragraphs.map((text, i) => ({
       ...paragraph, text, uniqueLocalId: "p-" + i, isNullObject: false,
+      getRange: () => ({
+        text, load: noop, track: noop, untrack: noop,
+        select: () => window.__wordSelections.push(text),
+        search: (query) => ({ load: noop, items: text.includes(query)
+          ? [{ text: query, select: () => window.__wordSelections.push(query) }] : [] }),
+      }),
       getPreviousOrNullObject: () => paragraphs[i - 1] || { isNullObject: true, load: noop },
     }));
     document.body = { ...range, text: caret.paragraphs.join("\r"),
@@ -125,7 +132,7 @@ const office = String.raw`
     onReady: (cb) => { if (cb) queueMicrotask(() => cb({ host: "Word", platform: "OfficeOnline" }));
       return Promise.resolve({ host: "Word", platform: "OfficeOnline" }); },
   };
-  window.Word = { run: (fn) => Promise.resolve().then(() => fn({ document, sync: () => Promise.resolve(),
+  window.Word = { run: (...args) => Promise.resolve().then(() => args.at(-1)({ document, sync: () => Promise.resolve(),
     load: noop, trackedObjects: { add: noop, remove: noop } })) };
 })();
 `;
@@ -405,6 +412,7 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
                     answer: `${kopf} [1]\n\n${firmenregel} [1]`,
                     sources: quellen,
                     citedSources: quellen,
+                    steps: [{ sourceId: "wifi", snippet: firmenregel }],
                     dokumentUrteil: { art: "widersprochen", texte: { en: kopf } },
                   },
                   absaetze: [
@@ -425,7 +433,23 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         selection: gastWlan,
       });
       expect(JSON.stringify(payload)).not.toMatch(/unrelated paragraph/i);
+      const vergleich = page.locator("#ask-vergleich");
+      await vergleich.getByRole("heading", { name: "Contradicts the source" }).waitFor();
+      expect(await vergleich.locator("mark").allTextContents()).toEqual(["must provide", "not"]);
+      expect(await vergleich.locator("dd").allTextContents()).toEqual([gastWlan, firmenregel]);
+      expect(await vergleich.locator("dt").allTextContents()).toEqual([
+        "Your document",
+        "Approved source",
+      ]);
+      await page.locator("#ask-herkunft a").filter({ hasText: "Guest Wi-Fi separation" }).waitFor();
+      if (frage === "is this correct" && absatz === 1) {
+        await page.screenshot({ path: join(images, "word-direktvergleich-widerspruch.png") });
+      }
+      await vergleich.getByRole("button", { name: "Show in Word" }).click();
+      await page.waitForFunction("window.__wordSelections.includes('must provide')");
       const antwort = page.locator("#ask-answer-edit");
+      expect(await antwort.isVisible()).toBe(false);
+      await vergleich.getByRole("button", { name: "Edit answer" }).click();
       await antwort.waitFor();
       expect(await antwort.inputValue()).toBe(
         `AI comparison: the paragraph ${bezug} contradicts the company sources consulted.\n\n${firmenregel}`,
@@ -435,6 +459,78 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
       await page.close();
     }
   });
+
+  it.each([
+    { art: "bestaetigt", text: firmenregel, title: "Matches the source" },
+    {
+      art: "offen",
+      text: "Guest Wi-Fi must be disabled after 8 p.m.",
+      title: "Insufficient evidence",
+    },
+  ])(
+    "Direkter Vergleich am Cursor: $title, Clear und nächste Frage",
+    async ({ art, text, title }) => {
+      const page = await open("taskpane.html", true, "", "en-GB", { paragraphs: [text], index: 0 });
+      try {
+        const kopf =
+          "AI comparison: the selected statement agrees with the company sources consulted.";
+        const quellen = ["wifi"];
+        await page.route("**/execute", (route) =>
+          route.fulfill({
+            json:
+              art === "offen"
+                ? { result: { answered: false, sources: [] } }
+                : {
+                    result: {
+                      answered: true,
+                      answer: `${kopf} [1]\n\n${firmenregel} [1]`,
+                      sources: quellen,
+                      citedSources: quellen,
+                      steps: [{ sourceId: "wifi", snippet: firmenregel }],
+                      dokumentUrteil: { art, texte: { en: kopf } },
+                    },
+                    absaetze: [
+                      { text: kopf, quellen },
+                      { text: firmenregel, quellen },
+                    ],
+                  },
+          }),
+        );
+        await page.locator("#ask-input").fill("Is this correct?");
+        await page.locator("#ask-btn").click();
+        const vergleich = page.locator(art === "offen" ? "#ask-vergleich-offen" : "#ask-vergleich");
+        await vergleich.getByRole("heading", { name: title }).waitFor();
+        expect(await vergleich.locator("dd").first().textContent()).toBe(text);
+        expect(await vergleich.locator(".kw-vergleich-quelle").count()).toBe(
+          art === "offen" ? 0 : 1,
+        );
+        if (art === "offen") {
+          expect(await page.locator("#ask-luecke-satz").isVisible()).toBe(false);
+          expect(await page.locator("#ask-luecke-frage-aendern").isVisible()).toBe(true);
+        }
+        expect(await page.evaluate("document.documentElement.scrollWidth <= 320")).toBe(true);
+        if (art === "bestaetigt") {
+          await choose(page, "settings");
+          await page.getByRole("button", { name: "Nederlands", exact: true }).first().click();
+          await page.keyboard.press("Escape");
+          await vergleich.getByRole("heading", { name: "Komt overeen met de bron" }).waitFor();
+          expect(await vergleich.locator("dt").allTextContents()).toEqual([
+            "Je document",
+            "Goedgekeurde bron",
+          ]);
+          await choose(page, "settings");
+          await page.getByRole("button", { name: "English", exact: true }).first().click();
+          await page.keyboard.press("Escape");
+        }
+        await page.getByRole("button", { name: "Clear", exact: true }).click();
+        expect(await vergleich.textContent()).toBe("");
+        expect(await page.locator("#ask-input").inputValue()).toBe("");
+        expect(await page.evaluate("window.__wordWrites")).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    },
+  );
 
   it.each([
     "What is the annual leave policy?",

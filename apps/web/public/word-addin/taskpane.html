@@ -126,6 +126,7 @@
          Generation askErgebnisGeneration gegen verspaetete Ruecklaeufe). JOB 3056: die Fusszeile
          der Luecke (askGapFuss) steht unter „Wie Klara antwortet" — im Sichtfeld kein Hinweistext. -->
     <div id="ask-gap-block" class="hidden">
+      <div id="ask-vergleich-offen" class="kw-vergleich" hidden></div>
       <div id="ask-luecke">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
         <div id="ask-luecke-satz" data-t="askGapTitle"></div>
@@ -164,6 +165,7 @@
       </button>
       <div id="antwortkarte">
         <h2 data-t="askAnswerTitle" class="nur-vorlesen"></h2>
+        <div id="ask-vergleich" class="kw-vergleich" hidden></div>
         <!-- JOB 3056 Runde 4: das Feld, sein unsichtbarer Spiegel (Messung des Textendes) und die
              Fussnotenziffern <sup class="fussnote"> (renderAskFussnoten) in EINEM Rahmen. -->
         <div id="ask-answer-text">

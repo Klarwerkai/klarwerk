@@ -579,6 +579,100 @@
     // KW-KA4-DOKUMENT-CONSENT-END
 
     // KW-KLARA-ASK-FETCH-START
+    // Ohne Modellurteil kennzeichnen wir nur eindeutige Prüfaufträge als offenen Vergleich.
+    // Eine beliebige Sachfrage oder eine Störung bleibt in ihrem eigenen Antwortweg.
+    function askPrueftAussage(frage) {
+      var text = frage.trim().toLowerCase().replace(/[.!?]+$/, "").replace(/\s+/g, " ");
+      var en = text.replace(/^(?:can|could|would) you (?:please )?(?:check|verify|tell me) (?:whether|if) /, "")
+        .replace(/\b(?:this|that) (?:statement|sentence|passage|paragraph|wording)\b/g, "this")
+        .replace(/ (?:according to|based on|under|against|with) .+$/, "");
+      if (/^(?:(?:is|was) (?:this|that|it)|(?:this|that|it) (?:is|was)) (?:correct|right|true|accurate|consistent)$/.test(en)
+        || /^(?:please )?(?:verify|check) (?:this|that)$/.test(en)
+        || /^(?:does|would) (?:this|that|it)(?: (?:statement|sentence|passage|paragraph))? (?:comply with|contradict|match) .+$/.test(text)) return true;
+      var de = text.replace(/\b(?:dieser (?:absatz|satz)|diese (?:passage|aussage|formulierung))\b/g, "das")
+        .replace(/ (?:laut|gemäß|nach|anhand) .+$/, "");
+      if (/^(?:ist|war) (?:das|dies) (?:so )?(?:richtig|korrekt|wahr|zutreffend)$/.test(de)
+        || /^(?:stimmt|passt) (?:das|dies)(?: so)?$/.test(de)
+        || /^(?:bitte )?(?:prüfe|überprüfe) (?:das|dies)$/.test(de)) return true;
+      var nl = text.replace(/\bdeze (?:uitspraak|zin|alinea)\b/g, "dit").replace(/ (?:volgens|op basis van|gezien) .+$/, "");
+      return /^(?:is|was) (?:dit|dat) (?:juist|correct|goed|waar)$/.test(nl)
+        || /^(?:klopt|controleer) (?:dit|dat)$/.test(nl);
+    }
+
+    function askVergleichToken(text) {
+      // Satzzeichen im Satz gehören mit zum Wortlaut (etwa 1.5, 15 %, < oder >).
+      // Ein abschließender Punkt darf bei einer Word-Markierung außerhalb liegen.
+      var tokens = Array.from(text.matchAll(/[\p{L}\p{M}\p{N}]+(?:['’][\p{L}\p{M}\p{N}]+)*|[^\s]/gu));
+      if (tokens.length && tokens[tokens.length - 1][0] === ".") tokens.pop();
+      return tokens;
+    }
+
+    function askVergleichSpanne(tokens, von, bis) {
+      var letztes = tokens[bis - 1];
+      return { start: tokens[von].index, end: letztes.index + letztes[0].length };
+    }
+
+    function askVergleichMarken(vergleich) {
+      var dokument = askVergleichToken(vergleich.dokument);
+      var beleg = askVergleichToken(vergleich.belege[0].text);
+      if (!dokument.length || !beleg.length) return;
+      var vorn = 0;
+      while (vorn < dokument.length && vorn < beleg.length && dokument[vorn][0] === beleg[vorn][0]) vorn++;
+      if (vergleich.art === "bestaetigt") {
+        if (vorn === dokument.length && vorn === beleg.length) {
+          vergleich.dokumentMarke = askVergleichSpanne(dokument, 0, dokument.length);
+          vergleich.belegMarke = askVergleichSpanne(beleg, 0, beleg.length);
+        }
+        return;
+      }
+      var dEnde = dokument.length;
+      var bEnde = beleg.length;
+      while (dEnde > vorn && bEnde > vorn && dokument[dEnde - 1][0] === beleg[bEnde - 1][0]) {
+        dEnde--;
+        bEnde--;
+      }
+      var geaendert = Math.max(dEnde - vorn, bEnde - vorn);
+      // Nur EINE enge Stelle in sonst übereinstimmendem Wortlaut auszeichnen.
+      // Keine herausgegriffenen Einzelwörter in Übersetzungen oder Paraphrasen.
+      var gemeinsam = vorn + dokument.length - dEnde;
+      if (geaendert === 0 || geaendert > 3 || gemeinsam < 2 || gemeinsam < 2 * geaendert) return;
+      // Bei „only only“ könnte das entfernte Wort an zwei Stellen liegen.
+      if (dEnde === vorn && vorn && beleg[bEnde - 1][0] === beleg[vorn - 1][0]) return;
+      if (bEnde === vorn && vorn && dokument[dEnde - 1][0] === dokument[vorn - 1][0]) return;
+      function spanne(tokens, ende) {
+        if (ende > vorn) return askVergleichSpanne(tokens, vorn, ende);
+        // Ein Wort fehlt hier. Seine vorhandenen Nachbarn bilden die reale Fundstelle.
+        return askVergleichSpanne(tokens, Math.max(0, vorn - 1), Math.min(tokens.length, vorn + 1));
+      }
+      vergleich.dokumentMarke = spanne(dokument, dEnde);
+      vergleich.belegMarke = spanne(beleg, bEnde);
+    }
+
+    function askVergleichBeleg(absatz, schritte) {
+      var original = null;
+      if (absatz.quellen.length === 1) {
+        // Nur in der zugeordneten Quelle lesen. Leerraum darf im Ask-Absatz
+        // anders umbrochen sein; angezeigt und markiert wird der Originalausschnitt.
+        var muster = absatz.text.split(/\s+/).map(function (wort) {
+          return wort.replace(/[.*+?^$\x7b\x7d()|[\]\\]/g, "\\$&");
+        }).join("\\s+");
+        var wortlaut = new RegExp("(?:^|[^\\p{L}\\p{M}\\p{N}_])(" + muster + ")(?![\\p{L}\\p{M}\\p{N}_])", "u");
+        for (var i = 0; i < schritte.length; i++) {
+          var quelle = schritte[i];
+          if (!quelle || quelle.sourceId !== absatz.quellen[0] || typeof quelle.snippet !== "string") continue;
+          var fund = wortlaut.exec(quelle.snippet);
+          if (fund) { original = fund[1]; break; }
+        }
+      }
+      return { text: original || absatz.text, quellen: absatz.quellen, woertlich: original !== null };
+    }
+
+    function askDirektvergleich(art, dokument, absaetze, schritte, einzeln) {
+      var belege = absaetze.map(function (absatz) { return askVergleichBeleg(absatz, schritte); });
+      var vergleich = { art: art, dokument: dokument, belege: belege, dokumentMarke: null, belegMarke: null };
+      if (einzeln && belege.length === 1 && belege[0].woertlich) askVergleichMarken(vergleich);
+      return vergleich;
+    }
     // KW-KA4: `bindungsKopf` ist ein PARAMETER und wird bewusst NICHT hier drinnen geholt.
     // Der Block zwischen diesen Marken wird von den Spiegeltests EXTRAHIERT und isoliert
     // ausgefuehrt (tests/app/word-addin-ask.test.ts) — er darf deshalb nur kennen, was er selbst
@@ -708,6 +802,10 @@
               if (urteil && (urteil.art === "bestaetigt" || urteil.art === "widersprochen") &&
                   urteil.texte && absaetze && absaetze.length > 1 && absaetze[0].text === urteil.texte[locale]) {
                 fragmentFeld.dokumentUrteil = urteil;
+                if (sitzung && markierung && questionSource === "manual") {
+                  fragmentFeld.direktvergleich = askDirektvergleich(urteil.art, markierung, absaetze.slice(1),
+                    Array.isArray(result.steps) ? result.steps : [], cited && cited.length === 1);
+                }
               }
               return Object.assign(fragmentFeld, {
                 kind: "answered",
@@ -731,7 +829,11 @@
             // mega77 A: die Wissensluecke durchsucht den Koerper NICHT nach einer Bestandszahl; sie traegt nur die betrachtergefilterte Liste (JOB 3092 S6 / JOB 1591).
             // R-0310/R-0325: nichts belegt UND keine tragende Quelle → die Luecke nennt die unbekannte Zuordnung.
             var unbekannt = !!absaetze && absaetze.length === 0 && !(cited || []).some(function (x) { return sources.indexOf(x) !== -1; });
-            return Object.assign(unbekannt ? { kind: "gap", ungeprueft: ungeprueft, zuordnungUnbekannt: true } : { kind: "gap", ungeprueft: ungeprueft }, typeof body.answerId === "string" ? { answerId: body.answerId } : {});
+            var luecke = Object.assign(unbekannt ? { kind: "gap", ungeprueft: ungeprueft, zuordnungUnbekannt: true } : { kind: "gap", ungeprueft: ungeprueft }, typeof body.answerId === "string" ? { answerId: body.answerId } : {});
+            if (result.answered === false && sitzung && markierung && questionSource === "manual" && askPrueftAussage(question)) {
+              luecke.direktvergleich = askDirektvergleich("offen", markierung, [], [], false);
+            }
+            return luecke;
           });
         })
         .catch(function (err) {
@@ -1814,6 +1916,17 @@
         askSourceCursorHint: "Klara prüft den Absatz am Cursor. Steht der Cursor in einer leeren Zeile, verwendet sie den Absatz direkt darüber.",
         askParagraphAboveCursor: "Der Absatz über dem Cursor",
         askParagraphAgrees: "KI-Abgleich: {absatz} stimmt mit den herangezogenen Firmenquellen überein.",
+        askVergleichJa: "Stimmt mit der Quelle überein",
+        askVergleichNein: "Widerspricht der Quelle",
+        askVergleichOffen: "Nicht ausreichend belegt",
+        askVergleichFehlt: "Die freigegebenen Firmenquellen reichen für dieses Urteil nicht aus.",
+        askVergleichDokument: "Dein Dokument",
+        askVergleichQuelle: "Freigegebene Quelle",
+        askVergleichBeleg: "Quellengestützte Antwort",
+        askVergleichZeigen: "In Word zeigen",
+        askVergleichVeraltet: "Die geprüfte Stelle lässt sich nicht mehr eindeutig auswählen. Bitte prüfe den Text erneut.",
+        askVergleichBearbeiten: "Antwort bearbeiten",
+        askVergleichZuklappen: "Bearbeitung schließen",
         askParagraphContradicts: "KI-Abgleich: {absatz} widerspricht den herangezogenen Firmenquellen.",
         askError: "Fragen fehlgeschlagen ({detail}).",
         // AUFTRAG-JOB507-D4: 403 am Fragen-Weg heisst FEHLENDES RECHT (ko.read) — nicht „melde dich
@@ -2213,6 +2326,17 @@
         askSourceCursorHint: "Klara checks the paragraph at the cursor. On an empty line, it uses the paragraph immediately above.",
         askParagraphAboveCursor: "the paragraph above the cursor",
         askParagraphAgrees: "AI comparison: {absatz} agrees with the company sources consulted.",
+        askVergleichJa: "Matches the source",
+        askVergleichNein: "Contradicts the source",
+        askVergleichOffen: "Insufficient evidence",
+        askVergleichFehlt: "The approved company sources do not establish whether this statement is correct.",
+        askVergleichDokument: "Your document",
+        askVergleichQuelle: "Approved source",
+        askVergleichBeleg: "Source-based answer",
+        askVergleichZeigen: "Show in Word",
+        askVergleichVeraltet: "The checked passage can no longer be selected reliably. Please check the text again.",
+        askVergleichBearbeiten: "Edit answer",
+        askVergleichZuklappen: "Close editor",
         askParagraphContradicts: "AI comparison: {absatz} contradicts the company sources consulted.",
         askError: "Asking failed ({detail}).",
         askForbiddenRead:
@@ -2575,6 +2699,17 @@
         askSourceCursorHint: "Klara controleert de alinea bij de cursor. Op een lege regel gebruikt ze de alinea direct erboven.",
         askParagraphAboveCursor: "de alinea boven de cursor",
         askParagraphAgrees: "AI-vergelijking: {absatz} komt overeen met de geraadpleegde bedrijfsbronnen.",
+        askVergleichJa: "Komt overeen met de bron",
+        askVergleichNein: "In strijd met de bron",
+        askVergleichOffen: "Onvoldoende bewijs",
+        askVergleichFehlt: "De goedgekeurde bedrijfsbronnen geven onvoldoende houvast om deze uitspraak te beoordelen.",
+        askVergleichDokument: "Je document",
+        askVergleichQuelle: "Goedgekeurde bron",
+        askVergleichBeleg: "Antwoord op basis van de bron",
+        askVergleichZeigen: "Tonen in Word",
+        askVergleichVeraltet: "De gecontroleerde passage kan niet meer eenduidig worden geselecteerd. Controleer de tekst opnieuw.",
+        askVergleichBearbeiten: "Antwoord bewerken",
+        askVergleichZuklappen: "Bewerking sluiten",
         askParagraphContradicts: "AI-vergelijking: {absatz} is in strijd met de geraadpleegde bedrijfsbronnen.",
         askError: "Vragen mislukt ({detail}).",
         askForbiddenRead:
@@ -2985,6 +3120,7 @@
       // Sprachwechsel in der alten Sprache da — dieselbe Falle, die refreshAnswerToggleLabel loest.
       renderAskEvidence();
       askUebersetzeAktuellesUrteil();
+      renderAskDirektvergleich(currentAskOutcome);
       if (currentAskSourcesResolved) { renderAskSources(askQuellenAufgeloest, askQuellenTragend); }
       updateAskSourceNote();
       renderAskHerkunft(); // JOB 3092 S6: Herkunftszeilen und Ungeprueft-Satz in der neuen Sprache
@@ -5539,6 +5675,7 @@
     var askLaeuft = false;
     var askMinimalEpoch = 0, askMinimalController = null, askMinimalTurn = null, askMinimalAuswahl = null;
     function askMinimalAbbrechen() {
+      if (typeof askVergleichBereichFreigeben === "function") askVergleichBereichFreigeben();
       if (!askLaeuft) return;
       askMinimalEpoch++;
       if (askMinimalAuswahl) {
@@ -5565,7 +5702,9 @@
     }
 
     function resetAskResult() {
+      if (typeof askVergleichBereichFreigeben === "function") askVergleichBereichFreigeben();
       currentAskOutcome = null;
+      renderAskDirektvergleich(null);
       currentAskSourceTitles = [];
       currentAskSourcesResolved = false;
       askAnswerExpanded = false;
@@ -6530,6 +6669,120 @@
       }
     }
 
+    function askVergleichZeile(label, text, marke) {
+      var zeile = document.createElement("div");
+      zeile.className = "kw-vergleich-zeile";
+      var titel = document.createElement("dt");
+      titel.textContent = t(label);
+      var wert = document.createElement("dd");
+      if (marke && Number.isInteger(marke.start) && Number.isInteger(marke.end) &&
+          marke.start >= 0 && marke.start < marke.end && marke.end <= text.length) {
+        var markierung = document.createElement("mark");
+        markierung.textContent = text.slice(marke.start, marke.end);
+        wert.append(text.slice(0, marke.start), markierung, text.slice(marke.end));
+      } else {
+        wert.textContent = text;
+      }
+      zeile.append(titel, wert);
+      return zeile;
+    }
+
+    function renderAskDirektvergleich(outcome) {
+      var antwort = document.getElementById("ask-vergleich");
+      var luecke = document.getElementById("ask-vergleich-offen");
+      if (!antwort || !luecke) { return; }
+      var vergleich = outcome && outcome.direktvergleich;
+      var istOffen = vergleich && vergleich.art === "offen";
+      var karte = antwort.parentElement;
+      antwort.replaceChildren();
+      luecke.replaceChildren();
+      antwort.hidden = !vergleich || istOffen;
+      luecke.hidden = !istOffen;
+      karte.classList.toggle("mit-vergleich", !antwort.hidden);
+      luecke.parentElement.classList.toggle("mit-vergleich", !luecke.hidden);
+      if (antwort.hidden) { karte.classList.remove("vergleich-bearbeiten"); }
+      if (!vergleich) { return; }
+      var block = istOffen ? luecke : antwort;
+      block.dataset.urteil = vergleich.art;
+      var bestaetigt = vergleich.art === "bestaetigt";
+      var kopf = document.createElement("h3");
+      var symbol = document.createElement("span");
+      symbol.className = "kw-vergleich-symbol";
+      symbol.setAttribute("aria-hidden", "true");
+      symbol.textContent = istOffen ? "?" : bestaetigt ? "✓" : "×";
+      kopf.append(symbol, t(istOffen ? "askVergleichOffen" : bestaetigt ? "askVergleichJa" : "askVergleichNein"));
+      var zeilen = document.createElement("dl");
+      zeilen.appendChild(askVergleichZeile("askVergleichDokument", vergleich.dokument, vergleich.dokumentMarke));
+      var zugeordnet = askZugeordnet(outcome);
+      var ids = (outcome.sources || []).filter(function (id) { return zugeordnet.indexOf(id) !== -1; });
+      vergleich.belege.forEach(function (beleg) {
+        var zeile = askVergleichZeile(beleg.woertlich ? "askVergleichQuelle" : "askVergleichBeleg",
+          beleg.text, vergleich.belegMarke);
+        if (ids.length > 1) {
+          beleg.quellen.forEach(function (id) {
+            var nummer = ids.indexOf(id) + 1;
+            if (!nummer) { return; }
+            var link = document.createElement("a");
+            link.href = koDetailUrl(window.location.origin, id);
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = " [" + nummer + "]";
+            link.setAttribute("aria-label", t("askHerkunftQuelle") + " " + nummer);
+            zeile.firstElementChild.appendChild(link);
+          });
+        }
+        zeile.classList.add("kw-vergleich-quelle");
+        zeilen.appendChild(zeile);
+      });
+      block.append(kopf, zeilen);
+      if (istOffen) {
+        var erklaerung = document.createElement("p");
+        erklaerung.textContent = t("askVergleichFehlt");
+        block.appendChild(erklaerung);
+      }
+      var aktionen = document.createElement("div");
+      aktionen.className = "kw-vergleich-aktionen";
+      if (askVergleichHatWordBereich(vergleich.dokument)) {
+        var zeigen = document.createElement("button");
+        zeigen.type = "button";
+        zeigen.textContent = t("askVergleichZeigen");
+        var meldung = document.createElement("p");
+        meldung.className = "kw-vergleich-meldung";
+        meldung.setAttribute("role", "status");
+        zeigen.addEventListener("click", async function () {
+          zeigen.disabled = true;
+          try {
+            if (!await askVergleichInWordZeigen(vergleich.dokument, vergleich.dokumentMarke)) {
+              meldung.textContent = t("askVergleichVeraltet");
+            } else { meldung.textContent = ""; }
+          } catch (err) { meldung.textContent = t("askVergleichVeraltet"); }
+          finally { zeigen.disabled = false; }
+        });
+        aktionen.appendChild(zeigen);
+        block.appendChild(meldung);
+      }
+      if (!istOffen) {
+        var editieren = document.createElement("button");
+        editieren.type = "button";
+        editieren.setAttribute("aria-controls", "ask-answer-text");
+        var editorKnopfZeichnen = function () {
+          var sichtbar = karte.classList.contains("vergleich-bearbeiten");
+          editieren.textContent = t(sichtbar ? "askVergleichZuklappen" : "askVergleichBearbeiten");
+          editieren.setAttribute("aria-expanded", String(sichtbar));
+        };
+        editorKnopfZeichnen();
+        editieren.addEventListener("click", function () {
+          if (karte.classList.toggle("vergleich-bearbeiten")) {
+            passeAntwortfeldAn();
+            document.getElementById("ask-answer-edit").focus();
+          }
+          editorKnopfZeichnen();
+        });
+        aktionen.appendChild(editieren);
+      }
+      if (aktionen.childElementCount) { block.appendChild(aktionen); }
+    }
+
     function renderAskOutcome(outcome, truncated) {
       var truncatedNote = truncated
         ? " " + t("askTruncated", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
@@ -6537,6 +6790,7 @@
       // AUFTRAG-mega81 BLOCK A: die KI-Kennzeichnung folgt dem Antwortweg, ueber JEDEN Ausgang
       // dieser Funktion — nicht nur ueber den, an den gerade jemand gedacht hat.
       renderAiNotice(outcome);
+      renderAskDirektvergleich(outcome);
       if (outcome.kind === "answered") {
         if (outcome.dokumentUrteil) { askUrteilUebersetzen(outcome, lang); }
         currentAskTruncated = truncated;
@@ -6579,7 +6833,7 @@
       if (outcome.kind === "gap") {
         // Die ehrliche Wissensluecken-Karte: KEINE erfundene Antwort; /api/ask hat die Luecke
         // serverseitig bereits vermerkt — zusaetzlich kann sie als offene Frage (Draft) reisen.
-        document.getElementById("ask-gap-block").className = "";
+        document.getElementById("ask-gap-block").classList.remove("hidden");
         // JOB 3056 K1: die Luecke nimmt die Mitte der Fensterspalte ein (Stilblock), die Ruhe
         // tritt zurueck; die Frage bleibt im Feld stehen („Frage aendern" setzt den Cursor).
         kwFlaecheZeichnen();
@@ -6663,6 +6917,77 @@
         || /^(?:wat betekent (?:dit|dat)|(?:controleer|verklaar) (?:dit|dat))$/.test(nl);
     }
 
+    // Nur der tatsächlich gelesene Word-Bereich darf später ausgewählt werden. Word führt
+    // einen verfolgten Bereich bei Verschiebungen mit; ein neuer Cursor ist dafür unerheblich.
+    var askVergleichWordAnker = null;
+
+    function askVergleichBereichLoesen(anker) {
+      try {
+        Word.run(anker.bereich, function (context) {
+          anker.bereich.untrack();
+          return context.sync();
+        }).catch(function () { /* Dokument bereits geschlossen */ });
+      } catch (e) { /* Word-Host bereits beendet */ }
+    }
+
+    function askVergleichBereichFreigeben() {
+      if (askVergleichWordAnker) askVergleichBereichLoesen(askVergleichWordAnker);
+      askVergleichWordAnker = null;
+    }
+
+    function askVergleichHatWordBereich(text) {
+      var anker = askVergleichWordAnker;
+      if (!anker || !askMitlesen || anker.text !== text) return false;
+      var jetzt = klaraS4Header();
+      return ["x-klara-session", "x-klara-document", "x-klara-instance"].every(function (key) {
+        return Boolean(jetzt[key]) && jetzt[key] === anker.bindung[key];
+      });
+    }
+
+    async function askVergleichInWordZeigen(text, stelle) {
+      if (!askVergleichHatWordBereich(text)) return false;
+      var anker = askVergleichWordAnker;
+      var suchtext = null;
+      if (stelle != null) {
+        if (!Number.isInteger(stelle.start) || !Number.isInteger(stelle.end) ||
+            stelle.start < 0 || stelle.end <= stelle.start || stelle.end > text.length) return false;
+        if (stelle.start !== 0 || stelle.end !== text.length) suchtext = text.slice(stelle.start, stelle.end);
+      }
+      try {
+        return await Word.run(anker.bereich, async function (context) {
+          var bereich = anker.bereich;
+          bereich.load("text");
+          var treffer;
+          if (suchtext !== null) {
+            // ^ leitet in der Word-Suche Sonderzeichen ein. Steuerzeichen/überlange Suchbegriffe
+            // werden vom Host unterschiedlich behandelt; niemals ersatzweise im Dokument suchen.
+            var literal = suchtext.replace(/\^/g, "^^");
+            if (literal.length > 255 || /[\r\n\t]/.test(literal)) return false;
+            treffer = bereich.search(literal, { matchCase: true, matchWildcards: false, ignorePunct: false, ignoreSpace: false });
+            treffer.load("items/text");
+          }
+          await context.sync();
+          if (anker !== askVergleichWordAnker || !askVergleichHatWordBereich(text) ||
+              bereich.text.replace(/\r\n?/g, "\n").trim() !== text) return false;
+          var ziel = bereich;
+          if (treffer) {
+            // Bei einem wiederholten Ausdruck ist der Offset im geprüften Text maßgeblich.
+            var positionen = [];
+            for (var pos = text.indexOf(suchtext); pos !== -1; pos = text.indexOf(suchtext, pos + suchtext.length)) {
+              positionen.push(pos);
+            }
+            var index = positionen.indexOf(stelle.start);
+            if (treffer.items.length !== positionen.length || !treffer.items[index] ||
+                treffer.items.some(function (fund) { return fund.text !== suchtext; })) return false;
+            ziel = treffer.items[index];
+          }
+          ziel.select();
+          await context.sync();
+          return true;
+        });
+      } catch (e) { return false; }
+    }
+
     function askAbsatzAmCursor(context, auswahl, abgebrochen) {
       var absaetze = auswahl.paragraphs;
       absaetze.load("items/text");
@@ -6670,7 +6995,7 @@
         if (abgebrochen()) { return ""; }
         var absatz = absaetze.items.length === 1 ? absaetze.items[0] : null;
         if (!absatz) { return { hinweis: "askAbsatzFehlt" }; }
-        if (absatz.text.trim()) { return { text: absatz.text, bezug: "cursor" }; }
+        if (absatz.text.trim()) { return { text: absatz.text, bezug: "cursor", absatz: absatz }; }
         // Nach Einfügen mit Absatzende steht Word häufig bereits am Beginn der nächsten Zeile.
         // Nur der unmittelbar vorhergehende Word-Absatz kommt dann in Betracht.
         if (typeof absatz.getPreviousOrNullObject !== "function") { return { hinweis: "askAbsatzFehlt" }; }
@@ -6679,7 +7004,7 @@
         return context.sync().then(function () {
           return vorher.isNullObject || !vorher.text.trim()
             ? { hinweis: "askAbsatzFehlt" }
-            : { text: vorher.text, bezug: "previous" };
+            : { text: vorher.text, bezug: "previous", absatz: vorher };
         });
       });
     }
@@ -6690,7 +7015,7 @@
         done("", null, zumAbsatz ? (askMitlesen ? "askAbsatzFehlt" : "askAbsatzMitlesenAus") : null);
         return;
       }
-      var bindung = zumAbsatz ? klaraS4Header() : null;
+      var bindung = frage ? klaraS4Header() : null;
       var ueberOffice = function () {
         Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
           var text = result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "";
@@ -6700,7 +7025,42 @@
       if (wordZuerst !== true || !window.Word || typeof Word.run !== "function") { ueberOffice(); return; }
       var erledigt = false;
       var abgebrochen = function () { return erledigt || !askMitlesen || Boolean(signal && signal.aborted); };
+      var generation = askErgebnisGeneration;
+      var verfolgterAnker = null;
+      var verfolgen = async function (context, gelesen, auswahl) {
+        var text = typeof gelesen === "string" ? gelesen : gelesen && gelesen.text;
+        if (!text || !bindung || !bindung["x-klara-document"] || !text.trim() ||
+            text.trim().length > WORD_ADDIN_ASK_MAX_CHARS || abgebrochen()) return gelesen;
+        var bereich;
+        try {
+          bereich = auswahl || gelesen.absatz.getRange("Content");
+          if (!bereich || typeof bereich.track !== "function" || typeof bereich.untrack !== "function") return gelesen;
+          bereich.track();
+          await context.sync();
+          if (abgebrochen() || generation !== askErgebnisGeneration) {
+            bereich.untrack();
+            await context.sync();
+          } else {
+            verfolgterAnker = { bereich: bereich, text: text.replace(/\r\n?/g, "\n").trim(), bindung: bindung };
+          }
+        } catch (e) {
+          // Eine fehlgeschlagene optionale Navigation darf die eigentliche Prüfung nicht sperren.
+          if (bereich && typeof bereich.untrack === "function") {
+            try { bereich.untrack(); await context.sync(); } catch (verworfen) { /* Host hat den Bereich verworfen */ }
+          }
+        }
+        return gelesen;
+      };
       var einmal = function (ergebnis) {
+        if (verfolgterAnker) {
+          if (ergebnis && !abgebrochen() && generation === askErgebnisGeneration) {
+            askVergleichBereichFreigeben();
+            askVergleichWordAnker = verfolgterAnker;
+          } else {
+            askVergleichBereichLoesen(verfolgterAnker);
+          }
+          verfolgterAnker = null;
+        }
         if (erledigt) { return; }
         erledigt = true; clearTimeout(uhr);
         if (signal && signal.aborted) { return; }
@@ -6726,9 +7086,9 @@
           return context.sync().then(function () {
             if (abgebrochen()) { return ""; }
             var text = auswahl.text;
-            if (!zumAbsatz || typeof text !== "string" || text.trim()) { return text; }
+            if (!zumAbsatz || typeof text !== "string" || text.trim()) { return verfolgen(context, text, auswahl); }
             if (!bindung["x-klara-session"] || !bindung["x-klara-document"]) { return { hinweis: "askAbsatzOhneBindung" }; }
-            return askAbsatzAmCursor(context, auswahl, abgebrochen);
+            return askAbsatzAmCursor(context, auswahl, abgebrochen).then(function (gelesen) { return verfolgen(context, gelesen, null); });
           });
         });
         if (!lauf || typeof lauf.then !== "function") { einmal(null); return; }
@@ -6855,6 +7215,7 @@
           prep.selection, prep.from === "selection" ? "selection" : "manual", minimalController // R-0639: Herkunft; UI-MIN: echter Abbruch
         ).then(function (outcome) {
           if (minimalEpoch !== askMinimalEpoch) return;
+          if (prep.selectionTruncated || prep.truncated) delete outcome.direktvergleich;
           if (absatzbezug) {
             if (!askMitlesen || klaraS4FragenGesperrt()) {
               askMinimalAbbrechen();

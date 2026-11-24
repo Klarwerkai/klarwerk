@@ -12,6 +12,23 @@ import { panelQuelleAus } from "../support/panelquelle";
 const PASSAGE = "Guest Wi-Fi must not provide access to the internal staff network";
 const REGEL = `${PASSAGE}.`;
 const BESTAND = `${REGEL} During handover, verify that a guest device can use the internet but cannot reach the internal staff service used for the test.`;
+const panelQuelle = panelQuelleAus("apps/web/public/word-addin/taskpane.html");
+function schnitt(von: string, bis: string) {
+  const start = panelQuelle.indexOf(von);
+  const ende = panelQuelle.indexOf(bis, start);
+  expect(start).toBeGreaterThan(0);
+  expect(ende).toBeGreaterThan(start);
+  return panelQuelle.slice(start, ende);
+}
+const frageweg = [
+  schnitt(
+    "    function stripAskAnswerMarkdown(answer) {",
+    "    // R-0310 (Spiegel von wordAddin.ts#askAbsaetzeLesen):",
+  ),
+  schnitt("    function askAbsaetzeLesen(body, cited) {", "    // AUFTRAG-JOB507-D4 — Retry-After"),
+  schnitt("// KW-KLARA-AI-MARK-START", "// KW-KLARA-AI-MARK-END"),
+  schnitt("// KW-KLARA-ASK-FETCH-START", "// KW-KLARA-ASK-FETCH-END"),
+].join("\n");
 
 // Echte Suchprojektion, Fragedienst und beide Auswahlstufen. Nur der externe Transport
 // antwortet kontrolliert; die Tests behaupten damit keine Prüfung eines echten Modells.
@@ -116,6 +133,91 @@ async function wordWeg(alt = false, modellantwort?: string) {
 }
 
 describe("Klara: natürliche Frage zur freigegebenen Word-Markierung", () => {
+  it("zeigt den offenen Vergleich nur bei einer Wissenslücke zur geprüften Passage", async () => {
+    const abrufen = new Function(`${frageweg}; return performAsk;`)();
+    const gap = { result: { answered: false, sources: [] } };
+    async function pruefen(frage: string, body: unknown, status = 200, dokument = PASSAGE) {
+      return abrufen(
+        frage,
+        "en",
+        async () => ({ ok: status === 200, status, json: async () => body }),
+        5000,
+        { "x-klara-session": "s" },
+        dokument,
+        "manual",
+      );
+    }
+    for (const frage of [
+      "Is this correct according to company policy?",
+      "Stimmt das?",
+      "Klopt dit?",
+    ]) {
+      const ergebnis = await pruefen(frage, gap);
+      expect(ergebnis.direktvergleich).toEqual({
+        art: "offen",
+        dokument: PASSAGE,
+        belege: [],
+        dokumentMarke: null,
+        belegMarke: null,
+      });
+    }
+    for (const frage of [
+      "What does this paragraph mean?",
+      "Is it correct that we open on Sundays?",
+    ]) {
+      expect((await pruefen(frage, gap)).direktvergleich).toBeUndefined();
+    }
+    expect((await pruefen("Is this correct?", gap, 200, "")).direktvergleich).toBeUndefined();
+    expect(await pruefen("Is this correct?", {})).toEqual({ kind: "error", detail: "lage" });
+    expect(await pruefen("Is this correct?", { result: {} })).toEqual({
+      kind: "error",
+      detail: "lage",
+    });
+    expect(await pruefen("Is this correct?", gap, 403)).toEqual({ kind: "forbidden" });
+  });
+
+  it("bindet Wortmarken an eine einzige wörtliche Quelle und eine enge Abweichung", () => {
+    const vergleichen = new Function(`${frageweg}; return askDirektvergleich;`)();
+    const dokument = "🗎 Guest Wi-Fi must provide access to the internal staff network.";
+    const beleg = dokument.replace("must provide", "must not provide");
+    const absaetze = [{ text: beleg, quellen: ["wifi"] }];
+    const schritte = [{ sourceId: "wifi", snippet: beleg }];
+    const exakt = vergleichen("widersprochen", dokument, absaetze, schritte, true);
+    expect(dokument.slice(exakt.dokumentMarke.start, exakt.dokumentMarke.end)).toBe("must provide");
+    expect(beleg.slice(exakt.belegMarke.start, exakt.belegMarke.end)).toBe("not");
+    for (const ergebnis of [
+      vergleichen(
+        "widersprochen",
+        "Employees can share the guest network.",
+        absaetze,
+        schritte,
+        true,
+      ),
+      vergleichen("widersprochen", dokument, absaetze, schritte, false),
+      vergleichen("widersprochen", dokument, [absaetze[0], absaetze[0]], schritte, true),
+    ]) {
+      expect(ergebnis).toMatchObject({ dokumentMarke: null, belegMarke: null });
+    }
+    const fremd = vergleichen(
+      "widersprochen",
+      dokument,
+      absaetze,
+      [{ sourceId: "andere", snippet: beleg }],
+      true,
+    );
+    expect(fremd.belege[0].woertlich).toBe(false);
+    expect(fremd.dokumentMarke).toBeNull();
+    const umformuliert = vergleichen(
+      "widersprochen",
+      dokument,
+      absaetze,
+      [{ sourceId: "wifi", snippet: beleg.replace("provide", "grant") }],
+      true,
+    );
+    expect(umformuliert.belege[0].woertlich).toBe(false);
+    expect(umformuliert.belegMarke).toBeNull();
+  });
+
   it.each([
     { art: "bestaetigt", selection: PASSAGE, heading: "agrees with" },
     {
@@ -128,14 +230,6 @@ describe("Klara: natürliche Frage zur freigegebenen Word-Markierung", () => {
     async ({ art, selection, heading }) => {
       const w = await wordWeg(false, JSON.stringify({ urteil: art, belege: `${REGEL} [1]` }));
       try {
-        const html = panelQuelleAus("apps/web/public/word-addin/taskpane.html");
-        const schnitt = (von: string, bis: string) => {
-          const start = html.indexOf(von);
-          const ende = html.indexOf(bis, start);
-          expect(start).toBeGreaterThan(0);
-          expect(ende).toBeGreaterThan(start);
-          return html.slice(start, ende);
-        };
         const feld = { value: "" };
         const umgebung = {
           dokumentSprache: "de",
@@ -168,10 +262,7 @@ describe("Klara: natürliche Frage zur freigegebenen Word-Markierung", () => {
         const lesen = new Function(
           "umgebung",
           `with (umgebung) {
-        ${schnitt("    function stripAskAnswerMarkdown(answer) {", "    // R-0310 (Spiegel von wordAddin.ts#askAbsaetzeLesen):")}
-        ${schnitt("    function askAbsaetzeLesen(body, cited) {", "    // AUFTRAG-JOB507-D4 — Retry-After")}
-        ${schnitt("// KW-KLARA-AI-MARK-START", "// KW-KLARA-AI-MARK-END")}
-        ${schnitt("// KW-KLARA-ASK-FETCH-START", "// KW-KLARA-ASK-FETCH-END")}
+        ${frageweg}
         ${schnitt("    function askUrteilUebersetzen(", "    // Aufnahme 20260922 · antwort-quellenanzeige (R-0329): das hinterlegte Original")}
         let currentAskOutcome;
         let lang = dokumentSprache;
@@ -184,6 +275,18 @@ describe("Klara: natürliche Frage zur freigegebenen Word-Markierung", () => {
         const panel = lesen(umgebung);
         const sicht = await panel.frage();
         expect(sicht.kind).toBe("answered");
+        const vergleich = sicht.direktvergleich;
+        expect(vergleich).toMatchObject({
+          art,
+          dokument: selection,
+          belege: [{ text: REGEL, quellen: [w.quelle.id], woertlich: true }],
+        });
+        expect(selection.slice(vergleich.dokumentMarke.start, vergleich.dokumentMarke.end)).toBe(
+          art === "widersprochen" ? "must provide" : selection,
+        );
+        expect(REGEL.slice(vergleich.belegMarke.start, vergleich.belegMarke.end)).toBe(
+          art === "widersprochen" ? "not" : selection,
+        );
         expect(sicht.answer).toContain("KI-Abgleich:");
         feld.value = sicht.answer;
         panel.wechseln("en");
