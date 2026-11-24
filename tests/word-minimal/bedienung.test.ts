@@ -102,6 +102,18 @@ const office = String.raw`
     addHandlerAsync: (...args) => { if (typeof args.at(-1) === "function") args.at(-1)({ status: "succeeded" }); },
     getFileAsync: (...args) => args.at(-1)({ status: "failed", error: { message: "Fiktiver Textweg" } }),
   };
+  const caret = __WORD_CARET__;
+  if (caret) {
+    const paragraphs = caret.paragraphs.map((text, i) => ({
+      ...paragraph, text, uniqueLocalId: "p-" + i, isNullObject: false,
+      getPreviousOrNullObject: () => paragraphs[i - 1] || { isNullObject: true, load: noop },
+    }));
+    document.body = { ...range, text: caret.paragraphs.join("\r"),
+      paragraphs: { items: paragraphs, load: noop } };
+    document.getSelection = () => ({ ...range, text: "",
+      paragraphs: { items: [paragraphs[caret.index]], load: noop } });
+    document.getSelectedDataAsync = (...args) => args.at(-1)({ status: "succeeded", value: "" });
+  }
   window.Office = {
     HostType: { Word: "Word" }, PlatformType: { OfficeOnline: "OfficeOnline", Mac: "Mac" },
     AsyncResultStatus: { Succeeded: "succeeded", Failed: "failed" },
@@ -327,6 +339,7 @@ async function open(
   dark = false,
   host = "",
   displayLanguage = "de-DE",
+  caret?: { paragraphs: string[]; index: number },
 ): Promise<Page> {
   const page = await browser.newPage({
     viewport: { width: 320, height: 640 },
@@ -338,7 +351,9 @@ async function open(
       return route.fulfill({
         contentType: "text/javascript",
         body:
-          office.replace("__DISPLAY_LANGUAGE__", displayLanguage) +
+          office
+            .replace("__DISPLAY_LANGUAGE__", displayLanguage)
+            .replace("__WORD_CARET__", () => JSON.stringify(caret ?? null)) +
           (host ? officeExtra.replaceAll("__HOST__", host) : ""),
       });
     return url.startsWith(origin) ? route.continue() : route.abort();
@@ -353,6 +368,133 @@ async function choose(page: Page, name: string) {
   await page.locator(`#mini-menu-${name}`).click();
 }
 describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand", () => {
+  const gastWlan = "Guest Wi-Fi must provide access to the internal staff network";
+  const firmenregel = "Guest Wi-Fi must not provide access to the internal staff network.";
+  it.each([
+    { frage: "is this correct", absatz: 1, bezug: "at the cursor" },
+    { frage: "is this correct", absatz: 2, bezug: "above the cursor" },
+    { frage: "Is this correct according to company policy?", absatz: 1, bezug: "at the cursor" },
+    { frage: "Stimmt das laut Firmenwissen?", absatz: 2, bezug: "above the cursor" },
+  ])("Word-Frage ohne Markierung: $frage (Absatz $absatz)", async ({ frage, absatz, bezug }) => {
+    const page = await open("taskpane.html", false, "", "en-GB", {
+      paragraphs: ["Unrelated paragraph", gastWlan, "", "Another unrelated paragraph"],
+      index: absatz,
+    });
+    try {
+      const quellen = ["wifi"];
+      const kopf =
+        "AI comparison: the selected statement contradicts the company sources consulted.";
+      await page.route("**/api/kos/wifi", (route) =>
+        route.fulfill({
+          json: {
+            id: "wifi",
+            title: "[Beispiel] Guest Wi-Fi separation",
+            statement: firmenregel,
+            status: "validiert",
+            version: 1,
+          },
+        }),
+      );
+      await page.route("**/execute", (route) =>
+        route.fulfill({
+          json:
+            route.request().postDataJSON().selection === gastWlan
+              ? {
+                  result: {
+                    answered: true,
+                    answer: `${kopf} [1]\n\n${firmenregel} [1]`,
+                    sources: quellen,
+                    citedSources: quellen,
+                    dokumentUrteil: { art: "widersprochen", texte: { en: kopf } },
+                  },
+                  absaetze: [
+                    { text: kopf, quellen },
+                    { text: firmenregel, quellen },
+                  ],
+                }
+              : { result: { answered: false, sources: [] } },
+        }),
+      );
+      await page.locator("#ask-input").fill(frage);
+      const request = page.waitForRequest((r) => r.url().endsWith("/execute"), { timeout: 5000 });
+      await page.getByRole("button", { name: "Ask Klara", exact: true }).click();
+      const payload = (await request).postDataJSON();
+      expect(payload).toMatchObject({
+        question: frage,
+        questionSource: "manual",
+        selection: gastWlan,
+      });
+      expect(JSON.stringify(payload)).not.toMatch(/unrelated paragraph/i);
+      const antwort = page.locator("#ask-answer-edit");
+      await antwort.waitFor();
+      expect(await antwort.inputValue()).toBe(
+        `AI comparison: the paragraph ${bezug} contradicts the company sources consulted.\n\n${firmenregel}`,
+      );
+      expect(await page.evaluate("window.__wordWrites")).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it.each([
+    "What is the annual leave policy?",
+    "Is it correct that company policy allows guests to print?",
+  ])("sendet die eigenständige Wissensfrage ohne den Absatz am Word-Cursor: %s", async (frage) => {
+    const page = await open("taskpane.html", false, "", "en-GB", {
+      paragraphs: [gastWlan],
+      index: 0,
+    });
+    try {
+      await page.locator("#ask-input").fill(frage);
+      const request = page.waitForRequest((r) => r.url().endsWith("/execute"), { timeout: 5000 });
+      await page.getByRole("button", { name: "Ask Klara", exact: true }).click();
+      const payload = (await request).postDataJSON();
+      expect(payload.question).toBe(frage);
+      expect(payload).not.toHaveProperty("selection");
+      expect(JSON.stringify(payload)).not.toContain(gastWlan);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it.each([
+    { grund: "leeres Word-Dokument", text: "", mitlesen: true, hinweis: /select/i },
+    { grund: "zu langer Absatz", text: "x".repeat(2001), mitlesen: true, hinweis: /select/i },
+    { grund: "ausgeschaltetes Mitlesen", text: gastWlan, mitlesen: false, hinweis: /read/i },
+  ])(
+    "$grund: erklärt den fehlenden Kontext ohne Firmenwissenssuche",
+    async ({ text, mitlesen, hinweis }) => {
+      const page = await open("taskpane.html", false, "", "en-GB", {
+        paragraphs: [text],
+        index: 0,
+      });
+      try {
+        if (!mitlesen) {
+          await choose(page, "settings");
+          const schalter = page.getByRole("switch", { name: "Read text in Word" });
+          await schalter.click();
+          expect(await schalter.getAttribute("aria-checked")).toBe("false");
+          await page.keyboard.press("Escape");
+        }
+        const sent: string[] = [];
+        page.on("request", (r) => {
+          if (r.url().endsWith("/execute") || r.url().endsWith("/api/ask")) sent.push(r.url());
+        });
+        const input = page.locator("#ask-input");
+        await input.fill("is this correct");
+        await page.getByRole("button", { name: "Ask Klara", exact: true }).click();
+        const status = page.locator("#ask-status");
+        await status.waitFor({ timeout: 5000 });
+        expect(await status.textContent()).toMatch(hinweis);
+        expect(await page.locator("#ask-gap-block").isVisible()).toBe(false);
+        expect(await input.inputValue()).toBe("is this correct");
+        expect(sent).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
   it("Word-Sprache bestimmt Bedienung und Frage; ausdrückliche Sprachauswahl hält beim erneuten Öffnen", async () => {
     const page = await open("taskpane.html", false, "", "en-GB");
     try {

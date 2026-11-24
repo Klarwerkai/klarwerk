@@ -1795,6 +1795,10 @@
         // über den Serverstandort (Z.48) bleibt draußen: Betriebszusage, die dieser Code nicht erzwingt.
         askRuleNote: "Klara prüft deine Frage und die markierte Passage anhand bestätigten Firmenwissens. Externe KI ist für die Demo standardmäßig an und kann in den Einstellungen ausgeschaltet werden.",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
+        askAbsatzFehlt: "Setze den Cursor in den Text, den du prüfen möchtest, oder markiere die Passage.",
+        askAbsatzZuLang: "Der Absatz ist zu lang für eine vollständige Prüfung. Markiere die Passage, die du prüfen möchtest.",
+        askAbsatzMitlesenAus: "„Text in Word mitlesen“ ist ausgeschaltet. Aktiviere es in den Einstellungen, um diesen Text zu prüfen.",
+        askAbsatzOhneBindung: "Klara ist noch nicht mit diesem Dokument verbunden. Versuche es erneut, sobald die Verbindung steht.",
         // JOB 3016 D3: beide Haelften des Zielbildsatzes (Wissen freigegeben UND Eingabe gesperrt).
         askBusy: "Klara sucht im freigegebenen Wissen — die Eingabe ist so lange gesperrt.",
         // JOB 3019 (KA5) R2: Hier stand „Die Markierung war länger als {max} Zeichen — die Frage
@@ -1806,6 +1810,11 @@
         askAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         askTimeout: "Keine Antwort vom Server (Zeitüberschreitung). Bitte erneut versuchen.",
         askSelectionTimeout: "Word hat die Markierung nicht geliefert (Zeitüberschreitung). Bitte erneut versuchen.",
+        askParagraphAtCursor: "Der Absatz an der Cursorposition",
+        askSourceCursorHint: "Klara prüft den Absatz am Cursor. Steht der Cursor in einer leeren Zeile, verwendet sie den Absatz direkt darüber.",
+        askParagraphAboveCursor: "Der Absatz über dem Cursor",
+        askParagraphAgrees: "KI-Abgleich: {absatz} stimmt mit den herangezogenen Firmenquellen überein.",
+        askParagraphContradicts: "KI-Abgleich: {absatz} widerspricht den herangezogenen Firmenquellen.",
         askError: "Fragen fehlgeschlagen ({detail}).",
         // AUFTRAG-JOB507-D4: 403 am Fragen-Weg heisst FEHLENDES RECHT (ko.read) — nicht „melde dich
         // an". Der bestehende Schluessel askForbidden gehoert zum Offene-Frage-Weg und bleibt dort.
@@ -2190,12 +2199,21 @@
         askRoleConsulted: "consulted",
         askRuleNote: "Klara checks your question and selected passage against approved company knowledge. External AI is on by default for the demo and can be switched off in settings.",
         askEmpty: "Please select a statement in the document first or type a question below.",
+        askAbsatzFehlt: "Place the cursor in the text you want to check, or select the passage.",
+        askAbsatzZuLang: "This paragraph is too long to check in full. Select the passage you want to check.",
+        askAbsatzMitlesenAus: "Reading text in Word is turned off. Turn it on in Settings to check this text.",
+        askAbsatzOhneBindung: "Klara is still connecting to this document. Try again when the connection is ready.",
         askBusy: "Klara is searching the approved knowledge — input is locked until then.",
         // JOB 3019 (KA5) R2: sprach über die Markierung, gekappt wird aber die Frage — s. DE-Block.
         askTruncated: "The question is longer than {max} characters — only its beginning is sent.",
         askAuth: "Not signed in — please sign in to KLARWERK first.",
         askTimeout: "No answer from the server (timeout). Please try again.",
         askSelectionTimeout: "Word did not deliver the selection (timeout). Please try again.",
+        askParagraphAtCursor: "the paragraph at the cursor",
+        askSourceCursorHint: "Klara checks the paragraph at the cursor. On an empty line, it uses the paragraph immediately above.",
+        askParagraphAboveCursor: "the paragraph above the cursor",
+        askParagraphAgrees: "AI comparison: {absatz} agrees with the company sources consulted.",
+        askParagraphContradicts: "AI comparison: {absatz} contradicts the company sources consulted.",
         askError: "Asking failed ({detail}).",
         askForbiddenRead:
           "Missing permission: your account may not read the KLARWERK knowledge base. Please contact your KLARWERK administrator.",
@@ -2543,12 +2561,21 @@
         askRoleConsulted: "geraadpleegd",
         askRuleNote: "Klara toetst je vraag en geselecteerde passage aan goedgekeurde bedrijfskennis. Externe AI staat standaard aan voor de demo en kan in de instellingen worden uitgeschakeld.",
         askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
+        askAbsatzFehlt: "Plaats de cursor in de tekst die je wilt controleren of selecteer de passage.",
+        askAbsatzZuLang: "Deze alinea is te lang om volledig te controleren. Selecteer de passage die je wilt controleren.",
+        askAbsatzMitlesenAus: "Tekst lezen in Word staat uit. Schakel dit in bij Instellingen om deze tekst te controleren.",
+        askAbsatzOhneBindung: "Klara maakt nog verbinding met dit document. Probeer het opnieuw zodra de verbinding gereed is.",
         askBusy: "Klara zoekt in de vrijgegeven kennis — de invoer is zolang vergrendeld.",
         // JOB 3019 (KA5) R2: sprak over de selectie, gekapt wordt echter de vraag — zie DE-blok.
         askTruncated: "De vraag is langer dan {max} tekens — alleen het begin gaat mee.",
         askAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
         askTimeout: "Geen antwoord van de server (time-out). Probeer het opnieuw.",
         askSelectionTimeout: "Word heeft de selectie niet geleverd (time-out). Probeer het opnieuw.",
+        askParagraphAtCursor: "de alinea bij de cursor",
+        askSourceCursorHint: "Klara controleert de alinea bij de cursor. Op een lege regel gebruikt ze de alinea direct erboven.",
+        askParagraphAboveCursor: "de alinea boven de cursor",
+        askParagraphAgrees: "AI-vergelijking: {absatz} komt overeen met de geraadpleegde bedrijfsbronnen.",
+        askParagraphContradicts: "AI-vergelijking: {absatz} is in strijd met de geraadpleegde bedrijfsbronnen.",
         askError: "Vragen mislukt ({detail}).",
         askForbiddenRead:
           "Ontbrekend recht: je account mag de KLARWERK-kennis niet lezen. Neem contact op met de KLARWERK-beheerder.",
@@ -3521,6 +3548,7 @@
 
     function klaraS4Widerrufen() {
       if (!klaraS4SessionId) { return; }
+      if (typeof askMinimalAbbrechen === "function") { askMinimalAbbrechen(); }
       klaraS4Consentmeldung("warn", t("s4ConsentBusy"));
       klaraS4AbrufDieserSitzung("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
         "DELETE", null)
@@ -5828,6 +5856,12 @@
       if (!urteil) { return null; }
       var alt = outcome.absaetze[0].text;
       var neu = urteil.texte[sprache];
+      if (outcome.absatzbezug === "cursor" || outcome.absatzbezug === "previous") {
+        var texte = STRINGS[sprache];
+        var absatz = outcome.absatzbezug === "cursor" ? texte.askParagraphAtCursor : texte.askParagraphAboveCursor;
+        var muster = urteil.art === "widersprochen" ? texte.askParagraphContradicts : texte.askParagraphAgrees;
+        neu = muster.replace("{absatz}", absatz);
+      }
       if (typeof neu !== "string" || !neu || neu === alt || !outcome.answer.startsWith(alt + "\n\n")) { return null; }
       outcome.absaetze[0].text = neu;
       outcome.answer = neu + outcome.answer.slice(alt.length);
@@ -6601,19 +6635,87 @@
     // Realhost 06.10.2026 (`getSelectedDataAsync` schwieg in Word im Web): erst `Word.run` mit Frist, dann der alte Weg.
     var WORD_ADDIN_AUSWAHL_FRIST_MS = 4000;
 
-    function readAskSelection(done, wordZuerst, fehler) {
-      if (!askMitlesen || !officeUsable()) { done(""); return; }
+    // Nur eine Frage mit erkennbarem Verweis auf die Passage darf ohne Markierung
+    // Text mitnehmen. Eine freie Firmenwissensfrage bleibt eine Frage ohne Word-Kontext.
+    function askFragtNachWordAbsatz(frage) {
+      var text = String(frage || "").trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!?]+$/, "").trim();
+      // Ein expliziter Verweis kann überall in einer Sachfrage stehen.
+      if (/\b(?:this|that) (?:paragraph|passage|statement|sentence|wording|excerpt)\b/.test(text)
+        || /\bdiese(?:n|m|r|s)? (?:absatz|passage|aussage|satz|formulierung|text)\b/.test(text)
+        || /\b(?:deze|dit) (?:alinea|passage|zin|uitspraak|tekst)\b/.test(text)) { return true; }
+
+      // „Is it correct that …?“ hat einen eigenen Gegenstand. Bei einer kurzen
+      // Verweisfrage sind dagegen Zusätze wie „according to our policy“ möglich.
+      var en = text.replace(/^(?:can|could|would) you (?:please )?(?:check|verify|tell me) (?:if|whether) /, "")
+        .replace(/ (?:according to|based on|in light of|under|against|given) .+$/, "");
+      if (/^(?:(?:is|was) (?:this|that|it)|(?:this|that|it) (?:is|was)) (?:correct|right|true|accurate|consistent)$/.test(en)
+        || /^(?:does|would) (?:this|that|it) (?:match|comply with|contradict)\b/.test(en)
+        || /^(?:what does (?:this|that|it) mean|(?:please )?(?:check|verify|explain) (?:this|that))$/.test(en)) { return true; }
+
+      var de = text.replace(/ (?:laut|gemäß|nach|anhand|mit blick auf) .+$/, "");
+      if (/^(?:ist|war) (?:das|dies) (?:so )?(?:richtig|korrekt|wahr|zutreffend)$/.test(de)
+        || /^(?:stimmt|passt) (?:das|dies)(?: so)?$/.test(de)
+        || /^(?:was (?:bedeutet|heißt) das|(?:prüfe|erkläre) (?:das|dies))$/.test(de)) { return true; }
+
+      var nl = text.replace(/ (?:volgens|op basis van|gezien) .+$/, "");
+      return /^(?:is|was) (?:dit|dat) (?:juist|correct|goed|waar)$/.test(nl)
+        || /^klopt (?:dit|dat)$/.test(nl)
+        || /^(?:wat betekent (?:dit|dat)|(?:controleer|verklaar) (?:dit|dat))$/.test(nl);
+    }
+
+    function askAbsatzAmCursor(context, auswahl, abgebrochen) {
+      var absaetze = auswahl.paragraphs;
+      absaetze.load("items/text");
+      return context.sync().then(function () {
+        if (abgebrochen()) { return ""; }
+        var absatz = absaetze.items.length === 1 ? absaetze.items[0] : null;
+        if (!absatz) { return { hinweis: "askAbsatzFehlt" }; }
+        if (absatz.text.trim()) { return { text: absatz.text, bezug: "cursor" }; }
+        // Nach Einfügen mit Absatzende steht Word häufig bereits am Beginn der nächsten Zeile.
+        // Nur der unmittelbar vorhergehende Word-Absatz kommt dann in Betracht.
+        if (typeof absatz.getPreviousOrNullObject !== "function") { return { hinweis: "askAbsatzFehlt" }; }
+        var vorher = absatz.getPreviousOrNullObject();
+        vorher.load("text");
+        return context.sync().then(function () {
+          return vorher.isNullObject || !vorher.text.trim()
+            ? { hinweis: "askAbsatzFehlt" }
+            : { text: vorher.text, bezug: "previous" };
+        });
+      });
+    }
+
+    function readAskSelection(done, wordZuerst, fehler, frage, signal) {
+      var zumAbsatz = Boolean(frage) && askFragtNachWordAbsatz(frage);
+      if (!askMitlesen || !officeUsable()) {
+        done("", null, zumAbsatz ? (askMitlesen ? "askAbsatzFehlt" : "askAbsatzMitlesenAus") : null);
+        return;
+      }
+      var bindung = zumAbsatz ? klaraS4Header() : null;
       var ueberOffice = function () {
         Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
-          done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+          var text = result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "";
+          done(text, null, zumAbsatz && !text.trim() ? "askAbsatzFehlt" : null);
         });
       };
       if (wordZuerst !== true || !window.Word || typeof Word.run !== "function") { ueberOffice(); return; }
       var erledigt = false;
-      var einmal = function (text) {
+      var abgebrochen = function () { return erledigt || !askMitlesen || Boolean(signal && signal.aborted); };
+      var einmal = function (ergebnis) {
         if (erledigt) { return; }
         erledigt = true; clearTimeout(uhr);
-        if (typeof text === "string") { done(text.replace(/\r\n?/g, "\n")); return; }
+        if (signal && signal.aborted) { return; }
+        if (!askMitlesen) { done("", null, zumAbsatz ? "askAbsatzMitlesenAus" : null); return; }
+        if (typeof ergebnis === "string") { done(ergebnis.replace(/\r\n?/g, "\n")); return; }
+        if (ergebnis) {
+          if (ergebnis.hinweis) { done("", null, ergebnis.hinweis); return; }
+          var jetzt = klaraS4Header();
+          if (jetzt["x-klara-session"] !== bindung["x-klara-session"] || jetzt["x-klara-document"] !== bindung["x-klara-document"]) {
+            done("", null, "askAbsatzOhneBindung"); return;
+          }
+          var text = ergebnis.text.replace(/\r\n?/g, "\n").trim();
+          if (text.length > WORD_ADDIN_ASK_MAX_CHARS) { done("", null, "askAbsatzZuLang"); return; }
+          done(text, ergebnis.bezug); return;
+        }
         try { ueberOffice(); } catch (err) { if (fehler) { fehler(err); } }
       };
       var uhr = setTimeout(function () { einmal(null); }, WORD_ADDIN_AUSWAHL_FRIST_MS);
@@ -6621,10 +6723,16 @@
         var lauf = Word.run(function (context) {
           var auswahl = context.document.getSelection();
           auswahl.load("text");
-          return context.sync().then(function () { return auswahl.text; });
+          return context.sync().then(function () {
+            if (abgebrochen()) { return ""; }
+            var text = auswahl.text;
+            if (!zumAbsatz || typeof text !== "string" || text.trim()) { return text; }
+            if (!bindung["x-klara-session"] || !bindung["x-klara-document"]) { return { hinweis: "askAbsatzOhneBindung" }; }
+            return askAbsatzAmCursor(context, auswahl, abgebrochen);
+          });
         });
         if (!lauf || typeof lauf.then !== "function") { einmal(null); return; }
-        lauf.then(function (text) { einmal(typeof text === "string" ? text : null); }, function () { einmal(null); });
+        lauf.then(einmal, function () { einmal(null); });
       } catch (err) {
         einmal(null);
       }
@@ -6646,11 +6754,13 @@
       if (!officeUsable()) { setzeAskSourceNote(note, ""); return; }
       readAskSelection(function (selectionText) {
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
-        // JOB 3056 K1 (Rebase auf KA5): nur getippter Text UND Markierung (die zusaetzlich mitreist,
-        // `prep.selection`) bekommen einen Satz; sonst steht nichts ueber dem Feld.
-        setzeAskSourceNote(note, prep.from === "manual" && prep.selection.length > 0
-          ? t("askSourceSelectionOverride")
-          : "");
+        var hinweis = "";
+        if (prep.from === "manual" && prep.selection.length > 0) {
+          hinweis = t("askSourceSelectionOverride");
+        } else if (askMitlesen && prep.from === "manual" && askFragtNachWordAbsatz(prep.question)) {
+          hinweis = t("askSourceCursorHint");
+        }
+        setzeAskSourceNote(note, hinweis);
         // JOB 3056 K1: eine Markierung in Word ist Kontext fuer die Schreibflaeche (KA6) — unabhaengig
         // davon, ob sie oder die Eingabe die Frage stellt.
         if (typeof askMarkierungDa !== "undefined") {
@@ -6688,7 +6798,7 @@
       askMinimalTurn = null;
       askMinimalController = new AbortController();
       var minimalController = askMinimalController;
-      var lauf = { offen: true, timer: null };
+      var lauf = { offen: true, timer: null, mitDokument: false };
       askMinimalAuswahl = lauf;
       var laufBeenden = function () {
         lauf.offen = false;
@@ -6705,7 +6815,7 @@
         if (!lauf.offen) { return; }
         auswahlAbgelaufen();
       }, WORD_ADDIN_ASK_TIMEOUT_MS);
-      var absenden = function (selectionText) {
+      var absenden = function (selectionText, absatzbezug, hinweis) {
         if (!lauf.offen || minimalEpoch !== askMinimalEpoch) { return; } // verspätet, gestoppt oder doppelt
         laufBeenden();
         // Die Restzeit der Gesamtfrist — was Word verbraucht hat, fehlt dem Server (Runde 6).
@@ -6716,6 +6826,11 @@
           auswahlAbgelaufen();
           return;
         }
+        if (hinweis || (absatzbezug && klaraS4FragenGesperrt())) {
+          askWartezustand(false);
+          showAskStatus("warn", hinweis ? t(hinweis) : klaraS4FragenSperrtext());
+          return;
+        }
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
         if (prep.from === "empty") {
           askWartezustand(false);
@@ -6723,6 +6838,7 @@
           return;
         }
         currentAskQuestion = prep.question;
+        lauf.mitDokument = Boolean(prep.selection) || prep.from === "selection";
         askMinimalTurn = window.kwWordUi ? window.kwWordUi.turn(prep.question) : null;
         var minimalTurn = askMinimalTurn;
         performAsk(
@@ -6739,6 +6855,15 @@
           prep.selection, prep.from === "selection" ? "selection" : "manual", minimalController // R-0639: Herkunft; UI-MIN: echter Abbruch
         ).then(function (outcome) {
           if (minimalEpoch !== askMinimalEpoch) return;
+          if (absatzbezug) {
+            if (!askMitlesen || klaraS4FragenGesperrt()) {
+              askMinimalAbbrechen();
+              showAskStatus("warn", askMitlesen ? klaraS4FragenSperrtext() : t("askAbsatzMitlesenAus"));
+              return;
+            }
+            outcome.absatzbezug = absatzbezug;
+            if (outcome.dokumentUrteil) { askUrteilUebersetzen(outcome, lang); }
+          }
           if (window.kwWordUi) window.kwWordUi.answer(minimalTurn, outcome);
           currentAskOutcome = outcome;
           // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
@@ -6756,9 +6881,9 @@
         showAskStatus("warn", t("askError", { detail: err && err.message ? err.message : "office" }));
       };
       try {
-        readAskSelection(function (selectionText) {
-          try { absenden(selectionText); } catch (err) { fehlerVorDemFetch(err); }
-        }, true, fehlerVorDemFetch);
+        readAskSelection(function (selectionText, absatzbezug, hinweis) {
+          try { absenden(selectionText, absatzbezug, hinweis); } catch (err) { fehlerVorDemFetch(err); }
+        }, true, fehlerVorDemFetch, document.getElementById("ask-input").value, minimalController.signal);
       } catch (err) {
         fehlerVorDemFetch(err);
       }
@@ -7109,6 +7234,9 @@
     });
     document.getElementById("einst-mitlesen").addEventListener("click", function () {
       askMitlesen = !askMitlesen;
+      if (!askMitlesen && askMinimalAuswahl && (askMinimalAuswahl.offen || askMinimalAuswahl.mitDokument)) {
+        askMinimalAbbrechen();
+      }
       var schalter = document.getElementById("einst-mitlesen");
       schalter.className = askMitlesen ? "schalter an" : "schalter";
       schalter.setAttribute("aria-checked", askMitlesen ? "true" : "false");
