@@ -539,7 +539,29 @@ function setzeEin(text: string, verweis: string, ersatz: string): string {
  * nach dem Öffnungstag.
  */
 export function fuegePanelZusammen(teile: PanelTeile): string {
-  const mitStil = setzeEin(teile.html, PANEL_CSS_VERWEIS, `<style>\n${teile.css}  </style>`);
+  // Die älteren Fragmentwirte lesen die gemeinsamen Hilfsfunktionen innerhalb ihrer Schnittmarken.
+  const vergleich = readFileSync(
+    repoPfad("apps/web/public/word-addin/dokumentvergleich.js"),
+    "utf8",
+  );
+  const abschnitt = vergleich.indexOf("// Ohne Modellurteil kennzeichnen");
+  const word = vergleich.indexOf("function askFragtNachWordAbsatz");
+  if (abschnitt < 0 || word <= abschnitt) throw new Error("Abschnitte im Dokumentvergleich fehlen");
+  const einsetzen = (text: string, stelle: string, code: string) =>
+    setzeEin(text, stelle, code.replace(/^(?=\S)/gm, "    ") + stelle);
+  let skript = einsetzen(
+    teile.js,
+    "    // AUFTRAG-JOB507-D4 — Retry-After",
+    vergleich.slice(0, abschnitt),
+  );
+  skript = einsetzen(skript, "    // KW-KA4: `bindungsKopf`", vergleich.slice(abschnitt, word));
+  skript = einsetzen(skript, "    async function askVergleichInWordZeigen", vergleich.slice(word));
+  const html = setzeEin(
+    teile.html,
+    '  <script src="dokumentvergleich.js?v=__KW_FASSUNG__"></script>\n',
+    "",
+  );
+  const mitStil = setzeEin(html, PANEL_CSS_VERWEIS, `<style>\n${teile.css}  </style>`);
   // Der Verweis auf `marke.js` steht in der naechsten Zeile hinter dem auf `taskpane.js`; beide
   // zusammen werden zu dem EINEN Skript, das vorher dastand (der Abschnitt wieder an dessen Ende).
   // R-0336/R-0708: dazwischen, in der Zeile von `taskpane.js`, der Verweis auf `wortvergleich.js` —
@@ -549,7 +571,7 @@ export function fuegePanelZusammen(teile: PanelTeile): string {
   return setzeEin(
     mitStil,
     `${PANEL_JS_VERWEIS}${PANEL_WV_VERWEIS}\n  ${PANEL_MARKE_VERWEIS}`,
-    `<script>\n${teile.js}${wortvergleich}${marke}  </script>`,
+    `<script>\n${skript}${wortvergleich}${marke}  </script>`,
   );
 }
 

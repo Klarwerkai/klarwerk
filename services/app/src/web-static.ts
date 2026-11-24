@@ -61,9 +61,9 @@ export const KLARA_FASSUNG_PLATZHALTER = "__KW_FASSUNG__";
  * Sie ist bewusst NICHT der Bau-Stempel `__KLARA_STAND__`: der beantwortet „wann wurde gebaut",
  * diese Zahl „ist meine Seite noch die, die ausgeliefert wird". Zwei Fragen, zwei Mechaniken.
  */
-export const KLARA_TASKPANE_FASSUNG = "1.0.0.7";
+export const KLARA_TASKPANE_FASSUNG = "1.0.0.8";
 export const KLARA_BEGLEITUNG_PFAD = "/word-addin/begleitung.html";
-export const KLARA_BEGLEITUNG_FASSUNG = "1.0.0.1";
+export const KLARA_BEGLEITUNG_FASSUNG = "1.0.0.2";
 
 /** Ersetzt den Platzhalter im Körper. Rührt `__KLARA_STAND__` ausdrücklich nicht an. */
 export function stempleFassung(html: string, fassung: string): string {

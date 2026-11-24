@@ -315,6 +315,128 @@ describe("B5 · KO-02-05 — dokumentbezogene Aktionen laufen über den Adapter 
   });
 });
 
+describe("Direktvergleich zwischen Word und Begleitapp", () => {
+  const vergleich = {
+    art: "widersprochen",
+    dokument: "Guest Wi-Fi must provide access.",
+    belege: [
+      { text: "Guest Wi-Fi must not provide access.", quellen: ["quelle-1"], woertlich: true },
+    ],
+    dokumentMarke: { start: 12, end: 24 },
+    belegMarke: { start: 17, end: 20 },
+    zeigbar: true,
+    aiGenerated: true,
+  };
+
+  async function frageHolen() {
+    await fensterAnmelden(erik);
+    const auftrag = await beauftragen(erik, FENSTER_A, {
+      art: "frage",
+      text: "Is this correct?",
+      auswahlStand: 0,
+      locale: "en",
+    });
+    expect(auftrag.statusCode).toBe(202);
+    const id = (auftrag.json() as { aktion: { id: string } }).aktion.id;
+    const geholt = await melden(erik, FENSTER_A, mitAuswahl(1));
+    expect(geholt.json()).toMatchObject({ aktionen: [{ id, art: "frage", locale: "en" }] });
+    return id;
+  }
+
+  it("transportiert den belegten Vergleich und zeigt die Stelle nur im ursprünglichen Fenster", async () => {
+    const id = await frageHolen();
+    const zeigen = { art: "zeigen", text: id, auswahlStand: 0 };
+    expect((await beauftragen(erik, FENSTER_A, zeigen)).statusCode).toBe(409);
+    const ende = await melden(erik, FENSTER_A, {
+      ...mitAuswahl(2, 2, "Anderer Absatz"),
+      erledigt: [{ id, stand: "erledigt", ergebnis: "Contradicted", vergleich }],
+    });
+    expect(ende.json()).toMatchObject({ quittiert: [id] });
+    expect((await kontext(erik)).adapter[0]?.aktionen[0]).toMatchObject({
+      id,
+      ergebnis: "Contradicted",
+      vergleich,
+    });
+    await fensterAnmelden(erik, FENSTER_B, DOK_B);
+    await fensterAnmelden(vera, FENSTER_A);
+    for (const [person, fenster] of [
+      [erik, FENSTER_B],
+      [vera, FENSTER_A],
+    ] as const) {
+      const fremd = await beauftragen(person, fenster, zeigen);
+      expect(fremd.statusCode).toBe(409);
+      expect(fremd.json()).toMatchObject({ grund: "vergleich_nicht_verfuegbar" });
+    }
+    expect((await beauftragen(erik, FENSTER_A, zeigen)).statusCode).toBe(202);
+    const geholt = await melden(erik, FENSTER_A, mitAuswahl(3, 3, "Wieder anderer Absatz"));
+    expect(geholt.json()).toMatchObject({ aktionen: [{ art: "zeigen", text: id }] });
+    // Selbst eine vor dem Fensterwechsel beauftragte, noch offene Navigation verfällt.
+    expect((await beauftragen(erik, FENSTER_A, zeigen)).statusCode).toBe(202);
+    await fensterAnmelden(erik, FENSTER_A, DOK_B);
+    expect((await melden(erik, FENSTER_A, mitAuswahl(1))).json()).toEqual({ aktionen: [] });
+    expect((await beauftragen(erik, FENSTER_A, zeigen)).statusCode).toBe(409);
+  });
+
+  it.each([
+    [
+      "unzulässige Quellenkennung",
+      { ...vergleich, belege: [{ ...vergleich.belege[0], quellen: [".."] }] },
+    ],
+    ["unbelegtes Urteil", { ...vergleich, belege: [] }],
+    ["Markierung außerhalb des Texts", { ...vergleich, dokumentMarke: { start: 0, end: 5000 } }],
+    [
+      "überlanger Belegtext",
+      { ...vergleich, belege: [{ ...vergleich.belege[0], text: "x".repeat(8001) }] },
+    ],
+  ])("bei ungültiger Karte bleibt der Klartext erhalten (%s)", async (_art, karte) => {
+    const id = await frageHolen();
+    const ende = await melden(erik, FENSTER_A, {
+      ...mitAuswahl(2),
+      erledigt: [{ id, stand: "erledigt", ergebnis: "Originalantwort", vergleich: karte }],
+    });
+    expect(ende.json()).toMatchObject({ quittiert: [id] });
+    expect((await kontext(erik)).adapter[0]?.aktionen[0]).toEqual({
+      id,
+      art: "frage",
+      stand: "erledigt",
+      ergebnis: "Originalantwort",
+      grund: null,
+    });
+  });
+
+  it("überträgt ein offenes Urteil ohne Beleg und erlaubt Zeigen nur bei erhaltenem Word-Bereich", async () => {
+    const id = await frageHolen();
+    const karte = {
+      art: "offen",
+      dokument: vergleich.dokument,
+      belege: [],
+      dokumentMarke: null,
+      belegMarke: null,
+      zeigbar: false,
+    };
+    const ende = await melden(erik, FENSTER_A, {
+      ...mitAuswahl(2),
+      erledigt: [{ id, stand: "erledigt", vergleich: { ...karte, aiGenerated: true } }],
+    });
+    expect(ende.json()).toMatchObject({ quittiert: [id] });
+    expect((await kontext(erik)).adapter[0]?.aktionen[0]).toHaveProperty("vergleich", karte);
+    expect(
+      (await beauftragen(erik, FENSTER_A, { art: "zeigen", text: id, auswahlStand: 1 })).statusCode,
+    ).toBe(409);
+  });
+
+  it("ein wahrheitsähnlicher Wert kennzeichnet ein Urteil nicht als KI-generiert", async () => {
+    const id = await frageHolen();
+    await melden(erik, FENSTER_A, {
+      ...mitAuswahl(2),
+      erledigt: [{ id, stand: "erledigt", vergleich: { ...vergleich, aiGenerated: "true" } }],
+    });
+    const a = (await kontext(erik)).adapter[0]?.aktionen[0];
+    expect(a).toHaveProperty("vergleich.art", "widersprochen");
+    expect(a).not.toHaveProperty("vergleich.aiGenerated");
+  });
+});
+
 describe("B6 · KO-02-04 — getrennte Dokumentfenster bleiben getrennt", () => {
   it("zwei Fenster, zwei Dokumente; ein Auftrag erreicht nur sein Fenster", async () => {
     await fensterAnmelden(erik, FENSTER_A, DOK_A);

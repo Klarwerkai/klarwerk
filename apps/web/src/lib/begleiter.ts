@@ -9,10 +9,13 @@
 //   · WIE WEIT eine Taste die Figur schiebt (`bewegungsSchritt`).
 // Den Kanal selbst beschreibt `services/app/src/klara-begleiter.ts`; die Typen unten sind sein
 // Drahtvertrag (`GET /api/me/klara/begleiter/kontext`).
+import type { BegleiterVergleich } from "../../../../services/app/src/klara-begleiter";
 import { api } from "../api/client";
 
+export type { BegleiterVergleich };
+
 export type BegleiterHost = "word-mac" | "word-web" | "word-windows" | "word-andere";
-export type BegleiterAktionArt = "einfuegen" | "frage";
+export type BegleiterAktionArt = "einfuegen" | "frage" | "zeigen";
 export type BegleiterAktionStand =
   | "offen"
   | "uebergeben"
@@ -37,6 +40,7 @@ export interface BegleiterAdapter {
     art: BegleiterAktionArt;
     stand: BegleiterAktionStand;
     ergebnis: string | null;
+    vergleich?: BegleiterVergleich;
     grund: string | null;
     /** Der Abbruch einer übergebenen Aktion ist angefordert; Word hat ihr Ende noch nicht gemeldet. */
     abbruchAngefordert?: boolean;
@@ -60,6 +64,7 @@ export const begleiterApi = {
       text: string;
       auswahlStand: number;
       schluessel: string;
+      locale?: "de" | "en" | "nl";
       /** Nacharbeit 59: Serverzeit (`jetzt`) des Kontexts, den die Begleitapp gesehen hat. */
       ausgestelltAm: string;
       /** Nacharbeit 64: Kanalinstanz desselben Kontexts. */
@@ -261,7 +266,56 @@ const DOKUMENTBEZUG =
   /\b(markier\w*|auswahl|ausgew[aä]hlt\w*|dokument\w*|absatz|abs[aä]tze|word|selection|selected|highlighted|document|paragraph|markering|gemarkeerd\w*|selectie|alinea)\b/i;
 
 export function dokumentBezogen(frage: string): boolean {
-  return DOKUMENTBEZUG.test(frage);
+  // Explizite Host-Begriffe bleiben wie bisher an Word gebunden. Die übrigen Verweise folgen
+  // askFragtNachWordAbsatz im Word-Adapter, damit der dort gelesene Cursorabsatz zur Frage gehört.
+  if (DOKUMENTBEZUG.test(frage)) return true;
+  const text = frage
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[.!?]+$/, "")
+    .trim();
+  // Ein expliziter Verweis kann überall in einer Sachfrage stehen.
+  if (
+    /\b(?:this|that) (?:paragraph|passage|statement|sentence|wording|excerpt)\b/.test(text) ||
+    /\bdiese(?:n|m|r|s)? (?:absatz|passage|aussage|satz|formulierung|text)\b/.test(text) ||
+    /\b(?:deze|dit) (?:alinea|passage|zin|uitspraak|tekst)\b/.test(text)
+  ) {
+    return true;
+  }
+
+  // „Is it correct that …?“ hat einen eigenen Gegenstand. Bei einer kurzen
+  // Verweisfrage sind dagegen Zusätze wie „according to our policy“ möglich.
+  const en = text
+    .replace(/^(?:can|could|would) you (?:please )?(?:check|verify|tell me) (?:if|whether) /, "")
+    .replace(/ (?:according to|based on|in light of|under|against|given) .+$/, "");
+  if (
+    /^(?:(?:is|was) (?:this|that|it)|(?:this|that|it) (?:is|was)) (?:correct|right|true|accurate|consistent)$/.test(
+      en,
+    ) ||
+    /^(?:does|would) (?:this|that|it) (?:match|comply with|contradict)\b/.test(en) ||
+    /^(?:what does (?:this|that|it) mean|(?:please )?(?:check|verify|explain) (?:this|that))$/.test(
+      en,
+    )
+  ) {
+    return true;
+  }
+
+  const de = text.replace(/ (?:laut|gemäß|nach|anhand|mit blick auf) .+$/, "");
+  if (
+    /^(?:ist|war) (?:das|dies) (?:so )?(?:richtig|korrekt|wahr|zutreffend)$/.test(de) ||
+    /^(?:stimmt|passt) (?:das|dies)(?: so)?$/.test(de) ||
+    /^(?:was (?:bedeutet|heißt) das|(?:prüfe|erkläre) (?:das|dies))$/.test(de)
+  ) {
+    return true;
+  }
+
+  const nl = text.replace(/ (?:volgens|op basis van|gezien) .+$/, "");
+  return (
+    /^(?:is|was) (?:dit|dat) (?:juist|correct|goed|waar)$/.test(nl) ||
+    /^klopt (?:dit|dat)$/.test(nl) ||
+    /^(?:wat betekent (?:dit|dat)|(?:controleer|verklaar) (?:dit|dat))$/.test(nl)
+  );
 }
 
 /** Läuft für dieses Fenster noch eine Aktion (übergeben oder offen)? */

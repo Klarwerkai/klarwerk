@@ -423,6 +423,7 @@ export function KlaraEchtGespraech({
   onNeuLaden,
   sprecher,
   minimal = false,
+  mitWordAntwort = false,
 }: {
   kontext: KlaraObjektbezug;
   pfad: string;
@@ -434,6 +435,7 @@ export function KlaraEchtGespraech({
    * Kontextdetails und Menü (`AssistenzMinimal.tsx`).
    */
   minimal?: boolean;
+  mitWordAntwort?: boolean;
   /** Klara 03: der gespeicherte Wortlaut UND der Bezug von damals — nichts wird neu zusammengesetzt. */
   onErneutFragen: (frage: string, bezug: KlaraObjektbezug) => void;
   onNeuLaden: () => void;
@@ -495,7 +497,7 @@ export function KlaraEchtGespraech({
         ) : null}
         {/* Der ganze gespeicherte Verlauf — keine Kürzung zugunsten der Optik. */}
         <section data-testid="klara-verlauf" aria-label={t("klaravorschau.verlauf.titel")}>
-          {e.nachrichten.length === 0 && e.laden === "bereit" ? (
+          {!mitWordAntwort && e.nachrichten.length === 0 && e.laden === "bereit" ? (
             <p data-testid="klara-echt-leer" className="py-6 text-center text-[15px] text-muted">
               {t("assistenzminimal.leer")}
             </p>

@@ -405,6 +405,147 @@ describe("S3 · KO-02-05 — der Word-Kontext kommt ausschliesslich vom Adapter"
   });
 });
 
+describe("Direktvergleich in der Klara-App", () => {
+  it("prüft den Cursorabsatz auf Englisch, zeigt Quellen und Fundstelle und beginnt nach Clear einen neuen Vergleich", async () => {
+    await vorrichtung();
+    if (!aufbau) throw new Error("Vorrichtung fehlt");
+    const original = "Guest Wi-Fi must not provide access to the internal staff network.";
+    const dokument = original.replace("must not", "must");
+    const quelle = await eintragMitOriginal(aufbau.app, aufbau.admin, { kernaussage: original });
+    await montiere();
+    await gespraechOffen();
+    await befehlDerApp("einstellungen-oeffnen");
+    await klick(q(document, "sprach-schalter-en"));
+    expect(i18n.language).toBe("en");
+    await taste(q(document, "begleiter-gespraech") as HTMLElement, "Escape");
+    const feld = q<HTMLInputElement>(document, "begleiter-eingabe") as HTMLInputElement;
+    await tippe(feld, "Is this correct in light of our policy?");
+    await klick(q(document, "begleiter-senden"));
+    expect(q(document, "begleiter-word-hilfe")?.textContent).toContain("paragraph at your cursor");
+
+    const gemeldet = await wordFenster("POST", `${BASIS}/adapter`, {
+      instanz: FENSTER,
+      host: "word-mac",
+      hostFassung: "16.89",
+      dokument: DOKUMENT,
+    });
+    expect(gemeldet.statusCode).toBe(201);
+    await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, { seq: 1, auswahl: null });
+    await bis(() => q(document, "begleiter-word-hilfe")?.dataset.verbunden === "ja", 160);
+    await klick(q(document, "begleiter-word-hilfe-senden"));
+    await bis(() => feld.value === "", 100);
+    const hole = async (seq: number) => {
+      const r = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, { seq, auswahl: null });
+      expect(r.statusCode, r.body).toBe(200);
+      return (
+        r.json() as {
+          aktionen: Array<{
+            id: string;
+            art: string;
+            text: string;
+            locale?: string;
+            auswahlStand: number;
+          }>;
+        }
+      ).aktionen;
+    };
+    const [frage] = await hole(2);
+    if (!frage) throw new Error("Word hat die Prüffrage nicht erhalten");
+    expect(frage).toMatchObject({
+      art: "frage",
+      locale: "en",
+      text: "Is this correct in light of our policy?",
+      auswahlStand: 0,
+    });
+    const beleg = { text: original, quellen: [quelle.koId], woertlich: true };
+    const zeige = async (seq: number, id: string, vergleich: Record<string, unknown>) => {
+      const r = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+        seq,
+        auswahl: null,
+        erledigt: [{ id, stand: "erledigt", ergebnis: "Antwort", vergleich }],
+      });
+      expect(r.statusCode, r.body).toBe(200);
+      await bis(
+        () => q(document, "begleiter-direktvergleich")?.dataset.urteil === vergleich.art,
+        160,
+      );
+      return q(document, "begleiter-direktvergleich") as HTMLElement;
+    };
+    const widerspruch = await zeige(3, frage.id, {
+      art: "widersprochen",
+      aiGenerated: true,
+      dokument,
+      belege: [beleg],
+      zeigbar: true,
+      dokumentMarke: { start: dokument.indexOf("must"), end: dokument.indexOf("provide") + 7 },
+      belegMarke: { start: original.indexOf("not"), end: original.indexOf("not") + 3 },
+    });
+    expect(q(document, "klara-echt-leer")).toBeNull();
+    expect(q(widerspruch, "ai-generated-notice")?.textContent).toBe(i18n.t("ai.generatedNotice"));
+    expect(q(document, "begleiter-verfuegbarkeit")).toBeNull();
+    expect(widerspruch.querySelector("h3")?.textContent).toContain("Contradicts the source");
+    expect(Array.from(widerspruch.querySelectorAll("mark"), (m) => m.textContent)).toEqual([
+      "must provide",
+      "not",
+    ]);
+    expect(widerspruch.querySelector("a")?.pathname).toBe(`/wissen/${quelle.koId}`);
+    await klick(q(widerspruch, "begleiter-vergleich-zeigen"));
+    await bis(() => draht.aufrufe.filter((a) => a.url.endsWith("/aktionen")).length >= 2, 80);
+    const [navigation] = await hole(4);
+    if (!navigation) throw new Error("Word hat die Navigation nicht erhalten");
+    expect(navigation).toMatchObject({ art: "zeigen", text: frage.id });
+    await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+      seq: 5,
+      auswahl: null,
+      erledigt: [{ id: navigation.id, stand: "abgelehnt", grund: "vergleich_veraltet" }],
+    });
+    await bis(
+      () =>
+        (q(document, "begleiter-aktionen")?.textContent ?? "").includes(
+          "Check the current text again.",
+        ),
+      160,
+    );
+    await tippe(feld, "Draft");
+    await klick(q(document, "begleiter-vergleich-leeren"));
+    expect(feld.value).toBe("");
+    expect(q(document, "begleiter-direktvergleich")).toBeNull();
+
+    abbauen();
+    await montiere();
+    await gespraechOffen();
+    await bis(() => Boolean(q(document, "begleiter-fenster")), 160);
+    expect(q(document, "begleiter-direktvergleich")).toBeNull();
+    const neuFeld = q<HTMLInputElement>(document, "begleiter-eingabe") as HTMLInputElement;
+    for (const [index, art] of (["bestaetigt", "offen"] as const).entries()) {
+      await tippe(neuFeld, "Is this correct?");
+      await klick(q(document, "begleiter-senden"));
+      await bis(() => neuFeld.value === "", 100);
+      const [neu] = await hole(6 + index * 2);
+      if (!neu) throw new Error("Word hat den neuen Vergleich nicht erhalten");
+      const karte = await zeige(7 + index * 2, neu.id, {
+        art,
+        dokument: original,
+        belege: art === "offen" ? [] : [beleg],
+        belegMarke: null,
+        dokumentMarke: null,
+        zeigbar: false,
+      });
+      expect(document.querySelectorAll('[data-testid="begleiter-direktvergleich"]')).toHaveLength(
+        1,
+      );
+      expect(karte.querySelector("h3")?.textContent).toContain(
+        art === "offen" ? "Insufficient evidence" : "Matches the source",
+      );
+      expect(karte.querySelectorAll("a")).toHaveLength(art === "offen" ? 0 : 1);
+      expect(q(karte, "begleiter-vergleich-zeigen")).toBeNull();
+      expect(q(karte, "ai-generated-notice")).toBeNull();
+      await klick(q(document, "begleiter-vergleich-leeren"));
+    }
+    expect(draht.aufrufe.some((a) => a.url === "/api/ask")).toBe(false);
+  }, 45_000);
+});
+
 describe("S4 · KO-02-01 — Fassungen sichtbar", () => {
   it("nennt die Fassung der Webfläche und die der App, wie die App sie einträgt", async () => {
     await vorrichtung();
@@ -523,7 +664,9 @@ describe("S6 · UI-MIN-04 — Word-Verbindungshilfe genau beim dokumentabhängig
     await tippe(eingabe, "Erkläre die Markierung");
     await klick(q(document, "begleiter-senden"));
     const hilfe = q(document, "begleiter-word-hilfe");
-    expect(hilfe?.textContent).toContain("Für die Markierung benötige ich die Word-Verbindung.");
+    expect(hilfe?.textContent).toContain(
+      "Verbinde Word, damit Klara die Markierung oder den Absatz am Cursor lesen kann.",
+    );
     expect(hilfe?.dataset.verbunden).toBe("nein");
     expect(draht.aufrufe.some((a) => a.url === "/api/ask")).toBe(false);
     expect(eingabe.value).toBe("Erkläre die Markierung");

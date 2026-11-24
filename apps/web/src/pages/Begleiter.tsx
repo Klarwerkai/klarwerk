@@ -38,6 +38,7 @@ import { ApiError } from "../api/client";
 import type { KlaraObjektbezug } from "../api/klaraGespraech";
 import { useSession } from "../app/AuthContext";
 import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext";
+import { SprachSchalter } from "../components/SprachSchalter";
 import { MeineFunktionen } from "../components/funktionen/MeineFunktionen";
 import { BegleiterSuche } from "../components/klara-begleitung/BegleiterSuche";
 import {
@@ -55,6 +56,7 @@ import {
   type Vorgang,
   VorgangsLeiste,
 } from "../components/klara-vorschau/AssistenzMinimal";
+import { BegleiterDirektvergleich } from "../components/klara-vorschau/BegleiterDirektvergleich";
 import {
   KlaraEchtGespraech,
   useKlaraKiLage,
@@ -89,6 +91,7 @@ import { LegalFooter } from "../legal/LegalPages";
 import {
   BEGLEITER_ABRUF_MS,
   type BegleiterAdapter,
+  type BegleiterAktionArt,
   type BegleiterKontext,
   aktionLaeuft,
   begleiterApi,
@@ -106,6 +109,7 @@ import {
   begleiterEntwurfAnKontoBinden,
   entferneBegleiterAbgewiesen,
   fuegeBegleiterAbgewiesenHinzu,
+  leereBegleiterVergleich,
   leseBegleiterEntwurf,
   setzeBegleiterEntwurf,
   useBegleiterEntwurf,
@@ -642,6 +646,12 @@ function BegleiterInhalt(): JSX.Element {
 
   const adapter: BegleiterAdapter | null = waehleAdapter(kontext, gewaehlt);
   const auswahl = gueltigeAuswahl(adapter);
+  const sichtbareAktionen = (adapter?.aktionen ?? []).filter(
+    (aktion) =>
+      !(entwurf.kontoId === kontoId && entwurf.ausgeblendet.includes(aktion.id)) &&
+      (aktion.art !== "zeigen" || aktion.stand === "fehler" || aktion.stand === "abgelehnt"),
+  );
+  const letzteWordFrage = [...sichtbareAktionen].reverse().find((aktion) => aktion.art === "frage");
   const adapterRef = useRef(adapter);
   adapterRef.current = adapter;
   /** Das Word-Ziel in diesem Augenblick — Fenster, Host, Titel, Auswahlstand (kein Text). */
@@ -665,6 +675,25 @@ function BegleiterInhalt(): JSX.Element {
       typeof neu === "function" ? neu(alt) : neu,
       ursprungJetzt(),
     );
+  };
+
+  const vergleichLeeren = (): void => {
+    // Nur IDs im Kontokontext merken. Ein späterer Poll darf die weggelegte Antwort nicht zurückholen.
+    const ids = new Set(entwurf.kontoId === kontoId ? entwurf.ausgeblendet : []);
+    for (const a of adapter?.aktionen ?? []) {
+      if (a.art === "frage" || a.art === "zeigen") ids.add(a.id);
+    }
+    for (const e of eigene.angenommen) {
+      if (e.instanz === adapter?.instanz && e.aktion.art !== "einfuegen") ids.add(e.aktion.id);
+    }
+    leereBegleiterVergleich(kontoId, ids);
+    setEinwilligungFuer(null);
+    setNachEinwilligung(null);
+    setKiAusGezeigt(false);
+    setZielFrage(null);
+    setWordHilfeFuer(null);
+    setAktionFehler(null);
+    eingabeRef.current?.focus();
   };
 
   // Die Lage des Fensters und die Fassung gehen an die App; im Browser bleibt das ohne Wirkung.
@@ -941,7 +970,7 @@ function BegleiterInhalt(): JSX.Element {
 
   // Was eingefügt würde: die jüngste Antwort aus Word, sonst die jüngste Antwort im Gespräch.
   const wordAntwort =
-    [...(adapter?.aktionen ?? [])]
+    [...sichtbareAktionen]
       .reverse()
       .find((a) => a.art === "frage" && a.stand === "erledigt" && a.ergebnis)?.ergebnis ?? null;
   const gespraechAntwort =
@@ -955,7 +984,7 @@ function BegleiterInhalt(): JSX.Element {
    * Auswahlstand). `true`, wenn der Kanal den Auftrag angenommen hat.
    */
   const beauftrage = async (
-    art: "einfuegen" | "frage",
+    art: BegleiterAktionArt,
     text: string,
     instanz: string | null = adapter?.instanz ?? null,
     auswahlStand: number = auswahl?.stand ?? 0,
@@ -991,6 +1020,7 @@ function BegleiterInhalt(): JSX.Element {
       const auftrag = {
         art,
         text,
+        ...(art === "frage" ? { locale: toReasonerLocale(i18n.language) } : {}),
         auswahlStand,
         schluessel,
         ausgestelltAm,
@@ -1027,7 +1057,12 @@ function BegleiterInhalt(): JSX.Element {
       );
       return true;
     } catch (fehler) {
-      const grund = fehler instanceof ApiError ? fehler.message : fehlerBild(fehler, t).text;
+      const grund =
+        art === "zeigen" && ablehnungBelegt(fehler)
+          ? t("begleiter.vergleich.stelleFehlt")
+          : fehler instanceof ApiError
+            ? fehler.message
+            : fehlerBild(fehler, t).text;
       if (!ablehnungBelegt(fehler)) {
         // Nacharbeit 57/58: unklarer Ausgang — der Kanal kann ihn angenommen haben oder noch
         // annehmen. Weiter als Vorgang zählen (keine bestätigte 0), bis seine Klärung vorliegt.
@@ -1399,6 +1434,17 @@ function BegleiterInhalt(): JSX.Element {
             {zustandText}
           </p>
         </div>
+        {!menueSeite && (letzteWordFrage || eingabe || wordHilfeFuer) ? (
+          <button
+            type="button"
+            data-testid="begleiter-vergleich-leeren"
+            onClick={vergleichLeeren}
+            disabled={eigene.ausstehend > 0 || eigene.unklar.length > 0}
+            className={KNOPF}
+          >
+            {t("begleiter.vergleich.leeren")}
+          </button>
+        ) : null}
         <button
           ref={menueKnopfRef}
           type="button"
@@ -1518,6 +1564,7 @@ function BegleiterInhalt(): JSX.Element {
                   {t("begleiter.einstellungen.zentral.link")}
                 </a>
               </section>
+              <SprachSchalter imMenue={false} />
               <section className="space-y-1.5">
                 <h4 className={ABSCHNITT}>{t("assistenzminimal.einstellungen.sprache")}</h4>
                 <KlaraSprachausgabe />
@@ -1617,7 +1664,7 @@ function BegleiterInhalt(): JSX.Element {
               className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-[12px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
             >
               <span className="min-w-0 flex-1 truncate">{kontextZeile}</span>
-              {kiKurz ? (
+              {kiKurz && !sichtbareAktionen.some((aktion) => aktion.vergleich) ? (
                 <span
                   data-testid="begleiter-verfuegbarkeit"
                   className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted"
@@ -1782,30 +1829,50 @@ function BegleiterInhalt(): JSX.Element {
               </p>
             ) : null}
 
-            {adapter && adapter.aktionen.length > 0 ? (
+            {adapter && sichtbareAktionen.length > 0 ? (
               <ol className="space-y-1" data-testid="begleiter-aktionen">
-                {[...adapter.aktionen].reverse().map((a) => (
-                  <li
-                    key={a.id}
-                    data-stand={a.stand}
-                    className="rounded-btn bg-surface px-2 py-1 text-[11px] text-text"
-                  >
-                    <span className="font-semibold">{t(`begleiter.aktion.art.${a.art}`)}</span>
-                    {" · "}
-                    {t(`begleiter.aktion.stand.${a.stand}`)}
-                    {a.grund ? ` · ${t("begleiter.aktion.grund", { grund: a.grund })}` : ""}
-                    {a.art === "frage" && a.ergebnis ? (
-                      <span className="mt-0.5 block whitespace-pre-wrap text-[11.5px]">
-                        <span className={KLEINTITEL}>{t("begleiter.aktion.antwort")}</span>{" "}
-                        {kuerze(a.ergebnis, 800)}
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
+                {[...sichtbareAktionen].reverse().map((a) =>
+                  a.art === "frage" && a.stand === "erledigt" && a.vergleich ? (
+                    <li key={a.id} data-stand={a.stand}>
+                      <BegleiterDirektvergleich
+                        vergleich={a.vergleich}
+                        zeigen={
+                          adapter.aktiv && a.id === letzteWordFrage?.id && !aktionLaeuft(adapter)
+                            ? () => {
+                                void beauftrage("zeigen", a.id, adapter.instanz);
+                              }
+                            : undefined
+                        }
+                      />
+                    </li>
+                  ) : (
+                    <li
+                      key={a.id}
+                      data-stand={a.stand}
+                      className="rounded-btn bg-surface px-2 py-1 text-[11px] text-text"
+                    >
+                      <span className="font-semibold">{t(`begleiter.aktion.art.${a.art}`)}</span>
+                      {" · "}
+                      {t(`begleiter.aktion.stand.${a.stand}`)}
+                      {a.art === "zeigen"
+                        ? ` · ${t("begleiter.vergleich.stelleFehlt")}`
+                        : a.grund
+                          ? ` · ${t("begleiter.aktion.grund", { grund: a.grund })}`
+                          : ""}
+                      {a.art === "frage" && a.ergebnis ? (
+                        <span className="mt-0.5 block whitespace-pre-wrap text-[11.5px]">
+                          <span className={KLEINTITEL}>{t("begleiter.aktion.antwort")}</span>{" "}
+                          {kuerze(a.ergebnis, 800)}
+                        </span>
+                      ) : null}
+                    </li>
+                  ),
+                )}
               </ol>
             ) : null}
 
             <KlaraEchtGespraech
+              mitWordAntwort={Boolean(letzteWordFrage?.stand === "erledigt")}
               minimal
               kontext={bezug}
               pfad="/begleiter"

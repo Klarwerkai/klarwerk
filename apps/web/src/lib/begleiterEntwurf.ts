@@ -34,9 +34,17 @@ export interface BegleiterEntwurf {
   text: string;
   ursprung: BegleiterUrsprung | null;
   abgewiesen: BegleiterAbgewiesen[];
+  /** Weggelegte Word-Ergebnisse, nur IDs des eigenen Kontos, kein Dokumentinhalt. */
+  ausgeblendet: string[];
 }
 
-const LEER: BegleiterEntwurf = { kontoId: null, text: "", ursprung: null, abgewiesen: [] };
+const LEER: BegleiterEntwurf = {
+  kontoId: null,
+  text: "",
+  ursprung: null,
+  abgewiesen: [],
+  ausgeblendet: [],
+};
 
 function istUrsprung(roh: unknown): roh is BegleiterUrsprung {
   if (typeof roh !== "object" || roh === null) {
@@ -81,6 +89,9 @@ function laden(): BegleiterEntwurf {
       text,
       ursprung: text && istUrsprung(g.ursprung) ? g.ursprung : null,
       abgewiesen,
+      ausgeblendet: Array.isArray(g.ausgeblendet)
+        ? g.ausgeblendet.filter((id) => typeof id === "string")
+        : [],
     };
   } catch {
     return LEER;
@@ -93,7 +104,7 @@ let zaehler = 0;
 
 function sichern(): void {
   try {
-    if (stand.text || stand.abgewiesen.length > 0) {
+    if (stand.text || stand.abgewiesen.length > 0 || stand.ausgeblendet.length > 0) {
       sessionStorage.setItem(SITZUNG, JSON.stringify(stand));
     } else {
       sessionStorage.removeItem(SITZUNG);
@@ -125,7 +136,15 @@ export function setzeBegleiterEntwurf(
     text,
     ursprung: !text ? null : neu ? ursprungBeiBeginn : stand.ursprung,
     abgewiesen: anderesKonto ? [] : stand.abgewiesen,
+    ausgeblendet: anderesKonto ? [] : stand.ausgeblendet,
   };
+  sichern();
+}
+
+/** Leert die Ansicht, ohne Word oder das gespeicherte freie Gespräch zu verändern. */
+export function leereBegleiterVergleich(kontoId: string | null, ids: Iterable<string>): void {
+  if (stand.kontoId !== kontoId) return;
+  stand = { ...stand, text: "", ursprung: null, ausgeblendet: [...new Set(ids)] };
   sichern();
 }
 

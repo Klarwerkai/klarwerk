@@ -18,6 +18,7 @@ import {
   SCHRITT_KLEIN,
   aktionLaeuft,
   bewegungsSchritt,
+  dokumentBezogen,
   figurZustand,
   gueltigeAuswahl,
   waehleAdapter,
@@ -172,5 +173,33 @@ describe("F4 · die Brücke zwischen Webfläche und App", () => {
     ab();
     sende("gespraech-oeffnen");
     expect(angekommen).toEqual(["figur-klick", "reduziert-an"]);
+  });
+});
+
+describe("Dokumentbezug kurzer Prüffragen in der App", () => {
+  it.each([
+    "Is this correct in light of our policy?",
+    "Could you please check whether this is correct given our guidelines?",
+    "Does that match the approved guidance?",
+    "What does this mean?",
+    "Can you clarify this excerpt?",
+    "Stimmt das so mit Blick auf unsere Richtlinie?",
+    "Was bedeutet das?",
+    "Wie bewertest du diese Aussage?",
+    "Is dit juist gezien ons beleid?",
+    "Wat betekent dit?",
+    "Wat verandert er in deze uitspraak?",
+  ])("sendet den Verweis %s an das Word-Fenster", (frage) => {
+    expect(dokumentBezogen(frage)).toBe(true);
+  });
+  it.each([
+    "Is it correct that staff can use the guest network?",
+    "Is this policy correct?",
+    "What does the policy mean?",
+    "Ist es richtig, dass das Gästenetz getrennt sein muss?",
+    "Was bedeutet die Richtlinie?",
+    "Is het juist dat de netwerken gescheiden zijn?",
+  ])("lässt die eigenständige Sachfrage %s im freien Gespräch", (frage) => {
+    expect(dokumentBezogen(frage)).toBe(false);
   });
 });

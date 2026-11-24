@@ -377,6 +377,98 @@ async function choose(page: Page, name: string) {
 describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand", () => {
   const gastWlan = "Guest Wi-Fi must provide access to the internal staff network";
   const firmenregel = "Guest Wi-Fi must not provide access to the internal staff network.";
+  it("sendet Direktvergleiche aus Word auftragsbezogen an die Begleitapp und zeigt nur den gültigen Originalbereich", async () => {
+    const page = await open("taskpane.html", false, "", "de-DE", {
+      paragraphs: [gastWlan],
+      index: 0,
+    });
+    const fragen: string[] = [];
+    const aktionen: { id: string; art: string; text: string; locale?: string }[] = [];
+    let luecke = false;
+    try {
+      await page.route(/\/api\/me\/klara\/begleiter\/adapter(?:\/[^/?]+)?$/, (route) => {
+        if (route.request().method() === "POST") return route.fulfill({ status: 201, json: {} });
+        const erledigt = route.request().postDataJSON()?.erledigt || [];
+        return route.fulfill({
+          json: {
+            aktionen: aktionen.splice(0),
+            quittiert: erledigt.map((e: { id: string }) => e.id),
+          },
+        });
+      });
+      const kopf =
+        "AI comparison: the selected statement contradicts the company sources consulted.";
+      await page.route("**/execute", (route) => {
+        fragen.push(route.request().postDataJSON().locale);
+        return route.fulfill({
+          json: luecke
+            ? { result: { answered: false, sources: [] } }
+            : {
+                result: {
+                  answered: true,
+                  answer: kopf,
+                  aiGenerated: { aiGenerated: true, task: "answer", mode: "model" },
+                  sources: ["wifi"],
+                  citedSources: ["wifi"],
+                  steps: [{ sourceId: "wifi", snippet: firmenregel }],
+                  dokumentUrteil: { art: "widersprochen", texte: { en: kopf } },
+                },
+                absaetze: [
+                  { text: kopf, quellen: ["wifi"] },
+                  { text: firmenregel, quellen: ["wifi"] },
+                ],
+              },
+        });
+      });
+      await page.evaluate("begleiterVerbinden()");
+      await page.waitForFunction("begleiterAngemeldet && !begleiterUnterwegs");
+      const ausfuehren = async (id: string, art: string, text: string) => {
+        const meldung = page.waitForRequest(
+          (r) =>
+            r.method() === "PUT" &&
+            r.url().includes("/begleiter/adapter/") &&
+            r.postDataJSON().erledigt?.some((e: { id: string }) => e.id === id),
+        );
+        aktionen.push({ id, art, text, ...(art === "frage" ? { locale: "en" } : {}) });
+        await page.evaluate("begleiterMelden()");
+        return (await meldung).postDataJSON().erledigt.find((e: { id: string }) => e.id === id);
+      };
+      const erste = await ausfuehren("q1", "frage", "Is this correct?");
+      expect(erste).toMatchObject({
+        stand: "erledigt",
+        vergleich: {
+          art: "widersprochen",
+          aiGenerated: true,
+          dokument: gastWlan,
+          zeigbar: true,
+          belege: [{ text: firmenregel, quellen: ["wifi"], woertlich: true }],
+        },
+      });
+      expect(erste.ergebnis).toContain("paragraph at the cursor");
+      expect(
+        gastWlan.slice(erste.vergleich.dokumentMarke.start, erste.vergleich.dokumentMarke.end),
+      ).toBe("must provide");
+      expect((await ausfuehren("s1", "zeigen", "q1")).stand).toBe("erledigt");
+      expect((await ausfuehren("q2", "frage", "Is this correct?")).vergleich).toEqual(
+        erste.vergleich,
+      );
+      expect((await ausfuehren("s2", "zeigen", "q1")).stand).toBe("abgelehnt");
+      await page.getByRole("button", { name: "Leeren", exact: true }).click();
+      expect((await ausfuehren("s3", "zeigen", "q2")).stand).toBe("abgelehnt");
+      luecke = true;
+      expect(await ausfuehren("q3", "frage", "Is this correct?")).toMatchObject({
+        stand: "erledigt",
+        ergebnis: "There is no released company knowledge on this.",
+        vergleich: { art: "offen", dokument: gastWlan, belege: [], zeigbar: true },
+      });
+      expect(fragen).toEqual(["en", "en", "en"]);
+      expect(await page.evaluate("window.__wordSelections")).toEqual(["must provide"]);
+      expect(await page.evaluate("window.__wordWrites")).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  }, 45000);
+
   it.each([
     { frage: "is this correct", absatz: 1, bezug: "at the cursor" },
     { frage: "is this correct", absatz: 2, bezug: "above the cursor" },

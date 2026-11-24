@@ -47,6 +47,19 @@ export default {
       "Eingefügt wird nur, solange die Markierung in Word unverändert ist.",
     "begleiter.aktion.art.einfuegen": "Einfügen",
     "begleiter.aktion.art.frage": "Frage in Word",
+    "begleiter.aktion.art.zeigen": "In Word zeigen",
+    "begleiter.vergleich.bestaetigt": "Stimmt mit der Quelle überein",
+    "begleiter.vergleich.widersprochen": "Widerspricht der Quelle",
+    "begleiter.vergleich.offen": "Nicht ausreichend belegt",
+    "begleiter.vergleich.dokument": "Dein Dokument",
+    "begleiter.vergleich.quelle": "Freigegebene Quelle",
+    "begleiter.vergleich.beleg": "Quellengestützte Antwort",
+    "begleiter.vergleich.fehlt":
+      "Die freigegebenen Firmenquellen reichen für dieses Urteil nicht aus.",
+    "begleiter.vergleich.leeren": "Leeren",
+    "begleiter.vergleich.stelleFehlt":
+      "Die geprüfte Stelle lässt sich in Word nicht mehr zeigen. Bitte prüfe den aktuellen Text erneut.",
+    "begleiter.vergleich.quelllink": "Quelle {{nummer}} öffnen",
     "begleiter.aktion.stand.offen": "wartet auf Word",
     "begleiter.aktion.stand.uebergeben": "Word führt aus",
     "begleiter.aktion.stand.erledigt": "erledigt",
@@ -108,7 +121,8 @@ export default {
     "begleiter.vorschlag.verbessernFrage":
       "Schlage eine verbesserte Formulierung für die markierte Stelle vor.",
     "begleiter.wordhilfe.titel": "Word-Verbindung",
-    "begleiter.wordhilfe.text": "Für die Markierung benötige ich die Word-Verbindung.",
+    "begleiter.wordhilfe.text":
+      "Verbinde Word, damit Klara die Markierung oder den Absatz am Cursor lesen kann.",
     "begleiter.wordhilfe.verbunden":
       "Word ist jetzt verbunden: {{titel}}. Markiere die Stelle in Word, dann sende die Frage dorthin.",
     "begleiter.wordhilfe.allgemein": "Ohne Dokument fragen",
@@ -193,6 +207,19 @@ export default {
       "It is only inserted while the selection in Word is unchanged.",
     "begleiter.aktion.art.einfuegen": "Insert",
     "begleiter.aktion.art.frage": "Question in Word",
+    "begleiter.aktion.art.zeigen": "Show in Word",
+    "begleiter.vergleich.bestaetigt": "Matches the source",
+    "begleiter.vergleich.widersprochen": "Contradicts the source",
+    "begleiter.vergleich.offen": "Insufficient evidence",
+    "begleiter.vergleich.dokument": "Your document",
+    "begleiter.vergleich.quelle": "Approved source",
+    "begleiter.vergleich.beleg": "Source-based answer",
+    "begleiter.vergleich.fehlt":
+      "The approved company sources do not establish whether this statement is correct.",
+    "begleiter.vergleich.leeren": "Clear",
+    "begleiter.vergleich.stelleFehlt":
+      "This passage can no longer be shown in Word. Check the current text again.",
+    "begleiter.vergleich.quelllink": "Open source {{nummer}}",
     "begleiter.aktion.stand.offen": "waiting for Word",
     "begleiter.aktion.stand.uebergeben": "Word is running it",
     "begleiter.aktion.stand.erledigt": "done",
@@ -247,7 +274,8 @@ export default {
     "begleiter.vorschlag.verbessern": "Improve",
     "begleiter.vorschlag.verbessernFrage": "Suggest an improved wording for the selected passage.",
     "begleiter.wordhilfe.titel": "Word connection",
-    "begleiter.wordhilfe.text": "For the selection I need the Word connection.",
+    "begleiter.wordhilfe.text":
+      "Connect Word so Klara can read the selection or the paragraph at your cursor.",
     "begleiter.wordhilfe.verbunden":
       "Word is now connected: {{titel}}. Select the passage in Word, then send the question there.",
     "begleiter.wordhilfe.allgemein": "Ask without the document",
@@ -326,6 +354,19 @@ export default {
       "Er wordt alleen ingevoegd zolang de selectie in Word ongewijzigd is.",
     "begleiter.aktion.art.einfuegen": "Invoegen",
     "begleiter.aktion.art.frage": "Vraag in Word",
+    "begleiter.aktion.art.zeigen": "Tonen in Word",
+    "begleiter.vergleich.bestaetigt": "Komt overeen met de bron",
+    "begleiter.vergleich.widersprochen": "In strijd met de bron",
+    "begleiter.vergleich.offen": "Onvoldoende bewijs",
+    "begleiter.vergleich.dokument": "Je document",
+    "begleiter.vergleich.quelle": "Goedgekeurde bron",
+    "begleiter.vergleich.beleg": "Antwoord op basis van de bron",
+    "begleiter.vergleich.fehlt":
+      "De goedgekeurde bedrijfsbronnen geven onvoldoende houvast om deze uitspraak te beoordelen.",
+    "begleiter.vergleich.leeren": "Wissen",
+    "begleiter.vergleich.stelleFehlt":
+      "Deze passage kan niet meer in Word worden getoond. Controleer de huidige tekst opnieuw.",
+    "begleiter.vergleich.quelllink": "Bron {{nummer}} openen",
     "begleiter.aktion.stand.offen": "wacht op Word",
     "begleiter.aktion.stand.uebergeben": "Word voert uit",
     "begleiter.aktion.stand.erledigt": "klaar",
@@ -381,7 +422,8 @@ export default {
     "begleiter.vorschlag.verbessernFrage":
       "Stel een verbeterde formulering voor de gemarkeerde passage voor.",
     "begleiter.wordhilfe.titel": "Word-verbinding",
-    "begleiter.wordhilfe.text": "Voor de markering heb ik de Word-verbinding nodig.",
+    "begleiter.wordhilfe.text":
+      "Verbind Word zodat Klara de selectie of de alinea bij de cursor kan lezen.",
     "begleiter.wordhilfe.verbunden":
       "Word is nu verbonden: {{titel}}. Markeer de passage in Word en stuur de vraag daarheen.",
     "begleiter.wordhilfe.allgemein": "Zonder document vragen",

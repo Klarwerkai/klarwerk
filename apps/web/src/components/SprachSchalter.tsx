@@ -78,7 +78,7 @@ export function istAktiv(sprache: string, kandidat: string): boolean {
  * die Profilzeile benutzt), jeder Knopf den ausgeschriebenen Sprachnamen (`lib.facet.lang.*`, in
  * allen drei Sprachen vorhanden). Sichtbar bleibt das Kürzel; vorgelesen wird „Deutsch".
  */
-export function SprachSchalter(): JSX.Element {
+export function SprachSchalter({ imMenue = true }: { imMenue?: boolean } = {}): JSX.Element {
   const { t, i18n } = useTranslation();
   const angelegt = useSyncExternalStore(
     abonniereAngelegteSprachen,
@@ -110,8 +110,9 @@ export function SprachSchalter(): JSX.Element {
       <button
         key={l}
         type="button"
-        role="menuitemradio"
-        aria-checked={aktiv}
+        {...(imMenue
+          ? { role: "menuitemradio", "aria-checked": aktiv }
+          : { "aria-pressed": aktiv })}
         aria-label={sprachname(l)}
         data-testid={`sprach-schalter-${l}`}
         onClick={() => {

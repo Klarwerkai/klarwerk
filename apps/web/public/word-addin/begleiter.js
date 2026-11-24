@@ -99,6 +99,10 @@
     var begleiterLaufend = {};
     // Der eine Haken im Abruf des Fragefelds (siehe `begleiterFrageAbfangen`) — oder `null`.
     var begleiterFrageHaken = null;
+    // Nur während des synchronen Klicks nimmt askKlara diesen Empfänger für genau seinen Lauf an.
+    var begleiterFrageBeimKlick = null;
+    var begleiterVergleichZiel = null;
+    var begleiterAnmeldung = 0;
     var begleiterDokument = null;
     var begleiterNonce = null;
     var begleiterAuswahlHandler = false;
@@ -313,6 +317,8 @@
           begleiterUnterwegs = false;
           if (runde !== begleiterRunde || !begleiterAn) { return; }
           if (antwort.status === 201) {
+            begleiterAnmeldung++;
+            begleiterVergleichZiel = null;
             begleiterAngemeldet = true;
             begleiterSeq = 0;
             begleiterLageSetzen("verbunden");
@@ -369,6 +375,7 @@
           }
         } else if (antwort.status === 404 || antwort.status === 409) {
           // Vergessen (Neustart, Frist) oder aus dem Takt: neu anmelden — die Wiederverbindung.
+          begleiterVergleichZiel = null;
           begleiterAngemeldet = false;
           begleiterLageSetzen("verbindet");
         } else {
@@ -380,15 +387,38 @@
       });
     }
 
-    function begleiterErgebnis(id, stand, ergebnis, grund) {
+    function begleiterErgebnis(id, stand, ergebnis, grund, vergleich) {
       delete begleiterLaufend[id];
-      begleiterErledigt.push({
+      var meldung = {
         id: id,
         stand: stand,
         ergebnis: ergebnis === null ? null : String(ergebnis).slice(0, BEGLEITER_ERGEBNIS_MAX),
         grund: grund === null ? null : String(grund).slice(0, 200)
-      });
+      };
+      if (vergleich) meldung.vergleich = vergleich;
+      begleiterErledigt.push(meldung);
       begleiterMelden();
+    }
+
+    /** Auswahl ausschließlich über die ursprüngliche Frage, Word-Bindung und ihren verfolgten Bereich. */
+    async function begleiterVergleichZeigen(auftrag) {
+      var ziel = begleiterVergleichZiel;
+      var runde = begleiterRunde;
+      var lauf = {
+        art: "zeigen", schluessel: auftrag.schluessel, abgebrochen: false,
+        abbrechen: function () { lauf.abgebrochen = true; }
+      };
+      begleiterLaufend[auftrag.id] = lauf;
+      function aktuell() {
+        return !lauf.abgebrochen && begleiterAn && begleiterAngemeldet && runde === begleiterRunde &&
+          ziel && ziel === begleiterVergleichZiel && auftrag.text === ziel.id &&
+          ziel.anker === askVergleichWordAnker && ziel.aktuell();
+      }
+      var gezeigt = aktuell() && await askVergleichInWordZeigen(ziel.dokument, ziel.marke, aktuell);
+      if (begleiterAn && runde === begleiterRunde) {
+        if (!gezeigt && lauf.abgebrochen) begleiterErgebnis(auftrag.id, "gestoppt", null, "abgebrochen");
+        else begleiterErgebnis(auftrag.id, gezeigt ? "erledigt" : "abgelehnt", null, gezeigt ? null : "vergleich_veraltet");
+      }
     }
 
     /**
@@ -450,10 +480,15 @@
      * würde, mit allen Toren des Fensters. Gewartet wird auf eine NEUE Antwort oder einen Status.
      */
     function begleiterFragen(auftrag) {
+      begleiterVergleichZiel = null;
       var feld = document.getElementById("ask-input");
       var knopf = document.getElementById("ask-btn");
       if (!feld || !knopf) {
         begleiterErgebnis(auftrag.id, "fehler", null, "fragefeld_fehlt");
+        return;
+      }
+      if (feld.disabled) {
+        begleiterErgebnis(auftrag.id, "abgelehnt", null, "frage_gesperrt");
         return;
       }
       var reiter = document.getElementById("tab-ask");
@@ -487,16 +522,48 @@
         clearInterval(pruefen);
         frage.freigeben();
       }
-      function beenden(stand, ergebnis, grund) {
+      function beenden(stand, ergebnis, grund, vergleich) {
         if (fertig) { return; }
         fertig = true;
-        begleiterErgebnis(auftrag.id, stand, ergebnis, grund);
+        begleiterErgebnis(auftrag.id, stand, ergebnis, grund, vergleich);
         aufraeumenWennSicher();
       }
-      knopf.click();
+      var anmeldung = begleiterAnmeldung;
+      var empfang = {
+        text: auftrag.text,
+        locale: ["de", "en", "nl"].indexOf(auftrag.locale) >= 0 ? auftrag.locale : null,
+        aktuell: null,
+        antwort: function (text, vergleich, kiErzeugt) {
+          if (fertig || !empfang.aktuell()) return;
+          var karte;
+          if (vergleich) {
+            var zeigbar = begleiterAngemeldet && anmeldung === begleiterAnmeldung && askVergleichHatWordBereich(vergleich.dokument);
+            karte = Object.assign({}, vergleich, { zeigbar: zeigbar });
+            if (kiErzeugt && vergleich.art !== "offen") karte.aiGenerated = true;
+            if (zeigbar) begleiterVergleichZiel = {
+              id: auftrag.id, aktuell: empfang.aktuell, anker: askVergleichWordAnker,
+              dokument: vergleich.dokument, marke: vergleich.dokumentMarke
+            };
+          }
+          beenden("erledigt", text, null, karte);
+        }
+      };
+      begleiterFrageBeimKlick = empfang;
+      try { knopf.click(); } finally { begleiterFrageBeimKlick = null; }
       var pruefen = setInterval(function () {
         // Gemeldet (oder getrennt): nur noch warten, bis der Fragevorgang sicher zu Ende ist.
         if (fertig) { aufraeumenWennSicher(); return; }
+        // Das große Panel liefert sein typisiertes Ergebnis direkt an diesen Aufruf, auch bei
+        // identischen Antworten und Lücken. Das alte Fragefeld unterstützt nur den Klartextweg.
+        if (empfang.aktuell) {
+          if (!empfang.aktuell()) {
+            if (fragEintrag && fragEintrag.abgebrochen) beenden("gestoppt", null, "abgebrochen");
+            else beenden("abgelehnt", null, "frage_verworfen");
+          }
+          else if (!feld.disabled) beenden("fehler", null, begleiterTextVon("ask-status") || "frage_fehlgeschlagen");
+          else if (Date.now() - beginn > BEGLEITER_FRAGE_FRIST_MS) beenden("fehler", null, "zeitueberschreitung");
+          return;
+        }
         var antwort = begleiterTextVon("ask-answer-text");
         var status = begleiterTextVon("ask-status");
         var block = document.getElementById("ask-answer-block");
@@ -637,10 +704,12 @@
       if (!auftrag || typeof auftrag.id !== "string") { return; }
       if (auftrag.art === "einfuegen") { begleiterEinfuegen(auftrag); }
       else if (auftrag.art === "frage") { begleiterFragen(auftrag); }
+      else if (auftrag.art === "zeigen") { begleiterVergleichZeigen(auftrag); }
       else { begleiterErgebnis(auftrag.id, "abgelehnt", null, "unbekannte_aktion"); }
     }
 
     function begleiterVerbinden() {
+      begleiterVergleichZiel = null;
       begleiterRunde += 1;
       begleiterAn = true;
       begleiterInstanz = begleiterZufall("bgl");
@@ -660,6 +729,7 @@
     function begleiterTrennen() {
       var instanz = begleiterInstanz;
       var warAngemeldet = begleiterAngemeldet;
+      begleiterVergleichZiel = null;
       begleiterRunde += 1;
       begleiterAn = false;
       begleiterAngemeldet = false;

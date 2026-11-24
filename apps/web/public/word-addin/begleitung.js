@@ -112,6 +112,7 @@
     let begleiterAuswahl = null;
     let begleiterErledigt = [];
     let begleiterUnterwegs = null;
+    let vergleichsAnker = null;
     let begleiterLage = "aus";
 
     /** Die Sperre für einen neuen Vorgang setzen; Rückgabe: dessen Laufnummer. */
@@ -527,6 +528,60 @@
       umgebung.onStopped?.();
     }
 
+    function vergleichFreigeben() {
+      const anker = vergleichsAnker;
+      vergleichsAnker = null;
+      if (anker?.bereich) {
+        word
+          .run(anker.bereich, async (kontext) => {
+            anker.bereich.untrack();
+            await kontext.sync();
+          })
+          .catch(() => {});
+      }
+    }
+
+    // Ein ausdrücklich erfragter Bezug umfasst höchstens Auswahl oder Cursorabsatz.
+    // Der gebundene Range ist zugleich das einzige spätere Navigationsziel.
+    async function vergleichLesen(id, bezug, epoch, absatzLesen) {
+      return word.run(async (kontext) => {
+        const auswahl = kontext.document.getSelection();
+        const gilt = () => epoch === frageEpoch && bezugGiltNoch(bezug);
+        auswahl.load("text");
+        await kontext.sync();
+        if (!gilt()) return "";
+        let bereich = auswahl;
+        let text = (auswahl.text || "").trim();
+        if (!text && absatzLesen && auswahl.paragraphs) {
+          const absatz = await wurzel.KlarwerkDokumentvergleich.absatzAmCursor(
+            kontext,
+            auswahl,
+            () => !gilt(),
+          );
+          if (!absatz?.absatz || !gilt()) return "";
+          bereich = absatz.absatz.getRange("Content");
+          text = absatz.text.trim();
+        }
+        text = text.replace(/\r\n?/g, "\n");
+        if (!text || text.length > 2000 || !gilt()) return "";
+        if (typeof bereich.track === "function") {
+          try {
+            bereich.track();
+            await kontext.sync();
+          } catch {
+            return gilt() ? text : "";
+          }
+          if (!gilt()) {
+            bereich.untrack();
+            await kontext.sync();
+            return "";
+          }
+          vergleichsAnker = { id, bereich, text, marke: null, bereit: false };
+        }
+        return text;
+      });
+    }
+
     function frage(text, optionen) {
       const frageText = String(text || "").trim();
       if (!sitzung || frageText.length === 0) {
@@ -537,6 +592,7 @@
       frageController = new AbortController();
       const controller = frageController;
       const epoch = ++frageEpoch;
+      vergleichFreigeben();
       let turn = null;
       verwirfAntwort("");
       const bezug = aktuellerBezug();
@@ -550,7 +606,29 @@
       turn = umgebung.onTurn?.(frageText);
       umgebung.onBusy?.(true);
       zeige("hinweis", "Klara sucht …");
-      const markierung = mitMarkierung ? adapter.auswahlText() : Promise.resolve("");
+      const mitVergleich =
+        mitMarkierung && optionen?.begleiterId && wurzel.KlarwerkDokumentvergleich;
+      const freigabeGilt = () => {
+        if (!optionen?.begleiterId) return true;
+        if (!begleiterAn) return false;
+        if (!mitMarkierung) return true;
+        const jetzt = umgebung.frageOptionen?.();
+        return (
+          jetzt?.markierungMitsenden === true &&
+          (jetzt.vertraulichkeit === "intern") === (optionen.vertraulichkeit === "intern")
+        );
+      };
+      const absatzLesen = Boolean(
+        mitVergleich && wurzel.KlarwerkDokumentvergleich.absatzFrage(frageText),
+      );
+      let dokument = "";
+      const sprache = optionen?.locale ?? umgebung.locale?.();
+      const locale = ["de", "en", "nl"].includes(sprache) ? sprache : "de";
+      const markierung = mitVergleich
+        ? vergleichLesen(optionen.begleiterId, bezug, epoch, absatzLesen)
+        : mitMarkierung
+          ? adapter.auswahlText()
+          : Promise.resolve("");
       return markierung
         .then((auswahl) => {
           // VOR JEDEM SENDEN, unabhängig von der Marke: Konto, Sitzung, Bindungs- und
@@ -558,14 +636,19 @@
           if (
             epoch !== frageEpoch ||
             !kontextGiltNoch(bezug) ||
+            !freigabeGilt() ||
             (mitMarkierung && !bezugGiltNoch(bezug))
           ) {
             return null; // nichts gesendet — die Auswahl oder Bindung hat sich geändert
           }
-          const sprache = umgebung.locale?.();
+          if (absatzLesen && !auswahl) {
+            zeige("hinweis", "Kein lesbarer Absatz an der Word-Textstelle.");
+            return null;
+          }
+          dokument = String(auswahl || "").trim();
           const koerper = {
             question: frageText,
-            locale: ["de", "en", "nl"].includes(sprache) ? sprache : "de",
+            locale,
             questionSource: "manual",
           };
           if (auswahl) {
@@ -585,7 +668,7 @@
         })
         .then((res) => {
           if (epoch !== frageEpoch) return null;
-          if (res === null || !kontextGiltNoch(bezug)) {
+          if (res === null || !kontextGiltNoch(bezug) || !freigabeGilt()) {
             // Die Antwort kam nach einem Wechsel: sie gehört nicht zum jetzigen Kontext.
             zeige("hinweis", "Die Antwort kam nach einem Wechsel und wurde verworfen.");
             return null;
@@ -606,12 +689,41 @@
           });
           const textAntwort =
             ergebnis.answered && typeof ergebnis.answer === "string" ? ergebnis.answer : "";
+          const vergleich =
+            mitVergleich &&
+            wurzel.KlarwerkDokumentvergleich.ausAntwort(res.json, dokument, frageText, locale);
+          if (vergleich) {
+            if (
+              vergleich.art !== "offen" &&
+              ergebnis.aiGenerated?.aiGenerated === true &&
+              ["answer", "interview", "describe", "enrich"].includes(ergebnis.aiGenerated.task) &&
+              ["model", "deterministic"].includes(ergebnis.aiGenerated.mode)
+            )
+              vergleich.aiGenerated = true;
+            const anker = vergleichsAnker;
+            vergleich.zeigbar = Boolean(
+              anker && anker.id === optionen.begleiterId && anker.text === dokument,
+            );
+            if (vergleich.zeigbar) {
+              anker.marke = vergleich.dokumentMarke;
+              anker.bereit = true;
+            }
+            if (vergleich.art === "offen") {
+              zeige("hinweis", "Dazu gibt es keine belegte Antwort.");
+              zeigeKontext();
+              return { text: null, vergleich };
+            }
+          }
           if (!textAntwort) {
             zeige("hinweis", "Dazu gibt es keine belegte Antwort.");
             zeigeKontext();
             return null;
           }
-          antwort = Object.freeze({ text: textAntwort, bezug });
+          antwort = Object.freeze({
+            text: textAntwort,
+            bezug,
+            ...(vergleich ? { vergleich } : {}),
+          });
           zeige("antwort", textAntwort);
           const belege = Array.isArray(ergebnis.sources) ? ergebnis.sources.length : 0;
           zeige("belege", belege > 0 ? `${belege} Beleg(e) aus KLARWERK` : "Ohne genannten Beleg");
@@ -802,6 +914,7 @@
     }
 
     function begleiterNeueRunde() {
+      vergleichFreigeben();
       begleiterRunde += 1;
       begleiterAngemeldet = false;
       begleiterSeq = 0;
@@ -872,7 +985,7 @@
       );
     }
 
-    function begleiterErgebnis(runde, id, stand, ergebnis, grund) {
+    function begleiterErgebnis(runde, id, stand, ergebnis, grund, vergleich) {
       if (runde !== begleiterRunde) {
         return;
       }
@@ -881,6 +994,7 @@
         stand,
         ergebnis: ergebnis === null ? null : String(ergebnis).slice(0, BEGLEITER_ERGEBNIS_MAX),
         grund: grund === null ? null : String(grund).slice(0, 200),
+        ...(vergleich ? { vergleich } : {}),
       });
     }
 
@@ -940,12 +1054,43 @@
           return meldeOffice();
         });
       }
+      if (auftrag.art === "zeigen") {
+        const anker = vergleichsAnker;
+        const gilt = () =>
+          anker?.bereit &&
+          anker.id === auftrag.text &&
+          anker === vergleichsAnker &&
+          begleiterBindungGilt(bindung) &&
+          umgebung.frageOptionen?.().markierungMitsenden === true;
+        const zeigeStelle = gilt()
+          ? wurzel.KlarwerkDokumentvergleich.zeigen(
+              word,
+              anker.bereich,
+              anker.text,
+              anker.marke,
+              gilt,
+            )
+          : Promise.resolve(false);
+        return zeigeStelle.then((ok) =>
+          begleiterErgebnis(
+            runde,
+            auftrag.id,
+            ok ? "erledigt" : "abgelehnt",
+            null,
+            ok ? null : "vergleich_veraltet",
+          ),
+        );
+      }
       if (auftrag.art === "frage") {
         const optionen =
           typeof umgebung.frageOptionen === "function" ? umgebung.frageOptionen() : {};
-        return frage(String(auftrag.text), optionen).then((a) => {
-          if (a?.text) {
-            begleiterErgebnis(runde, auftrag.id, "erledigt", a.text, null);
+        return frage(String(auftrag.text), {
+          ...optionen,
+          locale: auftrag.locale,
+          begleiterId: auftrag.id,
+        }).then((a) => {
+          if (a?.text || a?.vergleich) {
+            begleiterErgebnis(runde, auftrag.id, "erledigt", a.text, null, a.vergleich);
           } else {
             const grund = letzterHinweis || "keine_antwort";
             begleiterErgebnis(runde, auftrag.id, "fehler", null, grund);

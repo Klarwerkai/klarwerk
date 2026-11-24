@@ -3,6 +3,7 @@ import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 const panel = readFileSync("apps/web/public/word-addin/taskpane.js", "utf8");
+const vergleich = readFileSync("apps/web/public/word-addin/dokumentvergleich.js", "utf8");
 const lesen = panel.slice(
   panel.indexOf("var WORD_ADDIN_AUSWAHL_FRIST_MS"),
   panel.indexOf("// JOB 3056 K1 (Rebase auf KA5)"),
@@ -50,7 +51,8 @@ function wirt(auswahl: Bereich) {
     clearTimeout,
   };
   const api = runInNewContext(
-    `${lesen}
+    `${vergleich}
+    ${lesen}
     ;({ readAskSelection, askVergleichInWordZeigen, askVergleichHatWordBereich, askVergleichBereichFreigeben })`,
     umgebung,
   ) as {

@@ -91,8 +91,21 @@ function hatSteuerzeichen(wert: string): boolean {
 export const BEGLEITER_HOSTS = ["word-mac", "word-web", "word-windows", "word-andere"] as const;
 export type BegleiterHost = (typeof BEGLEITER_HOSTS)[number];
 
-export const BEGLEITER_AKTION_ARTEN = ["einfuegen", "frage"] as const;
+export const BEGLEITER_AKTION_ARTEN = ["einfuegen", "frage", "zeigen"] as const;
 export type BegleiterAktionArt = (typeof BEGLEITER_AKTION_ARTEN)[number];
+
+const VERGLEICHSARTEN = ["bestaetigt", "widersprochen", "offen"] as const;
+type Textmarke = { start: number; end: number };
+export interface BegleiterVergleich {
+  art: (typeof VERGLEICHSARTEN)[number];
+  dokument: string;
+  belege: Array<{ text: string; quellen: string[]; woertlich: boolean }>;
+  dokumentMarke: Textmarke | null;
+  belegMarke: Textmarke | null;
+  zeigbar: boolean;
+  aiGenerated?: true;
+}
+type BegleiterSprache = "de" | "en" | "nl";
 
 /**
  * Was der Adapter über eine ausgeführte Aktion meldet. `gestoppt` nimmt der Kanal nur an, wenn die
@@ -126,6 +139,8 @@ export interface BegleiterAktion {
   readonly angelegtAm: number;
   geaendertAm: number;
   ergebnis: string | null;
+  vergleich?: BegleiterVergleich;
+  locale?: BegleiterSprache;
   grund: string | null;
   /** Die Begleitapp hat den Abbruch einer schon übergebenen Aktion angefordert; Word bestätigt ihn. */
   abbruchAngefordert: boolean;
@@ -206,6 +221,7 @@ export interface BegleiterAdapterSicht {
     art: BegleiterAktionArt;
     stand: BegleiterAktionStand;
     ergebnis: string | null;
+    vergleich?: BegleiterVergleich;
     grund: string | null;
     /** Nur vorhanden (und `true`), solange bzw. nachdem der Abbruch angefordert wurde. */
     abbruchAngefordert?: true;
@@ -229,6 +245,7 @@ export interface BegleiterAuftragFuerAdapter {
   art: BegleiterAktionArt;
   text: string;
   auswahlStand: number;
+  locale?: BegleiterSprache;
   /** Nacharbeit 64: nur wenn der Auftrag einen Schlüssel trägt (für `anmelden.laufend`). */
   schluessel?: string;
 }
@@ -305,6 +322,77 @@ function aus<T extends string>(roh: unknown, werte: readonly T[], feld: string):
     throw ungueltig(feld, `erwartet ${werte.join(" | ")}`);
   }
   return roh as T;
+}
+
+function textmarke(roh: unknown, laenge: number): Textmarke | null {
+  if (roh == null) return null;
+  const marke = objekt(roh, "vergleich.marke");
+  const start = ganzzahl(marke.start, "start", 0);
+  const end = ganzzahl(marke.end, "end", start + 1);
+  if (end > laenge) throw ungueltig("vergleich.marke", "liegt außerhalb des Texts");
+  return { start, end };
+}
+
+/** Die strukturierte Anzeige ist optional. Eine fehlerhafte Karte darf die Textantwort und
+ * die Quittierung der Word-Meldung nicht blockieren. Es reisen nur die benannten Felder. */
+function leseVergleich(roh: unknown): BegleiterVergleich | undefined {
+  if (roh == null) return undefined;
+  try {
+    const v = objekt(roh, "vergleich");
+    const art = aus(v.art, VERGLEICHSARTEN, "vergleich.art");
+    const dokument = text(v.dokument, "vergleich.dokument", BEGLEITER_AUSWAHL_MAX, false);
+    if (
+      typeof v.zeigbar !== "boolean" ||
+      !Array.isArray(v.belege) ||
+      v.belege.length > 32 ||
+      (v.belege.length === 0) !== (art === "offen")
+    ) {
+      return undefined;
+    }
+    let rest = BEGLEITER_ERGEBNIS_MAX;
+    const belege = v.belege.map((rohBeleg: unknown) => {
+      const b = objekt(rohBeleg, "vergleich.beleg");
+      const wortlaut = text(b.text, "beleg.text", rest, false);
+      rest -= wortlaut.length;
+      if (
+        !Array.isArray(b.quellen) ||
+        !b.quellen.length ||
+        b.quellen.length > 32 ||
+        typeof b.woertlich !== "boolean" ||
+        (b.woertlich && b.quellen.length !== 1)
+      ) {
+        throw ungueltig("vergleich.beleg", "ungültiger Quellenbezug");
+      }
+      const quellen = b.quellen.map((id: unknown) => {
+        if (typeof id !== "string" || !/^[\p{L}\p{N}_:-][\p{L}\p{M}\p{N}_.:-]{0,127}$/u.test(id)) {
+          throw ungueltig("beleg.quelle", "erwartet eine Quellenkennung");
+        }
+        return id;
+      });
+      return { text: wortlaut, quellen, woertlich: b.woertlich };
+    });
+    const wortlaut = belege.length === 1 && belege[0]?.woertlich ? belege[0].text : "";
+    const dokumentMarke = textmarke(v.dokumentMarke, wortlaut ? dokument.length : 0);
+    const belegMarke = textmarke(v.belegMarke, wortlaut.length);
+    return {
+      art,
+      dokument,
+      belege,
+      dokumentMarke,
+      belegMarke,
+      zeigbar: v.zeigbar,
+      ...(art !== "offen" && v.aiGenerated === true ? { aiGenerated: true as const } : {}),
+    };
+  } catch (fehler) {
+    if (fehler instanceof BegleiterFehler) return undefined;
+    throw fehler;
+  }
+}
+
+function zeigbareFrage(fenster: AdapterEintrag, id: string): boolean {
+  return fenster.aktionen.some(
+    (a) => a.id === id && a.art === "frage" && a.stand === "erledigt" && a.vergleich?.zeigbar,
+  );
 }
 
 export function pruefeAuftragsschluessel(roh: unknown): string {
@@ -652,6 +740,7 @@ export class BegleiterKanal {
       const r = objekt(meldung, `erledigt[${i}]`);
       return {
         id: text(r.id, `erledigt[${i}].id`, 64, false),
+        vergleich: r.vergleich,
         stand: aus(r.stand, ERGEBNIS_STAENDE, `erledigt[${i}].stand`),
         ergebnis:
           r.ergebnis === undefined || r.ergebnis === null
@@ -687,6 +776,10 @@ export class BegleiterKanal {
       if (a && (r.stand !== "gestoppt" || a.abbruchAngefordert || e.abgemeldet)) {
         a.stand = r.stand;
         a.ergebnis = r.ergebnis;
+        if (a.art === "frage" && r.stand === "erledigt") {
+          const vergleich = leseVergleich(r.vergleich);
+          if (vergleich) a.vergleich = vergleich;
+        }
         a.grund = r.grund;
         a.geaendertAm = jetzt;
       }
@@ -699,6 +792,12 @@ export class BegleiterKanal {
     const auftraege: BegleiterAuftragFuerAdapter[] = [];
     for (const a of e.aktionen) {
       if (a.stand === "offen" && !e.abgemeldet) {
+        if (a.art === "zeigen" && !zeigbareFrage(e, a.text)) {
+          a.stand = "abgelehnt";
+          a.grund = "vergleich_nicht_verfuegbar";
+          a.geaendertAm = jetzt;
+          continue;
+        }
         a.stand = "uebergeben";
         a.geaendertAm = jetzt;
         auftraege.push({
@@ -706,6 +805,7 @@ export class BegleiterKanal {
           art: a.art,
           text: a.text,
           auswahlStand: a.auswahlStand,
+          ...(a.locale ? { locale: a.locale } : {}),
           ...(a.schluessel ? { schluessel: a.schluessel } : {}),
         });
       }
@@ -801,6 +901,7 @@ export class BegleiterKanal {
             art: a.art,
             stand: a.stand,
             ergebnis: a.ergebnis,
+            ...(a.vergleich ? { vergleich: a.vergleich } : {}),
             grund: a.grund,
             // Nur wenn angefordert — der bisherige Drahtvertrag bleibt sonst unverändert.
             ...(a.abbruchAngefordert ? { abbruchAngefordert: true as const } : {}),
@@ -822,7 +923,11 @@ export class BegleiterKanal {
     pruefeInstanz(instanz);
     const k = objekt(roh, "rumpf");
     const art = aus(k.art, BEGLEITER_AKTION_ARTEN, "art");
-    const inhalt = text(k.text, "text", BEGLEITER_AKTION_TEXT_MAX, false);
+    const inhalt = text(k.text, "text", art === "zeigen" ? 64 : BEGLEITER_AKTION_TEXT_MAX, false);
+    const locale =
+      art === "frage" && k.locale !== undefined
+        ? aus(k.locale, ["de", "en", "nl"] as const, "locale")
+        : undefined;
     const auswahlStand = ganzzahl(k.auswahlStand, "auswahlStand", 0);
     const schluessel = k.schluessel === undefined ? null : pruefeAuftragsschluessel(k.schluessel);
     if (schluessel !== null) {
@@ -879,12 +984,20 @@ export class BegleiterKanal {
       );
     }
     const offen = e.aktionen.filter(laeuft);
+    if (art === "zeigen" && !zeigbareFrage(e, inhalt)) {
+      throw new BegleiterFehler(
+        409,
+        "vergleich_nicht_verfuegbar",
+        "Die geprüfte Stelle ist in diesem Word-Fenster nicht mehr verfügbar.",
+      );
+    }
     if (offen.length >= BEGLEITER_AKTIONEN_OFFEN_MAX) {
       throw new BegleiterFehler(409, "zu_viele", "Es warten bereits Aktionen auf dieses Fenster.");
     }
     const aktion: BegleiterAktion = {
       id: this.neueId(),
       art,
+      ...(locale ? { locale } : {}),
       text: inhalt,
       auswahlStand,
       stand: "offen",

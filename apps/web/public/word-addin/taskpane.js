@@ -453,38 +453,6 @@
       return langCode === "nl" ? "nl" : "de";
     }
 
-    // WP-UX-WOW-1 U1 (Word): Klartext statt Markdown — dieselbe Subset-Logik wie die Konsole,
-    // aber als STRIP (Ueberschriften-/Fett-/Kursiv-Marker raus, Listenpunkte als "- "-Zeilen).
-    function stripAskAnswerMarkdown(answer) {
-      var lines = answer.replace(/\r\n?/g, "\n").split("\n");
-      var out = [];
-      for (var i = 0; i < lines.length; i += 1) {
-        var line = lines[i].trim();
-        var heading = /^#{1,6}\s+(.*)$/.exec(line);
-        if (heading && heading[1] !== undefined) { line = heading[1].trim(); }
-        var bullet = /^[-*]\s+(.*)$/.exec(line);
-        if (bullet && bullet[1] !== undefined) { line = "- " + bullet[1]; }
-        out.push(line.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*\n]+)\*/g, "$1"));
-      }
-      return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-    }
-
-    // R-0310 (Spiegel von wordAddin.ts#askAbsaetzeLesen): die Absatz-Beleg-Zuordnung des Servers.
-    // Fehlt das Feld → undefined (alter Server, keine Aussage). Sonst NUR Absaetze mit mindestens einer
-    // TRAGENDEN Quelle (`cited`), Marken `[n]` und Markdown entfernt; unbelegte fallen weg.
-    function askAbsaetzeLesen(body, cited) {
-      if (!body || !Array.isArray(body.absaetze)) { return undefined; }
-      var tragend = Array.isArray(cited) ? cited : [];
-      var out = [];
-      for (var i = 0; i < body.absaetze.length; i += 1) {
-        var a = body.absaetze[i] || {};
-        var q = Array.isArray(a.quellen) ? a.quellen.filter(function (id) { return typeof id === "string" && tragend.indexOf(id) !== -1; }) : [];
-        var text = typeof a.text === "string" ? stripAskAnswerMarkdown(a.text.replace(/\s*\[[0-9\s,]+\]/g, "")) : "";
-        if (q.length > 0 && text.length > 0) { out.push({ text: text, quellen: q }); }
-      }
-      return out;
-    }
-
     // AUFTRAG-JOB507-D4 — Retry-After (Spiegel von wordAddin.ts#parseRetryAfterSeconds, Begruendung
     // dort): fehlend/leer → null · Sekunden → gedeckelt · negativ → 0 · HTTP-Datum → Zukunft
     // gedeckelt / Vergangenheit 0 · sonst null. `null` heisst „unbekannt", `0` heisst „jetzt".
@@ -579,100 +547,6 @@
     // KW-KA4-DOKUMENT-CONSENT-END
 
     // KW-KLARA-ASK-FETCH-START
-    // Ohne Modellurteil kennzeichnen wir nur eindeutige Prüfaufträge als offenen Vergleich.
-    // Eine beliebige Sachfrage oder eine Störung bleibt in ihrem eigenen Antwortweg.
-    function askPrueftAussage(frage) {
-      var text = frage.trim().toLowerCase().replace(/[.!?]+$/, "").replace(/\s+/g, " ");
-      var en = text.replace(/^(?:can|could|would) you (?:please )?(?:check|verify|tell me) (?:whether|if) /, "")
-        .replace(/\b(?:this|that) (?:statement|sentence|passage|paragraph|wording)\b/g, "this")
-        .replace(/ (?:according to|based on|under|against|with) .+$/, "");
-      if (/^(?:(?:is|was) (?:this|that|it)|(?:this|that|it) (?:is|was)) (?:correct|right|true|accurate|consistent)$/.test(en)
-        || /^(?:please )?(?:verify|check) (?:this|that)$/.test(en)
-        || /^(?:does|would) (?:this|that|it)(?: (?:statement|sentence|passage|paragraph))? (?:comply with|contradict|match) .+$/.test(text)) return true;
-      var de = text.replace(/\b(?:dieser (?:absatz|satz)|diese (?:passage|aussage|formulierung))\b/g, "das")
-        .replace(/ (?:laut|gemäß|nach|anhand) .+$/, "");
-      if (/^(?:ist|war) (?:das|dies) (?:so )?(?:richtig|korrekt|wahr|zutreffend)$/.test(de)
-        || /^(?:stimmt|passt) (?:das|dies)(?: so)?$/.test(de)
-        || /^(?:bitte )?(?:prüfe|überprüfe) (?:das|dies)$/.test(de)) return true;
-      var nl = text.replace(/\bdeze (?:uitspraak|zin|alinea)\b/g, "dit").replace(/ (?:volgens|op basis van|gezien) .+$/, "");
-      return /^(?:is|was) (?:dit|dat) (?:juist|correct|goed|waar)$/.test(nl)
-        || /^(?:klopt|controleer) (?:dit|dat)$/.test(nl);
-    }
-
-    function askVergleichToken(text) {
-      // Satzzeichen im Satz gehören mit zum Wortlaut (etwa 1.5, 15 %, < oder >).
-      // Ein abschließender Punkt darf bei einer Word-Markierung außerhalb liegen.
-      var tokens = Array.from(text.matchAll(/[\p{L}\p{M}\p{N}]+(?:['’][\p{L}\p{M}\p{N}]+)*|[^\s]/gu));
-      if (tokens.length && tokens[tokens.length - 1][0] === ".") tokens.pop();
-      return tokens;
-    }
-
-    function askVergleichSpanne(tokens, von, bis) {
-      var letztes = tokens[bis - 1];
-      return { start: tokens[von].index, end: letztes.index + letztes[0].length };
-    }
-
-    function askVergleichMarken(vergleich) {
-      var dokument = askVergleichToken(vergleich.dokument);
-      var beleg = askVergleichToken(vergleich.belege[0].text);
-      if (!dokument.length || !beleg.length) return;
-      var vorn = 0;
-      while (vorn < dokument.length && vorn < beleg.length && dokument[vorn][0] === beleg[vorn][0]) vorn++;
-      if (vergleich.art === "bestaetigt") {
-        if (vorn === dokument.length && vorn === beleg.length) {
-          vergleich.dokumentMarke = askVergleichSpanne(dokument, 0, dokument.length);
-          vergleich.belegMarke = askVergleichSpanne(beleg, 0, beleg.length);
-        }
-        return;
-      }
-      var dEnde = dokument.length;
-      var bEnde = beleg.length;
-      while (dEnde > vorn && bEnde > vorn && dokument[dEnde - 1][0] === beleg[bEnde - 1][0]) {
-        dEnde--;
-        bEnde--;
-      }
-      var geaendert = Math.max(dEnde - vorn, bEnde - vorn);
-      // Nur EINE enge Stelle in sonst übereinstimmendem Wortlaut auszeichnen.
-      // Keine herausgegriffenen Einzelwörter in Übersetzungen oder Paraphrasen.
-      var gemeinsam = vorn + dokument.length - dEnde;
-      if (geaendert === 0 || geaendert > 3 || gemeinsam < 2 || gemeinsam < 2 * geaendert) return;
-      // Bei „only only“ könnte das entfernte Wort an zwei Stellen liegen.
-      if (dEnde === vorn && vorn && beleg[bEnde - 1][0] === beleg[vorn - 1][0]) return;
-      if (bEnde === vorn && vorn && dokument[dEnde - 1][0] === dokument[vorn - 1][0]) return;
-      function spanne(tokens, ende) {
-        if (ende > vorn) return askVergleichSpanne(tokens, vorn, ende);
-        // Ein Wort fehlt hier. Seine vorhandenen Nachbarn bilden die reale Fundstelle.
-        return askVergleichSpanne(tokens, Math.max(0, vorn - 1), Math.min(tokens.length, vorn + 1));
-      }
-      vergleich.dokumentMarke = spanne(dokument, dEnde);
-      vergleich.belegMarke = spanne(beleg, bEnde);
-    }
-
-    function askVergleichBeleg(absatz, schritte) {
-      var original = null;
-      if (absatz.quellen.length === 1) {
-        // Nur in der zugeordneten Quelle lesen. Leerraum darf im Ask-Absatz
-        // anders umbrochen sein; angezeigt und markiert wird der Originalausschnitt.
-        var muster = absatz.text.split(/\s+/).map(function (wort) {
-          return wort.replace(/[.*+?^$\x7b\x7d()|[\]\\]/g, "\\$&");
-        }).join("\\s+");
-        var wortlaut = new RegExp("(?:^|[^\\p{L}\\p{M}\\p{N}_])(" + muster + ")(?![\\p{L}\\p{M}\\p{N}_])", "u");
-        for (var i = 0; i < schritte.length; i++) {
-          var quelle = schritte[i];
-          if (!quelle || quelle.sourceId !== absatz.quellen[0] || typeof quelle.snippet !== "string") continue;
-          var fund = wortlaut.exec(quelle.snippet);
-          if (fund) { original = fund[1]; break; }
-        }
-      }
-      return { text: original || absatz.text, quellen: absatz.quellen, woertlich: original !== null };
-    }
-
-    function askDirektvergleich(art, dokument, absaetze, schritte, einzeln) {
-      var belege = absaetze.map(function (absatz) { return askVergleichBeleg(absatz, schritte); });
-      var vergleich = { art: art, dokument: dokument, belege: belege, dokumentMarke: null, belegMarke: null };
-      if (einzeln && belege.length === 1 && belege[0].woertlich) askVergleichMarken(vergleich);
-      return vergleich;
-    }
     // KW-KA4: `bindungsKopf` ist ein PARAMETER und wird bewusst NICHT hier drinnen geholt.
     // Der Block zwischen diesen Marken wird von den Spiegeltests EXTRAHIERT und isoliert
     // ausgefuehrt (tests/app/word-addin-ask.test.ts) — er darf deshalb nur kennen, was er selbst
@@ -6891,32 +6765,6 @@
 
     // Nur eine Frage mit erkennbarem Verweis auf die Passage darf ohne Markierung
     // Text mitnehmen. Eine freie Firmenwissensfrage bleibt eine Frage ohne Word-Kontext.
-    function askFragtNachWordAbsatz(frage) {
-      var text = String(frage || "").trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!?]+$/, "").trim();
-      // Ein expliziter Verweis kann überall in einer Sachfrage stehen.
-      if (/\b(?:this|that) (?:paragraph|passage|statement|sentence|wording|excerpt)\b/.test(text)
-        || /\bdiese(?:n|m|r|s)? (?:absatz|passage|aussage|satz|formulierung|text)\b/.test(text)
-        || /\b(?:deze|dit) (?:alinea|passage|zin|uitspraak|tekst)\b/.test(text)) { return true; }
-
-      // „Is it correct that …?“ hat einen eigenen Gegenstand. Bei einer kurzen
-      // Verweisfrage sind dagegen Zusätze wie „according to our policy“ möglich.
-      var en = text.replace(/^(?:can|could|would) you (?:please )?(?:check|verify|tell me) (?:if|whether) /, "")
-        .replace(/ (?:according to|based on|in light of|under|against|given) .+$/, "");
-      if (/^(?:(?:is|was) (?:this|that|it)|(?:this|that|it) (?:is|was)) (?:correct|right|true|accurate|consistent)$/.test(en)
-        || /^(?:does|would) (?:this|that|it) (?:match|comply with|contradict)\b/.test(en)
-        || /^(?:what does (?:this|that|it) mean|(?:please )?(?:check|verify|explain) (?:this|that))$/.test(en)) { return true; }
-
-      var de = text.replace(/ (?:laut|gemäß|nach|anhand|mit blick auf) .+$/, "");
-      if (/^(?:ist|war) (?:das|dies) (?:so )?(?:richtig|korrekt|wahr|zutreffend)$/.test(de)
-        || /^(?:stimmt|passt) (?:das|dies)(?: so)?$/.test(de)
-        || /^(?:was (?:bedeutet|heißt) das|(?:prüfe|erkläre) (?:das|dies))$/.test(de)) { return true; }
-
-      var nl = text.replace(/ (?:volgens|op basis van|gezien) .+$/, "");
-      return /^(?:is|was) (?:dit|dat) (?:juist|correct|goed|waar)$/.test(nl)
-        || /^klopt (?:dit|dat)$/.test(nl)
-        || /^(?:wat betekent (?:dit|dat)|(?:controleer|verklaar) (?:dit|dat))$/.test(nl);
-    }
-
     // Nur der tatsächlich gelesene Word-Bereich darf später ausgewählt werden. Word führt
     // einen verfolgten Bereich bei Verschiebungen mit; ein neuer Cursor ist dafür unerheblich.
     var askVergleichWordAnker = null;
@@ -6944,68 +6792,11 @@
       });
     }
 
-    async function askVergleichInWordZeigen(text, stelle) {
-      if (!askVergleichHatWordBereich(text)) return false;
+    async function askVergleichInWordZeigen(text, stelle, nochAktuell) {
       var anker = askVergleichWordAnker;
-      var suchtext = null;
-      if (stelle != null) {
-        if (!Number.isInteger(stelle.start) || !Number.isInteger(stelle.end) ||
-            stelle.start < 0 || stelle.end <= stelle.start || stelle.end > text.length) return false;
-        if (stelle.start !== 0 || stelle.end !== text.length) suchtext = text.slice(stelle.start, stelle.end);
-      }
-      try {
-        return await Word.run(anker.bereich, async function (context) {
-          var bereich = anker.bereich;
-          bereich.load("text");
-          var treffer;
-          if (suchtext !== null) {
-            // ^ leitet in der Word-Suche Sonderzeichen ein. Steuerzeichen/überlange Suchbegriffe
-            // werden vom Host unterschiedlich behandelt; niemals ersatzweise im Dokument suchen.
-            var literal = suchtext.replace(/\^/g, "^^");
-            if (literal.length > 255 || /[\r\n\t]/.test(literal)) return false;
-            treffer = bereich.search(literal, { matchCase: true, matchWildcards: false, ignorePunct: false, ignoreSpace: false });
-            treffer.load("items/text");
-          }
-          await context.sync();
-          if (anker !== askVergleichWordAnker || !askVergleichHatWordBereich(text) ||
-              bereich.text.replace(/\r\n?/g, "\n").trim() !== text) return false;
-          var ziel = bereich;
-          if (treffer) {
-            // Bei einem wiederholten Ausdruck ist der Offset im geprüften Text maßgeblich.
-            var positionen = [];
-            for (var pos = text.indexOf(suchtext); pos !== -1; pos = text.indexOf(suchtext, pos + suchtext.length)) {
-              positionen.push(pos);
-            }
-            var index = positionen.indexOf(stelle.start);
-            if (treffer.items.length !== positionen.length || !treffer.items[index] ||
-                treffer.items.some(function (fund) { return fund.text !== suchtext; })) return false;
-            ziel = treffer.items[index];
-          }
-          ziel.select();
-          await context.sync();
-          return true;
-        });
-      } catch (e) { return false; }
-    }
-
-    function askAbsatzAmCursor(context, auswahl, abgebrochen) {
-      var absaetze = auswahl.paragraphs;
-      absaetze.load("items/text");
-      return context.sync().then(function () {
-        if (abgebrochen()) { return ""; }
-        var absatz = absaetze.items.length === 1 ? absaetze.items[0] : null;
-        if (!absatz) { return { hinweis: "askAbsatzFehlt" }; }
-        if (absatz.text.trim()) { return { text: absatz.text, bezug: "cursor", absatz: absatz }; }
-        // Nach Einfügen mit Absatzende steht Word häufig bereits am Beginn der nächsten Zeile.
-        // Nur der unmittelbar vorhergehende Word-Absatz kommt dann in Betracht.
-        if (typeof absatz.getPreviousOrNullObject !== "function") { return { hinweis: "askAbsatzFehlt" }; }
-        var vorher = absatz.getPreviousOrNullObject();
-        vorher.load("text");
-        return context.sync().then(function () {
-          return vorher.isNullObject || !vorher.text.trim()
-            ? { hinweis: "askAbsatzFehlt" }
-            : { text: vorher.text, bezug: "previous", absatz: vorher };
-        });
+      if (!anker) return false;
+      return wordVergleichZeigen(Word, anker.bereich, text, stelle, function () {
+        return anker === askVergleichWordAnker && askVergleichHatWordBereich(text) && (!nochAktuell || nochAktuell());
       });
     }
 
@@ -7155,6 +6946,12 @@
       askWartezustand(true);
       var klick = Date.now();
       var minimalEpoch = ++askMinimalEpoch;
+      var begleitfrage = typeof begleiterFrageBeimKlick === "undefined" ? null : begleiterFrageBeimKlick;
+      var sprache = (begleitfrage && begleitfrage.locale) || lang;
+      if (begleitfrage) {
+        var generation = askErgebnisGeneration;
+        begleitfrage.aktuell = function () { return minimalEpoch === askMinimalEpoch && generation === askErgebnisGeneration; };
+      }
       askMinimalTurn = null;
       askMinimalController = new AbortController();
       var minimalController = askMinimalController;
@@ -7191,7 +6988,7 @@
           showAskStatus("warn", hinweis ? t(hinweis) : klaraS4FragenSperrtext());
           return;
         }
-        var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
+        var prep = prepareAskQuestion(selectionText, begleitfrage ? begleitfrage.text : document.getElementById("ask-input").value);
         if (prep.from === "empty") {
           askWartezustand(false);
           showAskStatus("warn", t("askEmpty"));
@@ -7203,7 +7000,7 @@
         var minimalTurn = askMinimalTurn;
         performAsk(
           prep.question,
-          askLocale(lang),
+          askLocale(sprache),
           function (url, init) { return fetch(url, init); },
           restfrist,
           // KW-KA4: die Bindung wird HIER geholt und hineingereicht — der Ask-Block selbst bleibt
@@ -7223,7 +7020,10 @@
               return;
             }
             outcome.absatzbezug = absatzbezug;
-            if (outcome.dokumentUrteil) { askUrteilUebersetzen(outcome, lang); }
+            if (outcome.dokumentUrteil) { askUrteilUebersetzen(outcome, sprache); }
+          }
+          if (begleitfrage && (outcome.kind === "answered" || outcome.kind === "gap")) {
+            begleitfrage.antwort(outcome.kind === "answered" ? outcome.answer : STRINGS[sprache].askGapTitle, outcome.direktvergleich, outcome.kind === "answered" && outcome.aiGenerated === true);
           }
           if (window.kwWordUi) window.kwWordUi.answer(minimalTurn, outcome);
           currentAskOutcome = outcome;
@@ -7244,7 +7044,7 @@
       try {
         readAskSelection(function (selectionText, absatzbezug, hinweis) {
           try { absenden(selectionText, absatzbezug, hinweis); } catch (err) { fehlerVorDemFetch(err); }
-        }, true, fehlerVorDemFetch, document.getElementById("ask-input").value, minimalController.signal);
+        }, true, fehlerVorDemFetch, begleitfrage ? begleitfrage.text : document.getElementById("ask-input").value, minimalController.signal);
       } catch (err) {
         fehlerVorDemFetch(err);
       }

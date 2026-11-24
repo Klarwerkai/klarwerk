@@ -2,6 +2,7 @@ import { webcrypto } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import type { BegleiterVergleich } from "../../services/app/src/klara-begleiter";
 import { repoPfad } from "../support/repoPfad";
 
 // ================================================================================================
@@ -18,6 +19,7 @@ import { repoPfad } from "../support/repoPfad";
 
 const WURZEL = "apps/web/public/word-addin";
 const ADAPTER = readFileSync(repoPfad(`${WURZEL}/office-host-word.js`), "utf8");
+const VERGLEICH = readFileSync(repoPfad(`${WURZEL}/dokumentvergleich.js`), "utf8");
 const SEITE = readFileSync(repoPfad(`${WURZEL}/begleitung.js`), "utf8");
 const HTML = readFileSync(repoPfad(`${WURZEL}/begleitung.html`), "utf8");
 const AUSWAHL = "Angebot Musterfirma";
@@ -37,12 +39,6 @@ interface Seite {
   begleiterTrennen(): void;
   begleiterMelden(): Promise<unknown>;
   begleiterLage(): string;
-}
-
-interface AuswahlAttrappe {
-  text?: string;
-  load(feld: string): void;
-  insertText(text: string, ort: string): void;
 }
 
 interface Anfrage {
@@ -88,7 +84,12 @@ async function buehne(optionen: { url?: string; angemeldet?: boolean; gespeicher
     // Stellvertreter für das Sitzungscookie der Anwendung: wer „angemeldet" ist, trägt den Schlüssel.
     token: optionen.angemeldet === false ? null : (ada.token ?? null),
     text: AUSWAHL,
+    absatzAmCursor: "",
     eingefuegt: [] as string[],
+    markierungMitsenden: false,
+    trackFehler: false,
+    beimVerfolgen: null as null | (() => void),
+    selektiert: [] as Array<{ bereich: string; stelle: string }>,
     aufrufe: [] as Aufruf[],
     handler: [] as (() => void)[],
     texte: new Map<string, string>(),
@@ -137,11 +138,39 @@ async function buehne(optionen: { url?: string; angemeldet?: boolean; gespeicher
     },
     EventType: { DocumentSelectionChanged: "documentSelectionChanged" },
   };
+  const verfolgt = new Set<object>();
+  type WordLauf<T> = (kontext: unknown) => Promise<T>;
   const word = {
-    run<T>(rueckruf: (kontext: unknown) => Promise<T>): Promise<T> {
-      const auswahl: AuswahlAttrappe = {
-        load() {
-          // Die Attrappe liefert `text` in `sync`.
+    run<T>(bereichOderLauf: object | WordLauf<T>, mitBereich?: WordLauf<T>): Promise<T> {
+      // Word.run(bereich, …) darf nur einen aus einem früheren Lauf verfolgten Bereich nutzen.
+      if (mitBereich && !verfolgt.has(bereichOderLauf)) throw new Error("Bereich nicht verfolgt");
+      const rueckruf = mitBereich ?? (bereichOderLauf as WordLauf<T>);
+      const auswahl = {
+        text: lage.text,
+        load() {},
+        getRange() {
+          return this;
+        },
+        track() {
+          if (lage.trackFehler) throw new Error("Word konnte den Bereich nicht verfolgen");
+          verfolgt.add(this);
+          lage.beimVerfolgen?.();
+          return this;
+        },
+        untrack() {
+          verfolgt.delete(this);
+        },
+        select() {
+          lage.selektiert.push({ bereich: this.text, stelle: this.text });
+        },
+        search(wort: string) {
+          return {
+            load() {},
+            items: Array.from({ length: this.text.split(wort).length - 1 }, () => ({
+              text: wort,
+              select: () => lage.selektiert.push({ bereich: this.text, stelle: wort }),
+            })),
+          };
         },
         insertText(t: string, o: string) {
           lage.eingefuegt.push(`${o}:${t}`);
@@ -152,11 +181,15 @@ async function buehne(optionen: { url?: string; angemeldet?: boolean; gespeicher
       const eigenschaften = optionen.gespeichertAm
         ? { lastSaveTime: optionen.gespeichertAm, load() {} }
         : undefined;
+      const absatz = { ...auswahl, text: lage.absatzAmCursor };
+      const auswahlImDokument = Object.assign(auswahl, {
+        paragraphs: { load() {}, items: [absatz] },
+      });
       return rueckruf({
-        document: { getSelection: () => auswahl, properties: eigenschaften },
+        document: { getSelection: () => auswahlImDokument, properties: eigenschaften },
         sync: async () => {
           lage.beimLesen?.();
-          auswahl.text = lage.text;
+          if (!verfolgt.has(auswahl)) auswahl.text = lage.text;
         },
       });
     },
@@ -192,6 +225,7 @@ async function buehne(optionen: { url?: string; angemeldet?: boolean; gespeicher
   };
   const wurzel: Record<string, unknown> = {};
   new Function("self", ADAPTER)(wurzel);
+  new Function("self", VERGLEICH)(wurzel);
   new Function("self", SEITE)(wurzel);
   let id = 0;
   const modul = wurzel.KlarwerkBegleitung as { erstelle(u: unknown): Seite };
@@ -201,6 +235,10 @@ async function buehne(optionen: { url?: string; angemeldet?: boolean; gespeicher
     crypto: webcrypto,
     fetch,
     adapterModul: wurzel.KlarwerkOfficeHostWord,
+    frageOptionen: () => ({
+      markierungMitsenden: lage.markierungMitsenden,
+      vertraulichkeit: "intern",
+    }),
     herkunft: "http://localhost",
     setTimeout: (f: () => void) => lage.zeitgeber.push(f),
     clearTimeout: (n: number) => {
@@ -223,8 +261,15 @@ function festeAntwort(text: string) {
 describe("Einstieg · begleitung.html lädt Adapter und Seite, taskpane.html bleibt unberührt", () => {
   it("lädt office.js, office-host-word.js und begleitung.js", () => {
     expect(HTML).toContain("https://appsforoffice.microsoft.com/lib/1/hosted/office.js");
-    expect(HTML).toContain('<script src="office-host-word.js"></script>');
-    expect(HTML).toContain('<script src="begleitung.js"></script>');
+    const skripte = Array.from(
+      HTML.matchAll(/<script src="([^"]+)"><\/script>/g),
+      ([, src]) => src,
+    );
+    expect(skripte.slice(-3)).toEqual([
+      "dokumentvergleich.js?v=__KW_FASSUNG__",
+      "office-host-word.js?v=__KW_FASSUNG__",
+      "begleitung.js?v=__KW_FASSUNG__",
+    ]);
     const taskpane = readFileSync(repoPfad(`${WURZEL}/taskpane.html`), "utf8");
     expect(taskpane).not.toContain("begleitung.js");
     expect(taskpane).not.toContain("office-host-word.js");
@@ -772,6 +817,7 @@ interface FigurAdapter {
     art: string;
     stand: string;
     ergebnis: string | null;
+    vergleich?: BegleiterVergleich;
     grund: string | null;
   }[];
 }
@@ -846,7 +892,200 @@ describe("KO-01-02/03/04 · Office-Kontext der Begleitseite erreicht die Figur �
   });
 });
 
+async function figurAktion(
+  teile: Awaited<ReturnType<typeof verbunden>>,
+  art: "frage" | "zeigen",
+  text: string,
+) {
+  const { app, seite, token, fenster } = teile;
+  const auftrag = await figurBeauftragt(app, token, fenster.instanz, {
+    art,
+    text,
+    locale: "en",
+    auswahlStand: 0,
+  });
+  expect(auftrag.statusCode, auftrag.body).toBe(202);
+  const { id } = auftrag.json().aktion as { id: string };
+  await seite.begleiterMelden();
+  const [adapter] = await figurSieht(app, token);
+  const aktion = adapter?.aktionen.find((a) => a.id === id);
+  if (!aktion) throw new Error("Word-Ergebnis fehlt");
+  return aktion;
+}
+
 describe("KO-01-06/07 · Aktionen der Figur zurück zum richtigen Word-Ziel", () => {
+  it("englischer Direktvergleich am gekoppelten Fenster: Beleg, Originalstelle und erneute Frage", async () => {
+    const teile = await verbunden();
+    const { seite, lage } = teile;
+    const dokument = "Guest Wi-Fi must provide access to the staff network.";
+    const regel = "Guest Wi-Fi must not provide access to the staff network.";
+    const kopf = "The selected statement contradicts the company source.";
+    lage.markierungMitsenden = true;
+    auswahlWechsel(lage, dokument);
+    await neumeldung(lage, seite);
+    lage.ausfuehrung = async () => ({
+      status: 200,
+      body: {
+        result: {
+          answered: true,
+          answer: kopf,
+          sources: ["wifi"],
+          citedSources: ["wifi"],
+          steps: [{ sourceId: "wifi", snippet: regel }],
+          aiGenerated: {
+            aiGenerated: true,
+            task: "answer",
+            mode: "model",
+            at: "2026-11-24T12:00:00Z",
+          },
+          dokumentUrteil: { art: "widersprochen", texte: { en: kopf } },
+        },
+        absaetze: [
+          { text: kopf, quellen: ["wifi"] },
+          { text: regel, quellen: ["wifi"] },
+        ],
+      },
+    });
+    const erste = await figurAktion(
+      teile,
+      "frage",
+      "How does the selected wording compare with our network policy?",
+    );
+    expect(ausfuehrungen(lage).at(-1)?.koerper).toMatchObject({
+      locale: "en",
+      selection: dokument,
+      selectionConfidentiality: "intern",
+    });
+    expect(erste).toMatchObject({
+      stand: "erledigt",
+      vergleich: {
+        art: "widersprochen",
+        dokument,
+        belege: [{ text: regel, quellen: ["wifi"], woertlich: true }],
+        dokumentMarke: { start: dokument.indexOf("must"), end: dokument.indexOf(" access") },
+        belegMarke: { start: regel.indexOf("not"), end: regel.indexOf(" provide") },
+        zeigbar: true,
+        aiGenerated: true,
+      },
+    });
+    lage.absatzAmCursor = "Another paragraph.";
+    auswahlWechsel(lage, "");
+    await neumeldung(lage, seite);
+    expect((await figurAktion(teile, "zeigen", erste.id)).stand).toBe("erledigt");
+    expect(lage.selektiert).toEqual([{ bereich: dokument, stelle: "must provide" }]);
+    lage.ausfuehrung = async () => ({
+      status: 200,
+      body: { result: { answered: false, sources: [] } },
+    });
+    const offen = await figurAktion(teile, "frage", "Is this correct?");
+    expect(ausfuehrungen(lage).at(-1)?.koerper?.selection).toBe(lage.absatzAmCursor);
+    expect(offen).toMatchObject({
+      stand: "erledigt",
+      vergleich: { art: "offen", dokument: "Another paragraph.", belege: [], zeigbar: true },
+    });
+    expect((await figurAktion(teile, "zeigen", erste.id)).stand).toBe("abgelehnt");
+    expect(lage.selektiert).toHaveLength(1);
+    expect(lage.eingefuegt).toEqual([]);
+  });
+
+  it("Prüffrage am Cursor behält das belegte Urteil bei Word-Trackingfehler und unterdrückt eine widersprüchliche Lage", async () => {
+    const teile = await verbunden();
+    const { lage, seite } = teile;
+    const regel = "Guest Wi-Fi must not provide access to the internal staff network.";
+    const kopf = "The selected statement matches the company source.";
+    const frage = "Is this correct in light of our policy?";
+    const result = {
+      answered: true,
+      answer: kopf,
+      sources: ["wifi"],
+      citedSources: ["wifi"],
+      aiGenerated: { aiGenerated: true }, // Die Aufgaben- und Moduskennung eines Modelllaufs fehlen.
+      steps: [{ sourceId: "wifi", snippet: regel }],
+      dokumentUrteil: { art: "bestaetigt", texte: { en: kopf } },
+    };
+    const absaetze = [
+      { text: kopf, quellen: ["wifi"] },
+      { text: regel, quellen: ["wifi"] },
+    ];
+    lage.markierungMitsenden = true;
+    lage.trackFehler = true;
+    lage.absatzAmCursor = regel;
+    auswahlWechsel(lage, "");
+    await neumeldung(lage, seite);
+    lage.ausfuehrung = async () => ({ status: 200, body: { result, absaetze } });
+    const antwort = await figurAktion(teile, "frage", frage);
+    expect(ausfuehrungen(lage).at(-1)?.koerper).toMatchObject({
+      question: frage,
+      locale: "en",
+      selection: regel,
+    });
+    expect(antwort).toMatchObject({
+      stand: "erledigt",
+      vergleich: { art: "bestaetigt", dokument: regel, zeigbar: false },
+    });
+    expect(antwort.vergleich).not.toHaveProperty("aiGenerated");
+    expect(
+      (
+        await figurBeauftragt(teile.app, teile.token, teile.fenster.instanz, {
+          art: "zeigen",
+          text: antwort.id,
+          auswahlStand: 0,
+        })
+      ).statusCode,
+    ).toBe(409);
+    lage.trackFehler = false;
+    lage.ausfuehrung = async () => ({
+      status: 200,
+      body: { result: { ...result, belastbarkeit: { lage: "wissensluecke" } }, absaetze },
+    });
+    expect(await figurAktion(teile, "frage", frage)).not.toHaveProperty("vergleich");
+    expect(lage.eingefuegt).toEqual([]);
+  });
+
+  it("ohne Wahl zum Mitsenden erreicht die Prüffrage den Server ohne Dokumenttext oder Vergleich", async () => {
+    const { app, seite, lage, token, fenster } = await verbunden();
+    lage.ausfuehrung = festeAntwort("Company answer");
+    const auftrag = await figurBeauftragt(app, token, fenster.instanz, {
+      art: "frage",
+      text: "Is this correct?",
+      locale: "en",
+      auswahlStand: 0,
+    });
+    expect(auftrag.statusCode).toBe(202);
+    await seite.begleiterMelden();
+    expect(ausfuehrungen(lage).at(-1)?.koerper).toEqual({
+      question: "Is this correct?",
+      locale: "en",
+      questionSource: "manual",
+    });
+    const [adapter] = await figurSieht(app, token);
+    expect(adapter?.aktionen.at(-1)).toMatchObject({
+      stand: "erledigt",
+      ergebnis: "Company answer",
+    });
+    expect(adapter?.aktionen.at(-1)).not.toHaveProperty("vergleich");
+  });
+
+  it("Widerruf der Textfreigabe während des Word-Laufs verhindert die Übermittlung der Passage", async () => {
+    const teile = await verbunden();
+    const { lage } = teile;
+    lage.markierungMitsenden = true;
+    const widerrufen = vi.fn(() => {
+      lage.markierungMitsenden = false;
+    });
+    lage.beimVerfolgen = widerrufen;
+    lage.ausfuehrung = festeAntwort("Company answer");
+    const antwort = await figurAktion(teile, "frage", "Is this correct?");
+    expect(widerrufen).toHaveBeenCalledOnce();
+    expect(
+      ausfuehrungen(lage).some(
+        (a) => a.koerper && ("selection" in a.koerper || "selectionConfidentiality" in a.koerper),
+      ),
+    ).toBe(false);
+    expect(antwort).not.toHaveProperty("vergleich");
+    expect(lage.eingefuegt).toEqual([]);
+  });
+
   it("Einfügen für den gesehenen Stand: Zielprüfung, hinter die Auswahl, Ergebnis zurück an die Figur", async () => {
     const { app, seite, lage, token, fenster } = await verbunden();
     const stand = fenster.auswahl?.stand ?? 0;
