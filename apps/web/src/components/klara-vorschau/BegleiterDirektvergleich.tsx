@@ -41,7 +41,7 @@ function Quellverweis({
   id,
   fassung,
   nummer,
-}: { id: string; fassung?: number; nummer: number }): JSX.Element {
+}: { id: string; fassung: number | undefined; nummer: number }): JSX.Element {
   const { t } = useTranslation();
   const { user } = useSession();
   const name = useAuthorName();
