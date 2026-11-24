@@ -53,6 +53,7 @@ interface Dok {
   body: { innerHTML: string };
 }
 interface Fenster {
+  localStorage: { setItem(key: string, value: string): void; removeItem(key: string): void };
   Office?: unknown;
   Word?: unknown;
   addEventListener(typ: string, fn: unknown): void;
@@ -382,7 +383,7 @@ async function fragen(): Promise<void> {
 
 describe("JOB 3091 · M2 · das Memo im Word-Panel", () => {
   beforeEach(() => {
-    window.localStorage.setItem("kw.sprache", "de");
+    umgebung.window.localStorage.setItem("kw.sprache", "de");
     vi.useFakeTimers({ shouldAdvanceTime: true });
     wordRunGesamt = 0;
     insertText = 0;
@@ -394,7 +395,7 @@ describe("JOB 3091 · M2 · das Memo im Word-Panel", () => {
   });
 
   afterEach(() => {
-    window.localStorage.removeItem("kw.sprache");
+    umgebung.window.localStorage.removeItem("kw.sprache");
     for (const z of zuhoerer) {
       umgebung.window.removeEventListener(z.typ, z.fn);
     }
