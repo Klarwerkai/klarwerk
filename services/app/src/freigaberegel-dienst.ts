@@ -95,6 +95,8 @@ export interface FreigabeRegelDienstDeps {
   audit?: AuditService;
   notifyAssignment?: AssignmentNotifier;
   jetzt?: () => Date;
+  /** Aktueller Demo-Betrieb: Admins dürfen auch die eigene Fassung direkt freigeben. */
+  demoEigeneAdminfreigabe?: boolean;
 }
 
 /** Die Regel am Prüfbrett — genug, um die geprüfte Fassung mitzuschicken und richtig zu zählen. */
@@ -359,7 +361,11 @@ export class FreigabeRegelDienst {
       return { erlaubt: true, regel: null, ...fassung };
     }
     const { space, regel } = lage;
-    if (istEigenerBeitrag(ko, user.id)) {
+    const eigeneAdminfreigabe =
+      this.deps.demoEigeneAdminfreigabe === true &&
+      user.role === "admin" &&
+      weg === "admin-validate";
+    if (istEigenerBeitrag(ko, user.id) && !eigeneAdminfreigabe) {
       return {
         erlaubt: false,
         status: 403,
@@ -433,6 +439,9 @@ export class FreigabeRegelDienst {
           zustimmungen: stand.votes.up,
           erforderlich: Math.max(ko.neededValidations, regel.zustimmungen),
           unabhaengigePruefer: unabhaengigePruefer(ko, kreis, zuweisungen),
+          ...(eigeneAdminfreigabe && istEigenerBeitrag(ko, user.id)
+            ? { demoSelbstfreigabe: true }
+            : {}),
         },
       });
     };
@@ -721,7 +730,9 @@ export class FreigabeRegelDienst {
         { art: "freigabe" },
         { art: "veroeffentlichen" },
       ],
-      selbstpruefung: "ausgeschlossen" as const,
+      selbstpruefung: this.deps.demoEigeneAdminfreigabe
+        ? ("admin_direktfreigabe" as const)
+        : ("ausgeschlossen" as const),
       ausnahmewege: [
         { art: "admin_kennzeichnung", recht: "users.manage" },
         { art: "eigentuemerfreigabe", recht: "ko.validate" },

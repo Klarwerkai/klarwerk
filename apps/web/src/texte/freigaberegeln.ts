@@ -51,6 +51,8 @@ export default {
       "Veröffentlichen ist ein eigener Schritt und setzt die Freigabe voraus.",
     "freigaberegeln.selbstpruefung":
       "Den eigenen Beitrag prüft niemand selbst — auch kein Administrator (Mehr-Augen-Prinzip).",
+    "freigaberegeln.selbstpruefung_admin":
+      "Demo-Betrieb: Administratoren können ihren eigenen Beitrag mit einer direkten Freigabe vollständig bestätigen.",
     "freigaberegeln.ausnahmen":
       "Ausnahmewege: Admin-Kennzeichnung und Eigentümerfreigabe sind Einzelentscheidungen. Sie stehen mit Person, Zeitpunkt und Fassung als Ausnahme im Protokoll.",
     "freigaberegeln.pruefer.titel": "Prüfer nach dieser Regel",
@@ -212,6 +214,8 @@ export default {
       "Publishing is a separate step and requires the approval.",
     "freigaberegeln.selbstpruefung":
       "Nobody reviews their own contribution — not even an administrator (four-eyes principle).",
+    "freigaberegeln.selbstpruefung_admin":
+      "Demo mode: administrators can fully approve their own contribution with one direct approval.",
     "freigaberegeln.ausnahmen":
       "Exception paths: admin marking and owner approval are single decisions. They appear in the audit trail as an exception, with person, time and version.",
     "freigaberegeln.pruefer.titel": "Reviewers under this rule",
@@ -370,6 +374,8 @@ export default {
       "Publiceren is een aparte stap en veronderstelt de vrijgave.",
     "freigaberegeln.selbstpruefung":
       "Niemand controleert de eigen bijdrage — ook geen beheerder (vier-ogenprincipe).",
+    "freigaberegeln.selbstpruefung_admin":
+      "Demomodus: beheerders kunnen hun eigen bijdrage met één directe goedkeuring volledig vrijgeven.",
     "freigaberegeln.ausnahmen":
       "Uitzonderingswegen: beheerdersmarkering en eigenaarsvrijgave zijn losse beslissingen. Ze staan met persoon, tijdstip en versie als uitzondering in het logboek.",
     "freigaberegeln.pruefer.titel": "Controleurs volgens deze regel",

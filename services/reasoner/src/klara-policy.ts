@@ -62,6 +62,8 @@ export interface KlaraResolution {
   readonly deviationReason: KlaraDeviationReason | null;
   readonly externalConsentRequired: boolean;
   readonly externalConsentGranted: boolean;
+  /** Betreiberentscheidung für den aktuellen Demo-Betrieb; keine persönliche Klickzustimmung. */
+  readonly externeKiStandardAn?: boolean;
   /**
    * WER AUSFÜHREN WÜRDE, WENN ZUGESTIMMT WIRD (JOB 3079 R2, BEN-Korrekturpflicht 1).
    *
@@ -137,6 +139,7 @@ export interface KlaraPolicyInput {
   readonly aufgabenAnbieter?: Readonly<Record<string, string>> | undefined;
   /** Liegt für die betrachtete Sitzung eine gültige externe Zustimmung vor? */
   readonly externalConsentGranted: boolean;
+  readonly externeKiStandardAn?: boolean;
   /**
    * ==============================================================================================
    * DAS ERGEBNIS DER ZENTRALEN ADMINFREIGABE — EIN URTEIL, KEINE ZWEITE KONFIGURATION (JOB 3502).
@@ -343,13 +346,12 @@ export const KLARA_PAYLOAD_CLASSES: readonly string[] = Object.freeze([
 export const KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT = "document_text";
 
 /**
- * DER RIEGEL FÜR DEN DOKUMENTTEXT — er steht auf AUS.
+ * Dokumentfragen mit markierter Passage sind freigeschaltet (Peter, 24.11.2026).
  *
  * Er ist ein EIGENER Schalter neben dem Antwortweg-Schalter weiter oben und ausdrücklich nicht
- * dessen Teil: der Antwortweg ist seit JOB 3079 freigeschaltet (Frage und Kandidatentexte, Pedis
- * „JA" vom 05.09.2026), die Weitergabe des markierten Dokumenttexts ist es nicht. Sie umzulegen ist
- * wegen des Datenabflusses eine eigene, ausdrückliche Entscheidung — kein Nebeneffekt eines
- * Bauauftrags.
+ * dessen Teil: Die Passage darf nur mit eigener Deckungsprüfung und ausdrücklicher Zustimmung
+ * für dieses Dokument übertragen werden. Eine alte Zustimmung nur zu Frage und Kandidatentexten
+ * reicht nicht; die neue Auflösung nennt zusätzlich `document_text`.
  *
  * GELESEN WIRD ER AN GENAU EINER STELLE: im `KlaraSessionService`, der ihn in jede Auflösung und in
  * die Deckungsprüfung reicht. Dieser Resolver liest ihn nicht selbst, sondern bekommt sein Ergebnis
@@ -357,7 +359,7 @@ export const KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT = "document_text";
  * messbar, ohne den Wert im Produkt anzufassen
  * (`tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts`).
  */
-export const KLARA_DOCUMENT_TEXT_EGRESS_ENABLED = false;
+export const KLARA_DOCUMENT_TEXT_EGRESS_ENABLED = true;
 
 /**
  * Die Menge MIT Dokumenttext — ebenso eingefroren und ebenso in fester Reihenfolge wie die
@@ -597,6 +599,7 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
     deviationReason: reason ?? blockedReason,
     externalConsentRequired,
     externalConsentGranted,
+    ...(input.externeKiStandardAn ? { externeKiStandardAn: true } : {}),
     externalConsentProvider,
     externalConsentModel,
     executionAllowed,

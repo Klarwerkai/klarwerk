@@ -745,7 +745,11 @@ export function SpaceFreigaberegel({ space }: { space: SpaceSicht }): JSX.Elemen
               ))}
             </ol>
             <p className="mt-1 text-[12px] text-muted-2" data-testid="freigabe-selbst">
-              {t("freigaberegeln.selbstpruefung")}
+              {t(
+                daten.data.selbstpruefung === "admin_direktfreigabe"
+                  ? "freigaberegeln.selbstpruefung_admin"
+                  : "freigaberegeln.selbstpruefung",
+              )}
             </p>
             <p className="text-[12px] text-muted-2" data-testid="freigabe-ausnahmen">
               {t("freigaberegeln.ausnahmen")}

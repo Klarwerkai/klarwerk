@@ -1199,8 +1199,9 @@ export class AskService {
        * JOB 3006 (KA5): die im Panel MARKIERTE PASSAGE — roh vom Aufrufer, ungedeutet.
        *
        * Sie ist ausdrücklich KEIN zweiter Fragetext und wird nirgends mit `question` vermischt.
-       * Ihre einzige Wirkung steht in `sucheterme` (oben): sie ergänzt die Suchbegriffe der
-       * Vorauswahl. Ohne das Feld ist der Ablauf Zeile für Zeile der bisherige.
+       * Ohne Dokumentfreigabe ergänzt sie nur die Suchbegriffe der Vorauswahl. Mit eigener
+       * Freigabe auf dem Modellweg liefert sie auch den Sachbezug einer natürlichen Frage
+       * wie „Ist das richtig?“. Sie wird dadurch keine Firmenquelle.
        */
       selection?: string;
       /**
@@ -1311,7 +1312,17 @@ export class AskService {
     // beide Provider reist. Es gibt keine zweite Zerlegung und keine zweite Zuordnungstabelle.
     // `suchterme` selbst hat weiterhin GENAU EINEN Verbraucher: `prefilterCandidates`.
     const frageterme = queryTokens(question);
-    const eingabeterme = erweiterteSuchterme(frageterme, opts?.selection);
+    // Nur die Route kann die eigene Dokumenttextprüfung bestätigen. Der reine Suchweg darf
+    // diese Freigabe weder zum Modellaufruf noch zum geänderten Auswahlweg machen.
+    const dokumenttext =
+      opts?.retrievalOnly !== true && opts?.dokumenttextFreigegeben === true
+        ? opts.selection?.trim() || undefined
+        : undefined;
+    // Bei Dokumentfragen ist die Passage das Thema, die getippte Frage der Arbeitsauftrag.
+    // Ihr Sachbezug bleibt auch bei einer langen Frage im begrenzten Suchfenster erhalten.
+    const eingabeterme = dokumenttext
+      ? erweiterteSuchterme(queryTokens(dokumenttext), question)
+      : erweiterteSuchterme(frageterme, opts?.selection);
     const relevanz = zugeordneteSuchterme(eingabeterme);
     const vorFaden = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
     // R-0348: der Gesprächsfaden — Begründung und Grenzen an `fadenfragen`.
@@ -1322,6 +1333,9 @@ export class AskService {
     const zusammenhang = kontextSatz ? [...faden, kontextSatz] : faden;
     const frageImZusammenhang =
       zusammenhang.length > 0 ? [...zusammenhang, question].join(FADEN_TRENNER) : question;
+    const auswahlfrage = dokumenttext
+      ? `${frageImZusammenhang}\n${dokumenttext}`
+      : frageImZusammenhang;
     const suchterme =
       zusammenhang.length > 0 ? erweiterteSuchterme(vorFaden, zusammenhang.join(" ")) : vorFaden;
     // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
@@ -1451,7 +1465,10 @@ export class AskService {
         ...(ordnung.get(ref.id) ?? []),
       ].join(" ");
       return (
-        decktAlleFragebegriffe(question, durchsuchbar, relevanz) &&
+        // Mit freigegebenem Dokumentkontext deutet das Modell den Arbeitsauftrag; Wörter
+        // wie „correct“ müssen nicht in der Quelle stehen. Relevanz, Anker und Quellenrechte
+        // bleiben geprüft. Ohne diese Freigabe gilt die bisherige vollständige Wortbindung.
+        (dokumenttext !== undefined || decktAlleFragebegriffe(question, durchsuchbar, relevanz)) &&
         (anker === undefined || decktAlleFragebegriffe(anker, durchsuchbar, relevanz))
       );
     });
@@ -1462,7 +1479,7 @@ export class AskService {
     const nurObjekt = opts?.seitenkontext?.nurObjekt;
     const auswahlBasis =
       nurObjekt === undefined ? vollstaendig : vollstaendig.filter((ref) => ref.id === nurObjekt);
-    const candidates = waehleKandidaten(frageImZusammenhang, auswahlBasis, DEFAULT_TOP_K, relevanz);
+    const candidates = waehleKandidaten(auswahlfrage, auswahlBasis, DEFAULT_TOP_K, relevanz);
     // R-0284: der Rahmen dieser Suche, aus genau den Werten, die den Weg bestimmt haben.
     const pruefrahmen: AskPruefrahmen = {
       umfang: opts?.validatedOnly ? "validiert" : "nicht_vertraulich",
@@ -1487,11 +1504,6 @@ export class AskService {
     const kontextVertraulich =
       prefiltered.some((ko) => isConfidential(ko.confidentiality)) ||
       opts?.dokumenttextVertraulich === true;
-    // F-0295 / R-0639: der markierte Dokumenttext — nur mit bestandener eigener Deckungsprüfung.
-    const dokumenttext =
-      opts?.dokumenttextFreigegeben === true && opts.selection?.trim()
-        ? opts.selection.trim()
-        : undefined;
     // D5: die gelesenen Kandidaten gehen gleich an den Antwortweg (Modell oder deterministischer
     // Ersatz). Wurde inzwischen abgeschaltet, verlassen sie diesen Dienst nicht.
     this.pruefeKiSperre("antwortweg", kiBeginn);

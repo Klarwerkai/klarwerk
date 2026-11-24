@@ -4255,6 +4255,8 @@ export function buildApp(
   // vorhandene gehoben und weitergereicht, nicht kopiert. Keine neue Ablage, keine neue Route.
   const klaraSessions = new KlaraSessionService({
     repo: services.klaraSessions,
+    // Peter, 24.11.2026: für den aktuellen Betrieb und Demos an, aktiv ausschaltbar.
+    externeKiStandardAn: true,
     // R-0609: jede Erteilung und jedes Ende einer Zustimmung geht in die Hash-Kette des
     // Prüfprotokolls — der Nachweis überdauert das Fortschreiben und Aufräumen der Zustimmungszeile.
     ...(services.audit ? { protokoll: services.audit } : {}),
@@ -4622,6 +4624,7 @@ export function buildApp(
   // ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel je Space — Prüfpunkt an den
   // Entscheidungswegen, Prüfbrett-Auskunft, Spacewechsel und die Verwaltungsrouten teilen EINEN Dienst.
   const freigaberegeln = new FreigabeRegelDienst({
+    demoEigeneAdminfreigabe: true,
     spaces: services.spaces,
     teams: services.teams,
     auth: services.auth,

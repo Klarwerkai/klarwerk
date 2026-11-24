@@ -229,6 +229,8 @@ export interface KlaraSessionServiceDeps {
    * „der Riegel hält" nicht von „irgendetwas hält" zu unterscheiden.
    */
   readonly dokumenttextRiegelOffen?: boolean;
+  /** Demo-Betrieb: standardmäßig externe KI, ausdrückliches Ausschalten bleibt wirksam. */
+  readonly externeKiStandardAn?: boolean;
 }
 
 export type KlaraFehlerCode = "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "BAD_REQUEST";
@@ -605,6 +607,7 @@ export class KlaraSessionService {
 
   /** R-0639: die EINE lesende Stelle des Dokumenttext-Riegels. */
   private readonly dokumenttextRiegelOffen: boolean;
+  private readonly externeKiStandardAn: boolean;
 
   constructor(deps: KlaraSessionServiceDeps) {
     this.repo = deps.repo;
@@ -614,6 +617,7 @@ export class KlaraSessionService {
     this.protokoll = deps.protokoll;
     this.dokumenttextRiegelOffen =
       (deps.dokumenttextRiegelOffen ?? KLARA_DOCUMENT_TEXT_EGRESS_ENABLED) === true;
+    this.externeKiStandardAn = deps.externeKiStandardAn === true;
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -626,7 +630,7 @@ export class KlaraSessionService {
   // Richtlinienfassung, erteilt wann, gültig bis wann — und beim Ende Zeitpunkt und Art. Kein
   // Dokumentinhalt, keine Frage, kein Geheimnis.
 
-  private async protokolliereErteilung(consent: KlaraConsent): Promise<void> {
+  private async protokolliereErteilung(consent: KlaraConsent, standard = false): Promise<void> {
     await this.protokoll?.recordOnce(`${KLARA_CONSENT_AUDIT_GRANTED}:${consent.consentId}`, {
       actor: consent.actorId,
       action: KLARA_CONSENT_AUDIT_GRANTED,
@@ -645,6 +649,7 @@ export class KlaraSessionService {
         configurationVersion: consent.configurationVersion,
         grantedAt: consent.grantedAt,
         expiresAt: consent.expiresAt,
+        ...(standard ? { erteilungsgrund: "demo-standard-aktiv" } : {}),
       },
     });
   }
@@ -809,6 +814,7 @@ export class KlaraSessionService {
     const resolution = resolveKlaraPolicy({
       ...quelle,
       dokumenttextFreigeschaltet: this.dokumenttextRiegelOffen,
+      externeKiStandardAn: this.externeKiStandardAn,
       externalConsentGranted: consentGranted,
       now: this.now(),
       resolutionId: gebunden.resolutionId as string,
@@ -854,6 +860,18 @@ export class KlaraSessionService {
       revision: 0,
     };
     await this.repo.insertSession(session);
+    if (this.externeKiStandardAn) {
+      await this.standardFreigabe(session.sessionId, {
+        actorId,
+        addinInstanceId: session.addinInstanceId,
+        documentContextId,
+      });
+      return this.getSession(session.sessionId, {
+        actorId,
+        addinInstanceId: session.addinInstanceId,
+        documentContextId,
+      });
+    }
     const { session: gebunden, resolution } = await this.aufloesen(session, false);
     return this.sicht(gebunden, resolution);
   }
@@ -942,6 +960,7 @@ export class KlaraSessionService {
     bindung: KlaraBindung,
     aktivitaet: boolean,
   ): Promise<KlaraSessionView> {
+    await this.standardFreigabe(sessionId, bindung);
     for (let anlauf = 0; anlauf < 2; anlauf++) {
       const { session } = await this.laden(sessionId, bindung);
       // R-0777: nur der Aktivitätsweg berührt; reines Ansehen trägt den geladenen Stand.
@@ -1044,6 +1063,7 @@ export class KlaraSessionService {
     return resolveKlaraPolicy({
       ...quelle,
       dokumenttextFreigeschaltet: this.dokumenttextRiegelOffen,
+      externeKiStandardAn: this.externeKiStandardAn,
       externalConsentGranted: consentGranted,
       now: this.now(),
       resolutionId: session.resolutionId as string,
@@ -1077,6 +1097,7 @@ export class KlaraSessionService {
     bindung: KlaraBindung,
     aufgabe: KlaraAufgabe = "answer",
   ): Promise<KlaraAusfuehrungsfreigabe> {
+    await this.standardFreigabe(sessionId, bindung);
     // Frisch laden — dieselbe Bindungsprüfung wie jeder andere Weg (fremde Sitzung ⇒ NOT_FOUND).
     const { session: geladen } = await this.laden(sessionId, bindung);
     // R-0777: ein Ausführungsversuch ist BENUTZUNG, kein Ansehen — er hält die gleitende Frist
@@ -1284,7 +1305,11 @@ export class KlaraSessionService {
       configurationVersion: klaraConfigurationVersion(quelle),
       lastActivityAt: new Date(jetzt).toISOString(),
       expiresAt: this.ablauf(Date.parse(session.createdAt), jetzt),
-      consentState: (consent ? "invalidated" : "none") as KlaraSession["consentState"],
+      consentState: (session.consentState === "revoked" || consent?.status === "revoked"
+        ? "revoked"
+        : consent
+          ? "invalidated"
+          : "none") as KlaraSession["consentState"],
       revokedAt: new Date(jetzt).toISOString(),
     };
     // KW-S4-21 §3: für den Rebind gibt es KEINEN automatischen Wiederholversuch. Er ist eine
@@ -1305,11 +1330,15 @@ export class KlaraSessionService {
       consentState: werte.consentState,
       revision: session.revision + 1,
     };
+    if (this.externeKiStandardAn) {
+      return this.getSession(sessionId, { ...bindung, documentContextId: neuerKontext });
+    }
     // Kein zweiter Schreibweg: die Auflösung wird aus denselben Werten gebildet, die soeben
     // committet wurden — `aufloesen` hätte hier nichts mehr zu tun und dürfte nichts mehr tun.
     const resolution = resolveKlaraPolicy({
       ...quelle,
       dokumenttextFreigeschaltet: this.dokumenttextRiegelOffen,
+      externeKiStandardAn: this.externeKiStandardAn,
       externalConsentGranted: false,
       now: jetzt,
       resolutionId: werte.resolutionId,
@@ -1317,9 +1346,34 @@ export class KlaraSessionService {
     return this.sicht(umgebunden, resolution);
   }
 
-  /** `POST .../consent` — Zustimmung AUSSCHLIESSLICH für externe KI (KW-S4-04 §99). */
-  async grantConsent(sessionId: string, bindung: KlaraBindung): Promise<KlaraSessionView> {
+  /** Erneuert die gebundene Erlaubnis aus der Demo-Vorgabe, niemals nach aktivem Ausschalten. */
+  private async standardFreigabe(sessionId: string, bindung: KlaraBindung): Promise<void> {
+    if (!this.externeKiStandardAn) return;
+    const { session, consent } = await this.laden(sessionId, bindung);
+    if (session.consentState === "revoked" || consent?.status === "revoked") return;
+    const { session: gebunden, quelle } = await this.aufloesen(session, true);
+    const resolution = this.aufloesenOhneSchreiben(gebunden, true, quelle);
+    if (resolution.effectiveMode !== "external" || !resolution.executionAllowed) return;
+    if (pruefeConsentDeckung(consent, gebunden, resolution, this.now()).gedeckt) return;
+    // Derselbe revisionsgebundene Schreibweg wie beim bewussten Einschalten, mit eigenem
+    // Auditgrund. Weder ein Konfigurationsfehler noch ein Widerruf wird dabei umgangen.
+    await this.grantConsent(sessionId, bindung, true);
+  }
+
+  /** `POST .../consent` — externe KI einschalten. */
+  async grantConsent(
+    sessionId: string,
+    bindung: KlaraBindung,
+    standard = false,
+  ): Promise<KlaraSessionView> {
     const geladen = await this.laden(sessionId, bindung);
+    // Ein zwischenzeitliches Ausschalten darf nicht von der Demo-Vorgabe überholt werden.
+    if (
+      standard &&
+      (geladen.session.consentState === "revoked" || geladen.consent?.status === "revoked")
+    ) {
+      return this.sitzungsstand(sessionId, bindung, false);
+    }
     const vorherige = geladen.consent;
     let session = geladen.session;
     // R-0609 (Bens B2-Klasse): eine noch WIRKSAME frühere Zustimmung wird in einem EIGENEN Übergang
@@ -1345,6 +1399,11 @@ export class KlaraSessionService {
       resolution: ohneConsent,
       quelle,
     } = await this.aufloesen(beruehrt, false);
+    // Der Touch kann nach einem verlorenen CAS eine frisch widerrufene Sitzung gelesen haben.
+    // Deren neue Revision ist keine Erlaubnis, den Widerruf mit der Demo-Vorgabe zu überschreiben.
+    if (standard && gebunden.consentState === "revoked") {
+      return this.sitzungsstand(sessionId, bindung, false);
+    }
     if (ohneConsent.effectiveMode !== "external") {
       throw new KlaraError(
         "CONFLICT",
@@ -1407,7 +1466,7 @@ export class KlaraSessionService {
     // R-0609 (Bens B1): ERST DER NACHWEIS, DANN DIE ZUSTIMMUNG. Scheitert der Eintrag, wird nichts
     // gespeichert — es gibt keinen Augenblick, in dem das Tor eine Zustimmung ohne Nachweis sieht,
     // und keine Rücknahme, die selbst ein Rennen verlieren könnte.
-    await this.protokolliereErteilung(consent);
+    await this.protokolliereErteilung(consent, standard);
     if (!(await this.repo.grantConsent(gebunden.sessionId, gebunden.revision, consent))) {
       // Der Eintrag steht, die Zustimmung nicht: das Protokoll sagt es ausdrücklich, statt eine
       // Erteilung stehen zu lassen, die nie wirksam war. Scheitert auch das, bleibt der Konflikt die

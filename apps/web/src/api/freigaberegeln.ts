@@ -123,7 +123,7 @@ export interface RegelUebersicht {
   standardZustimmungen: number;
   gruppe: "gruppe" | "alle";
   schritte: { art: string; anzahl?: number }[];
-  selbstpruefung: "ausgeschlossen";
+  selbstpruefung: "ausgeschlossen" | "admin_direktfreigabe";
   ausnahmewege: { art: "admin_kennzeichnung" | "eigentuemerfreigabe"; recht: string }[];
   pruefer: PrueferZeile[];
   voraussetzungen: Voraussetzung[];

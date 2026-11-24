@@ -79,9 +79,9 @@ const CLOUD_LAGE = {
 // ------------------------------------------------------------------------------------------------
 // R0 · DER RIEGEL: EIN WERT, EINE LESENDE STELLE, IM PRODUKT NICHT ÜBERSTEUERT
 // ------------------------------------------------------------------------------------------------
-describe("R-0639 · R0 — der Riegel steht auf AUS und ist genau eine Entscheidung", () => {
-  it("R0a · Wert und Klassenname", () => {
-    expect(KLARA_DOCUMENT_TEXT_EGRESS_ENABLED).toBe(false);
+describe("R-0639 · R0 — Produktfreigabe und eigene Deckungsprüfung", () => {
+  it("R0a · Dokumentfragen sind freigeschaltet; die eigene Datenklasse bleibt benannt", () => {
+    expect(KLARA_DOCUMENT_TEXT_EGRESS_ENABLED).toBe(true);
     expect(KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT).toBe("document_text");
   });
 
@@ -269,7 +269,9 @@ async function wegAufbauen(
   const dienst = new KlaraSessionService({
     repo,
     policy: () => CLOUD_LAGE,
-    ...(opt.riegelOffen ? { dokumenttextRiegelOffen: true } : {}),
+    // Die geschlossene Gegenprobe bleibt ausdrücklich geschlossen. Der Produktdefault wird
+    // separat ohne Override am echten Sitzungsweg in frage-zur-word-markierung geprüft.
+    dokumenttextRiegelOffen: opt.riegelOffen === true,
   });
 
   const zeilen: string[] = [];
@@ -341,7 +343,7 @@ const fragen = (w: Weg, rumpf: Record<string, unknown> = {}) =>
   });
 
 describe("R-0639 · R3 — der Sitzungsdienst: zwei Tore hintereinander", () => {
-  it("R3a · PRODUKTSTAND: der Antwortweg ist frei, der Dokumenttext nicht — Grund `riegel_aus`", async () => {
+  it("R3a · GESCHLOSSENE GEGENPROBE: der Antwortweg ist frei, der Dokumenttext nicht — Grund `riegel_aus`", async () => {
     const w = await wegAufbauen();
     // Die Kalibrierung: es ist NICHT der Modus und NICHT die Zustimmung, die hier aufhalten.
     const antwortweg = await w.dienst.pruefeExterneAusfuehrung(w.sitzung, w.bindung);
@@ -408,7 +410,7 @@ describe("R-0639 · R3 — der Sitzungsdienst: zwei Tore hintereinander", () => 
 });
 
 describe("R-0639 · R4 — am Draht: was den Modellclient WIRKLICH erreicht", () => {
-  it("R4a · PRODUKTSTAND: das Modell WIRD gerufen, die Markierung steht NICHT im Prompt", async () => {
+  it("R4a · GESCHLOSSENE GEGENPROBE: das Modell WIRD gerufen, die Markierung steht NICHT im Prompt", async () => {
     const w = await wegAufbauen();
     const res = await fragen(w);
     expect(res.statusCode).toBe(200);

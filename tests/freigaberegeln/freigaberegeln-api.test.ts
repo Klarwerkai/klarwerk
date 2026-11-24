@@ -286,7 +286,7 @@ describe("ADMIN-09 · K1/K2 · Übersicht, Vorschau und Regelwechsel bei laufend
       "freigabe",
       "veroeffentlichen",
     ]);
-    expect(vorher.selbstpruefung).toBe("ausgeschlossen");
+    expect(vorher.selbstpruefung).toBe("admin_direktfreigabe");
     expect(vorher.ausnahmewege.map((a) => a.art)).toEqual([
       "admin_kennzeichnung",
       "eigentuemerfreigabe",
@@ -521,15 +521,14 @@ describe("ADMIN-09 · K3/K4/K5 · Prüfpunkt am Server: Prüferkreis, Selbstprü
         ausnahme: true,
       }),
     ]);
-    // Den eigenen Beitrag gibt auch der Administrator nicht selbst frei.
+    // Peter, 24.11.2026: im Demo-Betrieb darf der Admin auch den eigenen Beitrag direkt freigeben.
     const vonAda = await beitrag(b, b.k.ada, "Kalibrierschein");
     const eigen = await handle(b, b.k.ada, vonAda, {
       action: "admin-validate",
       expectedVersion: 1,
     });
-    expect(eigen.statusCode).toBe(403);
-    expect(eigen.json().error).toBe("SELBSTPRUEFUNG");
-    expect((await ko(b, vonAda)).status).toBe("offen");
+    expect(eigen.statusCode, eigen.body).toBe(200);
+    expect((await ko(b, vonAda)).status).toBe("validiert");
   });
 });
 

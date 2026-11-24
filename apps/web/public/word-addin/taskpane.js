@@ -571,6 +571,7 @@
     // Darf Klara fuer dieses Dokument AKTIV fragen? Drei Bedingungen, alle noetig: der Server verlangt die Zustimmung ueberhaupt, sie ist noch nicht erteilt,
     // und der Anwender hat fuer dieses Dokument noch nicht Nein gesagt. Fehlt die Anzeige (Ladephase, Abruf gescheitert), wird NICHT gefragt — eine Frage auf unbekanntem Stand waere geraten.
     function ka4DarfAktivFragen(anzeige) {
+      if (anzeige && anzeige.externeKiStandardAn === true) { return false; }
       if (!anzeige || anzeige.consentVisible !== true) { return false; }
       if (anzeige.consentPossible !== true) { return false; }
       return !ka4WurdeAbgelehnt();
@@ -1230,6 +1231,7 @@
         consentProvider: null,
         consentModel: null,
         consentPossible: false,
+        externeKiStandardAn: false,
       };
       if (phase === "laedt") { return leer; }
       if (phase === "gesperrt") {
@@ -1286,6 +1288,7 @@
           r.externalConsentGranted,
         ),
         consentVisible: consentNoetig,
+        externeKiStandardAn: r.externeKiStandardAn === true,
         revokeVisible: r.externalConsentGranted === true,
         askAllowed: erlaubt,
         veraltet: false, // Runde 8: eine abgelaufene Aufloesung kommt hier nicht mehr an (oben)
@@ -1362,8 +1365,8 @@
       if (a.modeKey === "s4ModeInternal") { return "wegIntern"; }
       if (a.modeKey !== "s4ModeExternal") { return "wegDeterministisch"; }
       // Ab hier: extern. Die Freigabe ist die einzige Bedingung, unter der wirklich etwas hinausgeht.
-      if (a.askAllowed === true) { return "wegExternZustimmung"; }
-      if (KLARA_WEG_ZUSTIMMUNG_WEG.indexOf(a.consentKey) >= 0) { return "wegExternZustimmungWeg"; }
+      if (a.askAllowed === true) { return a.externeKiStandardAn ? "wegExternStandard" : "wegExternZustimmung"; }
+      if (KLARA_WEG_ZUSTIMMUNG_WEG.indexOf(a.consentKey) >= 0) { return a.externeKiStandardAn ? "wegExternStandardAus" : "wegExternZustimmungWeg"; }
       if (a.consentKey === "s4ConsentErforderlich" || a.consentKey === "s4ConsentNone") {
         return "wegExternOhneZustimmung";
       }
@@ -1374,7 +1377,12 @@
 
     /** Nur `wegExternZustimmung` nennt einen Anbieter — die uebrigen Saetze tragen keinen. */
     function klaraWegParam(a) {
-      return { provider: (a && a.provider) || t("s4Unbekannt") };
+      return {
+        provider: (a && a.provider) || t("s4Unbekannt"),
+        dokumenttext: a && a.payloadClasses && a.payloadClasses.indexOf("document_text") >= 0
+          ? " " + t("wegDokumenttext")
+          : "",
+      };
     }
 
     /**
@@ -1649,7 +1657,13 @@
         // GENAU EINER sagt, dass etwas hinausgeht — `wegExternZustimmung`. Er nennt den Anbieter,
         // den Grund (die Zustimmung) und die Nutzlast. Die fünf anderen schliessen das Modell aus,
         // jeder mit seiner eigenen Bedingung davor.
-        wegExternZustimmung: "Klaras Antwort in diesem Fenster entsteht mit der externen KI {provider}, weil du für dieses Dokument zugestimmt hast: deine Frage und die Texte der gefundenen Einträge gehen dorthin.",
+        wegExternZustimmung: "Klaras Antwort in diesem Fenster entsteht mit der externen KI {provider}, weil du für dieses Dokument zugestimmt hast: deine Frage und die Texte der gefundenen Einträge gehen dorthin.{dokumenttext}",
+        wegDokumenttext: "Auch die freigegebene markierte Passage dieses Dokuments wird übertragen.",
+        wegExternStandard: "Externe KI ist eingeschaltet. Deine Frage und die gefundenen Firmenquellen gehen an {provider}.{dokumenttext}",
+        wegExternStandardAus: "Externe KI ist in dieser Sitzung ausgeschaltet. Du kannst sie in den Einstellungen wieder einschalten.",
+        s4StandardText: "Für den Demo-Betrieb ist externe KI standardmäßig eingeschaltet. Du kannst sie hier ausschalten und wieder einschalten.",
+        s4Aktivieren: "Externe KI einschalten",
+        s4Deaktivieren: "Externe KI ausschalten",
         wegExternOhneZustimmung: "Ohne deine Zustimmung geht für dieses Dokument nichts an {provider}. Klaras Antwort in diesem Fenster entsteht dann ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
         wegExternZustimmungWeg: "Deine Zustimmung für dieses Dokument gilt nicht mehr. Klaras Antwort in diesem Fenster entsteht bis zu einer erneuten Zustimmung ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
         wegIntern: "Für dieses Fenster wird sie nicht genutzt: Klaras Antwort entsteht hier ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
@@ -1750,6 +1764,7 @@
         s4KlassenUnd: "und",
         s4Klasse_question: "Deine Frage",
         s4Klasse_candidate_texts: "die Texte der gefundenen Einträge",
+        s4Klasse_document_text: "die markierte Passage dieses Dokuments",
         s4ConsentUmfang: "Anbieter {provider} · Modell {model} · Sitzung {session} · Betroffene Daten: {klassen}",
         s4ConsentKlassenFehlen:
           "Der Server hat noch nicht aufgelöst, welche Daten übertragen würden. Ohne diese Angabe kann hier nicht zugestimmt werden.",
@@ -1769,7 +1784,7 @@
         // JOB 3017 D4: der Fußzeilensatz (Zielbild Z.48) — der Leitsatz jeder Design-Fläche, gefolgt
         // von den beiden BELEGTEN Halbsätzen (mega75 Block C / mega77 Block B). Der Zielbild-Halbsatz
         // über den Serverstandort (Z.48) bleibt draußen: Betriebszusage, die dieser Code nicht erzwingt.
-        askRuleNote: "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich. Klara zitiert validiertes KLARWERK-Wissen wörtlich; dein markierter Text wird nicht an eine externe KI gesendet.",
+        askRuleNote: "Klara prüft deine Frage und die markierte Passage anhand bestätigten Firmenwissens. Externe KI ist für die Demo standardmäßig an und kann in den Einstellungen ausgeschaltet werden.",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
         // JOB 3016 D3: beide Haelften des Zielbildsatzes (Wissen freigegeben UND Eingabe gesperrt).
         askBusy: "Klara sucht im freigegebenen Wissen — die Eingabe ist so lange gesperrt.",
@@ -2071,7 +2086,13 @@
         aiLageExtern: "In KLARWERK, answering currently uses an external AI (cloud).",
         aiLageIntern: "In KLARWERK, answering currently uses an in-house AI.",
         aiLageKeine: "In KLARWERK, answering currently uses no AI. Other tasks in KLARWERK may differ.",
-        wegExternZustimmung: "Klara's answer in this panel is produced by the external AI {provider}, because you gave consent for this document: your question and the texts of the entries found go there.",
+        wegExternZustimmung: "Klara's answer in this panel is produced by the external AI {provider}, because you gave consent for this document: your question and the texts of the entries found go there.{dokumenttext}",
+        wegDokumenttext: "The approved selected passage of this document is also transmitted.",
+        wegExternStandard: "External AI is enabled. Your question and the company sources found are sent to {provider}.{dokumenttext}",
+        wegExternStandardAus: "External AI is switched off in this session. You can switch it on again in settings.",
+        s4StandardText: "External AI is enabled by default for demos. You can switch it off and on here.",
+        s4Aktivieren: "Enable external AI",
+        s4Deaktivieren: "Disable external AI",
         wegExternOhneZustimmung: "Without your consent nothing about this document goes to {provider}. Klara's answer in this panel is then produced without an AI model — rule-based, quoting validated knowledge word for word.",
         wegExternZustimmungWeg: "Your consent for this document no longer applies. Until you consent again, Klara's answer in this panel is produced without an AI model — rule-based, quoting validated knowledge word for word.",
         wegIntern: "It is not used for this panel: Klara's answer here is produced without an AI model — rule-based, quoting validated knowledge word for word.",
@@ -2143,6 +2164,7 @@
         s4KlassenUnd: "and",
         s4Klasse_question: "Your question",
         s4Klasse_candidate_texts: "the texts of the entries found",
+        s4Klasse_document_text: "the selected passage of this document",
         s4ConsentUmfang: "Provider {provider} · Model {model} · Session {session} · Data concerned: {klassen}",
         s4ConsentKlassenFehlen:
           "The server has not yet resolved which data would be transmitted. Without that, consent cannot be given here.",
@@ -2157,7 +2179,7 @@
         askSnippetLabel: "Excerpt used",
         askRoleCarrying: "carries the answer",
         askRoleConsulted: "consulted",
-        askRuleNote: "No AI answer without evidence · Confidential stays confidential. Klara quotes validated KLARWERK knowledge word for word; your selected text is not sent to an external AI.",
+        askRuleNote: "Klara checks your question and selected passage against approved company knowledge. External AI is on by default for the demo and can be switched off in settings.",
         askEmpty: "Please select a statement in the document first or type a question below.",
         askBusy: "Klara is searching the approved knowledge — input is locked until then.",
         // JOB 3019 (KA5) R2: sprach über die Markierung, gekappt wird aber die Frage — s. DE-Block.
@@ -2417,7 +2439,13 @@
         aiLageExtern: "In KLARWERK werkt voor antwoorden momenteel een externe AI (cloud).",
         aiLageIntern: "In KLARWERK werkt voor antwoorden momenteel een interne AI.",
         aiLageKeine: "In KLARWERK werkt voor antwoorden momenteel geen AI. Voor andere taken in KLARWERK kan dat anders zijn.",
-        wegExternZustimmung: "Klara's antwoord in dit venster komt met de externe AI {provider} tot stand, omdat je voor dit document toestemming hebt gegeven: je vraag en de teksten van de gevonden items gaan daarheen.",
+        wegExternZustimmung: "Klara's antwoord in dit venster komt met de externe AI {provider} tot stand, omdat je voor dit document toestemming hebt gegeven: je vraag en de teksten van de gevonden items gaan daarheen.{dokumenttext}",
+        wegDokumenttext: "Ook de vrijgegeven geselecteerde passage van dit document wordt verstuurd.",
+        wegExternStandard: "Externe AI is ingeschakeld. Je vraag en de gevonden bedrijfsbronnen gaan naar {provider}.{dokumenttext}",
+        wegExternStandardAus: "Externe AI is in deze sessie uitgeschakeld. Je kunt deze in de instellingen weer inschakelen.",
+        s4StandardText: "Externe AI is standaard ingeschakeld voor demo’s. Je kunt deze hier uit- en inschakelen.",
+        s4Aktivieren: "Externe AI inschakelen",
+        s4Deaktivieren: "Externe AI uitschakelen",
         wegExternOhneZustimmung: "Zonder jouw toestemming gaat er voor dit document niets naar {provider}. Klara's antwoord in dit venster komt dan zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
         wegExternZustimmungWeg: "Je toestemming voor dit document geldt niet meer. Tot je opnieuw toestemt, komt Klara's antwoord in dit venster zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
         wegIntern: "Voor dit venster wordt zij niet gebruikt: Klara's antwoord komt hier zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
@@ -2489,6 +2517,7 @@
         s4KlassenUnd: "en",
         s4Klasse_question: "Je vraag",
         s4Klasse_candidate_texts: "de teksten van de gevonden items",
+        s4Klasse_document_text: "de geselecteerde passage van dit document",
         s4ConsentUmfang: "Aanbieder {provider} · Model {model} · Sessie {session} · Betrokken gegevens: {klassen}",
         s4ConsentKlassenFehlen:
           "De server heeft nog niet bepaald welke gegevens zouden worden verzonden. Zonder die opgave kan hier geen toestemming worden gegeven.",
@@ -2503,7 +2532,7 @@
         askSnippetLabel: "Gebruikt fragment",
         askRoleCarrying: "draagt het antwoord",
         askRoleConsulted: "geraadpleegd",
-        askRuleNote: "Geen AI-antwoord zonder bewijs · Vertrouwelijk blijft vertrouwelijk. Klara citeert gevalideerde KLARWERK-kennis woordelijk; je geselecteerde tekst wordt niet naar een externe AI gestuurd.",
+        askRuleNote: "Klara toetst je vraag en geselecteerde passage aan goedgekeurde bedrijfskennis. Externe AI staat standaard aan voor de demo en kan in de instellingen worden uitgeschakeld.",
         askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
         askBusy: "Klara zoekt in de vrijgegeven kennis — de invoer is zolang vergrendeld.",
         // JOB 3019 (KA5) R2: sprak over de selectie, gekapt wordt echter de vraag — zie DE-blok.
@@ -3738,8 +3767,8 @@
       document.getElementById("klara-consent-zeile").className = consentDa
         ? "einst-zeile"
         : "einst-zeile hidden";
-      document.getElementById("klara-consent-title").textContent = t("s4ConsentTitel");
-      document.getElementById("klara-consent-body").textContent = t("s4ConsentText");
+      document.getElementById("klara-consent-title").textContent = t(a.externeKiStandardAn ? "s4ModeExternal" : "s4ConsentTitel");
+      document.getElementById("klara-consent-body").textContent = t(a.externeKiStandardAn ? "s4StandardText" : "s4ConsentText");
       // KW-S4-22: der Umfang nennt Anbieter, Modell, Sitzung und die EFFEKTIVEN Datenklassen.
       // Sind die Klassen nicht aufgeloest, steht dort kein Ersatzwert, sondern der ausdrueckliche
       // Satz, dass ohne sie nicht zugestimmt werden kann.
@@ -3785,12 +3814,12 @@
       // je Lage genau einer sichtbar, derselbe Server-Weg (klaraS4Zustimmen / klaraS4Widerrufen).
       // Der Wortlaut steht als aria-label; der Knopf des Schalters ist ein Kind-Element.
       var zu = document.getElementById("klara-consent-grant");
-      zu.setAttribute("aria-label", t("s4ConsentKnopf"));
+      zu.setAttribute("aria-label", t(a.externeKiStandardAn ? "s4Aktivieren" : "s4ConsentKnopf"));
       // NICHT `consentVisible`, sondern `consentPossible`: ohne aufgeloeste Datenklassen gibt es
       // keinen Schalter, der eine unbestimmte Zustimmung erteilen koennte.
       zu.className = a.consentPossible ? "schalter" : "schalter hidden";
       var weg = document.getElementById("klara-consent-revoke");
-      weg.setAttribute("aria-label", t("s4ConsentWiderruf"));
+      weg.setAttribute("aria-label", t(a.externeKiStandardAn ? "s4Deaktivieren" : "s4ConsentWiderruf"));
       weg.className = a.revokeVisible ? "schalter an" : "schalter an hidden";
       // KW-KA4-DOKUMENT-CONSENT-START (Anzeige)
       // Aktiv gefragt wird NUR, wenn der Server die Zustimmung verlangt, sie erteilbar ist und der

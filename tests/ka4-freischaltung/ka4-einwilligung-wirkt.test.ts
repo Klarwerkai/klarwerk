@@ -43,6 +43,7 @@ import {
   InMemoryKlaraSessionRepo,
   KLARA_DETERMINISTIC_MODEL,
   KLARA_DETERMINISTIC_PROVIDER,
+  KLARA_DOCUMENT_TEXT_EGRESS_ENABLED,
   KLARA_EXTERNAL_EXECUTION_MIGRATED,
   KLARA_RESOLUTION_TTL_MS,
   type KnowledgeRef,
@@ -107,6 +108,7 @@ const PANEL = resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html")
 const AUSGEWIESENE_KLASSEN = resolveKlaraPolicy({
   ...CLOUD_LAGE,
   externalConsentGranted: true,
+  dokumenttextFreigeschaltet: KLARA_DOCUMENT_TEXT_EGRESS_ENABLED,
   now: Date.parse("2026-09-03T09:00:00.000Z"),
   resolutionId: "res-klassen",
 }).effectivePayloadClasses;
@@ -233,7 +235,12 @@ async function einwilligen(a: Aufbau, akteur = "nutzer-1"): Promise<string> {
 
 // R-0700: MIT Klara-Bindung fragt Klara über ihren EIGENEN Zugang (die Sitzung steht im Pfad); OHNE
 // Bindung (Konsole) über den allgemeinen Frageweg — dort ohne das Klara-Feld `questionSource`.
-const fragen = (app: FastifyInstance, kopf: Record<string, string>, mode = "retrieval-only") => {
+const fragen = (
+  app: FastifyInstance,
+  kopf: Record<string, string>,
+  mode = "retrieval-only",
+  selection?: string,
+) => {
   const sitzung = kopf["x-klara-session"];
   if (!sitzung) {
     return app.inject({
@@ -252,8 +259,8 @@ const fragen = (app: FastifyInstance, kopf: Record<string, string>, mode = "retr
       // R-0639 Runde 3 (Bens Befund B1): das Fenster meldet eine getippte Frage als `manual`;
       // mit Klara-Bindung zählt „fehlt" als Dokumenttext.
       mode === ""
-        ? { question: FRAGE, locale: "de", questionSource: "manual" }
-        : { question: FRAGE, locale: "de", mode, questionSource: "manual" },
+        ? { question: FRAGE, locale: "de", questionSource: "manual", selection }
+        : { question: FRAGE, locale: "de", mode, questionSource: "manual", selection },
   });
 };
 
@@ -577,13 +584,14 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
     repo: InMemoryKlaraSessionRepo;
     sitzung: string;
     bindung: Record<string, string>;
-    gesehen: { frage: string; kontext: readonly KnowledgeRef[] }[];
+    gesehen: { frage: string; kontext: readonly KnowledgeRef[]; dokumenttext?: string }[];
     geheim: string;
     offen: string;
   }
 
   async function echtAufbauen(): Promise<Echt> {
-    const gesehen: { frage: string; kontext: readonly KnowledgeRef[] }[] = [];
+    const gesehen: { frage: string; kontext: readonly KnowledgeRef[]; dokumenttext?: string }[] =
+      [];
     const provider = {
       name: "mitschreiber",
       isAvailable: () => true,
@@ -591,11 +599,14 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
         frage: string,
         kontext: readonly KnowledgeRef[],
         _locale?: ReasonerLocale,
+        _confidential?: boolean,
+        _relevanz?: unknown,
+        dokumenttext?: string,
       ): Promise<AnswerResult> => {
         // JOB 3079 · S3: die FRAGE wird mitgeschrieben, nicht nur der Kontext. Ohne sie könnte der
         // Fall die Klasse `question` nur glauben statt messen — und eine ausgewiesene Klasse ohne
         // gemessene Nutzlast wäre dieselbe Unehrlichkeit wie eine Nutzlast ohne Klasse.
-        gesehen.push({ frage, kontext });
+        gesehen.push({ frage, kontext, ...(dokumenttext ? { dokumenttext } : {}) });
         return {
           answered: false,
           answer: null,
@@ -719,6 +730,7 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
   const KLASSE_JE_MODELLDATUM: Record<string, string> = {
     // Die Frage selbst — das erste Argument an den Anbieter.
     frage: "question",
+    dokumenttext: "document_text",
     // Jedes Feld eines `KnowledgeRef`, das in den Modellkontext reist.
     id: "candidate_texts",
     title: "candidate_texts",
@@ -735,7 +747,7 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
     // Die Zustimmung weist genau aus, was die Auflösung nennt — nicht mehr und nicht weniger.
     expect(consent?.allowedPayloadClasses).toEqual([...AUSGEWIESENE_KLASSEN]);
 
-    await fragen(e.app, e.bindung);
+    await fragen(e.app, e.bindung, "retrieval-only", FRAGE);
 
     if (!KLARA_EXTERNAL_EXECUTION_MIGRATED) {
       // Gesperrt: der Anbieter wird über diesen Weg gar nicht gerufen. Es geht nichts hinaus, und
@@ -755,7 +767,8 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
     expect(lauf.frage).toBe(FRAGE);
     expect(lauf.kontext.length).toBeGreaterThan(0);
 
-    const felder = ["frage", ...lauf.kontext.flatMap((k) => Object.keys(k))];
+    expect(lauf.dokumenttext).toBe(FRAGE);
+    const felder = ["frage", "dokumenttext", ...lauf.kontext.flatMap((k) => Object.keys(k))];
     const ohneKlasse = [...new Set(felder)].filter((f) => !KLASSE_JE_MODELLDATUM[f]);
     expect(
       ohneKlasse,
