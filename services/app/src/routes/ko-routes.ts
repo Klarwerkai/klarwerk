@@ -1888,6 +1888,40 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       if (!item) {
         return;
       }
+      const { belegfassung } = request.query as { belegfassung?: unknown };
+      if (belegfassung !== undefined) {
+        const fassung = Number(belegfassung);
+        if (
+          typeof belegfassung !== "string" ||
+          !/^[1-9]\d*$/.test(belegfassung) ||
+          !Number.isSafeInteger(fassung)
+        ) {
+          return reply.code(400).send({ error: "BAD_REQUEST", message: "Ungültige Belegfassung." });
+        }
+        const stand =
+          item.version === fassung
+            ? item
+            : (await ko.versionsOf(item.id)).find(
+                (v) => v.koId === item.id && v.version === fassung,
+              )?.snapshot;
+        if (
+          !stand ||
+          stand.id !== item.id ||
+          stand.version !== fassung ||
+          !darfSehen(user, stand)
+        ) {
+          return reply
+            .code(404)
+            .send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+        }
+        const annahme = await annahmeVon(stand);
+        return reply.send({
+          id: stand.id,
+          fassung,
+          titel: stand.title,
+          freigegebenVon: annahme?.person ?? null,
+        });
+      }
       // ==========================================================================================
       // JOB 3009 · STATION 4, ZWEITE SERVERHAELFTE — AUCH HIER HEISST FEHLEN FEHLEN.
       // ==========================================================================================

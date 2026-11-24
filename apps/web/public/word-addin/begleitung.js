@@ -541,37 +541,42 @@
       }
     }
 
+    function pruefpassagenText(wert) {
+      const text = wert.replace(/\r\n?/g, "\n").trim();
+      return text.length <= 2000 && ohneSteuerzeichen(text, true) === text ? text : "";
+    }
+
     // Ein ausdrücklich erfragter Bezug umfasst höchstens Auswahl oder Cursorabsatz.
     // Der gebundene Range ist zugleich das einzige spätere Navigationsziel.
-    async function vergleichLesen(id, bezug, epoch, absatzLesen) {
+    async function vergleichLesen(id, bezug, epoch, leseCursorstelle, giltWeiter, erwartet) {
       return word.run(async (kontext) => {
         const auswahl = kontext.document.getSelection();
-        const gilt = () => epoch === frageEpoch && bezugGiltNoch(bezug);
+        const gilt = () => epoch === frageEpoch && bezugGiltNoch(bezug) && giltWeiter();
         auswahl.load("text");
         await kontext.sync();
         if (!gilt()) return "";
         let bereich = auswahl;
         let text = (auswahl.text || "").trim();
-        if (!text && absatzLesen && auswahl.paragraphs) {
-          const absatz = await wurzel.KlarwerkDokumentvergleich.absatzAmCursor(
-            kontext,
-            auswahl,
-            () => !gilt(),
-          );
-          if (!absatz?.absatz || !gilt()) return "";
-          bereich = absatz.absatz.getRange("Content");
-          text = absatz.text.trim();
+        if (!text && leseCursorstelle && auswahl.paragraphs) {
+          const stelle = await leseCursorstelle(kontext, auswahl, () => !gilt());
+          if (!stelle?.text || !gilt()) return "";
+          if (id) {
+            bereich = erwartet === undefined ? stelle.absatz.getRange("Content") : stelle.bereich;
+          }
+          text = stelle.text;
         }
-        text = text.replace(/\r\n?/g, "\n");
-        if (!text || text.length > 2000 || !gilt()) return "";
-        if (typeof bereich.track === "function") {
+        text = pruefpassagenText(text);
+        if (!text || !gilt() || (erwartet !== undefined && text !== erwartet)) return "";
+        // Die Vorschau darf den verfolgten Bereich der letzten Antwort nicht ersetzen.
+        if (id && typeof bereich?.track === "function") {
           try {
             bereich.track();
+            if (erwartet !== undefined) bereich.load("text");
             await kontext.sync();
           } catch {
-            return gilt() ? text : "";
+            return erwartet === undefined && gilt() ? text : "";
           }
-          if (!gilt()) {
+          if (!gilt() || (erwartet !== undefined && pruefpassagenText(bereich.text) !== erwartet)) {
             bereich.untrack();
             await kontext.sync();
             return "";
@@ -601,7 +606,9 @@
       if (mitMarkierung && !bezugGiltNoch(bezug)) {
         // Markierungstext geht NUR mit gültigem Auswahlbezug hinaus (Befund Ben begleitung.js:442).
         zeige("hinweis", "Markierung nicht gebunden — bitte kurz warten und neu fragen.");
-        return Promise.resolve(null);
+        return Promise.resolve(
+          optionen?.pruefpassage !== undefined ? { abgelehnt: "veraltet" } : null,
+        );
       }
       turn = umgebung.onTurn?.(frageText);
       umgebung.onBusy?.(true);
@@ -610,7 +617,8 @@
         mitMarkierung && optionen?.begleiterId && wurzel.KlarwerkDokumentvergleich;
       const freigabeGilt = () => {
         if (!optionen?.begleiterId) return true;
-        if (!begleiterAn) return false;
+        if (!begleiterAn || !gleicherBeschreiber(beschreiber(), gebundenerBeschreiber))
+          return false;
         if (!mitMarkierung) return true;
         const jetzt = umgebung.frageOptionen?.();
         return (
@@ -618,19 +626,37 @@
           (jetzt.vertraulichkeit === "intern") === (optionen.vertraulichkeit === "intern")
         );
       };
+      const pruefen = optionen?.pruefpassage !== undefined;
       const absatzLesen = Boolean(
-        mitVergleich && wurzel.KlarwerkDokumentvergleich.absatzFrage(frageText),
+        mitVergleich && (pruefen || wurzel.KlarwerkDokumentvergleich.absatzFrage(frageText)),
       );
       let dokument = "";
       const sprache = optionen?.locale ?? umgebung.locale?.();
       const locale = ["de", "en", "nl"].includes(sprache) ? sprache : "de";
       const markierung = mitVergleich
-        ? vergleichLesen(optionen.begleiterId, bezug, epoch, absatzLesen)
+        ? vergleichLesen(
+            optionen.begleiterId,
+            bezug,
+            epoch,
+            absatzLesen &&
+              (pruefen ? mitVergleich.pruefpassageAmCursor : mitVergleich.absatzAmCursor),
+            freigabeGilt,
+            optionen.pruefpassage,
+          )
         : mitMarkierung
           ? adapter.auswahlText()
           : Promise.resolve("");
       return markierung
         .then((auswahl) => {
+          // Eine Vorschauprüfung darf nur genau die Stelle senden, die beim Klick sichtbar war.
+          if (
+            pruefen &&
+            (!mitVergleich ||
+              !auswahl ||
+              auswahl !== optionen.pruefpassage ||
+              begleiterStand !== optionen.pruefstand)
+          )
+            return { abgelehnt: "veraltet" };
           // VOR JEDEM SENDEN, unabhängig von der Marke: Konto, Sitzung, Bindungs- und
           // Auswahlgeneration sind noch die der Frage. Mit Markierung zusätzlich die Marke selbst.
           if (
@@ -639,7 +665,7 @@
             !freigabeGilt() ||
             (mitMarkierung && !bezugGiltNoch(bezug))
           ) {
-            return null; // nichts gesendet — die Auswahl oder Bindung hat sich geändert
+            return pruefen ? { abgelehnt: "veraltet" } : null;
           }
           if (absatzLesen && !auswahl) {
             zeige("hinweis", "Kein lesbarer Absatz an der Word-Textstelle.");
@@ -668,6 +694,10 @@
         })
         .then((res) => {
           if (epoch !== frageEpoch) return null;
+          if (res?.abgelehnt) {
+            zeige("hinweis", "Die angezeigte Passage hat sich geändert.");
+            return res;
+          }
           if (res === null || !kontextGiltNoch(bezug) || !freigabeGilt()) {
             // Die Antwort kam nach einem Wechsel: sie gehört nicht zum jetzigen Kontext.
             zeige("hinweis", "Die Antwort kam nach einem Wechsel und wurde verworfen.");
@@ -971,18 +1001,38 @@
       });
     }
 
-    /** Die Auswahl NUR mit gültigem Office-Bezug — sonst `null` („keine Auswahl"). */
-    function begleiterAuswahlLesen() {
+    /** Die Einfüge-Auswahl und die freigegebene Prüfvorschau sind getrennte Bezüge. */
+    async function begleiterAuswahlLesen() {
       const bezug = aktuellerBezug();
       const stand = begleiterStand;
-      if (!adapter || !bezugGiltNoch(bezug)) {
-        return Promise.resolve(null);
+      const runde = begleiterRunde;
+      const gilt = () =>
+        begleiterAn &&
+        runde === begleiterRunde &&
+        stand === begleiterStand &&
+        bezugGiltNoch(bezug) &&
+        gleicherBeschreiber(beschreiber(), gebundenerBeschreiber);
+      const darfVorschauLesen = () =>
+        gilt() && umgebung.frageOptionen?.().markierungMitsenden === true;
+      if (!adapter || !gilt()) return null;
+      try {
+        const text = await adapter.auswahlText();
+        let passage = "";
+        if (wurzel.KlarwerkDokumentvergleich && darfVorschauLesen()) {
+          passage = text.trim()
+            ? pruefpassagenText(text)
+            : await vergleichLesen(
+                null,
+                bezug,
+                frageEpoch,
+                wurzel.KlarwerkDokumentvergleich.pruefpassageAmCursor,
+                darfVorschauLesen,
+              );
+        }
+        return gilt() ? { text, stand, bezug, passage: darfVorschauLesen() ? passage : "" } : null;
+      } catch {
+        return null;
       }
-      return adapter.auswahlText().then(
-        (text) =>
-          text && bezugGiltNoch(bezug) && stand === begleiterStand ? { text, stand, bezug } : null,
-        () => null,
-      );
     }
 
     function begleiterErgebnis(runde, id, stand, ergebnis, grund, vergleich) {
@@ -1088,8 +1138,12 @@
           ...optionen,
           locale: auftrag.locale,
           begleiterId: auftrag.id,
+          pruefpassage: auftrag.pruefpassage,
+          pruefstand: auftrag.auswahlStand,
         }).then((a) => {
-          if (a?.text || a?.vergleich) {
+          if (a?.abgelehnt) {
+            begleiterErgebnis(runde, auftrag.id, "abgelehnt", null, a.abgelehnt);
+          } else if (a?.text || a?.vergleich) {
             begleiterErgebnis(runde, auftrag.id, "erledigt", a.text, null, a.vergleich);
           } else {
             const grund = letzterHinweis || "keine_antwort";
@@ -1119,8 +1173,20 @@
           const bindung = begleiterBindung(runde);
           begleiterSeq += 1;
           const ergebnisse = begleiterErledigt.slice(0, 10);
-          const koerper = { seq: begleiterSeq, erledigt: ergebnisse };
-          if (gelesen) {
+          const aktuell =
+            gelesen &&
+            gelesen.stand === begleiterStand &&
+            bezugGiltNoch(gelesen.bezug) &&
+            gleicherBeschreiber(beschreiber(), gebundenerBeschreiber);
+          const koerper = {
+            seq: begleiterSeq,
+            erledigt: ergebnisse,
+            passage:
+              aktuell && gelesen.passage && umgebung.frageOptionen?.().markierungMitsenden === true
+                ? { text: gelesen.passage, stand: gelesen.stand }
+                : null,
+          };
+          if (aktuell && gelesen.text) {
             begleiterAuswahl = { stand: gelesen.stand, bezug: gelesen.bezug };
             koerper.auswahl = {
               text: ohneSteuerzeichen(gelesen.text.slice(0, BEGLEITER_AUSWAHL_MAX), true),

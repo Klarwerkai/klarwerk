@@ -9,7 +9,10 @@
 //   · WIE WEIT eine Taste die Figur schiebt (`bewegungsSchritt`).
 // Den Kanal selbst beschreibt `services/app/src/klara-begleiter.ts`; die Typen unten sind sein
 // Drahtvertrag (`GET /api/me/klara/begleiter/kontext`).
-import type { BegleiterVergleich } from "../../../../services/app/src/klara-begleiter";
+import type {
+  BegleiterPassage,
+  BegleiterVergleich,
+} from "../../../../services/app/src/klara-begleiter";
 import { api } from "../api/client";
 
 export type { BegleiterVergleich };
@@ -35,6 +38,7 @@ export interface BegleiterAdapter {
   /** Nacharbeit 64: hat das Fenster in dieser Kanalinstanz seinen laufenden Bestand gemeldet? */
   bestand?: boolean;
   auswahl: { text: string; laenge: number; stand: number; gekuerzt: boolean } | null;
+  passage?: BegleiterPassage;
   aktionen: Array<{
     id: string;
     art: BegleiterAktionArt;
@@ -65,6 +69,7 @@ export const begleiterApi = {
       auswahlStand: number;
       schluessel: string;
       locale?: "de" | "en" | "nl";
+      pruefpassage?: string;
       /** Nacharbeit 59: Serverzeit (`jetzt`) des Kontexts, den die Begleitapp gesehen hat. */
       ausgestelltAm: string;
       /** Nacharbeit 64: Kanalinstanz desselben Kontexts. */

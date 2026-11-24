@@ -164,7 +164,7 @@ function askVergleichBeleg(absatz, schritte) {
   return { text: original || absatz.text, quellen: absatz.quellen, woertlich: original !== null };
 }
 
-function askDirektvergleich(art, dokument, absaetze, schritte, einzeln) {
+function askDirektvergleich(art, dokument, absaetze, schritte, einzeln, quellenStand) {
   const belege = absaetze.map((absatz) => askVergleichBeleg(absatz, schritte));
   const vergleich = {
     art: art,
@@ -173,6 +173,17 @@ function askDirektvergleich(art, dokument, absaetze, schritte, einzeln) {
     dokumentMarke: null,
     belegMarke: null,
   };
+  if (quellenStand && typeof quellenStand === "object") {
+    const quellfassungen = [];
+    const zitiert = new Set(belege.flatMap((beleg) => beleg.quellen));
+    for (const id of zitiert) {
+      const fassung = quellenStand[id];
+      if (Object.hasOwn(quellenStand, id) && Number.isSafeInteger(fassung) && fassung > 0) {
+        quellfassungen.push({ id, fassung });
+      }
+    }
+    if (quellfassungen.length) vergleich.quellfassungen = quellfassungen;
+  }
   if (einzeln && belege.length === 1 && belege[0].woertlich) askVergleichMarken(vergleich);
   return vergleich;
 }
@@ -321,6 +332,40 @@ function askAbsatzAmCursor(context, auswahl, abgebrochen) {
   });
 }
 
+// Vorschau und Klick verwenden denselben Word-Bereich, auch bei wiederholten Sätzen.
+async function askPruefpassageAmCursor(context, auswahl, abgebrochen) {
+  const fund = await askAbsatzAmCursor(context, auswahl, abgebrochen);
+  const fehlt = { hinweis: "askAbsatzFehlt" };
+  if (!fund?.text || abgebrochen()) return fehlt;
+  const inhalt = fund.absatz.getRange?.("Content");
+  if (!/[.!?]\s*[^.!?\s]/u.test(fund.text.trim())) return { ...fund, bereich: inhalt };
+  if (!inhalt?.getTextRanges) return fehlt;
+
+  const saetze = inhalt.getTextRanges([".", "!", "?"], false);
+  saetze.load("items/text");
+  let vorCursor;
+  if (fund.bezug === "cursor") {
+    vorCursor = inhalt.getRange("Start").expandTo(auswahl);
+    vorCursor.load("text");
+  }
+  await context.sync();
+  if (abgebrochen() || (vorCursor && !fund.text.startsWith(vorCursor.text))) return fehlt;
+  const position = vorCursor ? vorCursor.text.length : fund.text.length;
+  let ende = 0;
+  let getroffen;
+  for (const bereich of saetze.items) {
+    const text = bereich.text.trim();
+    if (!text) continue;
+    const start = fund.text.indexOf(text, ende);
+    if (start < 0 || fund.text.slice(ende, start).trim()) return fehlt;
+    ende = start + text.length;
+    if (!getroffen || position >= start)
+      getroffen = { text, bezug: fund.bezug, absatz: fund.absatz, bereich };
+  }
+  if (fund.text.slice(ende).trim()) return fehlt;
+  return getroffen ?? fehlt;
+}
+
 // Die schmale Office-Brücke liest denselben belegten Antwortvertrag wie das Aufgabenfenster.
 function begleitVergleichAusAntwort(body, dokument, frage, locale) {
   const result = body?.result;
@@ -356,6 +401,7 @@ function begleitVergleichAusAntwort(body, dokument, frage, locale) {
     absaetze.slice(1),
     Array.isArray(result.steps) ? result.steps : [],
     tragend.length === 1,
+    body.quellenStand,
   );
 }
 
@@ -364,6 +410,7 @@ if (typeof self !== "undefined") {
     absatzFrage: askFragtNachWordAbsatz,
     ausAntwort: begleitVergleichAusAntwort,
     absatzAmCursor: askAbsatzAmCursor,
+    pruefpassageAmCursor: askPruefpassageAmCursor,
     zeigen: wordVergleichZeigen,
   };
 }

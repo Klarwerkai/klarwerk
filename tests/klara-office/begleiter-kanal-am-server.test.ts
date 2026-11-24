@@ -250,6 +250,97 @@ describe("B4 · KO-02-05 — veraltete Nachrichten werden abgewiesen", () => {
 });
 
 describe("B5 · KO-02-05 — dokumentbezogene Aktionen laufen über den Adapter zurück", () => {
+  const passage = {
+    text: "Guest Wi-Fi must not provide access to the internal staff network.",
+    stand: 2,
+  };
+  const frageZurPassage = {
+    art: "frage",
+    text: "Is this correct?",
+    auswahlStand: passage.stand,
+    pruefpassage: passage.text,
+    locale: "en",
+  };
+  const meldung = { seq: 1, auswahl: null, auswahlStand: passage.stand, passage };
+
+  it("die App prüft ohne Markierung exakt den angezeigten Wortlaut des eigenen Fensters", async () => {
+    await fensterAnmelden(erik);
+    await melden(erik, FENSTER_A, meldung);
+    expect((await kontext(erik)).adapter[0]).toMatchObject({ auswahl: null, passage });
+    expect((await kontext(vera)).adapter).toEqual([]);
+    const auftrag = await beauftragen(erik, FENSTER_A, frageZurPassage);
+    expect(auftrag.statusCode).toBe(202);
+    const abgeholt = await melden(erik, FENSTER_A, { ...meldung, seq: 2 });
+    expect(abgeholt.json()).toMatchObject({ aktionen: [frageZurPassage] });
+  });
+
+  it("eine geänderte oder entfernte Vorschau kann nicht beauftragt oder nachträglich abgeholt werden", async () => {
+    await fensterAnmelden(erik);
+    await melden(erik, FENSTER_A, meldung);
+    for (const abweichung of [{ auswahlStand: 1 }, { pruefpassage: "Guest Wi-Fi is allowed." }]) {
+      expect(
+        (await beauftragen(erik, FENSTER_A, { ...frageZurPassage, ...abweichung })).statusCode,
+      ).toBe(409);
+    }
+    expect((await beauftragen(erik, FENSTER_A, frageZurPassage)).statusCode).toBe(202);
+    expect((await melden(erik, FENSTER_A, { ...meldung, seq: 2, passage: null })).json()).toEqual({
+      aktionen: [],
+    });
+    const sicht = (await kontext(erik)).adapter[0];
+    expect(sicht).not.toHaveProperty("passage");
+    expect(sicht?.aktionen[0]).toMatchObject({ stand: "abgelehnt", grund: "veraltet" });
+    expect((await beauftragen(erik, FENSTER_A, frageZurPassage)).statusCode).toBe(409);
+  });
+
+  it("zeigt auch bei einer fehlerhaften Adapterantwort keinen Befund zu einem anderen Satz", async () => {
+    await fensterAnmelden(erik);
+    await melden(erik, FENSTER_A, meldung);
+    const auftrag = await beauftragen(erik, FENSTER_A, frageZurPassage);
+    const { id } = auftrag.json().aktion;
+    await melden(erik, FENSTER_A, { ...meldung, seq: 2 });
+    const vergleich = {
+      art: "offen",
+      dokument: "A different passage.",
+      belege: [],
+      dokumentMarke: null,
+      belegMarke: null,
+      zeigbar: false,
+      aiGenerated: false,
+    };
+    await melden(erik, FENSTER_A, {
+      ...meldung,
+      seq: 3,
+      erledigt: [{ id, stand: "erledigt", ergebnis: "No result", vergleich }],
+    });
+    const aktion = (await kontext(erik)).adapter[0]?.aktionen[0];
+    expect(aktion).toMatchObject({
+      stand: "abgelehnt",
+      grund: "passage_geaendert",
+      ergebnis: null,
+    });
+    expect(aktion).not.toHaveProperty("vergleich");
+  });
+
+  it("ein neu angemeldetes Dokument übernimmt keine alte Vorschauprüfung bei gleichem Text und Stand", async () => {
+    await fensterAnmelden(erik);
+    await melden(erik, FENSTER_A, meldung);
+    await beauftragen(erik, FENSTER_A, frageZurPassage);
+    await fensterAnmelden(erik, FENSTER_A, DOK_B);
+    expect((await melden(erik, FENSTER_A, meldung)).json()).toEqual({ aktionen: [] });
+    expect((await kontext(erik)).adapter[0]?.aktionen[0]).toMatchObject({ stand: "abgelehnt" });
+  });
+
+  it("lehnt überlange Vorschauen und eine vom gemeldeten Auswahlstand abweichende Passage atomar ab", async () => {
+    await fensterAnmelden(erik);
+    for (const kaputt of [
+      { ...passage, stand: 1 },
+      { ...passage, text: "x".repeat(2001) },
+    ]) {
+      expect((await melden(erik, FENSTER_A, { ...meldung, passage: kaputt })).statusCode).toBe(400);
+    }
+    expect((await melden(erik, FENSTER_A, meldung)).statusCode).toBe(200);
+  });
+
   it("Einfügen gilt nur für den gesehenen Auswahlstand und kommt mit Ergebnis zurück", async () => {
     await fensterAnmelden(erik);
     await melden(erik, FENSTER_A, mitAuswahl(1));

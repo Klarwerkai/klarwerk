@@ -1,5 +1,10 @@
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { endpoints } from "../../api/endpoints";
+import { useSession } from "../../app/AuthContext";
 import type { BegleiterVergleich } from "../../lib/begleiter";
+import { gespeicherteFassungHref } from "../../lib/objektbezug";
+import { useAuthorName } from "../../lib/useAuthorName";
 import { koDetailUrl } from "../../lib/wordAddin";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
 
@@ -29,6 +34,50 @@ function Wortlaut({
       </mark>
       {text.slice(marke.end)}
     </>
+  );
+}
+
+function Quellverweis({
+  id,
+  fassung,
+  nummer,
+}: { id: string; fassung?: number; nummer: number }): JSX.Element {
+  const { t } = useTranslation();
+  const { user } = useSession();
+  const name = useAuthorName();
+  const beleg = useQuery({
+    queryKey: ["begleiter-belegfassung", user?.id, id, fassung],
+    queryFn:
+      user && fassung !== undefined ? () => endpoints.ko.belegfassung(id, fassung) : skipToken,
+    retry: false,
+    gcTime: 0,
+  });
+  const quelle =
+    beleg.isSuccess && beleg.data?.id === id && beleg.data.fassung === fassung ? beleg.data : null;
+  return (
+    <div className="mt-1.5 text-[12px] leading-snug">
+      <a
+        href={
+          fassung ? gespeicherteFassungHref(id, fassung) : koDetailUrl(window.location.origin, id)
+        }
+        target="_blank"
+        rel="noopener noreferrer"
+        className="rounded-sm font-semibold text-brand-text underline underline-offset-2 focus-visible:outline focus-visible:outline-2"
+      >
+        {quelle?.titel || t("begleiter.vergleich.quelllink", { nummer })}
+      </a>
+      {fassung !== undefined && (
+        <span className="mt-0.5 block text-muted">
+          {t("begleiter.vergleich.fassung", { fassung })}
+          {quelle &&
+            ` · ${
+              quelle.freigegebenVon
+                ? t("begleiter.vergleich.freigegebenVon", { person: name(quelle.freigegebenVon) })
+                : t("begleiter.vergleich.freigabeUnbekannt")
+            }`}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -71,21 +120,6 @@ export function BegleiterDirektvergleich({
             >
               <dt className={etikett}>
                 {t(beleg.woertlich ? "begleiter.vergleich.quelle" : "begleiter.vergleich.beleg")}
-                {beleg.quellen.map((id) => {
-                  const nummer = quellen.indexOf(id) + 1;
-                  return (
-                    <a
-                      key={id}
-                      href={koDetailUrl(window.location.origin, id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={t("begleiter.vergleich.quelllink", { nummer })}
-                      className="ml-1 inline-block rounded-sm px-0.5 text-brand-text underline focus-visible:outline focus-visible:outline-2"
-                    >
-                      [{nummer}]
-                    </a>
-                  );
-                })}
               </dt>
               <dd className={zitat}>
                 <Wortlaut
@@ -93,6 +127,14 @@ export function BegleiterDirektvergleich({
                   marke={vergleich.belegMarke}
                   farbe="bg-trust-pos-bg text-trust-pos-text"
                 />
+                {beleg.quellen.map((id) => (
+                  <Quellverweis
+                    key={id}
+                    id={id}
+                    nummer={quellen.indexOf(id) + 1}
+                    fassung={vergleich.quellfassungen?.find((stand) => stand.id === id)?.fassung}
+                  />
+                ))}
               </dd>
             </div>
           ))}

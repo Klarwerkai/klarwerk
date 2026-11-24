@@ -85,6 +85,7 @@ async function buehne(optionen: { url?: string; angemeldet?: boolean; gespeicher
     token: optionen.angemeldet === false ? null : (ada.token ?? null),
     text: AUSWAHL,
     absatzAmCursor: "",
+    satzbereiche: null as null | { texte: string[]; vorCursor: string },
     eingefuegt: [] as string[],
     markierungMitsenden: false,
     trackFehler: false,
@@ -182,8 +183,19 @@ async function buehne(optionen: { url?: string; angemeldet?: boolean; gespeicher
         ? { lastSaveTime: optionen.gespeichertAm, load() {} }
         : undefined;
       const absatz = { ...auswahl, text: lage.absatzAmCursor };
+      const saetze = lage.satzbereiche;
+      const inhalt = saetze
+        ? {
+            ...absatz,
+            getTextRanges: () => ({
+              load() {},
+              items: saetze.texte.map((text) => ({ ...auswahl, text })),
+            }),
+            getRange: () => ({ expandTo: () => ({ ...auswahl, text: saetze.vorCursor }) }),
+          }
+        : absatz;
       const auswahlImDokument = Object.assign(auswahl, {
-        paragraphs: { load() {}, items: [absatz] },
+        paragraphs: { load() {}, items: [{ ...absatz, getRange: () => inhalt }] },
       });
       return rueckruf({
         document: { getSelection: () => auswahlImDokument, properties: eigenschaften },
@@ -812,6 +824,7 @@ interface FigurAdapter {
   aktiv: boolean;
   dokument: { titel: string; gespeichert: boolean };
   auswahl: { text: string; laenge: number; stand: number } | null;
+  passage?: { text: string; stand: number };
   aktionen: {
     id: string;
     art: string;
@@ -940,6 +953,7 @@ describe("KO-01-06/07 · Aktionen der Figur zurück zum richtigen Word-Ziel", ()
           },
           dokumentUrteil: { art: "widersprochen", texte: { en: kopf } },
         },
+        quellenStand: { wifi: 2, unzitiert: 23 },
         absaetze: [
           { text: kopf, quellen: ["wifi"] },
           { text: regel, quellen: ["wifi"] },
@@ -961,6 +975,7 @@ describe("KO-01-06/07 · Aktionen der Figur zurück zum richtigen Word-Ziel", ()
       vergleich: {
         art: "widersprochen",
         dokument,
+        quellfassungen: [{ id: "wifi", fassung: 2 }],
         belege: [{ text: regel, quellen: ["wifi"], woertlich: true }],
         dokumentMarke: { start: dokument.indexOf("must"), end: dokument.indexOf(" access") },
         belegMarke: { start: regel.indexOf("not"), end: regel.indexOf(" provide") },
@@ -1041,6 +1056,81 @@ describe("KO-01-06/07 · Aktionen der Figur zurück zum richtigen Word-Ziel", ()
     expect(await figurAktion(teile, "frage", frage)).not.toHaveProperty("vergleich");
     expect(lage.eingefuegt).toEqual([]);
   });
+
+  it("die freigegebene Prüfvorschau zeigt genau den Word-Bezug für die Ein-Klick-Frage", async () => {
+    const { app, seite, lage, token, fenster } = await verbunden();
+    expect(fenster.passage).toBeUndefined();
+    lage.markierungMitsenden = true;
+    const satz = "Guest Wi-Fi must stay separate.";
+    const davor = "A different topic.";
+    const danach = "Another topic.";
+    lage.satzbereiche = { texte: [davor, satz, danach], vorCursor: `${davor} Guest` };
+    lage.absatzAmCursor = lage.satzbereiche.texte.join(" ");
+    auswahlWechsel(lage, "");
+    await neumeldung(lage, seite);
+    await seite.begleiterMelden();
+    const vorschau = (await figurSieht(app, token))[0];
+    expect(vorschau?.auswahl).toBeNull();
+    expect(vorschau?.passage?.text).toBe(satz);
+    expect(JSON.stringify(kanalAufrufe(lage))).not.toContain(davor);
+    expect(JSON.stringify(kanalAufrufe(lage))).not.toContain(danach);
+    expect(ausfuehrungen(lage)).toHaveLength(0);
+    lage.ausfuehrung = festeAntwort("The policy agrees.");
+    const auftrag = await figurBeauftragt(app, token, fenster.instanz, {
+      art: "frage",
+      text: "Is this correct?",
+      locale: "en",
+      auswahlStand: vorschau?.passage?.stand,
+      pruefpassage: satz,
+    });
+    expect(auftrag.statusCode, auftrag.body).toBe(202);
+    await seite.begleiterMelden();
+    expect(ausfuehrungen(lage).at(-1)?.koerper).toMatchObject({ selection: satz, locale: "en" });
+    expect((await figurSieht(app, token))[0]?.aktionen.at(-1)?.stand).toBe("erledigt");
+    // Eine zu lange Auswahl wird für die Prüfung weder gekürzt noch durch den Cursorabsatz ersetzt.
+    auswahlWechsel(lage, "A".repeat(2001));
+    await neumeldung(lage, seite);
+    await seite.begleiterMelden();
+    const lang = (await figurSieht(app, token))[0];
+    expect(lang?.auswahl?.laenge).toBe(2001);
+    expect(lang?.passage).toBeUndefined();
+  });
+
+  it.each(["Text", "Dokument", "Freigabe"])(
+    "%s ändert sich nach der Vorschau: Word lehnt den Klick vor execute ab",
+    async (wechsel) => {
+      const { app, seite, lage, token, fenster, office } = await verbunden();
+      lage.markierungMitsenden = true;
+      auswahlWechsel(lage, "  First line.\r\nSecond line.  ");
+      await neumeldung(lage, seite);
+      await seite.begleiterMelden();
+      const vorschau = (await figurSieht(app, token))[0]?.passage;
+      expect(vorschau?.text).toBe("First line.\nSecond line.");
+      const auftrag = await figurBeauftragt(app, token, fenster.instanz, {
+        art: "frage",
+        text: "Is this correct?",
+        locale: "en",
+        auswahlStand: vorschau?.stand,
+        pruefpassage: vorschau?.text,
+      });
+      expect(auftrag.statusCode, auftrag.body).toBe(202);
+      lage.halte = (pfad) => pfad.endsWith(`/adapter/${fenster.instanz}`);
+      const meldung = seite.begleiterMelden();
+      await vi.waitFor(() => expect(lage.gehalten).toHaveLength(1), WARTEN);
+      // Das Word-Ereignis ist noch nicht eingetroffen. Der native Leselauf muss trotzdem abgleichen.
+      if (wechsel === "Text") lage.text = "Changed before processing.";
+      if (wechsel === "Dokument") office.context.document.url = "https://fiktiv/anderes.docx";
+      if (wechsel === "Freigabe") lage.markierungMitsenden = false;
+      lage.halte = null;
+      lage.gehalten[0]?.();
+      await meldung;
+      expect(ausfuehrungen(lage)).toHaveLength(0);
+      expect((await figurSieht(app, token))[0]?.aktionen.at(-1)).toMatchObject({
+        stand: "abgelehnt",
+        grund: "veraltet",
+      });
+    },
+  );
 
   it("ohne Wahl zum Mitsenden erreicht die Prüffrage den Server ohne Dokumenttext oder Vergleich", async () => {
     const { app, seite, lage, token, fenster } = await verbunden();

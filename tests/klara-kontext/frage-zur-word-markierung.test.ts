@@ -183,6 +183,14 @@ describe("Klara: natürliche Frage zur freigegebenen Word-Markierung", () => {
     const absaetze = [{ text: beleg, quellen: ["wifi"] }];
     const schritte = [{ sourceId: "wifi", snippet: beleg }];
     const exakt = vergleichen("widersprochen", dokument, absaetze, schritte, true);
+    expect(exakt.quellfassungen).toBeUndefined();
+    const zweiStaende = { wifi: 2, nichtZitiert: 9 };
+    expect(
+      vergleichen("widersprochen", dokument, absaetze, schritte, true, zweiStaende).quellfassungen,
+    ).toEqual([{ id: "wifi", fassung: 2 }]);
+    expect(
+      vergleichen("widersprochen", dokument, absaetze, schritte, true, { wifi: 0 }).quellfassungen,
+    ).toBeUndefined();
     expect(dokument.slice(exakt.dokumentMarke.start, exakt.dokumentMarke.end)).toBe("must provide");
     expect(beleg.slice(exakt.belegMarke.start, exakt.belegMarke.end)).toBe("not");
     for (const ergebnis of [
@@ -280,6 +288,7 @@ describe("Klara: natürliche Frage zur freigegebenen Word-Markierung", () => {
           art,
           dokument: selection,
           belege: [{ text: REGEL, quellen: [w.quelle.id], woertlich: true }],
+          quellfassungen: [{ id: w.quelle.id, fassung: w.quelle.version }],
         });
         expect(selection.slice(vergleich.dokumentMarke.start, vergleich.dokumentMarke.end)).toBe(
           art === "widersprochen" ? "must provide" : selection,

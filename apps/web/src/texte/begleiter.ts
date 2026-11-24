@@ -60,6 +60,9 @@ export default {
     "begleiter.vergleich.stelleFehlt":
       "Die geprüfte Stelle lässt sich in Word nicht mehr zeigen. Bitte prüfe den aktuellen Text erneut.",
     "begleiter.vergleich.quelllink": "Quelle {{nummer}} öffnen",
+    "begleiter.vergleich.fassung": "Version {{fassung}}",
+    "begleiter.vergleich.freigegebenVon": "Freigegeben von {{person}}",
+    "begleiter.vergleich.freigabeUnbekannt": "Freigabeperson nicht belegt",
     "begleiter.aktion.stand.offen": "wartet auf Word",
     "begleiter.aktion.stand.uebergeben": "Word führt aus",
     "begleiter.aktion.stand.erledigt": "erledigt",
@@ -116,6 +119,11 @@ export default {
     "begleiter.zeile.markiert": "{{host}} · {{titel}} · Markierung",
     "begleiter.zeile.inaktiv": "{{host}} · {{titel}} · meldet sich nicht",
     "begleiter.vorschlag.erklaeren": "Erklären",
+    "begleiter.passage.titel": "Passage in Word",
+    "begleiter.passage.pruefen": "Diese Passage prüfen",
+    "begleiter.passage.frage": "Ist das korrekt?",
+    "begleiter.passage.geaendert":
+      "Die Stelle in Word hat sich geändert. Prüfe die jetzt angezeigte Passage.",
     "begleiter.vorschlag.erklaerenFrage": "Erkläre die markierte Stelle.",
     "begleiter.vorschlag.verbessern": "Verbessern",
     "begleiter.vorschlag.verbessernFrage":
@@ -220,6 +228,9 @@ export default {
     "begleiter.vergleich.stelleFehlt":
       "This passage can no longer be shown in Word. Check the current text again.",
     "begleiter.vergleich.quelllink": "Open source {{nummer}}",
+    "begleiter.vergleich.fassung": "Version {{fassung}}",
+    "begleiter.vergleich.freigegebenVon": "Approved by {{person}}",
+    "begleiter.vergleich.freigabeUnbekannt": "Approver not recorded",
     "begleiter.aktion.stand.offen": "waiting for Word",
     "begleiter.aktion.stand.uebergeben": "Word is running it",
     "begleiter.aktion.stand.erledigt": "done",
@@ -270,6 +281,10 @@ export default {
     "begleiter.zeile.markiert": "{{host}} · {{titel}} · selection",
     "begleiter.zeile.inaktiv": "{{host}} · {{titel}} · not responding",
     "begleiter.vorschlag.erklaeren": "Explain",
+    "begleiter.passage.titel": "Passage in Word",
+    "begleiter.passage.pruefen": "Check this passage",
+    "begleiter.passage.frage": "Is this correct?",
+    "begleiter.passage.geaendert": "The passage in Word has changed. Check the passage now shown.",
     "begleiter.vorschlag.erklaerenFrage": "Explain the selected passage.",
     "begleiter.vorschlag.verbessern": "Improve",
     "begleiter.vorschlag.verbessernFrage": "Suggest an improved wording for the selected passage.",
@@ -367,6 +382,9 @@ export default {
     "begleiter.vergleich.stelleFehlt":
       "Deze passage kan niet meer in Word worden getoond. Controleer de huidige tekst opnieuw.",
     "begleiter.vergleich.quelllink": "Bron {{nummer}} openen",
+    "begleiter.vergleich.fassung": "Versie {{fassung}}",
+    "begleiter.vergleich.freigegebenVon": "Goedgekeurd door {{person}}",
+    "begleiter.vergleich.freigabeUnbekannt": "Goedkeurder niet vastgelegd",
     "begleiter.aktion.stand.offen": "wacht op Word",
     "begleiter.aktion.stand.uebergeben": "Word voert uit",
     "begleiter.aktion.stand.erledigt": "klaar",
@@ -417,6 +435,11 @@ export default {
     "begleiter.zeile.markiert": "{{host}} · {{titel}} · markering",
     "begleiter.zeile.inaktiv": "{{host}} · {{titel}} · reageert niet",
     "begleiter.vorschlag.erklaeren": "Uitleggen",
+    "begleiter.passage.titel": "Passage in Word",
+    "begleiter.passage.pruefen": "Deze passage controleren",
+    "begleiter.passage.frage": "Klopt dit?",
+    "begleiter.passage.geaendert":
+      "De passage in Word is gewijzigd. Controleer de passage die nu wordt getoond.",
     "begleiter.vorschlag.erklaerenFrage": "Leg de gemarkeerde passage uit.",
     "begleiter.vorschlag.verbessern": "Verbeteren",
     "begleiter.vorschlag.verbessernFrage":

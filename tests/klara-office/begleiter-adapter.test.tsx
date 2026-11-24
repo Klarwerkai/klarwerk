@@ -327,7 +327,14 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   document.body.innerHTML = "";
-  for (const name of ["Office", "Word", "lang"]) {
+  for (const name of [
+    "Office",
+    "Word",
+    "lang",
+    "askMitlesen",
+    "klaraS4Header",
+    "klaraS4FragenGesperrt",
+  ]) {
     delete g[name];
   }
 });
@@ -397,6 +404,52 @@ describe("A3 · KO-02-05 — die Auswahl geht mit steigendem Stand hinaus", () =
     const a = mitAuswahl()[0]?.rumpf?.auswahl as { text: string; laenge: number };
     expect(a.text.length).toBe(4000);
     expect(a.laenge).toBe(5000);
+  });
+});
+
+describe("Prüfpassage im Hauptpanel", () => {
+  it("meldet die genaue Passage mit Mitlesen und Sitzung und verwirft den Auftrag nach Textwechsel", async () => {
+    g.askMitlesen = false;
+    g.klaraS4FragenGesperrt = () => false;
+    g.klaraS4Header = () => ({
+      "x-klara-session": "s",
+      "x-klara-document": "d",
+      "x-klara-instance": "i",
+    });
+    await einschalten();
+    const text = "First sentence. Second sentence.";
+    const stand = await markieren(text);
+    expect(meldungen().at(-1)?.rumpf?.passage).toBeNull();
+    g.askMitlesen = true;
+    const vorschau = () => meldungen().at(-1)?.rumpf?.passage;
+    await bis(() => Boolean(vorschau()));
+    expect(vorschau()).toEqual({ text, stand });
+    const knopf = document.getElementById("ask-btn") as HTMLButtonElement;
+    const geklickt = vi.fn();
+    knopf.addEventListener("click", geklickt);
+    await markieren("Replacement sentence.");
+    naechsteMeldung.push({
+      status: 200,
+      aktionen: [
+        {
+          id: "vorher",
+          art: "frage",
+          text: "Is this correct?",
+          pruefpassage: text,
+          auswahlStand: stand,
+        },
+      ],
+    });
+    await bis(() => ergebnisse().length > 0);
+    expect(ergebnisse()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "vorher", stand: "abgelehnt", grund: "passage_geaendert" }),
+      ]),
+    );
+    expect(geklickt).not.toHaveBeenCalled();
+    g.klaraS4FragenGesperrt = () => true;
+    await takt();
+    expect(vorschau()).toBeNull();
   });
 });
 

@@ -40,6 +40,7 @@ export const BEGLEITER_AKTIV_MS = 12_000;
 export const BEGLEITER_ABLAUF_MS = 60_000;
 /** Höchstlänge der übermittelten Auswahl. Der Adapter kürzt vorher und meldet die volle Länge. */
 export const BEGLEITER_AUSWAHL_MAX = 4_000;
+const BEGLEITER_PASSAGE_MAX = 2_000;
 /** Höchstlänge eines Aktionstextes (eingefügte Antwort oder Frage). */
 export const BEGLEITER_AKTION_TEXT_MAX = 8_000;
 /** Höchstlänge eines Ergebnistextes, den der Adapter zurückmeldet. */
@@ -100,6 +101,7 @@ export interface BegleiterVergleich {
   art: (typeof VERGLEICHSARTEN)[number];
   dokument: string;
   belege: Array<{ text: string; quellen: string[]; woertlich: boolean }>;
+  quellfassungen?: Array<{ id: string; fassung: number }>;
   dokumentMarke: Textmarke | null;
   belegMarke: Textmarke | null;
   zeigbar: boolean;
@@ -135,6 +137,7 @@ export interface BegleiterAktion {
   readonly text: string;
   /** Der Auswahlstand des Adapters, den die Begleitapp beim Auftrag gesehen hat. */
   readonly auswahlStand: number;
+  readonly pruefpassage?: string;
   stand: BegleiterAktionStand;
   readonly angelegtAm: number;
   geaendertAm: number;
@@ -185,6 +188,7 @@ interface AdapterEintrag {
   auswahl: string | null;
   auswahlLaenge: number;
   auswahlStand: number;
+  passage: BegleiterPassage | null;
   readonly angemeldetAm: number;
   zuletztAm: number;
   auswahlAm: number;
@@ -203,6 +207,11 @@ interface AdapterEintrag {
   bestandGemeldet?: boolean;
 }
 
+export interface BegleiterPassage {
+  readonly text: string;
+  readonly stand: number;
+}
+
 /** Was die Begleitapp über einen Adapter erfährt. */
 export interface BegleiterAdapterSicht {
   instanz: string;
@@ -216,6 +225,7 @@ export interface BegleiterAdapterSicht {
   bestand: boolean;
   /** Nur bei einem AKTIVEN Adapter — sonst `null`, auch wenn früher eine Auswahl bekannt war. */
   auswahl: { text: string; laenge: number; stand: number; gekuerzt: boolean } | null;
+  passage?: BegleiterPassage;
   aktionen: Array<{
     id: string;
     art: BegleiterAktionArt;
@@ -245,6 +255,7 @@ export interface BegleiterAuftragFuerAdapter {
   art: BegleiterAktionArt;
   text: string;
   auswahlStand: number;
+  pruefpassage?: string;
   locale?: BegleiterSprache;
   /** Nacharbeit 64: nur wenn der Auftrag einen Schlüssel trägt (für `anmelden.laufend`). */
   schluessel?: string;
@@ -371,6 +382,22 @@ function leseVergleich(roh: unknown): BegleiterVergleich | undefined {
       });
       return { text: wortlaut, quellen, woertlich: b.woertlich };
     });
+    const zitiert = new Set(belege.flatMap((beleg) => beleg.quellen));
+    const quellfassungen: NonNullable<BegleiterVergleich["quellfassungen"]> = [];
+    if (Array.isArray(v.quellfassungen) && v.quellfassungen.length <= zitiert.size) {
+      for (const stand of v.quellfassungen) {
+        if (
+          !stand ||
+          !zitiert.delete(stand.id) ||
+          !Number.isSafeInteger(stand.fassung) ||
+          stand.fassung < 1
+        ) {
+          quellfassungen.length = 0;
+          break;
+        }
+        quellfassungen.push({ id: stand.id, fassung: stand.fassung });
+      }
+    }
     const wortlaut = belege.length === 1 && belege[0]?.woertlich ? belege[0].text : "";
     const dokumentMarke = textmarke(v.dokumentMarke, wortlaut ? dokument.length : 0);
     const belegMarke = textmarke(v.belegMarke, wortlaut.length);
@@ -378,6 +405,7 @@ function leseVergleich(roh: unknown): BegleiterVergleich | undefined {
       art,
       dokument,
       belege,
+      ...(quellfassungen.length ? { quellfassungen } : {}),
       dokumentMarke,
       belegMarke,
       zeigbar: v.zeigbar,
@@ -393,6 +421,10 @@ function zeigbareFrage(fenster: AdapterEintrag, id: string): boolean {
   return fenster.aktionen.some(
     (a) => a.id === id && a.art === "frage" && a.stand === "erledigt" && a.vergleich?.zeigbar,
   );
+}
+
+function aktuellePruefpassage(fenster: AdapterEintrag, stand: number, wortlaut: string): boolean {
+  return fenster.passage?.stand === stand && fenster.passage.text === wortlaut;
 }
 
 export function pruefeAuftragsschluessel(roh: unknown): string {
@@ -642,6 +674,15 @@ export class BegleiterKanal {
       abbruchAngefordert: l.abbruch,
       schluessel: l.schluessel,
     }));
+    // Ein neuer Auswahlzähler kann denselben Text und Stand nochmals melden. Eine ausstehende
+    // Prüfung der früheren Vorschau muss die Person im frisch verbundenen Fenster neu auslösen.
+    for (const a of laufendBisher) {
+      if (a.stand === "offen" && a.pruefpassage) {
+        a.stand = "abgelehnt";
+        a.grund = "veraltet";
+        a.geaendertAm = jetzt;
+      }
+    }
     // Dasselbe für schon bekannte Aktionen: meldet das Fenster einen laufenden Abbruch, bleibt er.
     for (const a of laufendBisher) {
       if (laufendGemeldet?.some((l) => l.id === a.id && l.abbruch) && a.stand === "uebergeben") {
@@ -662,6 +703,7 @@ export class BegleiterKanal {
       auswahl: null,
       auswahlLaenge: 0,
       auswahlStand: 0,
+      passage: null,
       angemeldetAm: jetzt,
       zuletztAm: jetzt,
       auswahlAm: 0,
@@ -732,6 +774,14 @@ export class BegleiterKanal {
     if (auswahlStand < e.auswahlStand) {
       throw new BegleiterFehler(409, "veraltet", "Der Auswahlstand ist älter als der bekannte.");
     }
+    let passage: BegleiterPassage | null = null;
+    if (k.passage != null) {
+      const p = objekt(k.passage, "passage");
+      const wortlaut = text(p.text, "passage.text", BEGLEITER_PASSAGE_MAX, false);
+      const stand = ganzzahl(p.stand, "passage.stand", 1);
+      if (stand !== auswahlStand) throw ungueltig("passage.stand", "weicht vom Auswahlstand ab");
+      passage = { text: wortlaut, stand };
+    }
     const erledigt = Array.isArray(k.erledigt) ? k.erledigt : [];
     if (erledigt.length > 10) {
       throw ungueltig("erledigt", "höchstens 10 Ergebnisse je Meldung");
@@ -766,6 +816,7 @@ export class BegleiterKanal {
       e.auswahl = auswahl;
       e.auswahlLaenge = auswahlLaenge;
       e.auswahlStand = auswahlStand;
+      e.passage = passage;
     }
     const quittiert: string[] = [];
     for (const r of ergebnisse) {
@@ -776,11 +827,17 @@ export class BegleiterKanal {
       if (a && (r.stand !== "gestoppt" || a.abbruchAngefordert || e.abgemeldet)) {
         a.stand = r.stand;
         a.ergebnis = r.ergebnis;
+        a.grund = r.grund;
         if (a.art === "frage" && r.stand === "erledigt") {
           const vergleich = leseVergleich(r.vergleich);
-          if (vergleich) a.vergleich = vergleich;
+          if (vergleich && a.pruefpassage && vergleich.dokument !== a.pruefpassage) {
+            a.stand = "abgelehnt";
+            a.ergebnis = null;
+            a.grund = "passage_geaendert";
+          } else if (vergleich) {
+            a.vergleich = vergleich;
+          }
         }
-        a.grund = r.grund;
         a.geaendertAm = jetzt;
       }
       // Nacharbeit 63: quittiert ist, was hier nichts mehr offen lässt — übernommen, schon beendet
@@ -792,6 +849,12 @@ export class BegleiterKanal {
     const auftraege: BegleiterAuftragFuerAdapter[] = [];
     for (const a of e.aktionen) {
       if (a.stand === "offen" && !e.abgemeldet) {
+        if (a.pruefpassage && !aktuellePruefpassage(e, a.auswahlStand, a.pruefpassage)) {
+          a.stand = "abgelehnt";
+          a.grund = "veraltet";
+          a.geaendertAm = jetzt;
+          continue;
+        }
         if (a.art === "zeigen" && !zeigbareFrage(e, a.text)) {
           a.stand = "abgelehnt";
           a.grund = "vergleich_nicht_verfuegbar";
@@ -805,6 +868,7 @@ export class BegleiterKanal {
           art: a.art,
           text: a.text,
           auswahlStand: a.auswahlStand,
+          ...(a.pruefpassage ? { pruefpassage: a.pruefpassage } : {}),
           ...(a.locale ? { locale: a.locale } : {}),
           ...(a.schluessel ? { schluessel: a.schluessel } : {}),
         });
@@ -852,6 +916,7 @@ export class BegleiterKanal {
     if (e.aktionen.some(laeuft)) {
       e.abgemeldet = true;
       e.auswahl = null;
+      e.passage = null;
       e.auswahlLaenge = 0;
       return true;
     }
@@ -887,6 +952,7 @@ export class BegleiterKanal {
           aktiv,
           stilleMs: jetzt - e.zuletztAm,
           bestand: e.bestandGemeldet === true,
+          ...(aktiv && e.passage ? { passage: e.passage } : {}),
           auswahl:
             aktiv && e.auswahl !== null
               ? {
@@ -929,6 +995,11 @@ export class BegleiterKanal {
         ? aus(k.locale, ["de", "en", "nl"] as const, "locale")
         : undefined;
     const auswahlStand = ganzzahl(k.auswahlStand, "auswahlStand", 0);
+    const pruefpassage =
+      k.pruefpassage === undefined
+        ? undefined
+        : text(k.pruefpassage, "pruefpassage", BEGLEITER_PASSAGE_MAX, false);
+    if (pruefpassage && art !== "frage") throw ungueltig("pruefpassage", "nur bei Fragen zulässig");
     const schluessel = k.schluessel === undefined ? null : pruefeAuftragsschluessel(k.schluessel);
     if (schluessel !== null) {
       const vermerk = this.auftraege.get(konto)?.get(schluessel);
@@ -983,6 +1054,13 @@ export class BegleiterKanal {
         "Die Auswahl in Word hat sich geändert. Bitte die aktuelle Auswahl übernehmen.",
       );
     }
+    if (pruefpassage && !aktuellePruefpassage(e, auswahlStand, pruefpassage)) {
+      throw new BegleiterFehler(
+        409,
+        "veraltet",
+        "Die angezeigte Passage in Word hat sich geändert.",
+      );
+    }
     const offen = e.aktionen.filter(laeuft);
     if (art === "zeigen" && !zeigbareFrage(e, inhalt)) {
       throw new BegleiterFehler(
@@ -998,6 +1076,7 @@ export class BegleiterKanal {
       id: this.neueId(),
       art,
       ...(locale ? { locale } : {}),
+      ...(pruefpassage ? { pruefpassage } : {}),
       text: inhalt,
       auswahlStand,
       stand: "offen",

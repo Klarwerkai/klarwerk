@@ -771,6 +771,10 @@ export const endpoints = {
   ko: {
     list: (f?: KoFilter) => api.get<KnowledgeObject[]>(`/kos${qs(f)}`),
     get: (id: string) => api.get<KnowledgeObject>(`/kos/${id}`),
+    belegfassung: (id: string, fassung: number) =>
+      api.get<{ id: string; fassung: number; titel: string; freigegebenVon: string | null }>(
+        `/kos/${encodeURIComponent(id)}?belegfassung=${fassung}`,
+      ),
     versions: (id: string) => api.get<KoVersionSnapshot[]>(`/kos/${id}/versions`),
     // AW03-K02: der Quellinhalt einer vom Objekt verwendeten Quellrevision.
     quellrevision: (id: string, sourceRecordId: string) =>

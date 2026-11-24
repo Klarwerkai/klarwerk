@@ -646,6 +646,7 @@ function BegleiterInhalt(): JSX.Element {
 
   const adapter: BegleiterAdapter | null = waehleAdapter(kontext, gewaehlt);
   const auswahl = gueltigeAuswahl(adapter);
+  const passage = kontextBestaetigt && adapter?.aktiv ? adapter.passage : null;
   const sichtbareAktionen = (adapter?.aktionen ?? []).filter(
     (aktion) =>
       !(entwurf.kontoId === kontoId && entwurf.ausgeblendet.includes(aktion.id)) &&
@@ -988,6 +989,7 @@ function BegleiterInhalt(): JSX.Element {
     text: string,
     instanz: string | null = adapter?.instanz ?? null,
     auswahlStand: number = auswahl?.stand ?? 0,
+    pruefpassage?: string,
   ): Promise<boolean> => {
     if (!instanz) {
       return false;
@@ -1020,6 +1022,7 @@ function BegleiterInhalt(): JSX.Element {
       const auftrag = {
         art,
         text,
+        ...(pruefpassage ? { pruefpassage } : {}),
         ...(art === "frage" ? { locale: toReasonerLocale(i18n.language) } : {}),
         auswahlStand,
         schluessel,
@@ -1058,11 +1061,13 @@ function BegleiterInhalt(): JSX.Element {
       return true;
     } catch (fehler) {
       const grund =
-        art === "zeigen" && ablehnungBelegt(fehler)
-          ? t("begleiter.vergleich.stelleFehlt")
-          : fehler instanceof ApiError
-            ? fehler.message
-            : fehlerBild(fehler, t).text;
+        pruefpassage && fehler instanceof ApiError && fehler.code === "veraltet"
+          ? t("begleiter.passage.geaendert")
+          : art === "zeigen" && ablehnungBelegt(fehler)
+            ? t("begleiter.vergleich.stelleFehlt")
+            : fehler instanceof ApiError
+              ? fehler.message
+              : fehlerBild(fehler, t).text;
       if (!ablehnungBelegt(fehler)) {
         // Nacharbeit 57/58: unklarer Ausgang — der Kanal kann ihn angenommen haben oder noch
         // annehmen. Weiter als Vorgang zählen (keine bestätigte 0), bis seine Klärung vorliegt.
@@ -1856,9 +1861,12 @@ function BegleiterInhalt(): JSX.Element {
                       {t(`begleiter.aktion.stand.${a.stand}`)}
                       {a.art === "zeigen"
                         ? ` · ${t("begleiter.vergleich.stelleFehlt")}`
-                        : a.grund
-                          ? ` · ${t("begleiter.aktion.grund", { grund: a.grund })}`
-                          : ""}
+                        : a.art === "frage" &&
+                            (a.grund === "passage_geaendert" || a.grund === "veraltet")
+                          ? ` · ${t("begleiter.passage.geaendert")}`
+                          : a.grund
+                            ? ` · ${t("begleiter.aktion.grund", { grund: a.grund })}`
+                            : ""}
                       {a.art === "frage" && a.ergebnis ? (
                         <span className="mt-0.5 block whitespace-pre-wrap text-[11.5px]">
                           <span className={KLEINTITEL}>{t("begleiter.aktion.antwort")}</span>{" "}
@@ -2098,6 +2106,40 @@ function BegleiterInhalt(): JSX.Element {
               >
                 {sprechen.hinweis}
               </output>
+            ) : null}
+            {adapter && passage ? (
+              <section
+                data-testid="begleiter-pruefpassage"
+                aria-label={t("begleiter.passage.titel")}
+                className="space-y-1.5 rounded-btn border border-hairline bg-page px-2.5 py-2"
+              >
+                <p className={KLEINTITEL}>{t("begleiter.passage.titel")}</p>
+                <p className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-snug text-ink">
+                  {passage.text}
+                </p>
+                <button
+                  type="button"
+                  data-testid="begleiter-passage-pruefen"
+                  disabled={
+                    eigene.ausstehend > 0 ||
+                    aktionLaeuft(adapter) ||
+                    eigene.angenommen.some((e) => e.instanz === adapter.instanz) ||
+                    eigene.unklar.some((e) => e.instanz === adapter.instanz)
+                  }
+                  onClick={() =>
+                    void beauftrage(
+                      "frage",
+                      t("begleiter.passage.frage"),
+                      adapter.instanz,
+                      passage.stand,
+                      passage.text,
+                    )
+                  }
+                  className={KNOPF_KI}
+                >
+                  {t("begleiter.passage.pruefen")}
+                </button>
+              </section>
             ) : null}
             <div className="flex items-center gap-1.5">
               <label htmlFor={eingabeId} className="sr-only">

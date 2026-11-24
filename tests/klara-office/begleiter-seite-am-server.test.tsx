@@ -406,12 +406,102 @@ describe("S3 · KO-02-05 — der Word-Kontext kommt ausschliesslich vom Adapter"
 });
 
 describe("Direktvergleich in der Klara-App", () => {
+  it("liest den ursprünglichen Belegtitel trotz neuer Fassung und schützt beide nach Rechteentzug", async () => {
+    await vorrichtung();
+    if (!aufbau || !leser) throw new Error("Vorrichtung fehlt");
+    const { app, admin } = aufbau;
+    const kopf = leser.kopf;
+    const quelle = await eintragMitOriginal(app, admin, { titel: "Guest Wi-Fi separation" });
+    const url = `/api/kos/${quelle.koId}`;
+    const lesen = (fassung: number) =>
+      app.inject({ method: "GET", url: `${url}?belegfassung=${fassung}`, headers: kopf });
+    const aendern = (payload: Record<string, unknown>) =>
+      app.inject({ method: "PUT", url, headers: admin.kopf, payload });
+    const v1 = await lesen(1);
+    expect(v1.statusCode, v1.body).toBe(200);
+    expect(v1.json()).toMatchObject({
+      fassung: 1,
+      titel: quelle.titel,
+      freigegebenVon: expect.any(String),
+    });
+    const revision = await aendern({ action: "revise", changes: { title: "Revised Wi-Fi rules" } });
+    expect(revision.statusCode, revision.body).toBe(200);
+    expect((await lesen(1)).json()).toMatchObject({
+      fassung: 1,
+      titel: quelle.titel,
+      freigegebenVon: null,
+    });
+    expect((await lesen(2)).json()).toMatchObject({ fassung: 2, titel: "Revised Wi-Fi rules" });
+    expect((await lesen(3)).statusCode).toBe(404);
+    const entzug = await aendern({ action: "confidentiality", level: "vertraulich" });
+    expect(entzug.statusCode, entzug.body).toBe(200);
+    for (const fassung of [1, 2]) {
+      const gesperrt = await lesen(fassung);
+      expect(gesperrt.statusCode).toBe(404);
+      expect(gesperrt.json()).not.toHaveProperty("titel");
+    }
+  });
+
+  it("zeigt die gebundene Passage direkt am Fragefeld und prüft genau den Vorschautext mit einem Klick", async () => {
+    await vorrichtung();
+    await montiere();
+    await gespraechOffen();
+    await befehlDerApp("einstellungen-oeffnen");
+    await klick(q(document, "sprach-schalter-en"));
+    await taste(q(document, "begleiter-gespraech") as HTMLElement, "Escape");
+    const feld = q<HTMLInputElement>(document, "begleiter-eingabe") as HTMLInputElement;
+    expect(q(document, "begleiter-passage-pruefen")).toBeNull();
+    expect(
+      (
+        await wordFenster("POST", `${BASIS}/adapter`, {
+          instanz: FENSTER,
+          host: "word-mac",
+          hostFassung: "16.89",
+          dokument: DOKUMENT,
+        })
+      ).statusCode,
+    ).toBe(201);
+    const text = "Guest Wi-Fi must not reach the internal staff network.";
+    const aktualisiere = (seq: number, wortlaut: string | null) =>
+      wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+        seq,
+        auswahl: null,
+        auswahlStand: 3,
+        passage: wortlaut ? { text: wortlaut, stand: 3 } : null,
+      });
+    expect((await aktualisiere(1, text)).statusCode).toBe(200);
+    await bis(() => Boolean(q(document, "begleiter-passage-pruefen")), 160);
+    const vorschau = q(document, "begleiter-pruefpassage");
+    expect(vorschau?.closest("form")).toBe(feld.closest("form"));
+    expect(vorschau?.textContent).toContain(text);
+    const pruefen = q<HTMLButtonElement>(document, "begleiter-passage-pruefen");
+    expect(pruefen?.textContent).toBe("Check this passage");
+    expect(pruefen?.disabled).toBe(false);
+    expect(feld.value).toBe("");
+    expect(draht.aufrufe.some((a) => a.url.endsWith("/aktionen"))).toBe(false);
+    await tippe(feld, "Unsent draft");
+    await klick(pruefen);
+    await bis(() => Boolean(pruefen?.disabled), 100);
+    expect(feld.value).toBe("Unsent draft");
+    const tick = await aktualisiere(2, text);
+    expect(tick.json().aktionen).toMatchObject([
+      { art: "frage", text: "Is this correct?", locale: "en", auswahlStand: 3, pruefpassage: text },
+    ]);
+    expect(draht.aufrufe.some((a) => a.url === "/api/ask")).toBe(false);
+    expect((await aktualisiere(3, null)).statusCode).toBe(200);
+    await bis(() => q(document, "begleiter-pruefpassage") === null, 160);
+    expect(q(document, "begleiter-passage-pruefen")).toBeNull();
+  });
+
   it("prüft den Cursorabsatz auf Englisch, zeigt Quellen und Fundstelle und beginnt nach Clear einen neuen Vergleich", async () => {
     await vorrichtung();
     if (!aufbau) throw new Error("Vorrichtung fehlt");
     const original = "Guest Wi-Fi must not provide access to the internal staff network.";
     const dokument = original.replace("must not", "must");
-    const quelle = await eintragMitOriginal(aufbau.app, aufbau.admin, { kernaussage: original });
+    const quelle = await eintragMitOriginal(aufbau.app, aufbau.admin, {
+      titel: "Guest Wi-Fi separation",
+      kernaussage: original,
+    });
     await montiere();
     await gespraechOffen();
     await befehlDerApp("einstellungen-oeffnen");
@@ -476,6 +566,7 @@ describe("Direktvergleich in der Klara-App", () => {
       aiGenerated: true,
       dokument,
       belege: [beleg],
+      quellfassungen: [{ id: quelle.koId, fassung: 1 }],
       zeigbar: true,
       dokumentMarke: { start: dokument.indexOf("must"), end: dokument.indexOf("provide") + 7 },
       belegMarke: { start: original.indexOf("not"), end: original.indexOf("not") + 3 },
@@ -488,7 +579,13 @@ describe("Direktvergleich in der Klara-App", () => {
       "must provide",
       "not",
     ]);
-    expect(widerspruch.querySelector("a")?.pathname).toBe(`/wissen/${quelle.koId}`);
+    await bis(() => widerspruch.textContent?.includes("Approved by admin") === true);
+    const quelllink = widerspruch.querySelector("a");
+    expect(quelllink?.textContent).toBe(quelle.titel);
+    expect(quelllink?.pathname).toBe(`/wissen/${quelle.koId}`);
+    expect(quelllink?.search).toBe("?fassung=1&ansicht=gespeichert");
+    expect(widerspruch.textContent).toContain("Version 1");
+
     await klick(q(widerspruch, "begleiter-vergleich-zeigen"));
     await bis(() => draht.aufrufe.filter((a) => a.url.endsWith("/aktionen")).length >= 2, 80);
     const [navigation] = await hole(4);

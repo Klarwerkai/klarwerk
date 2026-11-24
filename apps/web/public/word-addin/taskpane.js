@@ -678,7 +678,7 @@
                 fragmentFeld.dokumentUrteil = urteil;
                 if (sitzung && markierung && questionSource === "manual") {
                   fragmentFeld.direktvergleich = askDirektvergleich(urteil.art, markierung, absaetze.slice(1),
-                    Array.isArray(result.steps) ? result.steps : [], cited && cited.length === 1);
+                    Array.isArray(result.steps) ? result.steps : [], cited && cited.length === 1, body.quellenStand);
                 }
               }
               return Object.assign(fragmentFeld, {
@@ -6800,7 +6800,7 @@
       });
     }
 
-    function readAskSelection(done, wordZuerst, fehler, frage, signal) {
+    function readAskSelection(done, wordZuerst, fehler, frage, signal, nurSatz) {
       var zumAbsatz = Boolean(frage) && askFragtNachWordAbsatz(frage);
       if (!askMitlesen || !officeUsable()) {
         done("", null, zumAbsatz ? (askMitlesen ? "askAbsatzFehlt" : "askAbsatzMitlesenAus") : null);
@@ -6824,7 +6824,7 @@
             text.trim().length > WORD_ADDIN_ASK_MAX_CHARS || abgebrochen()) return gelesen;
         var bereich;
         try {
-          bereich = auswahl || gelesen.absatz.getRange("Content");
+          bereich = auswahl || gelesen.bereich || gelesen.absatz.getRange("Content");
           if (!bereich || typeof bereich.track !== "function" || typeof bereich.untrack !== "function") return gelesen;
           bereich.track();
           await context.sync();
@@ -6879,7 +6879,7 @@
             var text = auswahl.text;
             if (!zumAbsatz || typeof text !== "string" || text.trim()) { return verfolgen(context, text, auswahl); }
             if (!bindung["x-klara-session"] || !bindung["x-klara-document"]) { return { hinweis: "askAbsatzOhneBindung" }; }
-            return askAbsatzAmCursor(context, auswahl, abgebrochen).then(function (gelesen) { return verfolgen(context, gelesen, null); });
+            return (nurSatz ? askPruefpassageAmCursor : askAbsatzAmCursor)(context, auswahl, abgebrochen).then(function (gelesen) { return verfolgen(context, gelesen, null); });
           });
         });
         if (!lauf || typeof lauf.then !== "function") { einmal(null); return; }
@@ -6988,6 +6988,9 @@
           showAskStatus("warn", hinweis ? t(hinweis) : klaraS4FragenSperrtext());
           return;
         }
+        if (begleitfrage && begleitfrage.passagePruefen && !begleitfrage.passagePruefen(selectionText)) {
+          askWartezustand(false); showAskStatus("warn", t("askVergleichVeraltet")); return;
+        }
         var prep = prepareAskQuestion(selectionText, begleitfrage ? begleitfrage.text : document.getElementById("ask-input").value);
         if (prep.from === "empty") {
           askWartezustand(false);
@@ -7044,7 +7047,7 @@
       try {
         readAskSelection(function (selectionText, absatzbezug, hinweis) {
           try { absenden(selectionText, absatzbezug, hinweis); } catch (err) { fehlerVorDemFetch(err); }
-        }, true, fehlerVorDemFetch, begleitfrage ? begleitfrage.text : document.getElementById("ask-input").value, minimalController.signal);
+        }, true, fehlerVorDemFetch, begleitfrage ? begleitfrage.text : document.getElementById("ask-input").value, minimalController.signal, Boolean(begleitfrage && begleitfrage.passagePruefen));
       } catch (err) {
         fehlerVorDemFetch(err);
       }

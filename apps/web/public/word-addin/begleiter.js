@@ -14,8 +14,8 @@
 //     bei jedem Laden des Fensters aus; die Wahl wird nirgends gespeichert.
 //   · EINGESCHALTET meldet er dieses Fenster an (Host, Fassung, Dokumentkennung, Dateiname) und
 //     danach alle zwei Sekunden: die aktuelle Markierung (höchstens 4.000 Zeichen, dazu die volle
-//     Länge) mit einem Auswahlstand, der bei jeder Änderung steigt. Die Dokumentadresse verlässt
-//     Word NICHT — gesendet wird nur ihre SHA-256-Prüfsumme und der Dateiname.
+//     Länge) sowie bei erlaubtem Mitlesen die Prüfpassage (bis 2.000 Zeichen) mit Auswahlstand.
+//     Die Dokumentadresse bleibt in Word; gesendet werden ihre SHA-256-Prüfsumme und der Dateiname.
 //   · AKTIONEN der Begleitapp kommen als Antwort auf die Meldung zurück und werden HIER ausgeführt:
 //       - „einfuegen": der Text kommt HINTER den bestätigten, verfolgten Office-Bereich — nur,
 //         wenn seither keine Auswahländerung kam (auch nicht bei gleichem Text), die Markierung
@@ -34,7 +34,7 @@
 // antwortet der Server 401; die Zeile sagt dann „Bitte zuerst bei Klarwerk anmelden".
 //
 // DATENFLUSS (ausgewiesen): Nur bei eingeschaltetem Schalter gehen Host, Hostfassung, Dateiname,
-// Prüfsumme der Dokumentadresse und die Markierung an DIESELBE Klarwerk-Instanz, unter dem eigenen
+// Prüfsumme der Dokumentadresse, Markierung und freigegebene Prüfpassage an DIESELBE Klarwerk-Instanz, unter dem eigenen
 // Konto, in den Arbeitsspeicher des Servers (nichts davon wird gespeichert oder protokolliert).
 // Kein Modell, kein externer Dienst. In das Dokument geschrieben wird nur auf eine Aktion aus der
 // Begleitapp, und nur hinter die unveränderte Markierung.
@@ -45,7 +45,7 @@
     var BEGLEITER_TEXTE = {
       de: {
         titel: "Mit Begleitapp verbinden",
-        hinweis: "Teilt Host, Dateiname und Markierung dieses Fensters (höchstens 4.000 Zeichen) mit deiner Klarwerk-Begleitapp auf diesem Konto — nur solange eingeschaltet.",
+        hinweis: "Teilt Host, Dateiname und Markierung (bis 4.000 Zeichen) mit der Begleitapp auf deinem Konto. Bei aktivem Mitlesen sieht sie auch die Prüfpassage am Cursor (bis 2.000 Zeichen).",
         aus: "Nicht verbunden.",
         verbindet: "Verbindet …",
         verbunden: "Verbunden · Begleitapp sieht dieses Fenster.",
@@ -56,7 +56,7 @@
       },
       en: {
         titel: "Connect companion app",
-        hinweis: "Shares host, file name and selection of this window (at most 4,000 characters) with your Klarwerk companion app on this account — only while switched on.",
+        hinweis: "Shares the host, file name and selection (up to 4,000 characters) with the companion app on your account. When reading is enabled it also shows the passage at the cursor (up to 2,000 characters).",
         aus: "Not connected.",
         verbindet: "Connecting …",
         verbunden: "Connected · the companion app sees this window.",
@@ -67,7 +67,7 @@
       },
       nl: {
         titel: "Verbinden met begeleider-app",
-        hinweis: "Deelt host, bestandsnaam en selectie van dit venster (maximaal 4.000 tekens) met je Klarwerk-begeleider-app op dit account — alleen zolang ingeschakeld.",
+        hinweis: "Deelt de host, bestandsnaam en selectie (maximaal 4.000 tekens) met de begeleider-app op je account. Bij ingeschakeld meelezen toont deze ook de passage bij de cursor (maximaal 2.000 tekens).",
         aus: "Niet verbonden.",
         verbindet: "Verbinden …",
         verbunden: "Verbonden · de begeleider-app ziet dit venster.",
@@ -90,6 +90,9 @@
     var begleiterSeq = 0;
     var begleiterAuswahl = null;
     var begleiterAuswahlStand = 0;
+    var begleiterPassage = null;
+    var begleiterPassageLauf = null;
+    var begleiterLetztePassageBindung = null;
     var begleiterTimer = null;
     var begleiterUnterwegs = false;
     var begleiterErledigt = [];
@@ -199,11 +202,70 @@
     /** Jede Auswahländerung: sofort ungültig — Stand steigt, Auswahl und Bereich verfallen. */
     function begleiterAuswahlUngueltig() {
       begleiterAuswahlStand += 1;
+      begleiterPassage = null;
       begleiterAuswahl = null;
       begleiterBereichFreigeben();
     }
 
+    // Derselbe Word-Satz wie beim ausdrücklichen Prüfauftrag, ohne Range zu halten oder
+    // ein Modell zu rufen. Die Vorschau darf die Zustellung anderer Aktionen nie aufhalten.
+    function begleiterPassageBindung() {
+      if (!begleiterAn || !begleiterAngemeldet || typeof askMitlesen === "undefined" || !askMitlesen ||
+          typeof klaraS4Header !== "function" || typeof klaraS4FragenGesperrt !== "function" || klaraS4FragenGesperrt()) return null;
+      var h = klaraS4Header();
+      return h["x-klara-session"] && h["x-klara-document"] && h["x-klara-instance"] ?
+        JSON.stringify([h["x-klara-session"], h["x-klara-document"], h["x-klara-instance"]]) : null;
+    }
+
+    function begleiterPrueftext(roh) {
+      if (typeof roh !== "string") return null;
+      var text = roh.replace(/\r\n?/g, "\n").trim();
+      return text && text.length <= 2000 && !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(text) ? text : null;
+    }
+
+    async function begleiterPassageAuffrischen() {
+      var bindung = begleiterPassageBindung();
+      if (begleiterLetztePassageBindung && begleiterLetztePassageBindung !== bindung) {
+        // Auch bei demselben Wortlaut in einem anderen Dokument ist der alte Auftrag verbraucht.
+        begleiterLetztePassageBindung = bindung;
+        begleiterAuswahlUngueltig();
+        begleiterAuswahlLesen();
+        return;
+      }
+      begleiterLetztePassageBindung = bindung;
+      if (!bindung || !window.Word || !Word.run) { begleiterPassage = null; return; }
+      var runde = begleiterRunde, stand = begleiterAuswahlStand;
+      if (stand < 1 || (begleiterPassageLauf && begleiterPassageLauf.stand === stand &&
+          begleiterPassageLauf.runde === runde && begleiterPassageLauf.bindung === bindung)) return;
+      var lauf = { stand: stand, runde: runde, bindung: bindung };
+      begleiterPassageLauf = lauf;
+      var veraltet = function () {
+        return lauf !== begleiterPassageLauf || runde !== begleiterRunde || stand !== begleiterAuswahlStand ||
+          bindung !== begleiterPassageBindung();
+      };
+      var text = null;
+      try {
+        text = await Word.run(async function (context) {
+          var auswahl = context.document.getSelection();
+          auswahl.load("text");
+          await context.sync();
+          if (veraltet()) return null;
+          if (auswahl.text.trim()) return begleiterPrueftext(auswahl.text);
+          if (!auswahl.paragraphs) return null;
+          var gelesen = await askPruefpassageAmCursor(context, auswahl, veraltet);
+          return begleiterPrueftext(gelesen && gelesen.text);
+        });
+      } catch (e) { /* Word kann die Stelle gerade nicht lesen. */ }
+      var gueltig = !veraltet();
+      if (begleiterPassageLauf === lauf) begleiterPassageLauf = null;
+      if (!gueltig) return;
+      if ((begleiterPassage && begleiterPassage.text) === text && (!text || begleiterPassage.bindung === bindung)) return;
+      begleiterPassage = text ? { text: text, stand: stand, bindung: bindung } : null;
+      begleiterMelden();
+    }
+
     function begleiterAuswahlLesen() {
+      begleiterPassageAuffrischen();
       var runde = begleiterRunde;
       var stand = begleiterAuswahlStand;
       // Gibt `true` zurück, wenn `bereich` als Bindung ÜBERNOMMEN wurde. Sonst gehört er niemandem
@@ -341,7 +403,10 @@
       var runde = begleiterRunde;
       begleiterSeq += 1;
       var ergebnisse = begleiterErledigt.slice(0, 10);
-      var koerper = { seq: begleiterSeq, erledigt: ergebnisse };
+      var passage = begleiterPassage;
+      var koerper = { seq: begleiterSeq, erledigt: ergebnisse,
+        passage: passage && passage.stand === begleiterAuswahlStand && passage.bindung === begleiterPassageBindung()
+          ? { text: passage.text, stand: passage.stand } : null };
       if (begleiterAuswahl !== null) {
         koerper.auswahl = {
           text: begleiterAuswahl.voll.slice(0, BEGLEITER_AUSWAHL_MAX).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " "),
@@ -480,6 +545,11 @@
      * würde, mit allen Toren des Fensters. Gewartet wird auf eine NEUE Antwort oder einen Status.
      */
     function begleiterFragen(auftrag) {
+      if (auftrag.pruefpassage !== undefined && (!begleiterPassage || auftrag.auswahlStand !== begleiterAuswahlStand ||
+          auftrag.pruefpassage !== begleiterPassage.text || begleiterPassage.bindung !== begleiterPassageBindung())) {
+        begleiterErgebnis(auftrag.id, "abgelehnt", null, "passage_geaendert");
+        return;
+      }
       begleiterVergleichZiel = null;
       var feld = document.getElementById("ask-input");
       var knopf = document.getElementById("ask-btn");
@@ -529,10 +599,19 @@
         aufraeumenWennSicher();
       }
       var anmeldung = begleiterAnmeldung;
+      var pruefbindung = begleiterPassage && begleiterPassage.bindung;
       var empfang = {
         text: auftrag.text,
         locale: ["de", "en", "nl"].indexOf(auftrag.locale) >= 0 ? auftrag.locale : null,
         aktuell: null,
+        passagePruefen: auftrag.pruefpassage === undefined ? null : function (roh) {
+          if (begleiterPassage && auftrag.auswahlStand === begleiterAuswahlStand &&
+              begleiterPassage.bindung === pruefbindung && pruefbindung === begleiterPassageBindung() &&
+              auftrag.pruefpassage === begleiterPrueftext(roh)) return true;
+          beenden("abgelehnt", null, "passage_geaendert");
+          begleiterPassageAuffrischen();
+          return false;
+        },
         antwort: function (text, vergleich, kiErzeugt) {
           if (fertig || !empfang.aktuell()) return;
           var karte;
@@ -711,6 +790,9 @@
     function begleiterVerbinden() {
       begleiterVergleichZiel = null;
       begleiterRunde += 1;
+      begleiterLetztePassageBindung = null;
+      begleiterPassage = null;
+      begleiterPassageLauf = null;
       begleiterAn = true;
       begleiterInstanz = begleiterZufall("bgl");
       begleiterAngemeldet = false;
@@ -723,7 +805,7 @@
       begleiterAuswahlBeobachten();
       begleiterAnmelden();
       clearInterval(begleiterTimer);
-      begleiterTimer = setInterval(begleiterMelden, BEGLEITER_TAKT_MS);
+      begleiterTimer = setInterval(function () { begleiterPassageAuffrischen(); begleiterMelden(); }, BEGLEITER_TAKT_MS);
     }
 
     function begleiterTrennen() {
@@ -731,6 +813,9 @@
       var warAngemeldet = begleiterAngemeldet;
       begleiterVergleichZiel = null;
       begleiterRunde += 1;
+      begleiterLetztePassageBindung = null;
+      begleiterPassage = null;
+      begleiterPassageLauf = null;
       begleiterAn = false;
       begleiterAngemeldet = false;
       begleiterUnterwegs = false;
@@ -765,6 +850,8 @@
       lageZeile.textContent = (!officeDa && !begleiterAn) ? begleiterT("keinOffice") : begleiterT(begleiterLage);
       lageZeile.setAttribute("data-lage", begleiterLage);
       lageZeile.setAttribute("title", begleiterT("hinweis"));
+      var hinweis = document.getElementById("einst-begleiter-hinweis");
+      if (hinweis) hinweis.textContent = begleiterT("hinweis");
     }
 
     function begleiterAnschliessen() {
@@ -793,6 +880,11 @@
       lageZeile.setAttribute("aria-live", "polite");
       gruppe.insertBefore(lageZeile, zeile.nextSibling);
       gruppe.insertBefore(neu, lageZeile);
+      var hinweis = document.createElement("p");
+      hinweis.id = "einst-begleiter-hinweis";
+      hinweis.className = "einst-hinweis";
+      schalter.setAttribute("aria-describedby", hinweis.id);
+      gruppe.insertBefore(hinweis, lageZeile.nextSibling);
       schalter.addEventListener("click", function () {
         if (begleiterAn) { begleiterTrennen(); } else { begleiterVerbinden(); }
       });
