@@ -4,6 +4,37 @@ export default {
   praefix: "workflows.",
   legacySchluessel: [],
   de: {
+    "workflows.wissen.vorschlagen": "Für das Firmenwissen vorschlagen",
+    "workflows.wissen.stand.entwurf": "Wissensvorschlag vorbereiten",
+    "workflows.wissen.stand.vorgeschlagen": "Zur fachlichen Prüfung eingereicht",
+    "workflows.wissen.stand.abgelehnt": "Vorschlag abgelehnt",
+    "workflows.wissen.stand.freigegeben": "Als Firmenwissen freigegeben",
+    "workflows.wissen.vorpruefung":
+      "{{name}} prüft die Aussage und ihre Belege. Mit der Freigabe entsteht ein Beitrag im Firmenwissen.",
+    "workflows.wissen.titel": "Titel des Beitrags",
+    "workflows.wissen.aussage": "Welche Aussage soll im Firmenwissen stehen?",
+    "workflows.wissen.quellen": "Belege aus diesem Ergebnis",
+    "workflows.wissen.beschluss": "Workflowbeschluss · {{titel}}",
+    "workflows.wissen.senden": "Zur Prüfung einreichen",
+    "workflows.wissen.freigeben": "Als Firmenwissen freigeben",
+    "workflows.wissen.ablehnungsgrund": "Grund für die Ablehnung",
+    "workflows.wissen.ablehnenBestaetigen": "Vorschlag ablehnen",
+    "workflows.wissen.artikel": "Freigegebenen Beitrag öffnen · Version {{v}}",
+    "workflows.wissen.ohneBeleg":
+      "Für einen Vorschlag braucht das Ergebnis eine belegte Wissensquelle oder einen dokumentierten Beschluss.",
+    "workflows.wissen.ohnePruefer":
+      "Die teamverantwortliche Person benötigt das Recht zur Wissensfreigabe.",
+    "workflows.wissen.gesperrt":
+      "Die Quellen dieses Ergebnisses erlauben keine Übernahme ins Firmenwissen.",
+    "workflows.wissen.keineFreigabe":
+      "Für dieses Ergebnis kannst du keinen Wissensvorschlag einreichen.",
+    "workflows.wissen.eingang": "Workflow-Ergebnisse zur Prüfung",
+    "workflows.wissen.schutzdaten":
+      "Titel oder Aussage enthalten geschützte Daten. Entferne sie und reiche den Vorschlag erneut ein.",
+    "workflows.wissen.listeFehler": "Die offenen Workflow-Vorschläge konnten nicht geladen werden.",
+    "workflows.wissen.neuerTab": "(öffnet in neuem Tab)",
+    "workflows.wissen.ursprung": "Zum ursprünglichen Workflow-Ergebnis",
+    "workflows.wissen.quellbeitrag": "Quellbeitrag öffnen · Version {{v}}",
     "workflows.titel": "Teamworkflows",
     "workflows.lead":
       "Erstelle und teste gemeinsame Abläufe oder setze einen laufenden Vorgang deines Teams fort.",
@@ -135,6 +166,36 @@ export default {
     "workflows.ergebnisse": "Gespeicherte Ergebnisse",
   },
   en: {
+    "workflows.wissen.vorschlagen": "Propose for company knowledge",
+    "workflows.wissen.stand.entwurf": "Prepare a knowledge proposal",
+    "workflows.wissen.stand.vorgeschlagen": "Submitted for review",
+    "workflows.wissen.stand.abgelehnt": "Proposal declined",
+    "workflows.wissen.stand.freigegeben": "Approved as company knowledge",
+    "workflows.wissen.vorpruefung":
+      "{{name}} will review the statement and its sources. Approval creates an entry in company knowledge.",
+    "workflows.wissen.titel": "Entry title",
+    "workflows.wissen.aussage": "What should the company knowledge entry say?",
+    "workflows.wissen.quellen": "Sources for this result",
+    "workflows.wissen.beschluss": "Workflow decision · {{titel}}",
+    "workflows.wissen.senden": "Submit for review",
+    "workflows.wissen.freigeben": "Approve as company knowledge",
+    "workflows.wissen.ablehnungsgrund": "Reason for declining",
+    "workflows.wissen.ablehnenBestaetigen": "Decline proposal",
+    "workflows.wissen.artikel": "Open approved entry · Version {{v}}",
+    "workflows.wissen.ohneBeleg":
+      "A proposal needs a cited knowledge source or a documented workflow decision.",
+    "workflows.wissen.ohnePruefer":
+      "The person responsible for this team needs permission to approve company knowledge.",
+    "workflows.wissen.gesperrt":
+      "The sources for this result cannot be shared as company knowledge.",
+    "workflows.wissen.keineFreigabe": "You cannot submit a knowledge proposal for this result.",
+    "workflows.wissen.eingang": "Workflow results to review",
+    "workflows.wissen.schutzdaten":
+      "The title or statement contains protected data. Remove it and submit the proposal again.",
+    "workflows.wissen.listeFehler": "The pending workflow proposals could not be loaded.",
+    "workflows.wissen.neuerTab": "(opens in a new tab)",
+    "workflows.wissen.ursprung": "Go to the original workflow result",
+    "workflows.wissen.quellbeitrag": "Open source entry · Version {{v}}",
     "workflows.titel": "Team workflows",
     "workflows.lead": "Build and test shared workflows, or continue a run with your team.",
     "workflows.nutzen": "Use workflows",
@@ -259,6 +320,37 @@ export default {
     "workflows.ergebnisse": "Recorded results",
   },
   nl: {
+    "workflows.wissen.vorschlagen": "Voorstellen als bedrijfskennis",
+    "workflows.wissen.stand.entwurf": "Kennisvoorstel voorbereiden",
+    "workflows.wissen.stand.vorgeschlagen": "Ingediend ter beoordeling",
+    "workflows.wissen.stand.abgelehnt": "Voorstel afgewezen",
+    "workflows.wissen.stand.freigegeben": "Vrijgegeven als bedrijfskennis",
+    "workflows.wissen.vorpruefung":
+      "{{name}} beoordeelt de uitspraak en de bronnen. Na goedkeuring wordt deze als bedrijfskennis opgenomen.",
+    "workflows.wissen.titel": "Titel van het kennisartikel",
+    "workflows.wissen.aussage": "Welke uitspraak wil je als bedrijfskennis vastleggen?",
+    "workflows.wissen.quellen": "Bronnen bij dit resultaat",
+    "workflows.wissen.beschluss": "Workflowbesluit · {{titel}}",
+    "workflows.wissen.senden": "Indienen ter beoordeling",
+    "workflows.wissen.freigeben": "Vrijgeven als bedrijfskennis",
+    "workflows.wissen.ablehnungsgrund": "Reden voor afwijzing",
+    "workflows.wissen.ablehnenBestaetigen": "Voorstel afwijzen",
+    "workflows.wissen.artikel": "Vrijgegeven artikel openen · Versie {{v}}",
+    "workflows.wissen.ohneBeleg":
+      "Voor een voorstel is een vermelde kennisbron of een vastgelegd workflowbesluit nodig.",
+    "workflows.wissen.ohnePruefer":
+      "De teamverantwoordelijke heeft toestemming nodig om bedrijfskennis vrij te geven.",
+    "workflows.wissen.gesperrt":
+      "De bronnen bij dit resultaat mogen niet als bedrijfskennis worden gedeeld.",
+    "workflows.wissen.keineFreigabe": "Voor dit resultaat kun je geen kennisvoorstel indienen.",
+    "workflows.wissen.eingang": "Te beoordelen workflowresultaten",
+    "workflows.wissen.schutzdaten":
+      "De titel of uitspraak bevat beschermde gegevens. Verwijder deze en dien het voorstel opnieuw in.",
+    "workflows.wissen.listeFehler":
+      "De openstaande workflowvoorstellen konden niet worden geladen.",
+    "workflows.wissen.neuerTab": "(opent in een nieuw tabblad)",
+    "workflows.wissen.ursprung": "Naar het oorspronkelijke workflowresultaat",
+    "workflows.wissen.quellbeitrag": "Bronartikel openen · Versie {{v}}",
     "workflows.titel": "Teamworkflows",
     "workflows.lead":
       "Maak en test gezamenlijke workflows of ga verder met een lopende uitvoering van je team.",

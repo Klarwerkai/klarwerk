@@ -240,7 +240,32 @@ function laufMitQuellen(einstieg: "starten" | "lesen" | "weiter"): Eintrag {
   };
 }
 
+function ergebnisMitQuellen(
+  einstieg: "pruefliste" | "lesen" | "vorschlagen" | "entscheiden",
+): Eintrag {
+  const datei = "services/app/src/teamworkflow-wissen.ts";
+  return {
+    urteil: "DIENST_FILTERT",
+    kette: [
+      { datei, funktion: einstieg },
+      ...(einstieg === "pruefliste" ? [{ datei, funktion: "lesen" }] : []),
+      { datei, funktion: "basis" },
+    ],
+    entscheidung: "darfSehen",
+    grund:
+      "Das Team sieht einen Vorschlag und seine Belege erst nach Prüfung der Mitgliedschaft und der Leserechte an den gebundenen Wissensquellen.",
+  };
+}
+
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/teamworkflows/wissenspruefungen": ergebnisMitQuellen("pruefliste"),
+  "GET /api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag":
+    ergebnisMitQuellen("lesen"),
+  "POST /api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag":
+    ergebnisMitQuellen("vorschlagen"),
+  "POST /api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag/entscheiden":
+    ergebnisMitQuellen("entscheiden"),
+
   "GET /api/teamworkflows/:id/laeufe": {
     urteil: "KEIN_KO_INHALT",
     grund:

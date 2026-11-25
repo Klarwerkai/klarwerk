@@ -98,12 +98,53 @@ export interface Lauf extends Laufzeile {
   grund?: string;
 }
 
+export interface Wissensvorschlag {
+  stand: "entwurf" | "vorgeschlagen" | "abgelehnt" | "freigegeben" | "gesperrt";
+  titel: string;
+  aussage: string;
+  quellen: TeamLauf["antwort"]["quellen"];
+  beschluss?: { titel: string; auszug: string; am: string; person: string };
+  zustaendig: string;
+  zustaendigName: string | null;
+  kannVorschlagen: boolean;
+  kannPruefen: boolean;
+  stempel: string;
+  grund?: string;
+  koId?: string;
+  koVersion?: number;
+}
+export interface Wissenspruefung {
+  workflowId: string;
+  laufId: string;
+  ergebnisId: string;
+  titel: string;
+}
+
 const basis = "/teamworkflows";
 const pfad = (id: string) => `${basis}/${encodeURIComponent(id)}`;
 const laeufe = (id: string) => `${pfad(id)}/laeufe`;
 const laufpfad = (id: string, laufId: string) => `${laeufe(id)}/${encodeURIComponent(laufId)}`;
 
+const wissenspfad = (id: string, lauf: string, ergebnis: string) =>
+  `${laufpfad(id, lauf)}/ergebnisse/${encodeURIComponent(ergebnis)}/wissensvorschlag`;
+
 export const workflows = {
+  wissenspruefungen: () =>
+    api.get<{ vorschlaege: Wissenspruefung[] }>(`${basis}/wissenspruefungen`),
+  vorschlag: (id: string, lauf: string, ergebnis: string) =>
+    api.get<Wissensvorschlag>(wissenspfad(id, lauf, ergebnis)),
+  vorschlagen: (
+    id: string,
+    lauf: string,
+    ergebnis: string,
+    daten: { titel: string; aussage: string; stempel: string },
+  ) => api.post<Wissensvorschlag>(wissenspfad(id, lauf, ergebnis), daten),
+  beurteilen: (
+    id: string,
+    lauf: string,
+    ergebnis: string,
+    daten: { entscheidung: "freigeben" | "ablehnen"; stempel: string; grund?: string },
+  ) => api.post<Wissensvorschlag>(`${wissenspfad(id, lauf, ergebnis)}/entscheiden`, daten),
   liste: () => api.get<{ teams: Teamwahl[]; workflows: Workflow[] }>(basis),
   detail: (id: string) => api.get<Entwurf | Workflow>(pfad(id)),
   erstellen: (teamId: string, definition: Definition) =>
@@ -132,6 +173,7 @@ export const workflows = {
 export function workflowFehler(e: unknown) {
   if (e instanceof ApiError) {
     if ([401, 403, 404].includes(e.status)) return "workflows.keinZugang";
+    if (e.code === "SCHUTZDATEN") return "workflows.wissen.schutzdaten";
     if (e.code === "PRUEFUNG_FEHLT") return "workflows.testFehlt";
     if (
       e.code === "ASSISTENT_NICHT_VERFUEGBAR" ||

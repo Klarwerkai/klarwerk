@@ -1,6 +1,6 @@
 import { AskError, type AskResult, type AskService, belegstellenLink } from "../../ask";
 import type { SessionUser } from "../../auth";
-import type { ConflictService } from "../../conflicts";
+import type { Conflict, ConflictService } from "../../conflicts";
 import {
   type GelernteHalbwertszeiten,
   type KnowledgeObject,
@@ -346,6 +346,20 @@ function modellBelege(out: AskResult, stellen: Fundstelle[]): TeamAntwort["quell
   return belege;
 }
 
+export function teamQuellKonfliktstand(quellen: Record<string, number>, konflikte: Conflict[]) {
+  if (Object.keys(quellen).length < 2) return "[]";
+  const relevant = konflikte.filter(
+    (k) =>
+      k.status !== "geloest" &&
+      k.type === "truth" &&
+      Object.hasOwn(quellen, k.koA) &&
+      Object.hasOwn(quellen, k.koB) &&
+      (k.koAVersion === undefined || k.koAVersion === quellen[k.koA]) &&
+      (k.koBVersion === undefined || k.koBVersion === quellen[k.koB]),
+  );
+  return JSON.stringify(relevant.map((k) => k.id).sort());
+}
+
 export function baueTeamassistentWissen(dienste: {
   ko: Pick<KoService, "get" | "gelernteHalbwertszeiten">;
   conflicts: Pick<ConflictService, "unresolved">;
@@ -368,15 +382,7 @@ export function baueTeamassistentWissen(dienste: {
   return {
     async konfliktstand(quellen) {
       if (Object.keys(quellen).length < 2) return "[]";
-      const konflikte = (await dienste.conflicts.unresolved()).filter(
-        (k) =>
-          k.type === "truth" &&
-          Object.hasOwn(quellen, k.koA) &&
-          Object.hasOwn(quellen, k.koB) &&
-          (k.koAVersion === undefined || k.koAVersion === quellen[k.koA]) &&
-          (k.koBVersion === undefined || k.koBVersion === quellen[k.koB]),
-      );
-      return JSON.stringify(konflikte.map((k) => k.id).sort());
+      return teamQuellKonfliktstand(quellen, await dienste.conflicts.unresolved());
     },
     async quellstand(user, definition) {
       const artikel = await lade(user, definition.quellen);

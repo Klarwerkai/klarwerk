@@ -14,6 +14,7 @@ export default {
   de: {
     "verifizierung.titel": "Prüfmarke",
     "verifizierung.mensch.bewertung": "Fachlich geprüft von {{name}} am {{zeit}}",
+    "verifizierung.mensch.eigentuemer": "Fachlich freigegeben von {{name}} am {{zeit}}",
     "verifizierung.mensch.verwalter":
       "Von {{name}} am {{zeit}} als gültig gekennzeichnet (Verwalter, ohne Gegenprüfung)",
     "verifizierung.mensch.rueckgabe": "Von {{name}} am {{zeit}} zur Nacharbeit zurückgegeben",
@@ -43,6 +44,7 @@ export default {
   en: {
     "verifizierung.titel": "Verification mark",
     "verifizierung.mensch.bewertung": "Reviewed by {{name}} on {{zeit}}",
+    "verifizierung.mensch.eigentuemer": "Approved by {{name}} on {{zeit}}",
     "verifizierung.mensch.verwalter":
       "Marked as valid by {{name}} on {{zeit}} (administrator, without peer review)",
     "verifizierung.mensch.rueckgabe": "Returned for rework by {{name}} on {{zeit}}",
@@ -72,6 +74,7 @@ export default {
   nl: {
     "verifizierung.titel": "Controlemarkering",
     "verifizierung.mensch.bewertung": "Inhoudelijk gecontroleerd door {{name}} op {{zeit}}",
+    "verifizierung.mensch.eigentuemer": "Inhoudelijk goedgekeurd door {{name}} op {{zeit}}",
     "verifizierung.mensch.verwalter":
       "Door {{name}} op {{zeit}} als geldig gemarkeerd (beheerder, zonder tegencontrole)",
     "verifizierung.mensch.rueckgabe": "Door {{name}} op {{zeit}} teruggegeven voor herwerking",

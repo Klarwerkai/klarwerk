@@ -99,6 +99,9 @@ export interface KoProposal {
 // SCRUM-129 / FR-KO-07: echte externe Quelle am Objekt (Stufe 2, nie peer-validiert).
 export interface KoSource {
   id: string;
+  externalId?: string;
+  workflowQuellart?: "wissensfassung" | "ergebnis";
+  workflowBezug?: { workflowId: string; laufId: string; ergebnisId: string };
   label: string;
   url: string | null;
   excerpt: string | null;
@@ -662,6 +665,7 @@ export interface KoVerifizierung {
           | "verwalter"
           | "rueckgabe"
           | "weisung"
+          | "eigentuemer"
           | "externe_freigabe"
           | "weisung_sichtung";
         pruefer: string;

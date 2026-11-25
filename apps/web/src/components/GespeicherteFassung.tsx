@@ -29,6 +29,7 @@ import { eindeutigeZitatstelle, markiereFundstelle } from "../lib/belegstelle";
 import { formatKoTimestamp } from "../lib/koDates";
 import { quellabschnitteAus } from "../lib/quellabschnitt";
 import { useAuthorName } from "../lib/useAuthorName";
+import { workflowWissensquelle } from "../lib/workflowWissensquelle";
 import { Belegtitel } from "./Belegtitel";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { Card } from "./ui";
@@ -183,9 +184,7 @@ function Fassungskarte({
   );
   const beschlussbeleg = beschluss?.notizbeleg;
   const abschnitte = quellabschnitteAus(ko.sources);
-  const auszuege = new Map(
-    (ko.sources ?? []).map((s): [string, string | null] => [s.id, s.excerpt]),
-  );
+  const quellen = new Map((ko.sources ?? []).map((s) => [s.id, s] as const));
   const Volltext = zitat ? "details" : Fragment;
   const englisch = i18n.language.split("-")[0]?.toLowerCase() === "en";
   const zeit =
@@ -292,7 +291,23 @@ function Fassungskarte({
               {abschnitte.map((q, i) => {
                 const gewaehlt = ankerId !== null && q.ankerId === ankerId;
                 const original = sichererVerweis(q.url);
-                const auszug = q.ankerId ? auszuege.get(q.ankerId) : null;
+                const quelle = q.ankerId ? quellen.get(q.ankerId) : undefined;
+                const intern = quelle && workflowWissensquelle(quelle);
+                if (intern && quelle)
+                  return (
+                    <li key={quelle.id}>
+                      <a
+                        href={intern.href}
+                        className="font-medium text-brand-text underline"
+                        data-testid={`workflow-fassungsbeleg-${intern.typ}`}
+                      >
+                        {intern.typ === "ergebnis"
+                          ? t("workflows.wissen.ursprung")
+                          : t("workflows.wissen.quellbeitrag", { v: quelle.sourceVersion })}
+                      </a>
+                    </li>
+                  );
+                const auszug = quelle?.excerpt;
                 const stand =
                   q.stand === "geprueft"
                     ? t("quellen.standGeprueft")

@@ -16,6 +16,7 @@ import { gespeicherteFassungHref } from "../../lib/objektbezug";
 import { eingabestil, kartenstil } from "../teamassistenten/teamKontext";
 import { Button, Field } from "../ui";
 import { schrittIcon } from "./SchrittEditor";
+import { WorkflowErgebnisWissen } from "./WorkflowErgebnisWissen";
 
 const abfrage = { gcTime: 0, retry: false, refetchOnWindowFocus: "always" as const };
 const listeKey = (kontext: string, id: string) => ["workflows", kontext, id, "laeufe"];
@@ -193,7 +194,7 @@ export function WorkflowVorgang({
   workflow: w,
   laufId,
 }: { kontext: string; workflow: Workflow; laufId: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const cache = useQueryClient();
   const { user } = useSession();
   const key = laufKey(kontext, w.id, laufId);
@@ -341,6 +342,25 @@ export function WorkflowVorgang({
           {t("workflows.aktualisieren")}
         </Button>
       </section>
+      {l.ergebnisse.length ? (
+        <section className={kartenstil}>
+          <h3 className="font-semibold">{t("workflows.ergebnisse")}</h3>
+          {l.ergebnisse.map((e) => (
+            <article key={e.id} className="space-y-3 border-t border-hairline pt-3">
+              <div>
+                <h4 className="font-medium">{e.titel}</h4>
+                <p className="text-sm text-muted">
+                  {t("workflows.version", { v: e.workflowVersion })} · {person(e.erstelltVon)} ·{" "}
+                  {zeit(e.erstelltAm, i18n.language)}
+                </p>
+              </div>
+              {l.stand === "abgeschlossen" ? (
+                <WorkflowErgebnisWissen lauf={l} ergebnis={e} kontext={kontext} />
+              ) : null}
+            </article>
+          ))}
+        </section>
+      ) : null}
       <Verlauf l={l} person={person} />
     </div>
   );
@@ -348,58 +368,42 @@ export function WorkflowVorgang({
 function Verlauf({ l, person }: { l: Lauf; person: (id: string) => string }) {
   const { t, i18n } = useTranslation();
   return (
-    <>
-      <section className={kartenstil}>
-        <h3 className="font-semibold">{t("workflows.verlauf")}</h3>
-        <ol className="divide-y divide-hairline">
-          {l.verlauf.map((v, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: The append-only run log assigns events a stable position.
-            <li key={i} className="space-y-2 break-words py-3">
-              <p className="font-medium">{v.schrittTitel ?? t(`workflows.ereignis.${v.typ}`)}</p>
-              <p className="text-xs text-muted">
-                {v.schrittTitel ? `${t(`workflows.ereignis.${v.typ}`)} · ` : null}
-                {zeit(v.am, i18n.language)} · {person(v.akteur)}
-                {v.typ !== "start" ? ` · ${t("workflows.nummer", { n: v.index + 1 })}` : null}
-              </p>
-              {v.notiz ? <p className="whitespace-pre-line text-sm">{v.notiz}</p> : null}
-              {v.version ? (
-                <p className="text-sm">{t("workflows.assistentVersion", { v: v.version })}</p>
-              ) : null}
-              {v.antwort ? (
-                <div className="space-y-2 text-sm">
-                  <strong>{t(`teamassistenten.${v.antwort.stand}`)}</strong>
-                  <p>{v.antwort.text}</p>
-                  {v.antwort.quellen.map((qu) => (
-                    <div key={qu.id} className="border-l-2 border-hairline pl-3">
-                      <a
-                        className="font-medium text-brand-text underline"
-                        href={gespeicherteFassungHref(qu.id, qu.version) + zitatFragment(qu.auszug)}
-                      >
-                        {t("workflows.nameVersion", { name: qu.titel, v: qu.version })}
-                      </a>
-                      <blockquote>{qu.auszug}</blockquote>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-      </section>
-      {l.ergebnisse?.length ? (
-        <section className={kartenstil}>
-          <h3 className="font-semibold">{t("workflows.ergebnisse")}</h3>
-          {l.ergebnisse.map((e) => (
-            <div className="text-sm" key={e.id}>
-              <p className="font-medium">{e.titel}</p>
-              <p>
-                {t("workflows.version", { v: e.workflowVersion })} · {person(e.erstelltVon)} ·{" "}
-                {zeit(e.erstelltAm, i18n.language)}
-              </p>
-            </div>
-          ))}
-        </section>
-      ) : null}
-    </>
+    <section className={kartenstil}>
+      <h3 className="font-semibold">{t("workflows.verlauf")}</h3>
+      <ol className="divide-y divide-hairline">
+        {l.verlauf.map((v, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: The append-only run log assigns events a stable position.
+          <li key={i} className="space-y-2 break-words py-3">
+            <p className="font-medium">{v.schrittTitel ?? t(`workflows.ereignis.${v.typ}`)}</p>
+            <p className="text-xs text-muted">
+              {v.schrittTitel ? `${t(`workflows.ereignis.${v.typ}`)} · ` : null}
+              {zeit(v.am, i18n.language)} · {person(v.akteur)}
+              {v.typ !== "start" ? ` · ${t("workflows.nummer", { n: v.index + 1 })}` : null}
+            </p>
+            {v.notiz ? <p className="whitespace-pre-line text-sm">{v.notiz}</p> : null}
+            {v.version ? (
+              <p className="text-sm">{t("workflows.assistentVersion", { v: v.version })}</p>
+            ) : null}
+            {v.antwort ? (
+              <div className="space-y-2 text-sm">
+                <strong>{t(`teamassistenten.${v.antwort.stand}`)}</strong>
+                <p>{v.antwort.text}</p>
+                {v.antwort.quellen.map((qu) => (
+                  <div key={qu.id} className="border-l-2 border-hairline pl-3">
+                    <a
+                      className="font-medium text-brand-text underline"
+                      href={gespeicherteFassungHref(qu.id, qu.version) + zitatFragment(qu.auszug)}
+                    >
+                      {t("workflows.nameVersion", { name: qu.titel, v: qu.version })}
+                    </a>
+                    <blockquote>{qu.auszug}</blockquote>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

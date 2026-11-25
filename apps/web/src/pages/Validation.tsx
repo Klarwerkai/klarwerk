@@ -82,6 +82,7 @@ import {
   PruefenSatz,
 } from "../components/pruefen/PruefenZustand";
 import { flaechenZustand } from "../components/pruefen/zaehler";
+import { OffeneWorkflowVorschlaege } from "../components/teamworkflows/OffeneWorkflowVorschlaege";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/trust";
 import { Button, cx } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
@@ -1739,6 +1740,7 @@ export function Validation(): JSX.Element {
     // im schmalen Fenster wächst die Fläche wie bisher mit ihrem Inhalt.
     <div className="mx-auto max-w-[1040px] lg:flex lg:h-full lg:flex-col">
       {kopf}
+      {role === "admin" || role === "controller" ? <OffeneWorkflowVorschlaege /> : null}
       {role === "admin" && user?.id ? <OffeneKlaraRegeln konto={user.id} /> : null}
       {isDemoContext(params) ? <DemoBanner surface="validation" /> : null}
       {/* ARBEITSWEGE AM SELBEN ARTIKEL: die angeforderte Prüfung steht hier gerade nicht — offen

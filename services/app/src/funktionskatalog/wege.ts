@@ -47,6 +47,11 @@ function verbindung(
 }
 
 const belege = {
+  ergebniswissen: text(
+    "25.11.2026 · .1148 · Fachliche Freigabe eines Workflow-Ergebnisses",
+    "25 November 2026 · .1148 · Review and approval of a workflow result",
+    "25 november 2026 · .1148 · Inhoudelijke goedkeuring van een workflowresultaat",
+  ),
   teamassistent: text(
     "25.11.2026 · .1146 · Geprüfte Teamfassung mit freigegebenen Quellen",
     "25 November 2026 · .1146 · Tested team version with approved sources",
@@ -639,6 +644,17 @@ export const funktionswege: KatalogWeg[] = [
         ),
         "nachgewiesen",
         belege.teamworkflow,
+      ),
+      verbindung(
+        "P04",
+        "P02",
+        text(
+          "Ein Ergebnis mit seinen Quellen zur fachlichen Prüfung vorschlagen",
+          "Submit a result and its sources for review",
+          "Een resultaat met de gebruikte bronnen ter beoordeling indienen",
+        ),
+        "nachgewiesen",
+        belege.ergebniswissen,
       ),
     ],
   },

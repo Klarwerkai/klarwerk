@@ -108,6 +108,7 @@ import {
   weisungsbefugtFuer,
 } from "../../lib/weisungsbefugnis";
 import { statusSchluessel } from "../../lib/wissensstatus";
+import { workflowWissensquelle } from "../../lib/workflowWissensquelle";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
 import { BodyImageGallery } from "../BodyImageGallery";
@@ -4471,17 +4472,32 @@ export function BibliothekLesen({
               data-testid="bib-chips"
               className="flex flex-wrap gap-2 border-t border-hairline pt-1.5"
             >
-              {quellen.map((s, i) => (
-                <span
-                  key={s.id}
-                  data-testid="bib-quellen-chip"
-                  data-bib-text="quellenchip"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-page px-2.5 py-[5px]"
-                >
-                  <FileText size={13} strokeWidth={1.8} aria-hidden className="text-muted" />
-                  <span className="text-[12px] font-semibold text-text">{`${i + 1} · ${s.label}`}</span>
-                </span>
-              ))}
+              {quellen.map((s, i) => {
+                const intern = workflowWissensquelle(s);
+                return (
+                  <span
+                    key={s.id}
+                    data-testid="bib-quellen-chip"
+                    data-bib-text="quellenchip"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-page px-2.5 py-[5px]"
+                  >
+                    <FileText size={13} strokeWidth={1.8} aria-hidden className="text-muted" />
+                    {intern ? (
+                      <a
+                        href={intern.href}
+                        className="text-[12px] font-semibold text-brand-text underline"
+                        data-testid={`workflow-beleg-${intern.typ}`}
+                      >
+                        {intern.typ === "ergebnis"
+                          ? t("workflows.wissen.ursprung")
+                          : t("workflows.wissen.quellbeitrag", { v: s.sourceVersion })}
+                      </a>
+                    ) : (
+                      <span className="text-[12px] font-semibold text-text">{`${i + 1} · ${s.label}`}</span>
+                    )}
+                  </span>
+                );
+              })}
               {bilder > 0 ? (
                 <span
                   data-testid="bib-bilder-chip"

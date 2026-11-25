@@ -180,12 +180,14 @@ export const ergaenzungen: Redaktionseintrag[] = [
     },
     ablauf: "P02",
     scope: {
-      de: "In Klarwerk und in der Klara-App lassen sich Service-Notizen und Beschlüsse einreichen und wieder öffnen. Die Übernahme direkt aus weiteren Microsoft-365-Anwendungen ist geplant.",
-      en: "In Klarwerk and the Klara app you can submit service notes and decisions, then reopen them to see the review outcome. Submission directly from additional Microsoft 365 applications is planned.",
-      nl: "In Klarwerk en de Klara-app kun je servicenotities en besluiten indienen en later de beoordeling terugvinden. Rechtstreeks indienen vanuit andere Microsoft 365-apps staat op de planning.",
+      de: "In Klarwerk und in der Klara-App lassen sich Service-Notizen und Beschlüsse einreichen und wieder öffnen. In Klarwerk kann das Team auch ein Workflow-Ergebnis mit seinen Quellfassungen vorschlagen. Nach der Freigabe führt das Ergebnis zum Firmenartikel. Die Übernahme direkt aus weiteren Microsoft-365-Anwendungen ist geplant.",
+      en: "In Klarwerk and the Klara app you can submit service notes and decisions, then reopen them to see the review outcome. In Klarwerk, teams can also submit a workflow result with its source versions. After approval, the result links to the company knowledge article. Submission directly from additional Microsoft 365 applications is planned.",
+      nl: "In Klarwerk en de Klara-app kun je servicenotities en besluiten indienen en later de beoordeling terugvinden. In Klarwerk kunnen teams ook een workflowresultaat met de gebruikte bronversies indienen. Na goedkeuring verwijst het resultaat naar het kennisartikel. Rechtstreeks indienen vanuit andere Microsoft 365-apps staat op de planning.",
     },
     belege: [
       ["delivery", "25.11.2026 · .1145 · P02"],
+      ["delivery", "25.11.2026 · .1148 · P02/P04"],
+      ["planning", "produkt:20261125:workflowergebnis-firmenwissen"],
       ["planning", "aufnahme:20260922:gesamt-wissensarchitektur"],
       ["planning", "produkt:20261008:klara-gemeinsames-wissen"],
     ],
@@ -229,6 +231,8 @@ export const ergaenzungen: Redaktionseintrag[] = [
     ablauf: "P04",
     belege: [
       ["delivery", "25.11.2026 · .1147 · P04"],
+      ["delivery", "25.11.2026 · .1148 · P02/P04"],
+      ["planning", "produkt:20261125:workflowergebnis-firmenwissen"],
       ["planning", "produkt:20261125:teamablauf-gepruefte-entscheidung"],
     ],
   },

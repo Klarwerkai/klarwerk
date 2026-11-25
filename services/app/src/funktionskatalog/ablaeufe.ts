@@ -1959,9 +1959,9 @@ export const ablaeufe: Record<string, Ablauf> = {
   },
   P02: {
     input: {
-      de: "Ausgewählter Beschluss oder Erfahrungsbericht, bei Änderungen mit Ausgangsfassung",
-      en: "A selected decision or observation, with the original version for a revision",
-      nl: "Een geselecteerd besluit of een ervaring, bij een wijziging met de oorspronkelijke versie",
+      de: "Workflow-Ergebnis mit Quellen, Beschluss oder Erfahrungsbericht, bei Änderungen mit Ausgangsfassung",
+      en: "A workflow result with sources, a decision or an observation, with the original version for a revision",
+      nl: "Een workflowresultaat met bronnen, een besluit of een ervaring, bij een wijziging met de oorspronkelijke versie",
     },
     output: {
       de: "Nachvollziehbare Entscheidung und Beleg für die gültige Fassung",

@@ -31,6 +31,7 @@ import type { KnowledgeObject } from "../../knowledge-object";
 export type VerifizierungsArt =
   | "bewertung"
   | "verwalter"
+  | "eigentuemer"
   | "rueckgabe"
   // Entscheidungen 18/19 und 27: die befugte Weisung und die übernommene externe Freigabe.
   | "weisung"
@@ -70,6 +71,7 @@ export interface Verifizierung {
 }
 
 function artVon(action: string): VerifizierungsArt {
+  if (action === "ko.owner-validated") return "eigentuemer";
   if (action === "ko.admin-validated") {
     return "verwalter";
   }

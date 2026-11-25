@@ -293,6 +293,29 @@ export class TeamworkflowLaufDienst {
     if (!l || l.workflowId !== id) return workflowFehlt();
     return l;
   }
+  async ergebnisGrundlage(
+    id: string,
+    laufId: string,
+    ergebnisId: string,
+    user: SessionUser,
+    sitzung: WorkflowSitzung,
+  ) {
+    const lauf = await this.finde(id, laufId);
+    const r = await this.rahmen(id, user, lauf.version, true);
+    const ergebnis = lauf.ergebnisse.find((e) => e.id === ergebnisId);
+    if (
+      !ergebnis ||
+      lauf.stand !== "abgeschlossen" ||
+      !lauf.verlauf.some(
+        (e) => e.typ === "aktion" && e.index === ergebnis.index && e.ergebnisId === ergebnis.id,
+      )
+    )
+      return workflowFehlt();
+    const bindung = await this.bindung(r, user, sitzung);
+    const ende = await this.rahmen(id, await aktuell(user, sitzung), lauf.version, true);
+    if (ende.team.version !== bindung.teamVersion) return workflowStand();
+    return { lauf, team: ende.team, definition: r.definition, ergebnis, bindung };
+  }
   async liste(id: string, user: SessionUser, sitzung: WorkflowSitzung) {
     await this.rahmen(id, user, undefined, false);
     const alle = await this.repo.fuerWorkflow(id);

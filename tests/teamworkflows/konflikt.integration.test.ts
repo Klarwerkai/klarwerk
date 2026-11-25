@@ -28,6 +28,7 @@ it("weist eine bereits vorbereitete Fachbuchung zurück, wenn vor dem atomaren S
       {
         lesen: (id) => original.lesen(id),
         fuerWorkflow: (id) => original.fuerWorkflow(id),
+        offeneWissensvorschlaege: (ids) => original.offeneWissensvorschlaege(ids),
         async speichern(lauf, basis, bindung) {
           if (kurzVorBuchung) {
             const einfuegen = kurzVorBuchung;

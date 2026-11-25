@@ -515,6 +515,10 @@ export interface KoSourceRestrictions {
 }
 
 export interface KoSource {
+  /** Interner Herkunftsbeleg eines geprüften Teamworkflow-Ergebnisses. Wissensfassungen
+   * nutzen externalId und sourceVersion, Vorgänge zusätzlich ihre drei gebundenen Kennungen. */
+  workflowQuellart?: "wissensfassung" | "ergebnis";
+  workflowBezug?: { workflowId: string; laufId: string; ergebnisId: string };
   id: string;
   label: string;
   url: string | null;

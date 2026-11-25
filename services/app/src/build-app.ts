@@ -727,6 +727,7 @@ import {
   type WorkflowLaeufeRepo,
 } from "./teamworkflow-laeufe-repo";
 import { TeamworkflowLaufDienst } from "./teamworkflow-lauf";
+import { TeamworkflowWissen, speicherWissensbindung } from "./teamworkflow-wissen";
 import {
   InMemoryTeamworkflowRepo,
   PgTeamworkflowRepo,
@@ -911,6 +912,7 @@ export interface AppServices {
   teamassistenten: TeamassistentDienst;
   teamworkflows: TeamworkflowDienst;
   workflowLaeufe: TeamworkflowLaufDienst;
+  workflowWissen: TeamworkflowWissen;
   /**
    * produkt:20261007:templates-default — die Fassungen der Vorlagen, Standards, Space-Vorgaben,
    * Nutzung und Begriffe (`vorlagen.ts`). Im Postgres-Betrieb haltbar (`PgVorlagenAblage`).
@@ -2079,16 +2081,39 @@ export function assembleServices(
     nachfolgerBekannt: async (id) => (await repos.users.findById(id))?.approved === true,
   });
 
+  const assistentenRepo = opts.teamassistentRepo ?? new InMemoryTeamassistentRepo();
+  const definitionenRepo = opts.teamworkflowRepo ?? new InMemoryTeamworkflowRepo();
   const teamassistenten = new TeamassistentDienst(
-    opts.teamassistentRepo ?? new InMemoryTeamassistentRepo(),
+    assistentenRepo,
     teams,
     baueTeamassistentWissen({ ko, conflicts, ask }),
   );
-  const teamworkflows = new TeamworkflowDienst(
-    opts.teamworkflowRepo ?? new InMemoryTeamworkflowRepo(),
-    teams,
+  const teamworkflows = new TeamworkflowDienst(definitionenRepo, teams, teamassistenten);
+  const workflowRepo =
+    opts.workflowLaufRepo ??
+    new InMemoryWorkflowLaeufe(
+      speicherWissensbindung({
+        teams,
+        konto: (id) => repos.users.findById(id),
+        quelle: (id) => eingang.koRepo.findById(id),
+        konflikte: eingang.conflictsRepo,
+        workflows: definitionenRepo,
+        assistenten: assistentenRepo,
+      }),
+    );
+  const workflowLaeufe = new TeamworkflowLaufDienst(
+    workflowRepo,
+    teamworkflows,
     teamassistenten,
+    async (id) => (await repos.users.findById(id))?.name,
   );
+  const workflowWissen = new TeamworkflowWissen({
+    repo: workflowRepo,
+    laeufe: workflowLaeufe,
+    teams,
+    ko,
+    konto: (id) => repos.users.findById(id),
+  });
   return {
     audit,
     wissensuebergabe,
@@ -2129,12 +2154,8 @@ export function assembleServices(
     teams,
     teamassistenten,
     teamworkflows,
-    workflowLaeufe: new TeamworkflowLaufDienst(
-      opts.workflowLaufRepo ?? new InMemoryWorkflowLaeufe(),
-      teamworkflows,
-      teamassistenten,
-      async (id) => (await repos.users.findById(id))?.name,
-    ),
+    workflowLaeufe,
+    workflowWissen,
     // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
     vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
     verantwortungNachfolge,
@@ -7047,7 +7068,7 @@ export function buildApp(
   );
   app.register(teamassistentenRoutes(services.teamassistenten, guards, klaraSessions));
   app.register(teamworkflowRoutes(services.teamworkflows, guards));
-  app.register(workflowLaufRoutes(services.workflowLaeufe, guards));
+  app.register(workflowLaufRoutes(services.workflowLaeufe, services.workflowWissen, guards));
   // produkt:20261009:admin-teams: Teams anlegen, bearbeiten, Mitglieder mit Wirkungsvorschau,
   // archivieren — für die Kontoverwaltung (`users.manage`).
   app.register(

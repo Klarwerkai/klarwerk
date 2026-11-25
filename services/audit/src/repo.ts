@@ -182,6 +182,7 @@ export interface ValidationDecisionRef {
 export const VALIDATION_DECISION_ACTIONS: readonly string[] = [
   "ko.rated",
   "ko.admin-validated",
+  "ko.owner-validated",
   // JOB 557 D8: die Rückgabe zur Nacharbeit ist EINE Entscheidung, die unter ZWEI Namen auftritt —
   // je nachdem, wer wirklich zuständig ist (`services/validation/src/service.ts`,
   // `returnToResponsible`). Beide gehören deshalb hierher.

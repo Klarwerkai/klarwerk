@@ -879,6 +879,8 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
 // SCRUM-160: Evidence-Records separat vom KO-JSON. Append-only; vorhandene Evidence-ID wird
 // nicht überschrieben. Damit bleiben Quellen-/Anhang-Nachweise stabil referenzierbar.
 export interface EvidenceRepo {
+  /** Nur zur Rücknahme einer unbestätigten Erstanlage im Speicher. PostgreSQL nutzt ROLLBACK. */
+  verwerfeErstanlage?(koId: string): void;
   // Aufnahme gesamt-auditprotokoll (Lauf 3): optionaler TxContext — s. `KoRepo.insert`.
   append(record: EvidenceRecord, tx?: TxContext): Promise<void>;
   listByKo(koId: string): Promise<EvidenceRecord[]>;
@@ -898,6 +900,13 @@ export class InMemoryEvidenceRepo implements EvidenceRepo {
       this.schreibstand.geaendert();
     }
     return Promise.resolve();
+  }
+
+  verwerfeErstanlage(koId: string): void {
+    for (const [id, beleg] of this.items) {
+      if (beleg.koId === koId) this.items.delete(id);
+    }
+    this.schreibstand.geaendert();
   }
 
   listByKo(koId: string): Promise<EvidenceRecord[]> {

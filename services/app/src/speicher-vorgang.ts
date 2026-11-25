@@ -120,16 +120,19 @@ const schliessenErfassen: Erfassung = async (ziel, echt, args, vorgang) => {
   return geschlossen;
 };
 
+const koSchreiben: Erfassung = async (ziel, echt, args, vorgang) => {
+  const neu = args[0] as { id: string };
+  const vorher = await gebunden<(id: string) => Promise<unknown>>(ziel, "findById")(neu.id);
+  const ergebnis = await echt(...args);
+  const zuruecksetzen = gebunden<(id: string, v: unknown) => void>(ziel, "zuruecksetzen");
+  vorgang.rueckstellungen.push(() => zuruecksetzen(neu.id, vorher));
+  return ergebnis;
+};
+
 const ERFASSUNG: Readonly<Record<AblageName, Readonly<Record<string, Erfassung>>>> = {
   koRepo: {
-    update: async (ziel, echt, args, vorgang) => {
-      const neu = args[0] as { id: string };
-      const vorher = await gebunden<(id: string) => Promise<unknown>>(ziel, "findById")(neu.id);
-      const ergebnis = await echt(...args);
-      const zuruecksetzen = gebunden<(id: string, v: unknown) => void>(ziel, "zuruecksetzen");
-      vorgang.rueckstellungen.push(() => zuruecksetzen(neu.id, vorher));
-      return ergebnis;
-    },
+    insert: koSchreiben,
+    update: koSchreiben,
   },
   overlapRepo: {
     closeOpenForKo: schliessenErfassen,
@@ -170,7 +173,17 @@ const ERFASSUNG: Readonly<Record<AblageName, Readonly<Record<string, Erfassung>>
 // tests/dubletten-ruecknahme-lesepfad/atomar-ohne-datenbank.test.ts. Alles andere sind Lesezugriffe
 // und laufen durch (z. B. `audit.last(tx)` für die Kette).
 export const SCHREIBEND: Readonly<Record<AblageName, readonly string[]>> = {
-  koRepo: ["insert", "update", "delete", "setAiCheck", "resolveAiCheck", "bumpTrust"],
+  koRepo: [
+    "insert",
+    "update",
+    "delete",
+    "setAiCheck",
+    "resolveAiCheck",
+    "bumpTrust",
+    "setImageNames",
+    "setCaptionTexts",
+    "setBildInhalte",
+  ],
   overlapRepo: ["insert", "insertIfVersionsCurrent", "supersedeIfOpen", "update", "closeOpenForKo"],
   conflictsRepo: [
     "insert",

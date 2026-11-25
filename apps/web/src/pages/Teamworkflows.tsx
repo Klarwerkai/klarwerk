@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { type Entwurf, workflowFehler, workflows } from "../api/teamworkflows";
 import { kartenstil, useTeamKontext } from "../components/teamassistenten/teamKontext";
+import { OffeneWorkflowVorschlaege } from "../components/teamworkflows/OffeneWorkflowVorschlaege";
 import { WorkflowEditor } from "../components/teamworkflows/WorkflowEditor";
 import { WorkflowLaeufe, WorkflowVorgang } from "../components/teamworkflows/WorkflowLaeufe";
 import { Button, PageHeader } from "../components/ui";
@@ -132,6 +133,7 @@ function Arbeitsort({ kontext }: { kontext: string }) {
               </Button>
             </nav>
           ) : null}
+          <OffeneWorkflowVorschlaege />
           <section className={kartenstil}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">

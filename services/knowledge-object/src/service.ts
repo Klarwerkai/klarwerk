@@ -8935,6 +8935,77 @@ export class KoService {
     return true;
   }
 
+  /** Fachlich geprüfte Neuanlage aus einem Teamergebnis. Der Aufrufer bindet die
+   * Entscheidung an Vorschlag, Zuständigkeit und Quellfassungen in derselben Buchung. */
+  async createFromReviewedWorkflow(
+    input: CreateKoInput,
+    reviewer: string,
+    record: (ko: KnowledgeObject, tx?: TxContext) => Promise<void | (() => Promise<void>)>,
+  ): Promise<KnowledgeObject> {
+    const audit = this.audit;
+    if (!reviewer.trim() || !audit || !this.ruecknahmeKlammer)
+      throw new KoError("INVALID", "Die fachliche Entscheidung kann nicht belegt werden.");
+    const basis = await this.buildCreatedKo({
+      ...input,
+      ownership: { owner: reviewer, reviewers: [], validators: [reviewer] },
+    });
+    if (basis.schutzdatenQuarantaene)
+      throw new KoError("INVALID", "Der Artikel enthält gesperrte Schutzdaten.");
+    let setzeVorschlagZurueck: (() => Promise<void>) | void;
+    return this.ruecknahmeKlammer(
+      async (tx) => {
+        // „erstellt“ geht der personenbezogenen Annahme voraus. finishCreated nutzt dieselbe
+        // stabile Ereigniskennung und ergänzt Snapshot, Suchprojektion und Herkunftsbelege.
+        await audit.recordOnce(
+          `ko.created:${basis.id}`,
+          {
+            actor: input.author,
+            action: "ko.created",
+            target: basis.id,
+          },
+          tx,
+        );
+        const beleg = await audit.record(
+          {
+            actor: reviewer,
+            action: "ko.owner-validated",
+            target: basis.id,
+            payload: {
+              koVersion: basis.version,
+              kontoregel: "eigentuemerfreigabe" satisfies Kontoregel,
+            },
+          },
+          tx,
+        );
+        const ref = { auditSeq: beleg.seq, auditHash: beleg.hash };
+        const artikel = mitPruefzeitpunkt(
+          basis,
+          {
+            ...basis,
+            status: "validiert",
+            validationDecisionRef: ref,
+            annahmeRef: { ...ref, koVersion: basis.version },
+          },
+          beleg.at,
+        );
+        await this.repo.insert(artikel, tx);
+        await this.finishCreated(artikel, input.author, tx, { snapshot() {}, projektion() {} });
+        setzeVorschlagZurueck = await record(artikel, this.withTx ? tx : undefined);
+        return artikel;
+      },
+      this.withTx
+        ? undefined
+        : async () => {
+            await Promise.all([
+              setzeVorschlagZurueck?.(),
+              this.versions?.remove(basis.id, basis.version),
+              this.searchProjections.removeByKo(basis.id),
+              this.evidence?.verwerfeErstanlage?.(basis.id),
+            ]);
+          },
+    );
+  }
+
   private async require(id: string, tx?: TxContext): Promise<KnowledgeObject> {
     const ko = await this.repo.findById(id, tx);
     // SCRUM-422: getrashte KOs sind für alle normalen Pfade nicht vorhanden.

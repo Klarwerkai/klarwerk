@@ -60,6 +60,7 @@ describe("Redaktionelle Funktionswege", () => {
       ["P02", "V03"],
       ["V03", "P03"],
       ["P03", "P04"],
+      ["P04", "P02"],
     ]);
     expect(weg?.verbindungen.find((k) => k.nach === "P03")?.stand).toBe("nachgewiesen");
     expect(weg?.verbindungen.find((k) => k.nach === "P04")?.stand).toBe("nachgewiesen");
@@ -69,6 +70,7 @@ describe("Redaktionelle Funktionswege", () => {
       P02: [
         "aufnahme:20260922:gesamt-wissensarchitektur",
         "produkt:20261008:klara-gemeinsames-wissen",
+        "produkt:20261125:workflowergebnis-firmenwissen",
       ],
       P03: ["produkt:20261125:teamassistent-pruefbeispiele"],
       P04: ["produkt:20261125:teamablauf-gepruefte-entscheidung"],

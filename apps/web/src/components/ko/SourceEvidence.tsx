@@ -3,6 +3,7 @@ import type { KoSource } from "../../api/types";
 import i18n from "../../i18n";
 import { sourceBadgeKey } from "../../lib/koSource";
 import { safeHttpUrl } from "../../lib/safeUrl";
+import { workflowWissensquelle } from "../../lib/workflowWissensquelle";
 import { ConfidenceBar } from "../trust";
 import { ExterneQuelleKennung } from "./ExterneQuelleKennung";
 
@@ -32,7 +33,7 @@ export function SourceLink({
   const { t } = useTranslation();
   // G-2/WP2: defensiv gegen Altdaten — eine gespeicherte javascript:/data:/relative URL wird NICHT zum
   // aktiven Link, sondern fällt auf die „interne Quelle"-Textdarstellung zurück.
-  const href = safeHttpUrl(source.url);
+  const href = workflowWissensquelle(source)?.href ?? safeHttpUrl(source.url);
   return (
     // R-0205: die Kennung macht EINE Quelle adressierbar — die Konfliktansicht zeigt sie kompakt
     // ohne Listeneintrag (`tests-smoke/externe-quelle-kennzeichnung-browser.spec.ts`).

@@ -136,12 +136,13 @@ describe("W3-B/67 · die sechs Zustaende der Referenzpruefung (KW-W3-19)", () =>
   // Aufnahme gesamt-wissen-herkunft (Entscheidungen 18/19 und 27): zwei weitere benannte
   // Entscheidungen — die befugte Weisung mit punktweiser Entscheidung und die Übernahme einer
   // externen Freigabe. Aufnahme gesamt-peer-validierung (Antworten 18/19): dazu die unmittelbar
-  // gültige eigene Weisung und ihre Sichtung. Zusammen acht Namen; die Menge bleibt BENANNT, jede
+  // gültige eigene Weisung und ihre Sichtung. Zusammen mit der Eigentümerfreigabe bleibt jede Aktion einzeln benannt und
   // wird unten einzeln gegen `pruefeValidationDecisionRef` gefahren.
-  it("die erlaubte Action-Menge ist BENANNT und traegt genau die acht Entscheidungen", () => {
+  it("die erlaubte Action-Menge ist BENANNT und enthält die Entscheidungen einschließlich Eigentümerfreigabe", () => {
     expect([...VALIDATION_DECISION_ACTIONS].sort()).toEqual([
       "ko.admin-validated",
       "ko.externe-freigabe-uebernommen",
+      "ko.owner-validated",
       "ko.rated",
       "ko.returned-to-author",
       "ko.returned-to-owner",

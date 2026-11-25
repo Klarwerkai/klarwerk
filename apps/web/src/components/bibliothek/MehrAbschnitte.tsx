@@ -100,6 +100,7 @@ import { trustExplainer } from "../../lib/trustExplainer";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { useReadiness } from "../../lib/useReadiness";
 import { statusSchluessel } from "../../lib/wissensstatus";
+import { workflowWissensquelle } from "../../lib/workflowWissensquelle";
 import {
   ZEICHNUNG_ACCEPT,
   anhangStelle,
@@ -1675,6 +1676,7 @@ export function MehrAbschnitte({
               // zweite Abfrage, und offline bleibt die Aussage tragfähig (dieselbe Hausregel wie am
               // Belegabschnitt weiter unten).
               const nachweis = quellennachweis(s, ko.attachments ?? [], i18n.language);
+              const intern = workflowWissensquelle(s);
               // R-0162/R-0163/R-0549: was der Import über die Quelle festgehalten hat.
               const hinweise = quellHinweise(s, i18n.language);
               return (
@@ -1791,6 +1793,15 @@ export function MehrAbschnitte({
                             </span>
                           ) : null}
                         </>
+                      ) : intern ? (
+                        <a className="font-medium text-brand-text underline" href={intern.href}>
+                          {t(
+                            intern.typ === "ergebnis"
+                              ? "workflows.wissen.ursprung"
+                              : "workflows.wissen.quellbeitrag",
+                            { v: s.sourceVersion },
+                          )}
+                        </a>
                       ) : (
                         <ExternalUrlText
                           url={s.url}

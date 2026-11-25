@@ -106,7 +106,7 @@ export function fassungZumStichtag(
 }
 
 /** Die Entscheidungen, die eine Freigabe tragen (Spiegel der Auditregel, `VALIDATION_DECISION_ACTIONS`). */
-const FREIGABE_ENTSCHEIDUNGEN = ["ko.rated", "ko.admin-validated"];
+const FREIGABE_ENTSCHEIDUNGEN = ["ko.rated", "ko.admin-validated", "ko.owner-validated"];
 const RUECKGABEN = ["ko.returned-to-author", "ko.returned-to-owner"];
 
 /**
@@ -143,7 +143,9 @@ export function freigabeZumStichtagBelegt(
       return true;
     }
   }
-  const freigaben = eintraege.filter((e) => e.action === "ko.admin-validated" && passt(e));
+  const freigaben = eintraege.filter(
+    (e) => (e.action === "ko.admin-validated" || e.action === "ko.owner-validated") && passt(e),
+  );
   if (freigaben.length === 0) {
     return false;
   }
