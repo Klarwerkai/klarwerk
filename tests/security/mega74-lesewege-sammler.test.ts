@@ -205,7 +205,62 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // ================================================================================================
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
+const TEAMFRAGE: Eintrag = {
+  urteil: "DIENST_FILTERT",
+  kette: [
+    { datei: "services/app/src/teamassistenten.ts", funktion: "fragen" },
+    { datei: "services/app/src/teamassistenten-wissen.ts", funktion: "fragen" },
+    { datei: "services/app/src/teamassistenten-wissen.ts", funktion: "lade" },
+    { datei: "services/app/src/teamassistenten-wissen.ts", funktion: "lesbar" },
+  ],
+  entscheidung: "darfSehen",
+  grund:
+    "Teammitgliedschaft und aktive Assistentenfassung begrenzen den Aufruf. Der Wissensdienst liest die ausgewählten Artikel im Rechtekontext des fragenden Kontos und prüft zitierte Versionen vor der Rückgabe erneut.",
+};
+
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/teamassistenten": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "TeamassistentDienst.liste und sicht geben Teamnamen, Assistentennamen und Versionsmetadaten für berechtigte Mitglieder oder Autoren aus.",
+  },
+  "GET /api/teamassistenten/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "TeamassistentDienst.lesen und sicht zeigen dem Autor seine Definition, Beispiele und Prüfurteile. Mitglieder sehen nur die veröffentlichte Kurzansicht.",
+  },
+  "POST /api/teamassistenten": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "TeamassistentDienst.anlegen prüft Teamzugehörigkeit und freigegebene Quellen und gibt den eigenen Entwurf zurück.",
+  },
+  "PUT /api/teamassistenten/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "TeamassistentDienst.speichern bindet den Entwurf an Autor, Team und Revision und prüft die gewählten Quellen erneut.",
+  },
+  "DELETE /api/teamassistenten/:id": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "TeamassistentDienst.loeschen entfernt nur einen eigenen, nie veröffentlichten Entwurf und antwortet ohne Inhalt.",
+  },
+  "POST /api/teamassistenten/:id/pruefen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "TeamassistentDienst.pruefen liefert dem Autor für seine Beispiele jeweils das erwartete und tatsächliche Urteil. Die Antwort enthält keine Textauszüge aus Wissensartikeln.",
+  },
+  "POST /api/teamassistenten/:id/freigeben": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "TeamassistentDienst.freigeben überprüft bestandene Prüfung und Quellfassungen. Zurückgegeben wird die Autorenansicht.",
+  },
+  "POST /api/teamassistenten/:id/zurueckziehen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "TeamassistentDienst.zurueckziehen prüft Eigentümer und Team und gibt den eigenen Entwurfsstand zurück.",
+  },
+  "POST /api/teamassistenten/:id/fragen": TEAMFRAGE,
+  "POST /api/office/teamassistenten/:id/fragen": TEAMFRAGE,
   "GET /api/me/klara/notizen/:id/wissen/stand": {
     urteil: "DIENST_FILTERT",
     kette: [{ datei: "services/app/src/klara-wissensuebernahme.ts", funktion: "beitragsstand" }],

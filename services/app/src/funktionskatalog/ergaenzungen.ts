@@ -194,19 +194,22 @@ export const ergaenzungen: Redaktionseintrag[] = [
     id: "P03",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk", "office", "app"],
-    status: "planned",
+    status: "available",
     title: {
       de: "Einen geprüften Assistenten für das Team veröffentlichen",
       en: "Publish a tested assistant for the team",
       nl: "Een geteste assistent voor het team publiceren",
     },
     description: {
-      de: "Ein Fachbereich legt Aufgabe, Quellen, Werkzeuge und Zielgruppe fest, erprobt Antworten an eigenen Beispielen und gibt eine Fassung für sein Team frei.",
-      en: "A department defines the task, sources, tools and audience, tests answers against its own examples and releases a version for its team.",
-      nl: "Een afdeling kiest de taak, bronnen, hulpmiddelen en doelgroep, toetst antwoorden aan eigen voorbeelden en geeft een versie vrij voor het team.",
+      de: "Im Fachbereich wählst du ein Team, eine Aufgabe und freigegebene Wissensquellen. Mit eigenen Beispielen prüfst du belegte, widersprochene und offene Aussagen. Dein Team kann die geprüfte Fassung in Klarwerk, Klara und Office befragen.",
+      en: "Choose a team, a task and approved knowledge sources. Use your own examples to test supported, contradicted and unanswered claims. Your team can ask the published version questions in Klarwerk, Klara and Office.",
+      nl: "Kies een team, een taak en goedgekeurde kennisbronnen. Toets met eigen voorbeelden welke uitspraken onderbouwd, tegengesproken of onbeantwoord zijn. Je team kan de vrijgegeven versie vragen stellen in Klarwerk, Klara en Office.",
     },
     ablauf: "P03",
-    belege: [["planning", "produkt:20261125:teamassistent-pruefbeispiele"]],
+    belege: [
+      ["delivery", "25.11.2026 · .1146 · P03"],
+      ["planning", "produkt:20261125:teamassistent-pruefbeispiele"],
+    ],
   },
   {
     id: "P04",

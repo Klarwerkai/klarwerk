@@ -79,6 +79,7 @@ const OBERGRUPPE_JE_ZIEL: Record<string, ObergruppeId> = {
   // wirft `obergruppeVon`, sobald eine Rolle den Punkt sieht — die Schnellnavigation „Gehe zu …"
   // fragt ihn für JEDES Navigationsziel (`direktzugangZiele`).
   gesamtanweisungen: "arbeiten",
+  teamassistenten: "arbeiten",
   fragen: "arbeiten",
   bibliothek: "arbeiten",
   wissensnetz: "arbeiten",

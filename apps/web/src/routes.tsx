@@ -205,6 +205,9 @@ const Richtlinien = lazy(() =>
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
 // produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
 const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
+const Teamassistenten = lazy(() =>
+  import("./pages/Teamassistenten").then((m) => ({ default: m.Teamassistenten })),
+);
 // produkt:20261007:interner-chat: nachgeladen wie jede andere Seite.
 const Chat = lazy(() => import("./pages/Chat").then((m) => ({ default: m.Chat })));
 // produkt:20261007:artikel-gemeinsam: der gemeinsame Entwurf eines Artikels.
@@ -260,6 +263,7 @@ const PAGES: Record<string, ComponentType> = {
   // wie die `id` des Menüpunkts (`app/navigation.ts`) — `Guarded` schlägt hier genau darunter nach.
   // Ohne diesen Eintrag fiele die berechtigte Rolle auf `PlaceholderPage` statt auf die Fläche.
   gesamtanweisungen: GesamtanweisungBereich,
+  teamassistenten: Teamassistenten,
   fragen: Ask,
   bibliothek: Library,
   extern: ExternalKnowledge,

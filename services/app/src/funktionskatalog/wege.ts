@@ -47,6 +47,11 @@ function verbindung(
 }
 
 const belege = {
+  teamassistent: text(
+    "25.11.2026 · .1146 · Geprüfte Teamfassung mit freigegebenen Quellen",
+    "25 November 2026 · .1146 · Tested team version with approved sources",
+    "25 november 2026 · .1146 · Geteste teamversie met goedgekeurde bronnen",
+  ),
   wissensvorschlag: text(
     "25.11.2026 · .1145 · Einreichung und fachliche Entscheidung",
     "25 November 2026 · .1145 · Submission and review decision",
@@ -621,8 +626,8 @@ export const funktionswege: KatalogWeg[] = [
           "Choose approved knowledge as a source for a team assistant",
           "Goedgekeurde kennis als bron voor een teamassistent kiezen",
         ),
-        "vorgesehen",
-        belege.systemplan,
+        "nachgewiesen",
+        belege.teamassistent,
       ),
       verbindung(
         "P03",

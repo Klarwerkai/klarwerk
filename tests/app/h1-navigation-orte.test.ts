@@ -94,10 +94,11 @@ describe("JOB 3060 · H1 · die drei Orte der Navigation", () => {
   // des Mockups samt „Meine Entwürfe") und nicht „Einstellungen" — also führt es diese Menge. Der
   // Fall darüber rechnet weiterhin nach, dass die drei Mengen die Gruppen restlos und
   // überschneidungsfrei aufteilen; ergänzt wurde einer, umgestellt keiner.
-  it("„Weitere Bereiche“ führt die dreizehn übrigen Punkte in der Reihenfolge des Auftrags", () => {
+  it("„Weitere Bereiche“ führt die Arbeitsseiten einschließlich der Teamassistenten", () => {
     expect(weitereBereicheItems().map((i) => i.id)).toEqual([
       "aufgaben",
       "gesamtanweisungen",
+      "teamassistenten",
       "konflikte",
       "duplikate",
       "wissensnetz",

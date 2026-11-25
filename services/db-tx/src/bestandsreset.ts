@@ -153,6 +153,8 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   // Paarpflichten (G2): an Aussagen und ihre Stände gebunden, fallen mit dem Wissen.
   "conflict_pair_obligations",
   "conflict_pair_obligation_runs",
+  // Saved assistant versions reference approved sources and their examples.
+  "team_assistenten",
   "answer_snapshots",
   "answer_records",
   "gaps",

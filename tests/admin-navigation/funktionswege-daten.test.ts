@@ -61,6 +61,9 @@ describe("Redaktionelle Funktionswege", () => {
       ["V03", "P03"],
       ["P03", "P04"],
     ]);
+    expect(weg?.verbindungen.find((k) => k.nach === "P03")?.stand).toBe("nachgewiesen");
+    expect(weg?.verbindungen.find((k) => k.nach === "P04")?.stand).toBe("vorgesehen");
+    expect(entries.find((e) => e.id === "P03")?.status).toBe("available");
     const auftraege = {
       P02: [
         "aufnahme:20260922:gesamt-wissensarchitektur",

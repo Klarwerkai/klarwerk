@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { type Browser, type Page, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { anfrage, fachbereich } from "../teamassistenten/aufbau";
 
 const folder = join(process.cwd(), "apps/web/public/word-addin");
 const images = join(tmpdir(), `klarwerk-word-ui-min-${process.pid}`);
@@ -1170,6 +1172,76 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
       expect(await page.locator("#kw-frage").inputValue()).toBe("Entwurf aus der Begleitung");
     } finally {
       await page.close();
+    }
+  });
+
+  it.each([
+    ["", "de", "Teamassistenten", "Assistenten fragen"],
+    ["Excel", "en", "Team assistants", "Ask assistant"],
+    ["PowerPoint", "nl", "Teamassistenten", "Vraag het de assistent"],
+  ])("öffnet die geprüfte Teamfassung im Host %s (%s)", async (host, lang, liste, fragen) => {
+    const page = await open("taskpane.html", false, host, lang);
+    const services = buildServices();
+    const app = buildApp(services);
+    try {
+      const f = await fachbereich(services, app);
+      const autor = anfrage(app, f.autor.token);
+      const leser = anfrage(app, f.leser.token);
+      const pruefung = await autor("POST", `${f.pfad}/pruefen`, { revision: 1, sprache: lang });
+      expect(pruefung.json().pruefung.bestanden).toBe(true);
+      const freigabe = await autor("POST", `${f.pfad}/freigeben`, {
+        revision: pruefung.json().revision,
+        version: 1,
+      });
+      expect(freigabe.statusCode, freigabe.body).toBe(200);
+      const quelle = await services.ko.get(f.ko.id);
+      if (!quelle) throw new Error("Prüfquelle fehlt");
+      let body: unknown;
+      await page.route(/\/api\/(?:office\/)?teamassistenten(?:\/|$)/, async (route) => {
+        const req = route.request();
+        const path = new URL(req.url()).pathname;
+        const method = req.method();
+        if (method !== "GET" && method !== "POST") throw new Error(method);
+        const data = method === "GET" ? undefined : req.postDataJSON();
+        if (data) body = data;
+        const r = await leser(method, path, data);
+        return route.fulfill({
+          status: r.statusCode,
+          contentType: "application/json",
+          body: r.body,
+        });
+      });
+      await choose(page, "functions");
+      await page.getByRole("button", { name: liste, exact: true }).click();
+      const bereich = page.locator("#mini-page-teamAssistants");
+      await bereich.getByRole("combobox").waitFor();
+      expect(await bereich.getByRole("option").allTextContents()).toEqual([
+        `${f.definition.name} · ${f.team.name} · v1`,
+      ]);
+      const sende = bereich.getByRole("button", { name: fragen });
+      expect(await sende.isDisabled()).toBe(true);
+      await bereich.getByRole("textbox").fill(f.aussage);
+      await sende.press("Enter");
+      const link = bereich.getByRole("link", { name: `${quelle.title} · v${quelle.version}` });
+      await link.waitFor();
+      expect(await bereich.innerText()).toContain(f.aussage);
+      expect(body).toEqual({ frage: f.aussage, version: 1, sprache: lang });
+      const fund = new URL((await link.getAttribute("href")) ?? "", origin);
+      expect(fund.pathname).toBe(`/wissen/${quelle.id}`);
+      expect(fund.searchParams.get("fassung")).toBe(String(quelle.version));
+      expect(fund.searchParams.get("stelle")).toBeTruthy();
+      const ende = await autor("POST", `${f.pfad}/zurueckziehen`, {
+        revision: freigabe.json().revision,
+      });
+      expect(ende.statusCode, ende.body).toBe(200);
+      await sende.click();
+      await bereich.getByRole("button").last().waitFor();
+      await bereich.getByRole("link").waitFor({ state: "detached" });
+      await bereich.getByRole("button").click();
+      expect(await bereich.getByRole("combobox").count()).toBe(0);
+    } finally {
+      await page.close();
+      await app.close();
     }
   });
 

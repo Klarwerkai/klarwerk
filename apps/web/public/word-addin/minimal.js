@@ -11,6 +11,13 @@
       clear: "Leeren",
       history: "Verlauf",
       functions: "Meine Funktionen",
+      teamAssistants: "Teamassistenten",
+      teamChoose: "Freigegebenen Assistenten wählen",
+      teamEmpty: "Für deine Teams ist noch kein Assistent freigegeben.",
+      teamQuestion: "Frage zum Firmenwissen",
+      teamAsk: "Assistenten fragen",
+      teamChanged:
+        "Die Freigabe oder dein Zugriff hat sich geändert. Lade die Teamassistenten erneut.",
       settings: "Einstellungen",
       help: "Hilfe",
       context: "Kontext und Datenwege",
@@ -106,6 +113,12 @@
       clear: "Clear",
       history: "History",
       functions: "My functions",
+      teamAssistants: "Team assistants",
+      teamChoose: "Choose a published assistant",
+      teamEmpty: "No assistant has been published for your teams yet.",
+      teamQuestion: "Question about company knowledge",
+      teamAsk: "Ask assistant",
+      teamChanged: "The published version or your access has changed. Reload the team assistants.",
       settings: "Settings",
       help: "Help",
       context: "Context and data access",
@@ -201,6 +214,12 @@
       clear: "Wissen",
       history: "Geschiedenis",
       functions: "Mijn functies",
+      teamAssistants: "Teamassistenten",
+      teamChoose: "Kies een vrijgegeven assistent",
+      teamEmpty: "Voor je teams is nog geen assistent vrijgegeven.",
+      teamQuestion: "Vraag over bedrijfskennis",
+      teamAsk: "Vraag het de assistent",
+      teamChanged: "De vrijgave of je toegang is gewijzigd. Laad de teamassistenten opnieuw.",
       settings: "Instellingen",
       help: "Hulp",
       context: "Context en gegevens",
@@ -313,7 +332,20 @@
       if (text !== undefined) el.textContent = text;
       return el;
     };
-    let locale = config.language || "de";
+    let userLanguage = config.language;
+    if (!userLanguage) {
+      try {
+        const saved = root.localStorage.getItem("kw.sprache");
+        if (Object.hasOwn(TEXT, saved)) userLanguage = saved;
+      } catch {
+        // Office can disable web storage. The current pane still keeps a manual choice.
+      }
+    }
+    const hostLanguage = () => {
+      const code = root.Office?.context?.displayLanguage?.toLowerCase().split("-")[0];
+      return Object.hasOwn(TEXT, code) ? code : "de";
+    };
+    let locale = userLanguage || hostLanguage();
     let page = "home";
     let account = null;
     let generation = 0;
@@ -751,7 +783,15 @@
         el.setAttribute("aria-pressed", String(locale === lang));
         el.addEventListener("click", () => {
           if (config.setLanguage) config.setLanguage(lang);
-          else setLanguage(lang);
+          else {
+            userLanguage = lang;
+            try {
+              root.localStorage.setItem("kw.sprache", lang);
+            } catch {
+              // The selection still applies in this pane.
+            }
+            setLanguage(lang);
+          }
         });
         languages.append(el);
       }
@@ -845,6 +885,7 @@
       feedWindow = null;
       for (const key of [
         "history",
+        "teamAssistants",
         "notes",
         "tasks",
         "reminders",
@@ -1007,6 +1048,11 @@
     };
     root.KlarwerkWordFunktionen?.attach(ui, functions, settings);
     setLanguage(locale);
+    if (!config.language) {
+      root.Office?.onReady?.(() => {
+        if (!userLanguage && locale !== hostLanguage()) setLanguage(hostLanguage());
+      });
+    }
     return ui;
   }
   root.KlarwerkWordMinimal = { create };

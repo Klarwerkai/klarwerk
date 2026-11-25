@@ -35,7 +35,15 @@
           method,
           ...(body === undefined
             ? {}
-            : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+            : {
+                headers: {
+                  ...(path.startsWith("/api/office/teamassistenten/")
+                    ? panel.sitzungsKoepfe()
+                    : {}),
+                  "content-type": "application/json",
+                },
+                body: JSON.stringify(body),
+              }),
         })
         .then(async (res) => ({
           status: res.status,

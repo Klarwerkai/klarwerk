@@ -287,6 +287,7 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   { stufe: "EIGENER_KALENDER_SCHEMA", risiko: "ADDITIV" },
   // R-0468: eine CREATE TABLE IF NOT EXISTS mit PK, ohne Seed/Extension/Fremdschlüssel.
   { stufe: "VERHALTENSARTEFAKTE_SCHEMA", risiko: "ADDITIV" },
+  { stufe: "TEAMASSISTENTEN_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

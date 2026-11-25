@@ -655,6 +655,7 @@ import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
+import { teamassistentenRoutes } from "./routes/teamassistenten-routes";
 import { teamsRoutes } from "./routes/teams-routes";
 import { technischeDatenRoutes } from "./routes/technische-daten-routes";
 // ADMIN-15: Unternehmensprofil und interne Richtlinien.
@@ -710,6 +711,13 @@ import { speicherVorgang } from "./speicher-vorgang";
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
 // produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg; im Postgres-Betrieb haltbar.
+import {
+  InMemoryTeamassistentRepo,
+  PgTeamassistentRepo,
+  TeamassistentDienst,
+  type TeamassistentRepo,
+} from "./teamassistenten";
+import { baueTeamassistentWissen } from "./teamassistenten-wissen";
 import { InMemoryTeamsRepo, PgTeamsRepo, TeamAufloesendeSpaces, type TeamsRepo } from "./teams";
 import { quellenlageAus, quellsperreAus } from "./technische-daten-quellen";
 import { type TransportTls, tlsServerFabrik } from "./transport-tls";
@@ -886,6 +894,7 @@ export interface AppServices {
    * (`TeamAufloesendeSpaces`): Teammitglieder gebundener Spaces sind dort abgeleitete Mitglieder.
    */
   teams: TeamsRepo;
+  teamassistenten: TeamassistentDienst;
   /**
    * produkt:20261007:templates-default — die Fassungen der Vorlagen, Standards, Space-Vorgaben,
    * Nutzung und Begriffe (`vorlagen.ts`). Im Postgres-Betrieb haltbar (`PgVorlagenAblage`).
@@ -1581,6 +1590,7 @@ export function assembleServices(
     gemeinsameEntwuerfe?: GemeinsamerEntwurfRepo;
     // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     teams?: TeamsRepo;
+    teamassistentRepo?: TeamassistentRepo;
     // produkt:20261007:templates-default: gesetzt von `buildPgServices`; sonst im Speicher.
     vorlagen?: VorlagenAblage;
     // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -2089,6 +2099,11 @@ export function assembleServices(
     // produkt:20261007:artikel-gemeinsam — Postgres, wenn injiziert, sonst im Speicher.
     gemeinsameEntwuerfe: opts.gemeinsameEntwuerfe ?? new InMemoryGemeinsamerEntwurfRepo(),
     teams,
+    teamassistenten: new TeamassistentDienst(
+      opts.teamassistentRepo ?? new InMemoryTeamassistentRepo(),
+      teams,
+      baueTeamassistentWissen({ ko, conflicts, ask }),
+    ),
     // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
     vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
     verantwortungNachfolge,
@@ -2668,6 +2683,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261009:admin-teams: Teamfassungen überleben Neuladen, Neustart und Deploy
       // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
       teams: new PgTeamsRepo(pool),
+      teamassistentRepo: new PgTeamassistentRepo(pool),
       // produkt:20261007:templates-default: Vorlagen, Standards, Space-Vorgaben, Nutzung und
       // Begriffe überleben Neuladen, Neustart und Deploy (`VORLAGEN_SCHEMA`, angelegt von `migrate()`).
       vorlagen: new PgVorlagenAblage(pool),
@@ -6996,6 +7012,7 @@ export function buildApp(
       guards,
     ),
   );
+  app.register(teamassistentenRoutes(services.teamassistenten, guards, klaraSessions));
   // produkt:20261009:admin-teams: Teams anlegen, bearbeiten, Mitglieder mit Wirkungsvorschau,
   // archivieren — für die Kontoverwaltung (`users.manage`).
   app.register(

@@ -160,6 +160,7 @@ describe("C1 · die CSP-Ausnahme gilt für das Office-Fenster genau wie für das
     expect(WORD_ADDIN_CSP_PATHS).toEqual([
       "/word-addin/taskpane.html",
       "/word-addin/anmeldung.html",
+      "/word-addin/begleitung.html",
     ]);
     expect(isOfficeAddinCspPath("/office-addin/taskpane.html?v=1#x")).toBe(true);
     expect(isWordAddinCspPath(KLARA_OFFICE_TASKPANE_PFAD)).toBe(false);

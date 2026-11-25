@@ -42,7 +42,13 @@
         credentials: "include",
         ...(body === undefined
           ? {}
-          : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+          : {
+              headers: {
+                ...(path.startsWith("/api/office/teamassistenten/") ? klaraS4Header() : {}),
+                "content-type": "application/json",
+              },
+              body: JSON.stringify(body),
+            }),
       }).then(async (res) => ({
         status: res.status,
         json: await res.json().catch(() => null),

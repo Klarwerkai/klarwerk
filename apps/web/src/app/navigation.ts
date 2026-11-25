@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   BarChart3,
   BookOpen,
+  Bot,
   Building2,
   CheckSquare,
   Copy,
@@ -114,6 +115,15 @@ export const NAV_GROUPS: NavGroup[] = [
         badgeKey: "tasks",
         section: "7.1",
         shot: "02",
+      },
+      {
+        id: "teamassistenten",
+        path: "/teamassistenten",
+        labelKey: "teamassistenten.titel",
+        icon: Bot,
+        minRole: "viewer",
+        section: "P03",
+        shot: "",
       },
       {
         id: "erfassen",
@@ -492,6 +502,7 @@ const WEITERE_BEREICHE_IDS = [
   // Alternative wäre gewesen, sie in keiner der drei Mengen zu führen, und genau das fängt
   // `tests/app/h1-navigation-orte.test.ts` ab: ein Punkt ohne Ort fiele still aus dem Bild.
   "gesamtanweisungen",
+  "teamassistenten",
   "konflikte",
   "duplikate",
   "wissensnetz",

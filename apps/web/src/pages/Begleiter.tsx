@@ -26,6 +26,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -87,6 +88,7 @@ import {
   vorlesen,
 } from "../components/klara-vorschau/vorlesen";
 import type { Herkunft } from "../components/klara-vorschau/zustand";
+import { TeamassistentenNutzen } from "../components/teamassistenten/TeamassistentenNutzen";
 import { VormachenFlaeche } from "../components/vormachen/VormachenFlaeche";
 import { LegalFooter } from "../legal/LegalPages";
 import {
@@ -219,23 +221,20 @@ export function Begleiter(): JSX.Element {
   );
 }
 
-function BegleiterNotizen(): JSX.Element {
-  const { t } = useTranslation();
+function Funktionsbereich({
+  titel,
+  testId,
+  children,
+}: { titel: string; testId: string; children: ReactNode }): JSX.Element {
   const [offen, setOffen] = useState(false);
   return (
     <details
-      data-testid="begleiter-notizen"
+      data-testid={testId}
       className="rounded-card border border-hairline bg-surface px-3 py-2"
       onToggle={(event) => setOffen(event.currentTarget.open)}
     >
-      <summary className="cursor-pointer text-[12.5px] font-semibold text-ink">
-        {t("begleiter.notizenWissen")}
-      </summary>
-      {offen && (
-        <div className="mt-2">
-          <KlaraNotizen />
-        </div>
-      )}
+      <summary className="cursor-pointer text-[12.5px] font-semibold text-ink">{titel}</summary>
+      {offen && <div className="mt-2">{children}</div>}
     </details>
   );
 }
@@ -1598,7 +1597,17 @@ function BegleiterInhalt(): JSX.Element {
                 {t("kalender.titel")}
               </a>
               {kontoId && sitzungBeantwortet && echt.kontoId === kontoId && (
-                <BegleiterNotizen key={kontoId} />
+                <div key={kontoId} className="space-y-3">
+                  <Funktionsbereich
+                    testId="begleiter-teamassistenten"
+                    titel={t("begleiter.teamassistenten")}
+                  >
+                    <TeamassistentenNutzen />
+                  </Funktionsbereich>
+                  <Funktionsbereich testId="begleiter-notizen" titel={t("begleiter.notizenWissen")}>
+                    <KlaraNotizen />
+                  </Funktionsbereich>
+                </div>
               )}
               <VormachenFlaeche />
               <MeineFunktionen />

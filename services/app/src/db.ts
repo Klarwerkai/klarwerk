@@ -107,6 +107,7 @@ import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
 // produkt:20261009:admin-teams: die Fassungen der Teams — neben den Spaces, die sie binden.
+import { TEAMASSISTENTEN_SCHEMA } from "./teamassistenten";
 import { TEAMS_SCHEMA } from "./teams";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte und zusätzlich angelegte Sprachen.
 import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
@@ -451,6 +452,7 @@ export const schemas = [
   KLARA_FRISTEN_SCHEMA,
   // R-0468: append-only Verhaltensfassungen, additiv ohne Seed/Extension/Fremdschlüssel.
   VERHALTENSARTEFAKTE_SCHEMA,
+  TEAMASSISTENTEN_SCHEMA,
 ];
 
 // ================================================================================================

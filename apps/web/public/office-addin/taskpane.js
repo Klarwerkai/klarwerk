@@ -1087,6 +1087,7 @@
     frageAbbrechen: frageAbbrechen,
     // PP-02 (folien-herkunft.js): derselbe Abrufweg samt Übergabeschlüssel — kein zweiter Login.
     abruf: abruf,
+    sitzungsKoepfe: sitzungsKoepfe,
     kontextLesen: kontextLesen,
     fragen: fragen,
     summeVorbereiten: summeVorbereiten,

@@ -956,6 +956,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "teamassistenten",
+    name: "Teamassistenten",
+    inhalt:
+      "Aufgabe, Team, Autorenkennung, ausgewählte Wissenseinträge, Prüffragen mit erwarteten und gemessenen Ergebnissen sowie freigegebene Fassungen.",
+    personenbezug: "ja",
+    personenbezugGrund: "Die verantwortliche Person ist mit ihrer Kontokennung zugeordnet.",
+    ablage: { ort: DATENBANK, tabellen: ["team_assistenten"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Unveröffentlichte Entwürfe kann ihr Autor löschen. Veröffentlichte Fassungen können zurückgezogen werden. Der Bestandsreset entfernt alle an Wissensquellen gebundenen Assistentenstände.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Eigene Definitionen und Beispiele sind bei den Teamassistenten zugänglich.",
+    },
+  },
+  {
     id: "teams",
     name: "Teams",
     inhalt:

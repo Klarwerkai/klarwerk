@@ -34,6 +34,7 @@
       return el;
     }
     const factories = {
+      teamAssistants,
       notes: notes,
       tasks: tasks,
       reminders: reminders,
@@ -61,6 +62,108 @@
         ),
       );
     }
+    async function teamAssistants(room, stamp) {
+      const retry = () => guarded((generation) => teamAssistants(room, generation));
+      room.replaceChildren(node("p", "mini-meta", t("loading")));
+      let data;
+      try {
+        data = await request("/api/teamassistenten");
+      } catch (error) {
+        if (stampGilt(stamp))
+          room.replaceChildren(
+            node("p", "", error.status === 401 ? t("login") : t("error")),
+            button("retry", retry),
+          );
+        return;
+      }
+      if (!stampGilt(stamp)) return;
+      const assistants = data.assistenten.filter((a) => a.nutzbar && a.aktiv !== null);
+      room.replaceChildren();
+      if (!assistants.length) {
+        room.append(node("p", "mini-meta", t("teamEmpty")), button("retry", retry));
+        return;
+      }
+      const label = node("label", "mini-field", t("teamChoose"));
+      const select = node("select");
+      for (const assistant of assistants) {
+        const team = data.teams.find((entry) => entry.id === assistant.teamId);
+        const option = node(
+          "option",
+          "",
+          [assistant.aktivName, team?.name, `v${assistant.aktiv}`].filter(Boolean).join(" · "),
+        );
+        option.value = assistant.id;
+        select.append(option);
+      }
+      label.append(select);
+      room.append(label);
+      const question = field(room, "teamQuestion", "", "textarea");
+      question.maxLength = 1000;
+      const result = node("div", "mini-message-text");
+      result.setAttribute("aria-live", "polite");
+      const ask = button("teamAsk", async () => {
+        const assistant = assistants.find((a) => a.id === select.value);
+        const query = question.value.trim();
+        if (!assistant || !query || ask.disabled) return;
+        select.disabled = true;
+        ask.disabled = true;
+        question.readOnly = true;
+        result.replaceChildren(node("p", "mini-meta", t("working")));
+        try {
+          const run = await request(
+            `/api/office/teamassistenten/${encode(assistant.id)}/fragen`,
+            "POST",
+            {
+              version: assistant.aktiv,
+              frage: query,
+              sprache: ui.locale,
+            },
+          );
+          if (!stampGilt(stamp) || !result.isConnected) return;
+          if (run.version !== assistant.aktiv || run.assistentId !== assistant.id)
+            throw new Error("version");
+          result.replaceChildren(
+            node("strong", "", `${assistant.aktivName} · v${run.version}`),
+            node("p", "", run.antwort.text),
+          );
+          if (run.antwort.quellen.length) result.append(node("h3", "", t("sources")));
+          for (const source of run.antwort.quellen) {
+            const link = node("a", "mini-inline", `${source.titel} · v${source.version}`);
+            const url = new URL(source.href, root.location.origin);
+            if (
+              url.origin !== root.location.origin ||
+              url.pathname !== `/wissen/${encode(source.id)}`
+            )
+              continue;
+            link.href = url.href;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            result.append(link);
+          }
+        } catch (error) {
+          if (!stampGilt(stamp) || !result.isConnected) return;
+          if ([403, 404, 409].includes(error.status)) {
+            room.replaceChildren(node("p", "", t("teamChanged")), button("retry", retry));
+            return;
+          }
+          result.replaceChildren(node("p", "", error.status === 401 ? t("login") : t("error")));
+        } finally {
+          if (stampGilt(stamp)) {
+            select.disabled = false;
+            question.readOnly = false;
+            ask.disabled = !question.value.trim();
+          }
+        }
+      });
+      ask.disabled = true;
+      question.addEventListener("input", () => {
+        result.replaceChildren();
+        ask.disabled = !question.value.trim();
+      });
+      select.addEventListener("change", () => result.replaceChildren());
+      room.append(ask, result);
+    }
+
     async function notes(room, stamp) {
       const data = await request(`${base}/notizen`);
       if (!stampGilt(stamp)) return;

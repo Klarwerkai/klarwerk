@@ -2796,6 +2796,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // A5-G15: klara-notiz-routes.ts — requireUser vor jedem persönlichen Zugriff, Konto aus user.id.
   // Ausgabe zusätzlich über build-app.ts:6290–6310 / klaraWissen.original und aktuelle Quellrechte.
   // :93–108 — eigene Liste; Quellschutz und lesbar filtern vor der Ausgabe.
+  "GET /api/teamassistenten": { protection: "ko.read" },
+  "GET /api/teamassistenten/:id": { protection: "ko.read" },
+  "POST /api/teamassistenten": { protection: "ko.create" },
+  "PUT /api/teamassistenten/:id": { protection: "ko.create" },
+  "DELETE /api/teamassistenten/:id": { protection: "ko.create" },
+  "POST /api/teamassistenten/:id/pruefen": { protection: "ko.create" },
+  "POST /api/teamassistenten/:id/freigeben": { protection: "ko.create" },
+  "POST /api/teamassistenten/:id/zurueckziehen": { protection: "ko.create" },
+  "POST /api/teamassistenten/:id/fragen": { protection: "ko.read" },
+  "POST /api/office/teamassistenten/:id/fragen": { protection: "ko.read" },
   "GET /api/me/klara/notizen": { protection: "auth" },
   // :110–133 — eigener Vorgang/gespeicherte Gesprächsquelle; Ausgabe und Audit nach möglichem Anlegen.
   "POST /api/me/klara/notizen": { protection: "auth" },
