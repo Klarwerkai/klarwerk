@@ -150,7 +150,7 @@ export function GespeicherteFassungAnsicht({
   );
 }
 
-function BeschlussFreigabe({ konto }: { konto?: string }) {
+function BeschlussFreigabe({ konto }: { konto: string | undefined }) {
   const { t } = useTranslation();
   const name = useAuthorName();
   return (
