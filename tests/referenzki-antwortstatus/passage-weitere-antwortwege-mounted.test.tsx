@@ -35,6 +35,7 @@ import type { ReferenzPruefung, WissensstandVergleich } from "../../apps/web/src
 import { WissensstandVergleichAnzeige } from "../../apps/web/src/components/fragen/WissensstandVergleich";
 import { Zweitmeinung } from "../../apps/web/src/components/fragen/Zweitmeinung";
 import i18n from "../../apps/web/src/i18n";
+import { gespeicherteFassungHref } from "../../apps/web/src/lib/objektbezug";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -171,7 +172,7 @@ describe("REF-04 · K5 — Passage auch an Stichtagsvergleich und Zweitmeinung",
     const c = await montieren(
       createElement(WissensstandVergleichAnzeige, {
         vergleich,
-        wissenHref: (id: string) => `/wissen/${id}`,
+        wissenHref: gespeicherteFassungHref,
       }),
     );
     const damals = q(c, '[data-testid="ask-vergleich-referenz-damals"]') as HTMLElement;
@@ -179,11 +180,13 @@ describe("REF-04 · K5 — Passage auch an Stichtagsvergleich und Zweitmeinung",
     const d = await oeffneUndLies(damals);
     expect(d).toMatchObject({ fokusImDetail: true, passage: PASSAGE_DAMALS, zu: true });
     expect(d.href).toContain("fassung=2");
+    expect(d.href).toContain("ansicht=gespeichert");
     expect(d.begruendung).toContain("Die Fassung zum Stichtag nennt 2 bar.");
     expect(d.fokusZurueck).toBe(true);
     const h = await oeffneUndLies(heute);
     expect(h).toMatchObject({ fokusImDetail: true, passage: PASSAGE_HEUTE, zu: true });
     expect(h.href).toContain("fassung=3");
+    expect(h.href).toContain("ansicht=gespeichert");
     expect(h.begruendung).toContain("Die heutige Fassung nennt 3 bar.");
     expect(h.fokusZurueck).toBe(true);
     expect(c.textContent).not.toContain("Die Passage liegt dieser Ansicht nicht vor");

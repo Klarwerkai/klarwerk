@@ -21,6 +21,8 @@ export default {
     "antwortvergleich.laeuft": "Vergleicht …",
     "antwortvergleich.fehler":
       "Der Vergleich konnte gerade nicht erstellt werden. Die Antwort oben bleibt unverändert.",
+    "antwortvergleich.andereFormulierung":
+      "Die Formulierungen unterscheiden sich. Die Quellen belegen keine Änderung des Wissensstands.",
     "antwortvergleich.anders":
       "Mit dem Wissensstand vom {{datum}} hätte diese Frage eine andere Antwort gehabt.",
     "antwortvergleich.gleich":
@@ -28,7 +30,13 @@ export default {
     "antwortvergleich.damals": "Antwort mit Wissensstand vom {{datum}}",
     "antwortvergleich.heute": "Antwort mit heutigem Wissensstand",
     "antwortvergleich.keineGrundlage": "Keine belastbare Grundlage in diesem Wissensstand.",
-    "antwortvergleich.warum": "Warum sich die Grundlage unterscheidet",
+    "antwortvergleich.standGeaendert":
+      "Die Quellen oder deine Leserechte haben sich während des Vergleichs geändert. Wähle „Vergleichen“, um die aktuellen Fassungen zu prüfen.",
+    "antwortvergleich.beideOhneGrundlage":
+      "Für den {{datum}} und für heute fehlt eine belastbare Grundlage für diese Frage.",
+    "antwortvergleich.fassungDamals": "Damals · Fassung {{version}}",
+    "antwortvergleich.fassungHeute": "Heute · Fassung {{version}}",
+    "antwortvergleich.warum": "Quellen zum Vergleich",
     "antwortvergleich.verwendung": "Grundlage damals: {{damals}} · heute: {{heute}}",
     "antwortvergleich.ja": "ja",
     "antwortvergleich.nein": "nein",
@@ -56,6 +64,8 @@ export default {
     "antwortvergleich.laeuft": "Comparing …",
     "antwortvergleich.fehler":
       "The comparison could not be created just now. The answer above is unchanged.",
+    "antwortvergleich.andereFormulierung":
+      "The wording differs. The sources show no change in the underlying knowledge.",
     "antwortvergleich.anders":
       "With the knowledge as of {{datum}}, this question would have had a different answer.",
     "antwortvergleich.gleich":
@@ -63,7 +73,13 @@ export default {
     "antwortvergleich.damals": "Answer with knowledge as of {{datum}}",
     "antwortvergleich.heute": "Answer with today's knowledge",
     "antwortvergleich.keineGrundlage": "No reliable basis in this state of knowledge.",
-    "antwortvergleich.warum": "Why the basis differs",
+    "antwortvergleich.standGeaendert":
+      "The sources or your access changed during the comparison. Select “Compare” to check the latest versions.",
+    "antwortvergleich.beideOhneGrundlage":
+      "There is no reliable basis for answering this question on {{datum}} or today.",
+    "antwortvergleich.fassungDamals": "Then · Version {{version}}",
+    "antwortvergleich.fassungHeute": "Today · Version {{version}}",
+    "antwortvergleich.warum": "Sources for this comparison",
     "antwortvergleich.verwendung": "Basis then: {{damals}} · today: {{heute}}",
     "antwortvergleich.ja": "yes",
     "antwortvergleich.nein": "no",
@@ -92,13 +108,21 @@ export default {
     "antwortvergleich.laeuft": "Bezig met vergelijken …",
     "antwortvergleich.fehler":
       "De vergelijking kon nu niet worden gemaakt. Het antwoord hierboven blijft ongewijzigd.",
+    "antwortvergleich.andereFormulierung":
+      "De formuleringen verschillen. De bronnen tonen geen verandering in de onderliggende kennis aan.",
     "antwortvergleich.anders":
       "Met de kennis van {{datum}} had deze vraag een ander antwoord gehad.",
     "antwortvergleich.gleich": "Met de kennis van {{datum}} was het antwoord hetzelfde geweest.",
     "antwortvergleich.damals": "Antwoord met kennis van {{datum}}",
     "antwortvergleich.heute": "Antwoord met de kennis van vandaag",
     "antwortvergleich.keineGrundlage": "Geen betrouwbare basis in deze stand van kennis.",
-    "antwortvergleich.warum": "Waarom de basis verschilt",
+    "antwortvergleich.standGeaendert":
+      "De bronnen of je leesrechten zijn tijdens de vergelijking gewijzigd. Kies ‘Vergelijken’ om de actuele versies te controleren.",
+    "antwortvergleich.beideOhneGrundlage":
+      "Er is geen betrouwbare basis voor een antwoord op deze vraag op {{datum}} of vandaag.",
+    "antwortvergleich.fassungDamals": "Toen · Versie {{version}}",
+    "antwortvergleich.fassungHeute": "Vandaag · Versie {{version}}",
+    "antwortvergleich.warum": "Bronnen voor deze vergelijking",
     "antwortvergleich.verwendung": "Basis toen: {{damals}} · vandaag: {{heute}}",
     "antwortvergleich.ja": "ja",
     "antwortvergleich.nein": "nee",

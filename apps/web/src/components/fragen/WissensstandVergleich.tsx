@@ -3,6 +3,7 @@ import { History } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
 import type { AnswerResult, VergleichsQuelle, WissensstandVergleich } from "../../api/types";
 import { formatKoTimestamp } from "../../lib/koDates";
@@ -77,7 +78,7 @@ function Quellenzeile({
   wissenHref,
 }: {
   quelle: VergleichsQuelle;
-  wissenHref: (id: string) => string;
+  wissenHref: (id: string, fassung: number) => string;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   return (
@@ -86,12 +87,7 @@ function Quellenzeile({
       className="border-t border-hairline-soft pt-2 text-[13px]"
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        <Link
-          to={wissenHref(quelle.id)}
-          className="font-medium text-text underline decoration-hairline underline-offset-2 hover:decoration-ink"
-        >
-          {quelle.title}
-        </Link>
+        <span className="font-medium text-text">{quelle.title}</span>
         {quelle.gruende.map((grund) => (
           <span
             key={grund}
@@ -111,6 +107,26 @@ function Quellenzeile({
           heute: quelle.inAntwortHeute ? t("antwortvergleich.ja") : t("antwortvergleich.nein"),
         })}
       </p>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
+        {quelle.inAntwortDamals && quelle.versionDamals !== null ? (
+          <Link
+            data-testid="ask-vergleich-fassung-damals"
+            className="font-medium text-brand-text underline underline-offset-2"
+            to={wissenHref(quelle.id, quelle.versionDamals)}
+          >
+            {t("antwortvergleich.fassungDamals", { version: quelle.versionDamals })}
+          </Link>
+        ) : null}
+        {quelle.inAntwortHeute ? (
+          <Link
+            data-testid="ask-vergleich-fassung-heute"
+            className="font-medium text-brand-text underline underline-offset-2"
+            to={wissenHref(quelle.id, quelle.versionHeute)}
+          >
+            {t("antwortvergleich.fassungHeute", { version: quelle.versionHeute })}
+          </Link>
+        ) : null}
+      </div>
       {quelle.titelDamals ? (
         <p className="mt-1 text-[12px] text-muted">
           {t("antwortvergleich.titelDamals", { titel: quelle.titelDamals })}
@@ -145,12 +161,33 @@ function Quellenzeile({
   );
 }
 
+function befundSchluessel(vergleich: WissensstandVergleich): string {
+  const { damals, heute } = vergleich;
+  if (!damals.answered && !heute.answered) return "antwortvergleich.beideOhneGrundlage";
+  if (!vergleich.antwortGeaendert) return "antwortvergleich.gleich";
+  if (
+    damals.answered &&
+    heute.answered &&
+    vergleich.quellen.every((q) => q.gruende.every((grund) => grund === "unveraendert"))
+  ) {
+    const quellenDamals = new Set(damals.citedSources ?? damals.sources);
+    const quellenHeute = new Set(heute.citedSources ?? heute.sources);
+    if (
+      quellenDamals.size === quellenHeute.size &&
+      [...quellenHeute].every((id) => quellenDamals.has(id))
+    ) {
+      return "antwortvergleich.andereFormulierung";
+    }
+  }
+  return "antwortvergleich.anders";
+}
+
 export function WissensstandVergleichAnzeige({
   vergleich,
   wissenHref,
 }: {
   vergleich: WissensstandVergleich;
-  wissenHref: (id: string) => string;
+  wissenHref: (id: string, fassung: number) => string;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const datum = new Date(vergleich.stichtag).toLocaleDateString(i18n.language, {
@@ -158,11 +195,9 @@ export function WissensstandVergleichAnzeige({
   });
   return (
     <div data-testid="ask-vergleich-ergebnis" className="mt-3 space-y-3">
-      <p data-testid="ask-vergleich-befund" className="text-sm font-semibold text-text">
-        {vergleich.antwortGeaendert
-          ? t("antwortvergleich.anders", { datum })
-          : t("antwortvergleich.gleich", { datum })}
-      </p>
+      <output data-testid="ask-vergleich-befund" className="block text-sm font-semibold text-text">
+        {t(befundSchluessel(vergleich), { datum })}
+      </output>
       <div className="grid gap-2 md:grid-cols-2">
         <Antwortspalte
           titel={t("antwortvergleich.damals", { datum })}
@@ -196,7 +231,7 @@ export function WissensstandVergleichAnzeige({
           // REF-04 (K5, Ben nacharbeit-3): die Passage der Fassung zum Stichtag.
           auszugVon={(id) => auszuegeAus(vergleich.damalsAussagen).get(id)}
           titelVon={(id) => titelAus(vergleich, id, "damals")}
-          wissenHref={(id, fassung) => mitFassung(wissenHref(id), fassung)}
+          wissenHref={wissenHref}
           testId="ask-vergleich-referenz-damals"
           ueberschrift={t("referenzpruefung.vergleich.damals")}
         />
@@ -207,7 +242,7 @@ export function WissensstandVergleichAnzeige({
           aussageTexte={aussageTexteAus(vergleich.heuteAussagen)}
           auszugVon={(id) => auszuegeAus(vergleich.heuteAussagen).get(id)}
           titelVon={(id) => titelAus(vergleich, id, "heute")}
-          wissenHref={(id, fassung) => mitFassung(wissenHref(id), fassung)}
+          wissenHref={wissenHref}
           testId="ask-vergleich-referenz-heute"
           ueberschrift={t("referenzpruefung.vergleich.heute")}
         />
@@ -234,10 +269,6 @@ function titelAus(
   return seite === "damals" ? (q?.titelDamals ?? q?.title) : q?.title;
 }
 
-function mitFassung(href: string, fassung: number): string {
-  return `${href}${href.includes("?") ? "&" : "?"}fassung=${fassung}`;
-}
-
 /**
  * Der Vergleich zur zuletzt gestellten Frage. `frage` ist die Frage, zu der die Antwort darüber
  * gehört — nicht der Inhalt des Eingabefelds, der inzwischen ein anderer sein kann.
@@ -249,20 +280,22 @@ export function WissensstandVergleichBereich({
 }: {
   frage: string;
   billable: boolean | undefined;
-  wissenHref: (id: string) => string;
+  wissenHref: (id: string, fassung: number) => string;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [jetzt] = useState(() => new Date());
   const [stichtag, setStichtag] = useState(() => tagVorEinemJahr(jetzt));
+  const sprache = toReasonerLocale(i18n.language);
   const vergleich = useMutation({
-    mutationFn: () =>
-      endpoints.ask.vergleich(frage, toReasonerLocale(i18n.language), stichtag || undefined),
+    mutationFn: (v: { frage: string; sprache: typeof sprache; stichtag: string }) =>
+      endpoints.ask.vergleich(v.frage, v.sprache, v.stichtag),
   });
-  // Ein Ergebnis gehört zu genau einer Frage und einem Stichtag. Ändert sich eines davon, ist das
-  // angezeigte Ergebnis nicht mehr die Antwort auf das, was jetzt dasteht.
-  const [ergebnisFuer, setErgebnisFuer] = useState<string | null>(null);
-  const schluessel = `${frage}\u0000${stichtag}`;
-  const aktuell = vergleich.data && ergebnisFuer === schluessel ? vergleich.data : null;
+  const passt =
+    vergleich.variables?.frage === frage &&
+    vergleich.variables.sprache === sprache &&
+    vergleich.variables.stichtag === stichtag;
+  const aktuell = passt ? vergleich.data : null;
+  const laeuft = passt && vergleich.isPending;
   return (
     <section
       data-testid="ask-vergleich"
@@ -288,25 +321,25 @@ export function WissensstandVergleichBereich({
         <button
           type="button"
           data-testid="ask-vergleich-start"
-          disabled={vergleich.isPending || frage.trim().length === 0}
-          onClick={() => {
-            setErgebnisFuer(schluessel);
-            vergleich.mutate();
-          }}
+          disabled={laeuft || !stichtag || stichtag > gestern(jetzt) || frage.trim().length === 0}
+          onClick={() => vergleich.mutate({ frage, sprache, stichtag })}
           className="inline-flex items-center gap-1.5 rounded-[10px] border border-hairline bg-surface px-4 py-2 text-[14px] text-text hover:bg-hairline-soft disabled:cursor-not-allowed disabled:opacity-50"
         >
           <History size={14} aria-hidden="true" />
-          {vergleich.isPending ? t("antwortvergleich.laeuft") : t("antwortvergleich.start")}
+          {laeuft ? t("antwortvergleich.laeuft") : t("antwortvergleich.start")}
         </button>
         <AiCostHint billable={billable} className="text-klein" />
       </div>
-      {vergleich.isError && ergebnisFuer === schluessel ? (
+      {vergleich.isError && passt ? (
         <p
           data-testid="ask-vergleich-fehler"
           role="alert"
           className="mt-2 rounded-[8px] border border-trust-crit-fill bg-trust-crit-bg p-2 text-[12px] text-text"
         >
-          {t("antwortvergleich.fehler")}
+          {vergleich.error instanceof ApiError &&
+          vergleich.error.code === "VERGLEICHSSTAND_GEAENDERT"
+            ? t("antwortvergleich.standGeaendert")
+            : t("antwortvergleich.fehler")}
         </p>
       ) : null}
       {aktuell ? (

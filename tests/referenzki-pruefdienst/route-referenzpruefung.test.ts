@@ -224,6 +224,102 @@ describe("REF-02 · Stichtagsvergleich (Ben nacharbeit-3)", () => {
     expect(antwort.body).not.toContain("pruef-fiktiv-9");
   });
 
+  it.each(["leserecht", "fassung", "freigabe", "sitzung"] as const)(
+    "liefert den fertigen Vergleich nach einer Änderung während der Referenzprüfung nicht aus · %s",
+    async (art) => {
+      const { app, services, admin, koId } = await aufbau();
+      try {
+        const dp = pruefer();
+        const pruefe = dp.p.pruefe.bind(dp.p);
+        const spaeteAenderung = vi.spyOn(dp.p, "pruefe").mockImplementationOnce(async (...args) => {
+          const urteil = await pruefe(...args);
+          switch (art) {
+            case "leserecht":
+              await services.ko.setConfidentiality(koId, "vertraulich", "admin");
+              break;
+            case "fassung":
+              await services.ko.revise(koId, { statement: "Die neue Anleitung gilt." }, "admin");
+              break;
+            case "freigabe":
+              await services.ko.setValidationState(koId, { trust: 0, status: "offen" });
+              break;
+            case "sitzung":
+              await services.auth.logout((admin.authorization ?? "").slice("Bearer ".length));
+              break;
+          }
+          return urteil;
+        });
+        vi.spyOn(services.reasoner, "referenzPruefer").mockReturnValue({ pruefer: dp.p });
+        vi.spyOn(services.reasoner, "externeVerarbeitungErlaubt").mockReturnValue(true);
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/ask/vergleich",
+          headers: admin,
+          payload: { question: FRAGE },
+        });
+        expect(spaeteAenderung).toHaveBeenCalledOnce();
+        expect(res.statusCode, res.body).toBe(art === "sitzung" ? 401 : 409);
+        expect(res.json().error).toBe(
+          art === "sitzung" ? "UNAUTHENTICATED" : "VERGLEICHSSTAND_GEAENDERT",
+        );
+        expect(res.body).not.toContain(koId);
+        expect(res.body).not.toContain(VENTIL);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it("berücksichtigt eine neue Fassung auch bei einer vorgelegten, nicht zitierten Quelle", async () => {
+    const { app, services, admin, koId } = await aufbau();
+    try {
+      const zweite = await services.ko.create({
+        author: "technik",
+        type: "best_practice",
+        category: "Ref02",
+        confidentiality: "intern",
+        title: "Ventil F3 Zusatzblatt zur Höchsttemperatur",
+        statement: "Am Ventil F3 gilt die Höchsttemperatur laut Zusatzblatt.",
+      });
+      await services.validation.adminValidate(zweite.id, "technik");
+      const antworten = services.reasoner.answer.bind(services.reasoner);
+      vi.spyOn(services.reasoner, "answer").mockImplementation(async (...args) => {
+        const antwort = await antworten(...args);
+        if (args[1].length === 0) return antwort;
+        expect(args[1].map((quelle) => quelle.id)).toEqual(
+          expect.arrayContaining([koId, zweite.id]),
+        );
+        return { ...antwort, answer: VENTIL, sources: [koId, zweite.id], citedSources: [koId] };
+      });
+      const dp = pruefer();
+      const pruefen = dp.p.pruefe.bind(dp.p);
+      const wechsel = vi.spyOn(dp.p, "pruefe").mockImplementationOnce(async (...args) => {
+        const urteil = await pruefen(...args);
+        await services.ko.revise(
+          zweite.id,
+          { statement: "Aktualisiertes Zusatzblatt." },
+          "technik",
+        );
+        await services.validation.adminValidate(zweite.id, "technik");
+        return urteil;
+      });
+      vi.spyOn(services.reasoner, "referenzPruefer").mockReturnValue({ pruefer: dp.p });
+      vi.spyOn(services.reasoner, "externeVerarbeitungErlaubt").mockReturnValue(true);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/ask/vergleich",
+        headers: admin,
+        payload: { question: FRAGE },
+      });
+      expect(res.statusCode, res.body).toBe(409);
+      expect(wechsel).toHaveBeenCalledOnce();
+      expect(res.json().error).toBe("VERGLEICHSSTAND_GEAENDERT");
+      expect(res.body).not.toContain(zweite.id);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("H5b · ohne Prüfer: der Vergleich steht trotzdem, die Prüfung sichtbar „nicht prüfbar“", async () => {
     const { app, admin } = await aufbau();
     const antwort = await app.inject({

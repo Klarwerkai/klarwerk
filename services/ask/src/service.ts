@@ -133,7 +133,9 @@ import {
   fassungZumStichtag,
   freigabeZumStichtagBelegt,
   grundlageDamals,
+  lesestandZumStichtag,
   vergleichsQuelle,
+  zitierteVergleichsquellen,
 } from "./wissensstand-vergleich";
 
 const HELPFUL_TRUST_STEP = 2;
@@ -935,6 +937,12 @@ const FRAGE_ROLLEN = new WeakMap<object, ReferenzRolle>();
 const VERGLEICH_ROLLEN = new WeakMap<
   object,
   { heute: ReferenzRolle | undefined; damals: ReferenzRolle | undefined }
+>();
+
+type VergleichsQuellstand = Pick<KnowledgeObject, "version" | "status">;
+const VERGLEICH_QUELLSTAENDE = new WeakMap<
+  WissensstandVergleich,
+  ReadonlyMap<string, VergleichsQuellstand>
 >();
 
 function mitAntwortRolle<T extends object>(ergebnis: T, rolle: ReferenzRolle | undefined): T {
@@ -2014,24 +2022,24 @@ export class AskService {
     this.pruefeKiSperre("vorauswahl", kiBeginn);
     const seiten: VergleichsSeiten[] = await Promise.all(
       kandidaten.map(async (ko) => {
-        const fassung = fassungZumStichtag(
-          ko,
-          await this.koService.versionsOf(ko.id).catch(() => []),
-          stichtagMs,
-        );
+        const versionen = await this.koService.versionsOf(ko.id).catch(() => []);
+        const fassung = fassungZumStichtag(ko, versionen, stichtagMs);
         // Ohne Protokoll gibt es keinen Freigabebeleg — dann trägt keine damalige Fassung.
         const protokoll =
           fassung.art === "fassung" && this.audit
             ? await this.audit.list({ target: ko.id }).catch(() => [])
             : [];
-        const frueher = fassung.art === "fassung" ? fassung.ko : null;
+        const frueher =
+          fassung.art === "fassung"
+            ? lesestandZumStichtag(fassung.ko, ko, versionen, protokoll, stichtagMs)
+            : null;
         return {
           heute: ko,
           grundlageHeute: ko.status === "validiert",
-          fassung,
+          fassung: fassung.art === "fassung" && frueher ? { ...fassung, ko: frueher } : fassung,
           freigabeDamals:
             fassung.art === "fassung" &&
-            freigabeZumStichtagBelegt(ko, fassung.version, protokoll, stichtagMs),
+            freigabeZumStichtagBelegt(fassung.ko, fassung.version, protokoll, stichtagMs),
           damalsZulaessig:
             frueher !== null &&
             !isConfidential(frueher.confidentiality) &&
@@ -2068,13 +2076,13 @@ export class AskService {
       actor,
       kiBeginn,
     );
-    const heuteQuellen = heute.antwort.sources;
-    const damalsQuellen = damals.antwort.sources;
+    const heuteQuellen = zitierteVergleichsquellen(heute.antwort);
+    const damalsQuellen = zitierteVergleichsquellen(damals.antwort);
     const quellen = seiten
-      .filter((s) => heuteQuellen.includes(s.heute.id) || damalsQuellen.includes(s.heute.id))
+      .filter((s) => heuteQuellen.has(s.heute.id) || damalsQuellen.has(s.heute.id))
       .map((s) => {
         const id = s.heute.id;
-        return vergleichsQuelle(s, heuteQuellen.includes(id), damalsQuellen.includes(id));
+        return vergleichsQuelle(s, heuteQuellen.has(id), damalsQuellen.has(id));
       });
     const geaendert = antwortGeaendert(heute.antwort, damals.antwort);
     await this.audit?.record({
@@ -2100,6 +2108,16 @@ export class AskService {
     };
     // REF-02: die Rollen beider Seiten neben dem Ergebnis, nicht darin (s. `FRAGE_ROLLEN`).
     VERGLEICH_ROLLEN.set(vergleich, { heute: heute.rolle, damals: damals.rolle });
+    const vorgelegt = new Set([...heute.vorgelegteIds, ...damals.vorgelegteIds]);
+    VERGLEICH_QUELLSTAENDE.set(
+      vergleich,
+      new Map(
+        seiten
+          .filter((s) => vorgelegt.has(s.heute.id))
+          .map(({ heute: ko }) => [ko.id, { version: ko.version, status: ko.status }]),
+      ),
+    );
+
     return vergleich;
   }
 
@@ -2112,6 +2130,13 @@ export class AskService {
     damals: ReferenzRolle | undefined;
   } {
     return VERGLEICH_ROLLEN.get(vergleich) ?? { heute: undefined, damals: undefined };
+  }
+
+  /** Aktuelle Lesestände aller an den Antwortweg übergebenen Fassungen, für die Prüfung vor Auslieferung. */
+  quellstaendeDesVergleichs(
+    vergleich: WissensstandVergleich,
+  ): ReadonlyMap<string, VergleichsQuellstand> {
+    return VERGLEICH_QUELLSTAENDE.get(vergleich) ?? new Map();
   }
 
   /**
@@ -2128,6 +2153,7 @@ export class AskService {
     actor: string,
     kiBeginn: number | undefined,
   ): Promise<{
+    vorgelegteIds: string[];
     antwort: AnswerResult;
     aussagen: AussagenBeleg | null;
     rolle: ReferenzRolle | undefined;
@@ -2179,6 +2205,7 @@ export class AskService {
         : roh;
     // REF-02 (Ben nacharbeit-3): das tatsächliche Modell GENAU DIESER Seite des Vergleichs.
     return {
+      vorgelegteIds: candidates.map((ko) => ko.id),
       antwort,
       aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null,
       rolle: antwortRolleVon(roh),

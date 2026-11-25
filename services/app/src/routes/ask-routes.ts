@@ -33,6 +33,7 @@ import {
   GELTUNG_TEXT_MAX,
   type KnowledgeObject,
   type KoService,
+  inSchutzdatenQuarantaene,
   isConfidential,
   normalizeFragekontext,
   responsibleOf,
@@ -52,6 +53,7 @@ import {
   leseFirmenfilter,
 } from "../firmenbereich";
 import { type Guards, type SessionUser, sendError } from "../http";
+import { rechtekontextStempel } from "../rechtekontext";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
 import {
@@ -1714,8 +1716,42 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
               pruefeSeite(vergleich.damalsAussagen, rollen.damals, "vergleich_damals"),
             ]);
             referenzFeld = { referenzpruefung: { heute, damals } };
-            ask.kiSperreVorAuslieferung(kiBeginn);
           }
+          // Modell und Referenzprüfung können dauern. Vor dem Senden beide Antworten an die
+          // weiterhin lesbaren Quellen und die aktuelle fachliche Freigabe binden.
+          const staende = ask.quellstaendeDesVergleichs(vergleich);
+          const aktuell = await Promise.all(
+            Array.from(staende, async ([id, vorher]) => ({ vorher, ko: await deps.ko.get(id) })),
+          );
+          const frisch = await guards.requireUser(request, reply);
+          if (!frisch) return;
+          const sichtbar = sichtbarkeitsfilterFuer(frisch);
+          const geaendert =
+            rechtekontextStempel(frisch) !== rechtekontextStempel(user) ||
+            [...vergleich.heute.sources, ...vergleich.damals.sources].some(
+              (id) => !staende.has(id),
+            ) ||
+            aktuell.some(
+              ({ ko, vorher }) =>
+                !ko ||
+                ko.version !== vorher.version ||
+                ko.status !== vorher.status ||
+                !sichtbar(ko) ||
+                isConfidential(ko.confidentiality) ||
+                inSchutzdatenQuarantaene(ko),
+            );
+          if (geaendert) {
+            return reply.code(409).send({
+              error: "VERGLEICHSSTAND_GEAENDERT",
+              message:
+                locale === "en"
+                  ? "The sources or your access changed. Run the comparison again."
+                  : locale === "nl"
+                    ? "De bronnen of je toegangsrechten zijn gewijzigd. Voer de vergelijking opnieuw uit."
+                    : "Die Quellen oder deine Zugriffsrechte haben sich geändert. Bitte starte den Vergleich erneut.",
+            });
+          }
+          ask.kiSperreVorAuslieferung(kiBeginn);
           reply.code(200).send({ ...vergleich, ...referenzFeld });
         } catch (fehler) {
           if (kiAbgeschaltetSenden(reply, fehler, locale)) {

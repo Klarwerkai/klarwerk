@@ -1,6 +1,7 @@
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AnswerResult, WissensstandVergleich } from "../../api/types";
+import { gespeicherteFassungHref } from "../../lib/objektbezug";
 import { renderMarkup, setLanguage } from "../../test/render";
 import { WissensstandVergleichAnzeige, tagVorEinemJahr } from "./WissensstandVergleich";
 
@@ -45,7 +46,7 @@ const VERGLEICH: WissensstandVergleich = {
 function zeige(vergleich: WissensstandVergleich): string {
   return renderMarkup(
     <MemoryRouter>
-      <WissensstandVergleichAnzeige vergleich={vergleich} wissenHref={(id) => `/wissen/${id}`} />
+      <WissensstandVergleichAnzeige vergleich={vergleich} wissenHref={gespeicherteFassungHref} />
     </MemoryRouter>,
   );
 }
@@ -63,7 +64,8 @@ describe("R-1630 / R-2176 · Antwortvergleich in der Fragenfläche", () => {
     expect(html).toContain("Ventil Y automatisch");
     expect(html).toContain("überarbeitet (Fassung 1 → 2)");
     expect(html).toContain('data-testid="ask-vergleich-aussage-damals"');
-    expect(html).toContain('href="/wissen/ko-1"');
+    expect(html).toContain('href="/wissen/ko-1?fassung=1&amp;ansicht=gespeichert"');
+    expect(html).toContain('href="/wissen/ko-1?fassung=2&amp;ansicht=gespeichert"');
     expect(html).toContain('data-testid="ask-vergleich-grenzen"');
     expect(html).toContain('data-testid="ai-generated-notice"');
   });
@@ -73,12 +75,41 @@ describe("R-1630 / R-2176 · Antwortvergleich in der Fragenfläche", () => {
     const html = zeige({
       ...VERGLEICH,
       damals: antwort(null, []),
+      heute: antwort(null, []),
       antwortGeaendert: false,
       quellen: [],
     });
-    expect(html).toContain("wäre die Antwort dieselbe gewesen");
+    expect(html).toContain("und für heute fehlt eine belastbare Grundlage");
     expect(html).toContain("Keine belastbare Grundlage in diesem Wissensstand.");
   });
+
+  it.each([
+    ["de", "Die Formulierungen unterscheiden sich"],
+    ["en", "The wording differs"],
+    ["nl", "De formuleringen verschillen"],
+  ] as const)(
+    "beschreibt auf %s abweichenden Wortlaut bei identischen Quellen",
+    async (sprache, befund) => {
+      await setLanguage(sprache);
+      const vergleich: WissensstandVergleich = {
+        ...VERGLEICH,
+        damals: antwort("Für die Übergabe braucht es einen Beleg.", ["ko-1"]),
+        heute: antwort("Die Übergabe erfordert einen Beleg.", ["ko-1"]),
+        quellen: VERGLEICH.quellen.map((q) => ({
+          ...q,
+          versionDamals: q.versionHeute,
+          gruende: ["unveraendert"],
+          aenderungen: [],
+          aussageDamals: null,
+          aussageHeute: null,
+        })),
+      };
+      expect(zeige(vergleich)).toContain(befund);
+      expect(zeige({ ...vergleich, heute: antwort("Ein anderer Stand.", ["ko-2"]) })).not.toContain(
+        befund,
+      );
+    },
+  );
 
   it.each(["de", "en", "nl"] as const)("%s: kein roher Schlüssel in der Fläche", async (lng) => {
     await setLanguage(lng);

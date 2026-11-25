@@ -6,7 +6,7 @@
 // (Admin-Freigabe schreibt `ko.admin-validated` mit der Fassung), AskService mit dem
 // deterministischen Reasoner. Die Uhr ist steuerbar, damit Anlage, Überarbeitung und Freigabe
 // wirklich VOR oder NACH dem Stichtag liegen — nichts davon wird am Objekt vorgetäuscht.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AskService, InMemoryGapRepo, stichtagAus } from "../../services/ask";
 import {
   fassungZumStichtag,
@@ -38,6 +38,7 @@ function ventil(over: Partial<CreateKoInput> = {}): CreateKoInput {
     type: "best_practice",
     category: "Anlage 1",
     author: "anna",
+    confidentiality: "intern",
     ...over,
   };
 }
@@ -58,8 +59,9 @@ async function aufbau() {
     audit,
     now,
   });
+  const reasoner = new Reasoner();
   const ask = new AskService({
-    reasoner: new Reasoner(),
+    reasoner,
     koService,
     gaps: new InMemoryGapRepo(),
     audit,
@@ -72,7 +74,7 @@ async function aufbau() {
     am("2026-10-08T10:00:00.000Z");
     return ask.vergleicheWissensstand(FRAGE, "anna", "de", STICHTAG, sichtbar);
   };
-  return { koService, validation, ask, audit, versions, am, vergleiche };
+  return { koService, validation, ask, audit, versions, am, vergleiche, reasoner };
 }
 
 describe("R-1630 / R-2176 · Antwort mit dem Wissensstand vor einem Jahr vergleichen", () => {
@@ -267,6 +269,164 @@ describe("R-1630 / R-2176 · Antwort mit dem Wissensstand vor einem Jahr verglei
     expect(ids).not.toContain(fremd.id);
   });
 
+  it("fehlende Einstufung bleibt auf beiden Seiten ausgeschlossen, auch nach fachlicher Freigabe", async () => {
+    const b = await aufbau();
+    const { confidentiality: _stufe, ...ungeklaert } = ventil();
+    const ko = await b.koService.create(ungeklaert);
+    await b.validation.adminValidate(ko.id, "admin");
+    const v = await b.vergleiche();
+    expect(v.damals.answered).toBe(false);
+    expect(v.heute.answered).toBe(false);
+    expect(v.quellen).toEqual([]);
+    expect(JSON.stringify(v)).not.toContain(ko.id);
+  });
+
+  it("eine spätere Herabstufung macht die damals vertrauliche Fassung nicht rückwirkend zugänglich", async () => {
+    const b = await aufbau();
+    const ko = await b.koService.create(ventil());
+    await b.validation.adminValidate(ko.id, "admin");
+    b.am("2025-05-01T12:00:00Z");
+    await b.koService.setConfidentiality(ko.id, "vertraulich", "admin");
+    b.am("2026-01-15T12:00:00Z");
+    await b.koService.setConfidentiality(ko.id, "intern", "admin", { mayDowngrade: true });
+    const v = await b.vergleiche();
+    expect(v.heute.answer).toContain("Ventil X");
+    expect(v.damals.answered).toBe(false);
+    expect(v.quellen[0]?.gruende).toEqual(["damals_gesperrt"]);
+    expect(v.damalsAussagen).toBeNull();
+  });
+
+  it("die Namen historischer Quellleser werden nach späterem Wechsel nicht aus heutigen Rechten abgeleitet", async () => {
+    const b = await aufbau();
+    const ko = await b.koService.create(ventil());
+    await b.validation.adminValidate(ko.id, "admin");
+    b.am("2025-05-01T12:00:00Z");
+    await b.koService.setQuellrechte(ko.id, { stufe: "intern", leser: ["bert"] }, "sync");
+    b.am("2026-01-15T12:00:00Z");
+    await b.koService.setQuellrechte(ko.id, { stufe: "intern", leser: ["anna"] }, "sync");
+    const v = await b.ask.vergleicheWissensstand(
+      FRAGE,
+      "anna",
+      "de",
+      STICHTAG,
+      (ko) => ko.quellrechte?.leser?.includes("anna") ?? true,
+    );
+    expect(v.heute.answered).toBe(true);
+    expect(v.damals.answered).toBe(false);
+    expect(v.quellen[0]?.gruende).toEqual(["damals_gesperrt"]);
+  });
+
+  it("eine frühere Peer-Freigabe trägt auch nach Revision, erst ab dem tatsächlich erreichten Stimmenziel", async () => {
+    const b = await aufbau();
+    const ko = await b.koService.create(ventil({ neededValidations: 2 }));
+    await b.validation.rate(ko.id, "peer1", "up");
+    await b.validation.rate(ko.id, "peer1", "up");
+    b.am("2025-04-01T09:00:00Z");
+    await b.validation.rate(ko.id, "peer2", "up");
+    b.am("2026-02-01T09:00:00Z");
+    await b.koService.revise(ko.id, { statement: "Bei Überdruck Ventil Y schließen." }, "anna");
+    await b.validation.adminValidate(ko.id, "admin");
+    const v = await b.vergleiche();
+    expect(v.damals.answer).toContain("Ventil X");
+    expect(v.heute.answer).toContain("Ventil Y");
+    expect(v.quellen[0]?.gruende).toEqual(["ueberarbeitet"]);
+    const vorZweiterStimme = await b.ask.vergleicheWissensstand(
+      FRAGE,
+      "anna",
+      "de",
+      Date.parse("2025-03-31T23:59:59Z"),
+      () => true,
+    );
+    expect(vorZweiterStimme.damals.answered).toBe(false);
+  });
+
+  it("eine zurückgenommene Peer-Stimme und ein Wahrheitskonflikt beenden die damalige Freigabe", async () => {
+    const b = await aufbau();
+    const ko = await b.koService.create(ventil({ neededValidations: 1 }));
+    await b.validation.rate(ko.id, "peer", "up");
+    b.am("2025-04-01T09:00:00Z");
+    await b.validation.rate(ko.id, "peer", "down");
+    b.am("2025-09-01T09:00:00Z");
+    await b.validation.rate(ko.id, "peer", "up");
+    b.am("2025-10-01T09:00:00Z");
+    await b.koService.markTruthConflictReview(ko.id);
+    b.am("2026-01-15T09:00:00Z");
+    await b.validation.adminValidate(ko.id, "admin");
+    const am = async (datum: string) =>
+      (await b.ask.vergleicheWissensstand(FRAGE, "anna", "de", Date.parse(datum), () => true))
+        .damals.answered;
+    expect(await am("2025-03-22")).toBe(true);
+    expect(await am("2025-05-01")).toBe(false);
+    expect(await am("2025-09-22")).toBe(true);
+    expect((await b.vergleiche()).damals.answered).toBe(false);
+  });
+
+  it("eine fachliche Weisung gilt bis zu ihrer datierten Rücknahme", async () => {
+    const b = await aufbau();
+    const ko = await b.koService.create(ventil());
+    await b.validation.weisungValidate(ko.id, "anna", {
+      deckt: () => true,
+      verantwortlich: "alex",
+      frist: "2025-04-01",
+      erwarteteFassung: 1,
+    });
+    b.am("2025-11-01T09:00:00Z");
+    await b.validation.weisungSichten(ko.id, "alex", "widerrufen", {
+      darf: () => true,
+      erwarteteFassung: 1,
+    });
+    const v = await b.vergleiche();
+    expect(v.damals.answered).toBe(true);
+    expect(v.heute.answered).toBe(false);
+    expect(v.quellen[0]?.gruende).toEqual(["heute_nicht_freigegeben"]);
+    const nachWiderruf = await b.ask.vergleicheWissensstand(
+      FRAGE,
+      "anna",
+      "de",
+      Date.parse("2025-11-03"),
+      () => true,
+    );
+    expect(nachWiderruf.damals.answered).toBe(false);
+  });
+
+  it("eine eingesehene Quelle ist nur mit tatsächlichem Zitat eine Begründung für den Unterschied", async () => {
+    const b = await aufbau();
+    const zitiert = await b.koService.create(ventil());
+    const weitere = await b.koService.create(
+      ventil({ title: "Ein weiteres Ventil bei Überdruck" }),
+    );
+    await b.validation.adminValidate(zitiert.id, "admin");
+    await b.validation.adminValidate(weitere.id, "admin");
+    const template = (await b.vergleiche()).heute;
+    vi.spyOn(b.reasoner, "answer").mockResolvedValue({
+      ...template,
+      answered: true,
+      answer: "Bei Überdruck schließen [1].",
+      sources: [zitiert.id, weitere.id],
+      citedSources: [zitiert.id],
+    });
+    const v = await b.vergleiche();
+    expect(v.heute.sources).toContain(weitere.id);
+    expect(b.ask.quellstaendeDesVergleichs(v).get(weitere.id)).toEqual({
+      version: 1,
+      status: "validiert",
+    });
+    expect(v.quellen.map((q) => q.id)).toEqual([zitiert.id]);
+    const ohneZitate = {
+      ...template,
+      answered: true,
+      answer: "Gleiche Antwort.",
+      sources: [zitiert.id, weitere.id],
+      citedSources: [],
+    };
+    vi.mocked(b.reasoner.answer)
+      .mockResolvedValueOnce(ohneZitate)
+      .mockResolvedValueOnce({ ...ohneZitate, sources: [zitiert.id] });
+    const ohne = await b.vergleiche();
+    expect(ohne.quellen).toEqual([]);
+    expect(ohne.antwortGeaendert).toBe(false);
+  });
+
   it("keine Nebenwirkung wie eine Frage: keine Wissenslücke, nur ein Protokolleintrag ohne Fragetext", async () => {
     const b = await aufbau();
     await b.vergleiche();
@@ -282,6 +442,9 @@ describe("R-1630 / R-2176 · Antwort mit dem Wissensstand vor einem Jahr verglei
     b.am("2026-02-01T09:00:00.000Z");
     const heute = await b.koService.revise(ko.id, { statement: "Neu." }, "anna");
     expect(fassungZumStichtag(heute, [], STICHTAG)).toEqual({ art: "fassung_unbelegt" });
+    expect(fassungZumStichtag({ ...heute, history: [] }, [], STICHTAG)).toEqual({
+      art: "fassung_unbelegt",
+    });
     const mitAbbild = fassungZumStichtag(heute, await b.versions.listByKo(ko.id), STICHTAG);
     expect(mitAbbild.art === "fassung" ? mitAbbild.version : null).toBe(1);
   });

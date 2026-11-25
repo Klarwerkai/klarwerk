@@ -170,7 +170,7 @@ import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeG
 import { formatKoTimestamp } from "../lib/koDates";
 import { SITZUNGSENDE_EVENT, SITZUNGSENDE_KEY } from "../lib/lokaleSitzung";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
-import { leseObjektbezug, quellenRueckwegHref } from "../lib/objektbezug";
+import { gespeicherteFassungHref, leseObjektbezug, quellenRueckwegHref } from "../lib/objektbezug";
 import {
   fruehereRevalidierungen,
   geloesteKonflikte,
@@ -3562,13 +3562,6 @@ export function Ask(): JSX.Element {
                   )}
                   {/* R-0293: ein Klick öffnet den gespeicherten Weg zur Antwort — ohne Neusuche. */}
                   <AnswerExplanation answerId={answerId ?? null} nameVon={authorNameOf} />
-                  {/* R-1630 / R-2176: dieselbe Frage aus dem Wissensstand vor einem Jahr — auf
-                      Wunsch, zur Frage, zu der diese Antwort gehört (`asked`). */}
-                  <WissensstandVergleichBereich
-                    frage={asked}
-                    billable={answerBillable}
-                    wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
-                  />
                 </div>
                 {/* R-1662: das Blatt ist ein Portal und steht damit nicht zwischen Karte und
                     Knopfzeile im Baum (Zielbild Z.44 misst die Knopfzeile als Nachbarn der Karte). */}
@@ -3836,6 +3829,11 @@ export function Ask(): JSX.Element {
                 </div>
               </Card>
             )}
+            <WissensstandVergleichBereich
+              frage={asked}
+              billable={answerBillable}
+              wissenHref={(id, fassung) => demoHref(gespeicherteFassungHref(id, fassung), params)}
+            />
             {/* §9 / KORREKTURPFLICHT 2 (Ben, Runde 5): „Cache mit gescheiterter Auffrischung = ein
                 Satz unter der Karte." Die Antwort BLEIBT stehen — sie war einmal richtig und ist
                 nicht dadurch falsch geworden, dass die Leitung eben nicht antwortete. Der Satz sagt

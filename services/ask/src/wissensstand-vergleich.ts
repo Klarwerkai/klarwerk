@@ -1,6 +1,11 @@
 import type { AuditEntry } from "../../audit";
-import type { KnowledgeObject, KoVersionSnapshot } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoVersionSnapshot,
+  isValidConfidentiality,
+} from "../../knowledge-object";
 import type { AnswerResult } from "../../reasoner";
+import { type Verdict, computeOutcome } from "../../validation";
 import type { AussagenBeleg } from "./aussage-fundstellen";
 
 // ================================================================================================
@@ -60,6 +65,16 @@ export type FassungZumStichtag =
   | { readonly art: "gab_es_nicht" }
   | { readonly art: "fassung_unbelegt" };
 
+function abbildDerFassung(id: string, version: number, versionen: readonly KoVersionSnapshot[]) {
+  return versionen.find(
+    (v) =>
+      v.koId === id &&
+      v.version === version &&
+      v.snapshot.id === id &&
+      v.snapshot.version === version,
+  );
+}
+
 /**
  * Die Fassung zum Stichtag.
  *
@@ -91,66 +106,161 @@ export function fassungZumStichtag(
     }
   }
   if (version === undefined) {
-    // Kein Verlaufseintrag bis zum Stichtag, obwohl das Objekt schon bestand: nur wenn es auch
-    // danach keinen gibt, ist der heutige Inhalt der damalige.
-    const spaeter = (heute.history ?? []).length > 0;
-    return spaeter
+    // Ohne Versionsverlauf ist nur die nie überarbeitete erste Fassung seit ihrer Anlage belegt.
+    const fassungUnbekannt = heute.version !== 1 || (heute.history ?? []).length > 0;
+    return fassungUnbekannt
       ? { art: "fassung_unbelegt" }
       : { art: "fassung", version: heute.version, ko: heute };
   }
   if (version === heute.version) {
     return { art: "fassung", version, ko: heute };
   }
-  const abbild = versionen.find((v) => v.koId === heute.id && v.version === version);
+  const abbild = abbildDerFassung(heute.id, version, versionen);
   return abbild ? { art: "fassung", version, ko: abbild.snapshot } : { art: "fassung_unbelegt" };
 }
 
-/** Die Entscheidungen, die eine Freigabe tragen (Spiegel der Auditregel, `VALIDATION_DECISION_ACTIONS`). */
-const FREIGABE_ENTSCHEIDUNGEN = ["ko.rated", "ko.admin-validated", "ko.owner-validated"];
-const RUECKGABEN = ["ko.returned-to-author", "ko.returned-to-owner"];
-
 /**
- * War GENAU DIESE Fassung zum Stichtag freigegeben — belegt im Prüfprotokoll?
- *
- * Zwei Belegwege, beide an die Fassung gebunden (`payload.koVersion`):
- *   1. die Entscheidung, auf die das Objekt heute verweist (`validationDecisionRef`) — wenn sie
- *      dieselbe Fassung betrifft und vor dem Stichtag fiel. Das ist der Weg der Bewertungen, deren
- *      Freigabe sonst nur aus der Stimmenzählung folgt.
- *   2. eine Admin-Freigabe dieser Fassung vor dem Stichtag, auf die bis dahin keine Rückgabe
- *      derselben Fassung folgte.
- * Alles andere ist „nicht belegt". Das heisst ausdrücklich nicht „war nicht freigegeben".
+ * Einstufung, Space und Quellleser können sich ohne neue Inhaltsfassung ändern. Das Abbild
+ * liefert den Anfangsstand. Spätere Belege derselben Fassung schreiben ihn bis zum Stichtag fort.
+ * Namen von Quelllesern stehen absichtlich nicht im Protokoll.
  */
-export function freigabeZumStichtagBelegt(
+export function lesestandZumStichtag(
+  fassung: KnowledgeObject,
   heute: KnowledgeObject,
+  versionen: readonly KoVersionSnapshot[],
+  eintraege: readonly AuditEntry[],
+  stichtagMs: number,
+): KnowledgeObject | null {
+  const rechte = eintraege
+    .filter(
+      (e) =>
+        e.target === heute.id &&
+        ["ko.confidentiality", "ko.quellrechte", "ko.space-changed"].includes(e.action),
+    )
+    .sort((a, b) => a.seq - b.seq);
+  if (rechte.length === 0) return fassung;
+  // Bei Altbestand ohne Abbild beweist der heutige Stand die Rechte nur dann, wenn sie nach
+  // dem Stichtag nicht mehr geändert wurden.
+  const abbild = abbildDerFassung(fassung.id, fassung.version, versionen);
+  if (!abbild) return rechte.some((e) => !(zeitpunkt(e.at) <= stichtagMs)) ? null : fassung;
+  const anfang = zeitpunkt(abbild.at);
+  if (!(anfang <= stichtagMs)) return null;
+  // Ohne Zeitstempel lässt sich eine Rechteänderung keinem Stichtag zuordnen.
+  if (rechte.some((e) => Number.isNaN(zeitpunkt(e.at)))) return null;
+  let { confidentiality, spaceId, quellrechte } = abbild.snapshot;
+  let unbekannteLeser = false;
+  let spaetereQuellrechte = false;
+  for (const e of rechte) {
+    const at = zeitpunkt(e.at);
+    if (at < anfang) continue;
+    if (at > stichtagMs) {
+      if (e.action === "ko.quellrechte") spaetereQuellrechte = true;
+      continue;
+    }
+    if (e.action === "ko.space-changed") {
+      if (e.payload.version !== fassung.version) continue;
+      if (typeof e.payload.nachher === "string") spaceId = e.payload.nachher;
+      else if (e.payload.nachher === null) spaceId = undefined;
+      else return null;
+      continue;
+    }
+    if (!isValidConfidentiality(e.payload.level)) return null;
+    confidentiality = e.payload.level;
+    if (e.action === "ko.quellrechte") {
+      if (e.payload.leser === null) {
+        quellrechte = undefined;
+        unbekannteLeser = false;
+      } else {
+        unbekannteLeser = true;
+      }
+    }
+  }
+  if (unbekannteLeser) {
+    // Nur wenn genau dieser Leserkreis bis heute gilt, sind seine Kennungen noch belegbar.
+    if (spaetereQuellrechte || !Array.isArray(heute.quellrechte?.leser)) return null;
+    quellrechte = heute.quellrechte;
+  }
+  const { confidentiality: _stufe, spaceId: _space, quellrechte: _rechte, ...inhalt } = fassung;
+  return {
+    ...inhalt,
+    ...(confidentiality !== undefined ? { confidentiality } : {}),
+    ...(spaceId !== undefined ? { spaceId } : {}),
+    ...(quellrechte ? { quellrechte } : {}),
+  };
+}
+
+const DIREKTE_FREIGABEN = new Set([
+  "ko.admin-validated",
+  "ko.owner-validated",
+  "ko.weisung-validated",
+  "ko.weisung",
+  "ko.externe-freigabe-uebernommen",
+]);
+
+/** Letzte wirksame Entscheidung dieser Fassung bis zum Stichtag, in Reihenfolge des Prüfprotokolls. */
+export function freigabeZumStichtagBelegt(
+  ko: KnowledgeObject,
   version: number,
   eintraege: readonly AuditEntry[],
   stichtagMs: number,
 ): boolean {
-  const passt = (e: AuditEntry): boolean =>
-    e.target === heute.id &&
-    e.payload.koVersion === version &&
-    !Number.isNaN(zeitpunkt(e.at)) &&
-    zeitpunkt(e.at) <= stichtagMs;
-  const ref = heute.validationDecisionRef;
-  if (ref && heute.status === "validiert" && heute.version === version) {
-    const entscheidung = eintraege.find((e) => e.seq === ref.auditSeq);
-    if (
-      entscheidung &&
-      entscheidung.hash === ref.auditHash &&
-      FREIGABE_ENTSCHEIDUNGEN.includes(entscheidung.action) &&
-      passt(entscheidung)
-    ) {
-      return true;
+  const verlauf = eintraege
+    .filter((e) => e.target === ko.id && zeitpunkt(e.at) <= stichtagMs)
+    .sort((a, b) => a.seq - b.seq);
+  const stimmen = new Map<string, Verdict>();
+  let freigegeben = false;
+  let letzteStimme: AuditEntry | undefined;
+  for (const e of verlauf) {
+    // Der Konfliktbeleg führt am Objekt auf „offen“ zurück und hat historisch keine Versionsnummer.
+    if (e.action === "ko.conflict-review") {
+      freigegeben = false;
+      letzteStimme = undefined;
+    }
+    if (e.payload.koVersion !== version) continue;
+    if (e.action === "ko.rated") {
+      letzteStimme = e;
+      const { verdict, benoetigt } = e.payload;
+      if (verdict !== "up" && verdict !== "warn" && verdict !== "down") {
+        stimmen.delete(e.actor);
+        freigegeben = false;
+        continue;
+      }
+      // Wie im Rating-Repository zählt nur die letzte Stimme jeder Person für diese Fassung.
+      stimmen.set(e.actor, verdict);
+      if (typeof benoetigt === "number" && Number.isSafeInteger(benoetigt) && benoetigt > 0) {
+        freigegeben = computeOutcome([...stimmen.values()], benoetigt).status === "validiert";
+      } else {
+        // Alte Belege ohne Stimmenziel tragen nur mit dem gebundenen Annahme-/Entscheidungsverweis.
+        const refs = [
+          ko.annahmeRef?.koVersion === version ? ko.annahmeRef : undefined,
+          ko.version === version && ko.status === "validiert"
+            ? ko.validationDecisionRef
+            : undefined,
+        ];
+        freigegeben =
+          verdict === "up" &&
+          refs.some((ref) => ref?.auditSeq === e.seq && ref.auditHash === e.hash);
+      }
+    } else if (e.action === "ko.returned-to-author" || e.action === "ko.returned-to-owner") {
+      // Die Rückgabe ist der zweite Eintrag derselben Warn-/Gegenstimme. Eine Warnung bei
+      // ausreichenden grünen Stimmen lässt die Fassung gemäß der Peer-Regel gültig.
+      if (
+        !letzteStimme ||
+        letzteStimme.actor !== e.actor ||
+        letzteStimme.payload.verdict !== e.payload.verdict
+      ) {
+        freigegeben = false;
+      }
+      letzteStimme = undefined;
+    } else if (e.action === "ko.weisung-gesichtet") {
+      freigegeben = e.payload.ergebnis === "bestaetigt";
+      letzteStimme = undefined;
+    } else if (DIREKTE_FREIGABEN.has(e.action)) {
+      freigegeben = true;
+      letzteStimme = undefined;
     }
   }
-  const freigaben = eintraege.filter(
-    (e) => (e.action === "ko.admin-validated" || e.action === "ko.owner-validated") && passt(e),
-  );
-  if (freigaben.length === 0) {
-    return false;
-  }
-  const letzte = Math.max(...freigaben.map((e) => e.seq));
-  return !eintraege.some((e) => RUECKGABEN.includes(e.action) && passt(e) && e.seq > letzte);
+  return freigegeben;
 }
 
 /**
@@ -305,6 +415,13 @@ export function vergleichsQuelle(
   };
 }
 
+/** Die vom Antworttext zitierten, tatsächlich vorgelegten Quellen. */
+export function zitierteVergleichsquellen(antwort: AnswerResult): Set<string> {
+  return new Set(
+    antwort.answered ? antwort.citedSources.filter((id) => antwort.sources.includes(id)) : [],
+  );
+}
+
 /** Hat sich die Antwort geändert — im Text oder in der tragenden Grundlage? */
 export function antwortGeaendert(heute: AnswerResult, damals: AnswerResult): boolean {
   if (heute.answered !== damals.answered) {
@@ -313,7 +430,10 @@ export function antwortGeaendert(heute: AnswerResult, damals: AnswerResult): boo
   if ((heute.answer ?? "").trim() !== (damals.answer ?? "").trim()) {
     return true;
   }
-  const getragen = (r: AnswerResult): string =>
-    [...(r.citedSources.length > 0 ? r.citedSources : r.sources)].sort().join("|");
-  return getragen(heute) !== getragen(damals);
+  const heuteZitiert = zitierteVergleichsquellen(heute);
+  const damalsZitiert = zitierteVergleichsquellen(damals);
+  return (
+    heuteZitiert.size !== damalsZitiert.size ||
+    [...heuteZitiert].some((id) => !damalsZitiert.has(id))
+  );
 }

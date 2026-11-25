@@ -46,6 +46,15 @@ describe("Redaktioneller Produktkatalog", () => {
     expect(eintraege.get("V05")?.sources[0]?.reference).toContain(".1138");
     expect(eintraege.get("V05")?.title.nl).toMatch(/bron/);
     expect(eintraege.get("V04")?.platforms).toEqual(["app"]);
+    const historisch = eintraege.get("113");
+    expect(historisch?.status).toBe("available");
+    expect(historisch?.sources.map((s) => s.reference)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(".1149"),
+        "produkt:20261125:historischer-antwortvergleich-quellfassungen",
+        "19.10.2026",
+      ]),
+    );
     expect(eintraege.get("321")?.status).toBe("available");
     expect(eintraege.get("324")?.status).not.toBe("available");
   });
