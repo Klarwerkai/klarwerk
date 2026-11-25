@@ -7136,6 +7136,10 @@
           // Anmeldung: Karte weg, Sperre auf (Knopf sofern angemeldet), dann erst das Ergebnis.
           askWartezustand(false);
           renderAskOutcome(outcome, prep.truncated, Boolean(nachpruefung));
+          if (outcome.direktvergleich && window.kwWordUi && window.kwWordUi.revealComparison) {
+            var vergleichId = outcome.direktvergleich.art === "offen" ? "ask-vergleich-offen" : "ask-vergleich";
+            window.kwWordUi.revealComparison(document.getElementById(vergleichId));
+          }
         });
       };
       // Fail-open: ein synchroner Fehler — aus getSelectedDataAsync selbst oder aus dem Absenden

@@ -324,6 +324,7 @@
     // Nach „Leeren“ beginnt die sichtbare Unterhaltung bei der nächsten gespeicherten Frage.
     // Der vollständige, ausdrücklich gespeicherte Verlauf bleibt über das Menü erreichbar.
     let feedWindow = null;
+    let revealedComparison = null;
     let writeQueue = Promise.resolve();
     let navigating = false;
     const rooms = new Map();
@@ -661,10 +662,26 @@
         parent.append(article);
       }
     }
+    function comparisonOffset() {
+      if (page !== "home" || !revealedComparison?.getClientRects().length) return null;
+      return revealedComparison.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    }
+    function revealComparison(element) {
+      if (!element || !home.contains(element)) return;
+      revealedComparison = element;
+      const offset = comparisonOffset();
+      if (offset !== null && (offset < 0 || offset > 24)) viewport.scrollTop += offset - 8;
+    }
     function renderFeed() {
+      // Saved history arrives asynchronously above the result. Preserve its reading position only
+      // while the user is still viewing the verdict at the top of the task pane.
+      const before = comparisonOffset();
       const messages = conversation?.nachrichten || [];
       const start = feedWindow ? messages.findIndex((m) => m.id === feedWindow.firstMessage) : 0;
       renderMessages(feed, start < 0 ? [] : messages.slice(start, beforeTurn));
+      if (before !== null && before >= -1 && before <= 24) {
+        viewport.scrollTop += comparisonOffset() - before;
+      }
     }
     function renderHistory() {
       const el = room("history");
@@ -961,6 +978,7 @@
       paint,
       legacy,
       reveal,
+      revealComparison,
       notify,
       request,
       guarded,

@@ -566,6 +566,84 @@ describe("Direktvergleich in der Klara-App", () => {
     }
   });
 
+  it("projiziert nur das jüngste Prüfergebnis und stellt über Verlauf die ungekürzte Unterhaltung wieder her", async () => {
+    await vorrichtung();
+    const objektbezug = { pfad: "/begleiter", seitenName: "Klara", objekt: "Gespräch" };
+    const g = await wordFenster("POST", "/api/me/klara/gespraeche", { objektbezug });
+    expect(g.statusCode, g.body).toBe(201);
+    const pfad = `/api/me/klara/gespraeche/${g.json().gespraech.id}`;
+    await wordFenster("PUT", `${pfad}/einwilligung`, { erteilt: true });
+    const alteFrage = "Frühere Frage aus dem Verlauf";
+    const n = await wordFenster("POST", `${pfad}/nachrichten`, {
+      von: "du",
+      modus: "frage",
+      text: alteFrage,
+      objektbezug,
+    });
+    expect(n.statusCode, n.body).toBe(201);
+
+    await fensterMitMarkierung(FENSTER, DOKUMENT);
+    const meldung = (seq: number, erledigt?: Record<string, unknown>) =>
+      wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+        seq,
+        auswahl: MIT_MARKIERUNG,
+        passage: { text: MARKIERUNG, stand: 1 },
+        ...(erledigt && { erledigt: [erledigt] }),
+      });
+    const vorher = await auftragAn(FENSTER, "Eine frühere Word-Frage");
+    expect((await meldung(2)).json().aktionen[0].id).toBe(vorher);
+    expect(
+      (await meldung(3, { id: vorher, stand: "fehler", grund: "alter_fehler" })).statusCode,
+    ).toBe(200);
+    const aktuell = await auftragAn(FENSTER, "Diese Passage prüfen");
+    expect((await meldung(4)).json().aktionen[0].id).toBe(aktuell);
+    const antwort = await meldung(5, {
+      id: aktuell,
+      stand: "erledigt",
+      ergebnis: "Antwort",
+      vergleich: {
+        art: "offen",
+        dokument: MARKIERUNG,
+        belege: [],
+        belegMarke: null,
+        dokumentMarke: null,
+        zeigbar: false,
+      },
+    });
+    expect(antwort.statusCode, antwort.body).toBe(200);
+    await montiere();
+    const flaeche = await gespraechOffen();
+    const bereich = q(flaeche, "begleiter-gespraechsbereich") as HTMLElement;
+    await bis(
+      () =>
+        bereich.textContent?.includes(alteFrage) === true &&
+        Boolean(q(bereich, "begleiter-direktvergleich")),
+      160,
+    );
+    expect(bereich.querySelector('[data-stand="fehler"]')).not.toBeNull();
+    const feld = q<HTMLInputElement>(flaeche, "begleiter-eingabe") as HTMLInputElement;
+    await tippe(feld, "Meine nächste Frage");
+    const schalter = q<HTMLInputElement>(flaeche, "begleiter-vorfuehransicht") as HTMLInputElement;
+    await klick(schalter);
+    expect(bereich.dataset.ansicht).toBe("pruefergebnis");
+    expect(q(bereich, "begleiter-aktionen")?.children).toHaveLength(1);
+    expect(q(bereich, "begleiter-direktvergleich")?.textContent).toContain(MARKIERUNG);
+    expect(q(bereich, "klara-verlauf")).toBeNull();
+    expect(q(bereich, "begleiter-auswahl")).toBeNull();
+    expect(bereich.textContent).not.toContain(alteFrage);
+    expect(q(flaeche, "begleiter-passagenbezug")?.textContent).toContain(DOKUMENT.titel);
+    expect(feld.value).toBe("Meine nächste Frage");
+    await klick(q(flaeche, "begleiter-menue-knopf"));
+    await klick(q(flaeche, "klara-menue-verlauf"));
+    await klick(q(flaeche, "klara-verlauf-zum-gespraech"));
+    const normal = q(flaeche, "begleiter-gespraechsbereich") as HTMLElement;
+    expect(normal.dataset.ansicht).toBe("gespraech");
+    expect(q(normal, "begleiter-aktionen")?.children).toHaveLength(2);
+    expect(normal.querySelector('[data-stand="fehler"]')).not.toBeNull();
+    expect(q(normal, "klara-verlauf")?.textContent).toContain(alteFrage);
+    expect(q<HTMLInputElement>(flaeche, "begleiter-eingabe")?.value).toBe("Meine nächste Frage");
+  });
+
   it("prüft den Cursorabsatz auf Englisch, zeigt Quellen und Fundstelle und beginnt nach Clear einen neuen Vergleich", async () => {
     await vorrichtung();
     if (!aufbau) throw new Error("Vorrichtung fehlt");

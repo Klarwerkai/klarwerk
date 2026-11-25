@@ -243,9 +243,11 @@ function BegleiterInhalt(): JSX.Element {
       return false;
     }
   });
+  const [vergleichVorFreierFrage, setVergleichVorFreierFrage] = useState<string | null>(null);
   const aktuellerVergleichRef = useRef<HTMLLIElement>(null);
   const setzeVorfuehrung = (an: boolean): void => {
     setVorfuehrung(an);
+    setVergleichVorFreierFrage(null);
     merkeDarstellung(VORFUEHRUNG_SPEICHER, an);
   };
   // Nacharbeit 5 (UI-MIN-12): EIN Entwurf, kontogebunden in der Sitzung, samt Ursprung
@@ -669,6 +671,19 @@ function BegleiterInhalt(): JSX.Element {
     .reverse();
   const letzteWordFrage = sichtbareAktionen.find((aktion) => aktion.art === "frage");
   const vergleichId = sichtbareAktionen.find((aktion) => aktion.vergleich)?.id;
+  const vorfuehrErgebnis =
+    vorfuehrung &&
+    letzteWordFrage?.stand === "erledigt" &&
+    letzteWordFrage.vergleich &&
+    letzteWordFrage.id !== vergleichVorFreierFrage
+      ? letzteWordFrage
+      : null;
+  // Nur Rückmeldungen aus „In Word zeigen“, die zu dieser Prüfung hinzugekommen sind.
+  const aktionenImGespraech = vorfuehrErgebnis
+    ? sichtbareAktionen
+        .slice(0, sichtbareAktionen.indexOf(vorfuehrErgebnis) + 1)
+        .filter((a) => a === vorfuehrErgebnis || a.art === "zeigen")
+    : sichtbareAktionen;
   const passageSchonGezeigt =
     Boolean(passage) && letzteWordFrage?.vergleich?.dokument.trim() === passage?.text.trim();
   useEffect(() => {
@@ -828,6 +843,8 @@ function BegleiterInhalt(): JSX.Element {
     if (!sendebereit) {
       return { stand: "nicht_gesendet", antwort: null };
     }
+    // Eine neue freie Frage muss ihren eigenen Verlauf und mögliche Fehler sofort zeigen.
+    setVergleichVorFreierFrage(vergleichId ?? null);
     const h = ziel ?? herkunftRef.current;
     const stand = await fragen(
       text,
@@ -1540,7 +1557,13 @@ function BegleiterInhalt(): JSX.Element {
           {menueSeite === "neu" ? (
             <NeuSeite kontext={bezug} onFertig={() => zurueck()} />
           ) : menueSeite === "verlauf" ? (
-            <VerlaufSeite pfad="/begleiter" onZumGespraech={zurueck} />
+            <VerlaufSeite
+              pfad="/begleiter"
+              onZumGespraech={() => {
+                if (vorfuehrErgebnis) setzeVorfuehrung(false);
+                zurueck();
+              }}
+            />
           ) : menueSeite === "funktionen" ? (
             <div className="space-y-3">
               <a
@@ -1806,9 +1829,10 @@ function BegleiterInhalt(): JSX.Element {
           {/* 3 · Gespräch */}
           <div
             data-testid="begleiter-gespraechsbereich"
+            data-ansicht={vorfuehrErgebnis ? "pruefergebnis" : "gespraech"}
             className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-2.5"
           >
-            {adapter && auswahl ? (
+            {adapter && auswahl && !vorfuehrErgebnis ? (
               <section
                 data-testid="begleiter-auswahl"
                 data-host={adapter.host}
@@ -1894,9 +1918,9 @@ function BegleiterInhalt(): JSX.Element {
               </p>
             ) : null}
 
-            {adapter && sichtbareAktionen.length > 0 ? (
+            {adapter && aktionenImGespraech.length > 0 ? (
               <ol className="space-y-1" data-testid="begleiter-aktionen">
-                {sichtbareAktionen.map((a) =>
+                {aktionenImGespraech.map((a) =>
                   a.art === "frage" && a.stand === "erledigt" && a.vergleich ? (
                     <li
                       key={a.id}
@@ -1946,27 +1970,31 @@ function BegleiterInhalt(): JSX.Element {
               </ol>
             ) : null}
 
-            <KlaraEchtGespraech
-              mitWordAntwort={Boolean(letzteWordFrage?.stand === "erledigt")}
-              minimal
-              kontext={bezug}
-              pfad="/begleiter"
-              ki={ki}
-              sprecher={name}
-              onErneutFragen={(text) => {
-                void fragenSenden(text);
-              }}
-              onNeuLaden={() => {
-                if (kontoId) {
-                  void ladeEcht(kontoId, t);
-                }
-              }}
-            />
-            <KlaraAuftragKarte
-              s={sprechen}
-              sendebereit={sendebereit}
-              absenden={(text, ziel) => fragenSenden(text, ziel.herkunft)}
-            />
+            {!vorfuehrErgebnis && (
+              <KlaraEchtGespraech
+                mitWordAntwort={Boolean(letzteWordFrage?.stand === "erledigt")}
+                minimal
+                kontext={bezug}
+                pfad="/begleiter"
+                ki={ki}
+                sprecher={name}
+                onErneutFragen={(text) => {
+                  void fragenSenden(text);
+                }}
+                onNeuLaden={() => {
+                  if (kontoId) {
+                    void ladeEcht(kontoId, t);
+                  }
+                }}
+              />
+            )}
+            {(!vorfuehrErgebnis || !sprechen.auftrag?.gesendet) && (
+              <KlaraAuftragKarte
+                s={sprechen}
+                sendebereit={sendebereit}
+                absenden={(text, ziel) => fragenSenden(text, ziel.herkunft)}
+              />
+            )}
           </div>
 
           {/* 4 · Eingabe — nötige Rückfragen erscheinen genau hier, am Auftrag. */}

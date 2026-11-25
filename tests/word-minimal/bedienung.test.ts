@@ -476,6 +476,21 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
   ])(
     "Word-Korrektur in %s: Originalstelle bearbeiten und echte Nachprüfung",
     async (display, locale, frage, aktion, urteil) => {
+      messages.splice(
+        0,
+        messages.length,
+        ...Array.from({ length: 12 }, (_, i) => ({
+          id: `older-${i}`,
+          von: "klara",
+          text: `Earlier finding ${i}`,
+          quellenAngaben: [],
+        })),
+      );
+      conversation = {
+        id: "g-word-demo",
+        einwilligungAm: "2026-11-25T08:00:00Z",
+        nachrichten: [...messages],
+      };
       const page = await open("taskpane.html", false, "", display, {
         paragraphs: [gastWlan],
         index: 0,
@@ -493,6 +508,19 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         };
         d.getSelection=()=>range;
       })()`);
+        // WebKit hosts cannot rely on automatic browser scroll anchoring for a late feed redraw.
+        await page.addStyleTag({ content: ".mini-viewport { overflow-anchor: none; }" });
+        const sichtbaresUrteil = () =>
+          page.waitForFunction(
+            `(() => {
+          const view = document.querySelector(".mini-viewport"), heading = document.querySelector("#ask-vergleich h3");
+          const box = view.getBoundingClientRect(), label = heading?.getBoundingClientRect();
+          return view.scrollHeight > view.clientHeight * 1.5 && view.scrollTop > 100 && label &&
+            label.top >= box.top - 1 && label.top < box.top + 40 && label.bottom <= box.bottom;
+        })()`,
+            undefined,
+            { timeout: 2500 },
+          );
         const kontrollen: string[] = [];
         let version = 1;
         await page.route("**/api/kos/wifi", (route) =>
@@ -515,6 +543,7 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
           const kopf = correct ? "Result B." : "Result A.";
           return route.fulfill({
             json: {
+              answerId: "answer-word",
               result: {
                 answered: true,
                 answer: kopf,
@@ -540,6 +569,8 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
           await page.getByRole("button", { name: aktion, exact: true }).waitFor();
         };
         await fragen();
+        await sichtbaresUrteil();
+        await page.screenshot({ path: join(images, `word-vergleich-${locale}-vorher.png`) });
         // Source changed after showing a proposal: reject without altering Word.
         version = 2;
         await page.getByRole("button", { name: aktion, exact: true }).click();
@@ -573,14 +604,49 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
           },
           { times: 1 },
         );
+        // The stored answer returns later than the comparison and lengthens the old feed.
+        let fortsetzen = () => {};
+        const verlaufFreigegeben = new Promise<void>((resolve) => {
+          fortsetzen = resolve;
+        });
+        await page.route("**/gespraeche/g-word-demo/schritt", async (route) => {
+          if (route.request().postDataJSON().stand !== "beantwortet" || kontrollen.length !== 3)
+            return route.fallback();
+          const response = await route.fetch();
+          const data = await response.json();
+          data.gespraech.nachrichten[0].text = "Earlier finding updated. ".repeat(50);
+          await verlaufFreigegeben;
+          return route.fulfill({ json: data });
+        });
         await page.getByRole("button", { name: aktion, exact: true }).click();
-        await page.getByRole("heading", { name: urteil, exact: true }).waitFor();
+        try {
+          await page.getByRole("heading", { name: urteil, exact: true }).waitFor();
+          await sichtbaresUrteil();
+          await page.screenshot({ path: join(images, `word-vergleich-${locale}-nachher.png`) });
+          await entwurf.focus();
+          if (locale === "nl") {
+            await page.locator(".mini-viewport").hover();
+            await page.mouse.wheel(0, -10000);
+            await page.waitForFunction('document.querySelector(".mini-viewport").scrollTop === 0');
+          }
+        } finally {
+          fortsetzen();
+        }
+        await page.waitForFunction(
+          'document.querySelector("#mini-feed .mini-message-text")?.textContent.startsWith("Earlier finding updated.")',
+        );
+        if (locale === "nl")
+          expect(await page.evaluate('document.querySelector(".mini-viewport").scrollTop')).toBe(0);
+        else await sichtbaresUrteil();
+        expect(await page.evaluate('document.activeElement.id === "ask-input"')).toBe(true);
         expect(await entwurf.inputValue()).toBe("My next question about this rule");
         expect(kontrollen).toEqual([gastWlan, gastWlan, firmenregel.replace(/\.$/, "")]);
         expect(await page.evaluate("window.__wordWrites")).toEqual([["provide", "not ", "Before"]]);
         expect(await page.locator(".kw-korrektur").count()).toBe(0);
       } finally {
         await page.close();
+        conversation = null;
+        messages.length = 0;
       }
     },
   );
