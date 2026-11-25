@@ -2091,6 +2091,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "DELETE /api/me/klara/erinnerungen/:id": { protection: "auth" },
   // G15 Wissen/Besprechung4: tatsächliche frühe Guards und gebundene Privat-/Speicherwege.
   // requirePermission(ko.create) vor aktuellem Space-Lese- und Schreibfilter.
+  "GET /api/me/klara/notizen/:id/wissen/stand": { protection: "ko.read" },
   "GET /api/me/klara/wissen/ziele": { protection: "ko.create" },
   // requireUser vor privatem Import mit aktueller Quellprüfung im Dienst/Notiz-Wrapper.
   "POST /api/me/klara/wissen/import": { protection: "auth" },

@@ -65,6 +65,7 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { FacetFilter } from "../components/FacetFilter";
 import { ValidationReviewContext } from "../components/ValidationReviewContext";
 import { ExterneQuelleKennung } from "../components/ko/ExterneQuelleKennung";
+import { OffeneKlaraRegeln } from "../components/pruefen/OffeneKlaraRegeln";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
 import {
@@ -1738,6 +1739,7 @@ export function Validation(): JSX.Element {
     // im schmalen Fenster wächst die Fläche wie bisher mit ihrem Inhalt.
     <div className="mx-auto max-w-[1040px] lg:flex lg:h-full lg:flex-col">
       {kopf}
+      {role === "admin" && user?.id ? <OffeneKlaraRegeln konto={user.id} /> : null}
       {isDemoContext(params) ? <DemoBanner surface="validation" /> : null}
       {/* ARBEITSWEGE AM SELBEN ARTIKEL: die angeforderte Prüfung steht hier gerade nicht — offen
           gesagt, statt still einen fremden Beitrag zu zeigen. Solange die Liste nachlädt, heißt

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import type { OverlapService } from "../../../conflicts";
 import type { AiCheck, KantenRepo, KoService } from "../../../knowledge-object";
+import { can } from "../../../rbac";
 import { type BoardFilter, type ValidationService, mitHerkunft } from "../../../validation";
 import { type AiCheckWorker, shouldReEnqueueAiCheck } from "../ai-check-worker";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -10,6 +11,7 @@ import {
   sichtbareFuer,
   sichtbarePaare,
   sichtbarkeitsfilterFuer,
+  sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -97,6 +99,8 @@ export async function dublettenTor(
 // AI_CHECK_STALE_PENDING_MS) LAZY neu eingereiht; markAiCheckPending frischt requestedAt auf,
 // damit nicht jeder Board-Load erneut einreiht. GRENZE (bewusst, kein Cron/keine neue Infra):
 // wird das Board nie geladen, bleibt ein verwaister Job ehrlich als pending sichtbar liegen.
+type BoardAnfrage = BoardFilter & { ansicht?: string };
+
 export interface ValidationAiCheckDeps {
   ko: KoService;
   worker: AiCheckWorker;
@@ -219,10 +223,16 @@ export function validationRoutes(
       reply.code(200).send({ length });
     });
 
-    app.get<{ Querystring: BoardFilter }>("/api/validation/board", async (request, reply) => {
+    app.get<{ Querystring: BoardAnfrage }>("/api/validation/board", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
+      }
+      if (request.query.ansicht === "klara-regelvorschlaege") {
+        const eintraege = can(user.role, "users.manage")
+          ? await validation.offeneKlaraRegelvorschlaege(user.id, sqlSichtbarkeitFuer(user))
+          : [];
+        return reply.send(eintraege);
       }
       // AUFTRAG-mega74 BLOCK E: `validation.board()` gibt VOLLE Wissensobjekte aus
       // (validation/src/service.ts:185-215) — Titel, Kernaussage, alles. Das Prüf-Board war damit

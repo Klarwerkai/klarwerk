@@ -20,6 +20,12 @@ export default {
   praefix: "pruefboard.",
   legacySchluessel: [],
   de: {
+    "pruefboard.klara.titel": "Offene Regelvorschläge aus Klara",
+    "pruefboard.klara.pruefer": "Zur Prüfung für dich vorgesehen",
+    "pruefboard.klara.verantwortlich": "Regel in deiner Verantwortung",
+    "pruefboard.klara.basis": "Basisfassung {{n}}",
+    "pruefboard.klara.fehler": "Die offenen Regelvorschläge konnten nicht geladen werden.",
+    "pruefboard.klara.erneut": "Erneut laden",
     "pruefboard.zugewiesenAn": "Zugewiesen an",
     "pruefboard.zuweisenErfolg": "Zugewiesen an {{name}}.",
     "pruefboard.zuweisenWarnung":
@@ -75,6 +81,12 @@ export default {
     "pruefboard.widerspruch.suchFehler": "Die Suche ist gerade nicht möglich.",
   },
   en: {
+    "pruefboard.klara.titel": "Open rule suggestions from Klara",
+    "pruefboard.klara.pruefer": "Suggested for your review",
+    "pruefboard.klara.verantwortlich": "Rule you own",
+    "pruefboard.klara.basis": "Base version {{n}}",
+    "pruefboard.klara.fehler": "Open rule suggestions could not be loaded.",
+    "pruefboard.klara.erneut": "Retry",
     "pruefboard.zugewiesenAn": "Assigned to",
     "pruefboard.zuweisenErfolg": "Assigned to {{name}}.",
     "pruefboard.zuweisenWarnung":
@@ -127,6 +139,12 @@ export default {
     "pruefboard.widerspruch.suchFehler": "Search is not available right now.",
   },
   nl: {
+    "pruefboard.klara.titel": "Openstaande regelvoorstellen uit Klara",
+    "pruefboard.klara.pruefer": "Aan jou voorgesteld ter beoordeling",
+    "pruefboard.klara.verantwortlich": "Regel onder jouw verantwoordelijkheid",
+    "pruefboard.klara.basis": "Basisversie {{n}}",
+    "pruefboard.klara.fehler": "De openstaande regelvoorstellen konden niet worden geladen.",
+    "pruefboard.klara.erneut": "Opnieuw laden",
     "pruefboard.zugewiesenAn": "Toegewezen aan",
     "pruefboard.zuweisenErfolg": "Toegewezen aan {{name}}.",
     "pruefboard.zuweisenWarnung":

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AppServices,
   assembleServices,
@@ -90,6 +90,20 @@ afterEach(async () => {
   await app.close();
 });
 describe("F08 · bewusste Übernahme", () => {
+  it.each(["best_practice", "bauchgefuehl", "lernkurve", "negativwissen", "technik"])(
+    "bindet die gewählte Wissensart %s in Vorschau und angelegtem Beitrag",
+    async (type) => {
+      const n = await notiz();
+      const auswahl = { ...ziel, type };
+      const v = await vorschau(n, auswahl);
+      expect(v.input.type).toBe(type);
+      const schreiben = await uebernehmen(n, v, auswahl);
+      expect(schreiben.statusCode, schreiben.body).toBe(200);
+      const ko = await auf("GET", `/api/kos/${schreiben.json().beitrag.id}`);
+      expect(ko.statusCode, ko.body).toBe(200);
+      expect(ko.json().type).toBe(type);
+    },
+  );
   it("erhält Original/Zweibedingungen, legt genau einen tatsächlichen offenen Beitrag samt Rücklink an", async () => {
     const n = await notiz();
     const vor = await vorschau(n);
@@ -448,5 +462,157 @@ describe("F08 · bewusste Übernahme", () => {
         })
       ).statusCode,
     ).toBe(200);
+  });
+});
+
+describe("Entscheidung am persönlichen Original nachlesen", () => {
+  it("trennt Notiz und Firmenbeitrag und zeigt nach Wiederöffnung den aktuellen Prüfentscheid", async () => {
+    const regel = await auf("PUT", "/api/validation/settings", { defaultNeededValidations: 1 });
+    expect(regel.statusCode, regel.body).toBe(200);
+    const n = await notiz();
+    const pfad = `${basis}/notizen/${n.id}/wissen/stand`;
+    const staende = async () => {
+      const response = await auf("GET", pfad);
+      expect(response.statusCode, response.body).toBe(200);
+      return response.json().beitraege;
+    };
+    expect(await staende()).toEqual([]);
+    const eingereicht = await uebernehmen(n, await vorschau(n));
+    expect(eingereicht.statusCode, eingereicht.body).toBe(200);
+    const id: string = eingereicht.json().beitrag.id;
+    const url = `/api/kos/${id}`;
+    const erwarte = async (stand: string, version: number) =>
+      expect(await staende()).toEqual([{ id, version, notizFassung: 1, stand }]);
+    const prueferKonto = await auf("POST", "/api/users", {
+      name: "Prüferin",
+      email: "pruefung@service.test",
+      password: "secret123",
+      role: "controller",
+    });
+    expect(prueferKonto.statusCode, prueferKonto.body).toBe(201);
+    const anmeldung = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "pruefung@service.test", password: "secret123" },
+    });
+    expect(anmeldung.statusCode, anmeldung.body).toBe(200);
+    const prueferin = anmeldung.json().token;
+    const fremdePruefung = async (verdict: string) => {
+      const r = await auf("PUT", url, { action: "rate", verdict }, prueferin);
+      expect(r.statusCode, r.body).toBe(200);
+    };
+    await erwarte("offen", 1);
+    expect((await auf("GET", pfad, undefined, fremd)).statusCode).toBe(404);
+    expect((await auf("GET", url, undefined, fremd)).statusCode).toBe(200);
+
+    await fremdePruefung("warn");
+    await erwarte("rueckfrage", 1);
+    await fremdePruefung("down");
+    await erwarte("abgelehnt", 1);
+    const fachtext = "Ölstand der Spezialpresse SPX9 nur bei Stillstand prüfen.";
+    const revision = await auf("PUT", url, { action: "revise", changes: { statement: fachtext } });
+    expect(revision.statusCode, revision.body).toBe(200);
+    await erwarte("offen", 2);
+
+    const notizGeaendert = await auf("PUT", `${basis}/notizen/${n.id}`, {
+      fassung: 1,
+      titel: "Nachtrag zum Wartungsbesuch",
+    });
+    expect(notizGeaendert.statusCode, notizGeaendert.body).toBe(200);
+    await fremdePruefung("up");
+    await erwarte("validiert", 2);
+    await app.close();
+    s = assembleServices(repos, { klaraNotizen: s.klaraNotizenRoh ?? s.klaraNotizen });
+    app = buildApp(s);
+    await erwarte("validiert", 2);
+    const frage = await auf(
+      "POST",
+      "/api/ask",
+      { question: "Wie prüft man den Ölstand der Spezialpresse SPX9?" },
+      fremd,
+    );
+    expect(frage.statusCode, frage.body).toBe(200);
+    expect(frage.json().result).toMatchObject({
+      answered: true,
+      knowledgeClass: "gesichert",
+      sources: [id],
+    });
+    expect((await auf("GET", `${basis}/notizen/${n.id}`, undefined, fremd)).statusCode).toBe(404);
+
+    await s.ko.setQuellrechte(id, { stufe: "intern", leser: [] }, aid);
+    expect(await staende()).toEqual([{ notizFassung: 1, stand: "nicht_verfuegbar" }]);
+    const erneut = await auf(
+      "POST",
+      "/api/ask",
+      { question: "Wie prüft man den Ölstand der Spezialpresse SPX9?" },
+      fremd,
+    );
+    expect(erneut.statusCode, erneut.body).toBe(200);
+    expect(erneut.json().result.sources).not.toContain(id);
+  });
+
+  it("stellt nach einem unterbrochenen Audit-Schritt beim Wiederholen genau einen nachlesbaren Beitrag her", async () => {
+    const n = await notiz();
+    const v = await vorschau(n);
+    const schreiben = s.audit.recordOnce.bind(s.audit);
+    let unterbrochen = false;
+    const stoerung = vi.spyOn(s.audit, "recordOnce").mockImplementation((eventId, eingabe, tx) => {
+      if (!unterbrochen && eventId.startsWith("klara.wissen.uebernommen:")) {
+        unterbrochen = true;
+        return Promise.reject(new Error("Simulierter Ausfall vor der Zuordnung"));
+      }
+      return schreiben(eventId, eingabe, tx);
+    });
+    try {
+      expect((await uebernehmen(n, v)).statusCode).toBe(500);
+    } finally {
+      stoerung.mockRestore();
+    }
+    const erneut = await uebernehmen(n, v);
+    expect(erneut.statusCode, erneut.body).toBe(200);
+    expect(erneut.json().wiederholt).toBe(true);
+    const id = erneut.json().beitrag.id;
+    expect((await s.ko.list()).map((ko) => ko.id)).toEqual([id]);
+    expect(await s.audit.list({ action: "klara.wissen.uebernommen", target: id })).toHaveLength(1);
+    expect((await auf("GET", `${basis}/notizen/${n.id}/wissen/stand`)).json().beitraege).toEqual([
+      { notizFassung: 1, id, version: 1, stand: "offen" },
+    ]);
+  });
+
+  it("liefert beim Zurückziehen des geteilten Beitrags keinen Link und bei gesperrter Notizquelle keine Metadaten", async () => {
+    const quelle = await s.ko.create({
+      title: "Herkunft",
+      statement: "Die Spindel nur im Stillstand warten.",
+      category: "Service",
+      type: "technik",
+      author: aid,
+      confidentiality: "intern",
+    });
+    const original = await auf("POST", `${basis}/notizen`, {
+      vorgang: "service-quelle",
+      weg: "geschrieben",
+      inhalt: quelle.statement,
+      objektbezug: {
+        pfad: `/wissen/${quelle.id}`,
+        seitenName: "Quelle",
+        objekt: "Spindel",
+        koId: quelle.id,
+        fassung: quelle.version,
+      },
+    });
+    expect(original.statusCode, original.body).toBe(201);
+    const n = original.json().notiz;
+    const pfad = `${basis}/notizen/${n.id}/wissen/stand`;
+    const eingereicht = await uebernehmen(n, await vorschau(n));
+    expect(eingereicht.statusCode, eingereicht.body).toBe(200);
+    const id = eingereicht.json().beitrag.id;
+    const entfernt = await auf("DELETE", `/api/kos/${id}`);
+    expect(entfernt.statusCode, entfernt.body).toBe(204);
+    const gelesen = await auf("GET", pfad);
+    expect(gelesen.json().beitraege).toEqual([{ notizFassung: 1, stand: "nicht_verfuegbar" }]);
+    await s.ko.setQuellrechte(quelle.id, { stufe: "intern", leser: [] }, aid);
+    const gesperrt = await auf("GET", pfad);
+    expect(gesperrt.statusCode, gesperrt.body).toBe(404);
+    expect(gesperrt.body).not.toContain(id);
   });
 });

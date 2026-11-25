@@ -628,6 +628,9 @@ export class PgKoRepo implements KoRepo {
       params.push(filter.status);
       clauses.push(`status=$${params.length}`);
     }
+    if (filter.offeneKlaraVorschlaege === true) {
+      clauses.push(`data->'proposals' @> '[{"origin":"Klara","status":"offen"}]'::jsonb`);
+    }
     if (filter.category) {
       params.push(filter.category);
       clauses.push(`category=$${params.length}`);

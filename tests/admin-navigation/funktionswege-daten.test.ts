@@ -53,6 +53,29 @@ describe("Redaktionelle Funktionswege", () => {
     expect(externerKalender?.beleg.de).toContain("simuliertem Anbieter");
   });
 
+  it("verknüpft die Ausbauaufträge für Wissen, Teamassistenten und Workflows in der Landkarte", () => {
+    const weg = wege.find((w) => w.id === "firmenwissen-teamarbeit");
+    expect(weg?.verbindungen.map(({ von, nach }) => [von, nach])).toEqual([
+      ["283", "P02"],
+      ["P02", "V03"],
+      ["V03", "P03"],
+      ["P03", "P04"],
+    ]);
+    const auftraege = {
+      P02: [
+        "aufnahme:20260922:gesamt-wissensarchitektur",
+        "produkt:20261008:klara-gemeinsames-wissen",
+      ],
+      P03: ["produkt:20261125:teamassistent-pruefbeispiele"],
+      P04: ["produkt:20261125:teamablauf-gepruefte-entscheidung"],
+    };
+    for (const [id, erwartet] of Object.entries(auftraege)) {
+      expect(entries.find((e) => e.id === id)?.sources.map((s) => s.reference)).toEqual(
+        expect.arrayContaining(erwartet),
+      );
+    }
+  });
+
   it("zeigt beide Fortsetzungen des belegten Dokumentvergleichs und verwendet dieselben Quellen- und Kalenderknoten in weiteren Wegen", () => {
     const doc = wege[0];
     expect(doc?.id).toBe("dokumentpruefung");

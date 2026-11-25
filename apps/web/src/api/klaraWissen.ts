@@ -1,15 +1,16 @@
 import { api } from "./client";
+import type { KnowledgeType } from "./types";
 export interface WissensZiel {
   art: "artikel" | "space";
   spaceId?: string;
   confidentiality: "intern" | "vertraulich" | "streng_vertraulich";
-  type: "technik";
+  type: KnowledgeType;
   category: string;
   conditions: string[];
   vorlage?: { id: string; version: number };
 }
 export interface WissensVorschau {
-  input?: { title: string };
+  input?: { title: string; type?: KnowledgeType };
   notizId: string;
   fassung: number;
   original: string;
@@ -30,8 +31,48 @@ export interface WissensErgebnis {
   };
   wiederholt: boolean;
 }
+export type WissensBeitragsstand =
+  | { notizFassung: number; stand: "nicht_verfuegbar" }
+  | {
+      notizFassung: number;
+      id: string;
+      version: number;
+      stand: "offen" | "validiert" | "abgelehnt" | "rueckfrage";
+    };
+
+export type Regelstand =
+  | { notizFassung: number; stand: "nicht_verfuegbar" }
+  | {
+      notizFassung: number;
+      stand: "offen" | "rueckfrage" | "uebernommen" | "abgelehnt";
+      koId: string;
+      titel: string;
+      basis: number;
+      aktuelleVersion: number;
+      aktuelleVersionFreigegeben: boolean;
+      ergebnisVersion?: number;
+      grund?: string;
+      entschiedenVon?: string;
+    };
+export interface RegelEntwurf {
+  koId: string;
+  basis: number;
+  aussage: string;
+  auszug: string;
+}
+export interface RegelVorschau extends RegelEntwurf {
+  titel: string;
+  bisher: string;
+  stufe: string;
+  space: string | null;
+  stempel: string;
+}
 const pfad = (id: string) => `/me/klara/notizen/${encodeURIComponent(id)}/wissen`;
 export const klaraWissenApi = {
+  beitragsstand: (id: string) =>
+    api.get<{ beitraege: WissensBeitragsstand[]; regelvorschlaege: Regelstand[] }>(
+      `${pfad(id)}/stand`,
+    ),
   ziele: () =>
     api.get<{ spaces: { id: string; name: string; zugang: string }[] }>("/me/klara/wissen/ziele"),
   vorschau: (id: string, fassung: number, ziel: WissensZiel) =>
@@ -47,6 +88,23 @@ export const klaraWissenApi = {
       fassung: v.fassung,
       ziel,
       stempel: v.stempel,
+      bewusst: true,
+    }),
+  regelVorschau: (id: string, fassung: number, entwurf: RegelEntwurf) =>
+    api.post<RegelVorschau>(`${pfad(id)}/vorschau`, {
+      ...entwurf,
+      fassung,
+      modus: "regelvorschlag",
+    }),
+  regelEinreichen: (id: string, fassung: number, v: RegelVorschau) =>
+    api.post<{ koId: string; vorschlagId: string; status: string }>(`${pfad(id)}/uebernehmen`, {
+      koId: v.koId,
+      basis: v.basis,
+      aussage: v.aussage,
+      auszug: v.auszug,
+      stempel: v.stempel,
+      fassung,
+      modus: "regelvorschlag",
       bewusst: true,
     }),
   importiere: (x: unknown) => api.post<{ notiz: { id: string } }>("/me/klara/wissen/import", x),

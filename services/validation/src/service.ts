@@ -1,6 +1,12 @@
 import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
-import type { KnowledgeObject, KoFilter, KoService, Kontoregel } from "../../knowledge-object";
+import type {
+  KnowledgeObject,
+  KoFilter,
+  KoService,
+  KoSichtbarkeitstrim,
+  Kontoregel,
+} from "../../knowledge-object";
 // JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
 // die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
 import { ownershipOf, responsibleKindOf, responsibleOf } from "../../knowledge-object";
@@ -1219,6 +1225,35 @@ export class ValidationService {
   async boardCount(sichtbar: (ko: KnowledgeObject) => boolean): Promise<number> {
     // Dieselbe offene Grundmenge und Sichtbarkeitsfelder, ohne den hier ungelesenen Objektkörper.
     return (await this.koService.listForSearch({ status: "offen" })).filter(sichtbar).length;
+  }
+
+  async offeneKlaraRegelvorschlaege(konto: string, trim: KoSichtbarkeitstrim) {
+    const regeln = await this.koService.listForSearch({ offeneKlaraVorschlaege: true }, trim);
+    const eintraege = regeln.flatMap((ko) =>
+      (ko.proposals ?? [])
+        .filter(
+          (p) => p.origin === "Klara" && p.notizbeleg && p.status === "offen" && p.author !== konto,
+        )
+        .map((p) => ({
+          koId: ko.id,
+          titel: ko.title,
+          vorschlagId: p.id,
+          basis: p.baseVersion,
+          bezug:
+            p.pruefer === konto
+              ? ("pruefer" as const)
+              : ownershipOf(ko)?.owner === konto
+                ? ("verantwortlich" as const)
+                : null,
+          am: p.at,
+        })),
+    );
+    return eintraege.sort(
+      (a, b) =>
+        Number(Boolean(b.bezug)) - Number(Boolean(a.bezug)) ||
+        a.am.localeCompare(b.am) ||
+        a.vorschlagId.localeCompare(b.vorschlagId),
+    );
   }
 
   async board(filter: BoardFilter = {}): Promise<KnowledgeObject[]> {

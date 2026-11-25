@@ -869,6 +869,17 @@ export const endpoints = {
     // Herkunft samt Beleglage (services/validation/src/board-herkunft.ts:122-135). Der Typ sagt das
     // jetzt; vorher las die Oberfläche eine Auskunft, von der ihr Vertrag nichts wusste.
     board: (f?: KoFilter) => api.get<ValidationBoardKo[]>(`/validation/board${qs(f)}`),
+    klaraRegelvorschlaege: () =>
+      api.get<
+        Array<{
+          koId: string;
+          titel: string;
+          vorschlagId: string;
+          basis: number;
+          bezug: "pruefer" | "verantwortlich" | null;
+          am: string;
+        }>
+      >("/validation/board?ansicht=klara-regelvorschlaege"),
     boardCount: () => api.get<{ length: number }>("/validation/board/count"),
     overview: () => api.get<AssignmentSummary[]>("/validation/overview"),
     // R-0265: wer ein neues Objekt dieses Themas prüfen sollte (Autorenschaft, frühere Prüfungen,

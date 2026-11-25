@@ -178,6 +178,7 @@ export default {
     "begleiter.ziel.ursprungWeg":
       "Das ursprüngliche Fenster bzw. seine Markierung ist nicht mehr verbunden.",
     "begleiter.ziel.jetzt": "Hierhin: {{titel}}",
+    "begleiter.notizenWissen": "Notizen und Wissensvorschläge",
     "begleiter.funktionen.fragen":
       "Fragen stellen – Antworten aus Wissen, das du lesen darfst; dieses Gespräch sendet keinen Dokumenttext.",
     "begleiter.funktionen.markierung":
@@ -342,6 +343,7 @@ export default {
     "begleiter.ziel.ursprung": "As started: {{titel}}",
     "begleiter.ziel.ursprungWeg": "The original window or its selection is no longer connected.",
     "begleiter.ziel.jetzt": "Here: {{titel}}",
+    "begleiter.notizenWissen": "Notes and knowledge proposals",
     "begleiter.funktionen.fragen":
       "Ask questions – answers from knowledge you may read; this conversation sends no document text.",
     "begleiter.funktionen.markierung":
@@ -509,6 +511,7 @@ export default {
     "begleiter.ziel.ursprungWeg":
       "Het oorspronkelijke venster of de selectie is niet meer verbonden.",
     "begleiter.ziel.jetzt": "Hierheen: {{titel}}",
+    "begleiter.notizenWissen": "Notities en kennisvoorstellen",
     "begleiter.funktionen.fragen":
       "Vragen stellen – antwoorden uit kennis die je mag lezen; dit gesprek stuurt geen documenttekst.",
     "begleiter.funktionen.markierung":

@@ -1957,4 +1957,40 @@ export const ablaeufe: Record<string, Ablauf> = {
       nl: "Toegelichte aanpak voor vakinhoudelijke toetsing",
     },
   },
+  P02: {
+    input: {
+      de: "Ausgewählter Beschluss oder Erfahrungsbericht, bei Änderungen mit Ausgangsfassung",
+      en: "A selected decision or observation, with the original version for a revision",
+      nl: "Een geselecteerd besluit of een ervaring, bij een wijziging met de oorspronkelijke versie",
+    },
+    output: {
+      de: "Nachvollziehbare Entscheidung und Beleg für die gültige Fassung",
+      en: "Traceable review decision and evidence for the version in effect",
+      nl: "Herleidbaar besluit en onderbouwing van de geldende versie",
+    },
+  },
+  P03: {
+    input: {
+      de: "Aufgabe, freigegebene Quellen und Beispiele mit erwarteten Ergebnissen",
+      en: "A task, approved sources and examples with expected outcomes",
+      nl: "Een taak, goedgekeurde bronnen en voorbeelden met verwachte uitkomsten",
+    },
+    output: {
+      de: "Nutzbare Teamfassung mit Verantwortlichem und Prüfergebnissen",
+      en: "A team version with an owner and test results",
+      nl: "Een teamversie met een verantwoordelijke en testresultaten",
+    },
+  },
+  P04: {
+    input: {
+      de: "Wiederkehrende Aufgabe und Zuständigkeit je Schritt",
+      en: "A recurring task and a person responsible for each step",
+      nl: "Een terugkerende taak en een verantwoordelijke per stap",
+    },
+    output: {
+      de: "Lauf mit sichtbarer Entscheidung, Ergebnis und verwendeten Fassungen",
+      en: "A run with its decision, result and the versions used",
+      nl: "Een uitvoering met het besluit, de uitkomst en de gebruikte versies",
+    },
+  },
 };

@@ -363,6 +363,8 @@ export interface KoProposal {
   clearBody?: boolean;
   status: "offen" | "uebernommen" | "abgelehnt";
   origin?: string;
+  /** Bewusst freigegebener Auszug einer persönlichen Notiz, an deren Fassung gebunden. */
+  notizbeleg?: { notizId: string; fassung: number; auszug: string };
   decidedBy?: string;
   decidedAt?: string;
   /** Die Version, die aus der Übernahme entstanden ist (nur bei „uebernommen"). */

@@ -206,6 +206,13 @@ const ZENTRALE_ENTSCHEIDUNGEN = new Set([
 // DAS REGISTER — EIN URTEIL JE ROUTE.
 // ================================================================================================
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/me/klara/notizen/:id/wissen/stand": {
+    urteil: "DIENST_FILTERT",
+    kette: [{ datei: "services/app/src/klara-wissensuebernahme.ts", funktion: "beitragsstand" }],
+    entscheidung: "darfSehen",
+    grund:
+      "Der Dienst bindet die Notiz und ihre Herkunft an das Sitzungskonto. Beim Nachlesen der Übernahme und der Regelvorschläge prüft er heutige Leserechte. Für entzogene Ziele gibt er nur die eigene Notizfassung mit neutralem Stand aus.",
+  },
   "POST /api/me/klara/notizen/:id/wissen/pruefen": {
     urteil: "DIENST_FILTERT",
     kette: [
@@ -6273,10 +6280,10 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       },
       {
         datei: "services/app/src/routes/klara-wissen-routes.ts",
-        zeile: 34,
+        zeile: 46,
         methode: "POST",
         aufruf:
-          'app.post<{ Params: { id: string }; Body: { fassung?: unknown; ziel?: unknown } }>(\n        `/api/me/klara/notizen/:id/wissen/${weg}`,\n        async (req, reply) => {\n          const u = await guards.requirePermission("ko.create", req, reply);\n          if (!u) return;\n          try {\n            const x = req.body ?? {};\n            if (weg === "vorschau")\n              return await dienst.vorschau(u, req.params.id, x.fassung, wissensZiel(x.ziel));\n            if (weg === "pruefen") return await dienst.pruefe(u, req.params.id);\n            return await dienst.uebernehmen(u, req.params.id, x);\n          } catch (e) {\n            fehler(reply, e);\n          }\n        },\n      )',
+          'app.post<{\n        Params: { id: string };\n        Body: { fassung?: unknown; ziel?: unknown; modus?: unknown };\n      }>(`/api/me/klara/notizen/:id/wissen/${weg}`, async (req, reply) => {\n        const u = await guards.requirePermission("ko.create", req, reply);\n        if (!u) return;\n        try {\n          const x = req.body ?? {};\n          if (weg !== "pruefen" && x.modus === "regelvorschlag")\n            return await dienst.regelvorschlag(u, req.params.id, x, weg === "uebernehmen");\n          if (weg === "vorschau")\n            return await dienst.vorschau(u, req.params.id, x.fassung, wissensZiel(x.ziel));\n          if (weg === "pruefen") return await dienst.pruefe(u, req.params.id);\n          return await dienst.uebernehmen(u, req.params.id, x);\n        } catch (e) {\n          fehler(reply, e);\n        }\n      })',
         pfade: [
           "/api/me/klara/notizen/:id/wissen/vorschau",
           "/api/me/klara/notizen/:id/wissen/pruefen",

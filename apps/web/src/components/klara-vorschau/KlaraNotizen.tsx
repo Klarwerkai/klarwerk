@@ -123,6 +123,7 @@ function NotizOffen({ n, auftragskarte }: { n: KlaraNotiz; auftragskarte: boolea
           id={n.id}
           fassung={n.fassung}
           geaendert={geaendert}
+          notiztext={n.inhalt}
           auftragskarte={auftragskarte}
         />
       ) : null}

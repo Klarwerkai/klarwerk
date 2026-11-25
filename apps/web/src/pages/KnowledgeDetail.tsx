@@ -101,6 +101,7 @@ function Wissenseintrag(): JSX.Element {
     p.delete(ANSICHT_PARAM);
     p.delete(ANKER_PARAM);
     p.delete("abschnitt");
+    p.delete("vorschlag");
     return p.toString();
   })();
 

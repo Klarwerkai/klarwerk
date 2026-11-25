@@ -1032,6 +1032,11 @@ export function BibliothekLesen({
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [params] = useSearchParams();
+  const pruefvorschlag = params.get("vorschlag");
+  const fokussierePruefvorschlag = useCallback((eintrag: HTMLLIElement | null) => {
+    eintrag?.focus({ preventScroll: true });
+    eintrag?.scrollIntoView?.({ block: "center" });
+  }, []);
   const query = useKo(koId);
   const conflicts = useConflicts();
   const audit = useAudit();
@@ -4011,6 +4016,8 @@ export function BibliothekLesen({
                     return (
                       <li
                         key={v.id}
+                        ref={pruefvorschlag === v.id ? fokussierePruefvorschlag : undefined}
+                        tabIndex={pruefvorschlag === v.id ? -1 : undefined}
                         data-testid="bib-vorschlag"
                         data-vorschlag-id={v.id}
                         data-eigen={eigen ? "ja" : "nein"}
@@ -4021,6 +4028,16 @@ export function BibliothekLesen({
                           {t("ko.propose.fromVersion", { n: String(v.baseVersion) })}
                           {v.origin ? ` · ${v.origin}` : ""}
                         </p>
+                        {v.notizbeleg ? (
+                          <blockquote className="my-2 border-l-2 border-hairline pl-3 text-[12px]">
+                            <p className="text-muted">
+                              {t("klarawissen.regel.quellfassung", {
+                                n: String(v.notizbeleg.fassung),
+                              })}
+                            </p>
+                            <p className="whitespace-pre-wrap">{v.notizbeleg.auszug}</p>
+                          </blockquote>
+                        ) : null}
                         {v.pruefer ? (
                           <p
                             data-testid="bib-vorschlag-pruefer"
@@ -4080,6 +4097,8 @@ export function BibliothekLesen({
                           <div className="mt-1.5 space-y-1.5">
                             <textarea
                               data-testid="bib-vorschlag-grund"
+                              required={Boolean(v.notizbeleg)}
+                              aria-label={t("ko.propose.rejectReason")}
                               value={ablehnung.grund}
                               onChange={(e) => setAblehnung({ id: v.id, grund: e.target.value })}
                               rows={2}

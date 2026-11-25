@@ -163,4 +163,67 @@ export const ergaenzungen: Redaktionseintrag[] = [
     ablauf: "P01",
     belege: [["investor", "05.11.2026 · 5"]],
   },
+  {
+    id: "P02",
+    group: "wissen-pflegen-und-nutzen",
+    platforms: ["klarwerk", "office", "app"],
+    status: "partial",
+    title: {
+      de: "Erkenntnis bis zur fachlichen Entscheidung verfolgen",
+      en: "Follow a knowledge proposal to its review decision",
+      nl: "Een kennisvoorstel volgen tot het inhoudelijke besluit",
+    },
+    description: {
+      de: "Aus einem Beschluss oder einer Erfahrung einen neuen Beitrag oder eine Änderung zu einer konkreten Fassung vorschlagen. An der ursprünglichen Stelle sehen, was entschieden wurde und welche Fassung gilt.",
+      en: "Use a decision or first-hand experience to propose a new entry or a change to a specific version. Return to the original context to see the decision and the version now in effect.",
+      nl: "Stel op basis van een besluit of ervaring een nieuw artikel of een wijziging van een specifieke versie voor. Bekijk bij de oorspronkelijke bijdrage het besluit en de geldende versie.",
+    },
+    ablauf: "P02",
+    scope: {
+      de: "In Klarwerk und in der Klara-App lassen sich Service-Notizen und Beschlüsse einreichen und wieder öffnen. Die Übernahme direkt aus weiteren Microsoft-365-Anwendungen ist geplant.",
+      en: "In Klarwerk and the Klara app you can submit service notes and decisions, then reopen them to see the review outcome. Submission directly from additional Microsoft 365 applications is planned.",
+      nl: "In Klarwerk en de Klara-app kun je servicenotities en besluiten indienen en later de beoordeling terugvinden. Rechtstreeks indienen vanuit andere Microsoft 365-apps staat op de planning.",
+    },
+    belege: [
+      ["delivery", "25.11.2026 · .1145 · P02"],
+      ["planning", "aufnahme:20260922:gesamt-wissensarchitektur"],
+      ["planning", "produkt:20261008:klara-gemeinsames-wissen"],
+    ],
+  },
+  {
+    id: "P03",
+    group: "zusammenarbeit-und-organisation",
+    platforms: ["klarwerk", "office", "app"],
+    status: "planned",
+    title: {
+      de: "Einen geprüften Assistenten für das Team veröffentlichen",
+      en: "Publish a tested assistant for the team",
+      nl: "Een geteste assistent voor het team publiceren",
+    },
+    description: {
+      de: "Ein Fachbereich legt Aufgabe, Quellen, Werkzeuge und Zielgruppe fest, erprobt Antworten an eigenen Beispielen und gibt eine Fassung für sein Team frei.",
+      en: "A department defines the task, sources, tools and audience, tests answers against its own examples and releases a version for its team.",
+      nl: "Een afdeling kiest de taak, bronnen, hulpmiddelen en doelgroep, toetst antwoorden aan eigen voorbeelden en geeft een versie vrij voor het team.",
+    },
+    ablauf: "P03",
+    belege: [["planning", "produkt:20261125:teamassistent-pruefbeispiele"]],
+  },
+  {
+    id: "P04",
+    group: "zusammenarbeit-und-organisation",
+    platforms: ["klarwerk", "office", "app"],
+    status: "planned",
+    title: {
+      de: "Einen Teamablauf mit Entscheidung und Wiederaufnahme gestalten",
+      en: "Design a team workflow with review and resumption",
+      nl: "Een teamworkflow met besluitvorming en hervatting ontwerpen",
+    },
+    description: {
+      de: "Ein Team legt Auslöser, Schritte, Zuständigkeiten und Entscheidungen fest. Bei einer Unterbrechung sieht es, welche Aktion bereits erfolgt ist und wo die Arbeit weitergeht.",
+      en: "A team defines the trigger, steps, responsibilities and decisions. After an interruption it can see which action was completed and where work resumes.",
+      nl: "Een team kiest de aanleiding, stappen, verantwoordelijkheden en beslismomenten. Na een onderbreking ziet het welke actie al is uitgevoerd en waar het werk wordt hervat.",
+    },
+    ablauf: "P04",
+    belege: [["planning", "produkt:20261125:teamablauf-gepruefte-entscheidung"]],
+  },
 ];

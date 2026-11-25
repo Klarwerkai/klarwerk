@@ -25,7 +25,7 @@
 //     dieselbe Leseregel wie jede andere Autorenzeile. Die Nutzlast des Eintrags verlässt den Server
 //     nicht.
 // Leserecht: die Marke steht nur an `GET /api/kos/:id`, also hinter `sichtbaresKoOder404`.
-import { type AuditService, VALIDATION_DECISION_ACTIONS } from "../../audit";
+import { type AuditEntry, type AuditService, VALIDATION_DECISION_ACTIONS } from "../../audit";
 import type { KnowledgeObject } from "../../knowledge-object";
 
 export type VerifizierungsArt =
@@ -89,6 +89,19 @@ function artVon(action: string): VerifizierungsArt {
   return "rueckgabe";
 }
 
+/** Nur der am Objekt hinterlegte Beleg darf die aktuelle Prüfentscheidung erklären. */
+export function gebundenePruefentscheidung(ko: KnowledgeObject, eintraege: AuditEntry[]) {
+  const ref = ko.validationDecisionRef;
+  if (!ref) return undefined;
+  return eintraege.find(
+    (e) =>
+      e.seq === ref.auditSeq &&
+      e.hash === ref.auditHash &&
+      e.target === ko.id &&
+      VALIDATION_DECISION_ACTIONS.includes(e.action),
+  );
+}
+
 export async function verifizierungFuer(
   ko: KnowledgeObject,
   audit: Pick<AuditService, "list"> | undefined,
@@ -107,13 +120,8 @@ export async function verifizierungFuer(
   } catch {
     return { mensch: { stand: "nicht_abrufbar" }, validiertVon };
   }
-  const eintrag = eintraege.find((e) => e.seq === ref.auditSeq);
-  if (
-    !eintrag ||
-    eintrag.hash !== ref.auditHash ||
-    !VALIDATION_DECISION_ACTIONS.includes(eintrag.action) ||
-    eintrag.target !== ko.id
-  ) {
+  const eintrag = gebundenePruefentscheidung(ko, eintraege);
+  if (!eintrag) {
     return { mensch: { stand: "nicht_auffindbar" }, validiertVon };
   }
   const fassung = typeof eintrag.payload.koVersion === "number" ? eintrag.payload.koVersion : null;

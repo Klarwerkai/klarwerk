@@ -47,6 +47,16 @@ function verbindung(
 }
 
 const belege = {
+  wissensvorschlag: text(
+    "25.11.2026 · .1145 · Einreichung und fachliche Entscheidung",
+    "25 November 2026 · .1145 · Submission and review decision",
+    "25 november 2026 · .1145 · Indiening en inhoudelijk besluit",
+  ),
+  systemplan: text(
+    "Produktplan vom 25.11.2026 · P02–P04",
+    "Product plan of 25 November 2026 · P02–P04",
+    "Productplan van 25 november 2026 · P02–P04",
+  ),
   cursor: lieferung(".1134", "df95cfb3c"),
   word: lieferung(".1137", "f4df701b3"),
   vorfuehrung: lieferung(".1138", "21fc86f9c"),
@@ -570,6 +580,60 @@ export const funktionswege: KatalogWeg[] = [
         ),
         "nachgewiesen",
         belege.bildKorrektur,
+      ),
+    ],
+  },
+  {
+    id: "firmenwissen-teamarbeit",
+    titel: text(
+      "Vom Erfahrungswissen zum Teamablauf",
+      "From practical knowledge to a team workflow",
+      "Van praktijkkennis naar een teamworkflow",
+    ),
+    verbindungen: [
+      verbindung(
+        "283",
+        "P02",
+        text(
+          "Eine Erfahrung zur Prüfung einreichen",
+          "Submit an observation for review",
+          "Een ervaring ter beoordeling indienen",
+        ),
+        "nachgewiesen",
+        belege.wissensvorschlag,
+      ),
+      verbindung(
+        "P02",
+        "V03",
+        text(
+          "Nach der Entscheidung die gültige Fassung öffnen",
+          "Open the version in effect after review",
+          "Na het besluit de geldende versie openen",
+        ),
+        "nachgewiesen",
+        belege.wissensvorschlag,
+      ),
+      verbindung(
+        "V03",
+        "P03",
+        text(
+          "Freigegebenes Wissen als Quelle eines Teamassistenten wählen",
+          "Choose approved knowledge as a source for a team assistant",
+          "Goedgekeurde kennis als bron voor een teamassistent kiezen",
+        ),
+        "vorgesehen",
+        belege.systemplan,
+      ),
+      verbindung(
+        "P03",
+        "P04",
+        text(
+          "Den Assistenten in einem gemeinsamen Arbeitsschritt einsetzen",
+          "Use the assistant in a shared workflow step",
+          "De assistent in een gezamenlijke werkstap inzetten",
+        ),
+        "vorgesehen",
+        belege.systemplan,
       ),
     ],
   },

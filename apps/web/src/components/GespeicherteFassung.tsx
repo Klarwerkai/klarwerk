@@ -28,6 +28,7 @@ import type { KoVersionSnapshot, QuellrevisionInhalt } from "../api/types";
 import { eindeutigeZitatstelle, markiereFundstelle } from "../lib/belegstelle";
 import { formatKoTimestamp } from "../lib/koDates";
 import { quellabschnitteAus } from "../lib/quellabschnitt";
+import { useAuthorName } from "../lib/useAuthorName";
 import { Belegtitel } from "./Belegtitel";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { Card } from "./ui";
@@ -149,6 +150,18 @@ export function GespeicherteFassungAnsicht({
   );
 }
 
+function BeschlussFreigabe({ konto }: { konto?: string }) {
+  const { t } = useTranslation();
+  const name = useAuthorName();
+  return (
+    <p className={HINWEIS} data-testid="beschluss-freigabe">
+      {konto
+        ? t("begleiter.vergleich.freigegebenVon", { person: name(konto) })
+        : t("begleiter.vergleich.freigabeUnbekannt")}
+    </p>
+  );
+}
+
 function Fassungskarte({
   satz,
   ankerId,
@@ -165,6 +178,10 @@ function Fassungskarte({
   const { t, i18n } = useTranslation();
   const [gefunden, meldeTreffer] = useState(false);
   const ko = satz.snapshot;
+  const beschluss = ko.proposals?.find(
+    (v) => v.status === "uebernommen" && v.resultVersion === satz.version && v.notizbeleg,
+  );
+  const beschlussbeleg = beschluss?.notizbeleg;
   const abschnitte = quellabschnitteAus(ko.sources);
   const auszuege = new Map(
     (ko.sources ?? []).map((s): [string, string | null] => [s.id, s.excerpt]),
@@ -250,6 +267,20 @@ function Fassungskarte({
           zitat={zitat}
           meldeTreffer={meldeTreffer}
         />
+        {beschlussbeleg && (
+          <figure className="mt-3 rounded-card border border-hairline p-3">
+            <figcaption className={HINWEIS}>
+              {t("quellen.gespeichert.beschlussbeleg", { version: beschlussbeleg.fassung })}
+            </figcaption>
+            <blockquote
+              className="mt-1 whitespace-pre-wrap break-words text-sm text-text"
+              dir="auto"
+            >
+              {beschlussbeleg.auszug}
+            </blockquote>
+            {!zitat && <BeschlussFreigabe konto={beschluss.decidedBy} />}
+          </figure>
+        )}
         {abschnitte === null ? (
           <p className={`mt-2 ${HINWEIS}`} data-testid={`${GESPEICHERT_MARKE}-quellen-unbekannt`}>
             {t("quellen.abschnitteUnbekannt")}

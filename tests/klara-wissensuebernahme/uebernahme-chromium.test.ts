@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { type Server, createServer } from "node:http";
 import { extname, resolve } from "node:path";
-import { type Browser, chromium } from "playwright";
+import { type Browser, type Page, chromium } from "playwright";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 let app: ReturnType<typeof buildApp>;
@@ -11,6 +11,19 @@ let origin = "";
 let token = "";
 let notizId = "";
 const dist = resolve("apps/web/dist");
+
+async function notizImBegleiterOeffnen(page: Page, id: string) {
+  await page.goto(`${origin}/begleiter`);
+  await page.getByTestId("begleiter-figur").click();
+  await page.getByTestId("begleiter-menue-knopf").click();
+  await page.getByTestId("klara-menue-funktionen").click();
+  await page.getByTestId("begleiter-notizen").locator("summary").click();
+  await page.locator(`[data-testid="klara-notiz-eintrag"][data-notiz="${id}"]`).click();
+  const stand = page.getByTestId("wissen-ergebnis");
+  await stand.waitFor();
+  return stand;
+}
+
 beforeAll(async () => {
   app = buildApp(buildServices());
   await app.inject({
@@ -32,7 +45,10 @@ beforeAll(async () => {
         const chunks: Buffer[] = [];
         for await (const b of req) chunks.push(Buffer.from(b));
         const raw = Buffer.concat(chunks);
-        const headers = { ...req.headers, authorization: `Bearer ${token}` };
+        const headers = {
+          ...req.headers,
+          authorization: req.headers.authorization ?? `Bearer ${token}`,
+        };
         delete headers.host;
         const r = await app.inject({
           method: req.method as "GET",
@@ -100,10 +116,12 @@ it("F08 · echter Browser: gewählter Chat → privates Original → Vorschau �
   expect(notizId).not.toBe("");
   await page.locator('[data-testid="klara-wissen"] > button').click();
   await page.locator('[data-testid="wissen-stufe"]').selectOption("intern");
+  await page.getByTestId("wissen-typ").selectOption("best_practice");
   await page.locator('[data-testid="wissen-kategorie"]').fill("Wartung");
   await page.locator('[data-testid="wissen-bedingungen"]').fill("Stillstand\nFachpersonal");
   await page.locator('[data-testid="wissen-vorschau"]').click();
   await page.locator('[data-testid="wissen-vorschau-inhalt"]').waitFor();
+  expect(await page.getByTestId("wissen-vorschau-typ").innerText()).toContain("Best Practice");
   expect(await page.locator('[data-testid="wissen-vorschau-inhalt"]').textContent()).toContain(
     "Ölstand",
   );
@@ -142,6 +160,34 @@ it("F08 · echter Browser: gewählter Chat → privates Original → Vorschau �
     ),
   );
   await page.close();
+
+  const begleiter = await browser.newPage({ locale: "de-DE" });
+  const offen = await notizImBegleiterOeffnen(begleiter, notizId);
+  expect(await offen.getByRole("link").getAttribute("href")).toBe(href);
+  expect(await offen.innerText()).toContain("Zur Prüfung eingereicht");
+  const pruefung = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${href?.split("/").at(-1)}`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { action: "admin-validate" },
+  });
+  expect(pruefung.statusCode, pruefung.body).toBe(200);
+  const entschieden = await notizImBegleiterOeffnen(begleiter, notizId);
+  expect(await entschieden.innerText()).toContain("Fachlich bestätigt");
+  const beitrag = entschieden.getByRole("link");
+  expect(await beitrag.getAttribute("href")).toBe(href);
+  await beitrag.click();
+  await begleiter.waitForURL((url) => url.pathname === href);
+  for (const [sprache, erwartet] of [
+    ["en", "Approved"],
+    ["nl", "Goedgekeurd"],
+  ] as const) {
+    await begleiter.evaluate((wert) => localStorage.setItem("kw.sprache", wert), sprache);
+    const uebersetzt = await notizImBegleiterOeffnen(begleiter, notizId);
+    expect(await uebersetzt.innerText()).toContain(erwartet);
+    expect(await uebersetzt.getByRole("link").getAttribute("href")).toBe(href);
+  }
+  await begleiter.close();
 }, 60000);
 
 it("F15 · Browser importiert private Besprechungsnotiz und speichert bewusst Aufgabe/Übergabe über echte Produktwege", async () => {
@@ -236,4 +282,159 @@ it("F15 · Browser importiert private Besprechungsnotiz und speichert bewusst Au
   await page.locator('[data-testid="klara-notiz-offen"]').scrollIntoViewIfNeeded();
   await page.screenshot({ path: ".local/run/klara-f/f15-browser.png", fullPage: true });
   await page.close();
+}, 60000);
+
+it("Einkaufsbeschluss: echte Klara-Notiz, Änderung zur Prüfung und wiederauffindbare gültige Fassung", async () => {
+  const headers = { authorization: `Bearer ${token}` };
+  async function auf(
+    method: "GET" | "POST" | "PUT",
+    url: string,
+    payload?: Record<string, unknown>,
+    h = headers,
+  ) {
+    const r = await app.inject({ method, url, headers: h, ...(payload ? { payload } : {}) });
+    expect(r.statusCode, r.body).toBeLessThan(300);
+    return r.json();
+  }
+  const titel = "Einkaufsfreigabe Brumalit";
+  const alt = "Für den Einkauf von Brumalit ist ein Angebot erforderlich.";
+  const neu = "Für den Einkauf von Brumalit sind drei Angebote erforderlich.";
+  const ko = await auf("POST", "/api/kos", {
+    title: titel,
+    statement: alt,
+    type: "best_practice",
+    category: "Einkauf",
+    confidentiality: "intern",
+    neededValidations: 1,
+  });
+  const ziel = `/api/kos/${ko.id}`;
+  await auf("PUT", ziel, { action: "rate", verdict: "up" });
+  const m = await auf("POST", "/api/me/klara/besprechungen/import", {
+    titel: "Beschaffungsrunde",
+    meetingId: "browser-einkauf",
+    berechtigt: true,
+    text: `Beschluss: ${neu}\nOffen: Private Wortmeldung.`,
+  });
+  const n = await auf("POST", `/api/me/klara/besprechungen/${m.notiz.id}/uebernehmen`, {
+    fassung: m.notiz.fassung,
+    bewusst: true,
+    auswahl: ["zeile-1"],
+  });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  page.setDefaultTimeout(15000);
+  try {
+    const url = `${origin}/start?notiz=${n.notizId}`;
+    await page.goto(url);
+    await page.getByTestId("klara-notiz-offen").waitFor();
+    const pane = page.getByTestId("klara-wissen");
+    await pane.getByRole("button", { name: "Bewusst als Wissen übernehmen" }).click();
+    await pane.getByTestId("wissen-art").selectOption("regel");
+    await pane.getByLabel("Gültigen Eintrag suchen").fill("Brumalit");
+    await pane.getByRole("button", { name: `${titel} · v1` }).click();
+    await pane.getByLabel("Beleg in der privaten Notiz markieren").evaluate((el, text) => {
+      const feld = el as unknown as {
+        value: string;
+        focus(): void;
+        setSelectionRange(start: number, ende: number): void;
+      };
+      const start = feld.value.indexOf(text);
+      if (start < 0) throw new Error("Beleg fehlt");
+      feld.focus();
+      feld.setSelectionRange(start, start + text.length);
+    }, neu);
+    await pane.getByRole("button", { name: "Markierten Auszug verwenden" }).click();
+    expect(await pane.getByLabel("Vorgeschlagene Kernaussage").inputValue()).toBe(neu);
+    await pane.getByRole("button", { name: "Vorschau zeigen" }).click();
+    await pane.getByText("Wer den Eintrag lesen darf, sieht", { exact: false }).waitFor();
+    await pane.getByRole("button", { name: "Änderung zur fachlichen Prüfung einreichen" }).click();
+    await pane.getByRole("link", { name: "Eintrag und Prüfstand öffnen" }).waitFor();
+    const stand = await auf("GET", ziel);
+    expect(stand.statement).toBe(alt);
+    const email = "regelpruefung@browser.test";
+    const passwort = "synthetisch123";
+    await auf("POST", "/api/users", {
+      name: "Fachprüfung",
+      role: "admin",
+      email,
+      password: passwort,
+    });
+    const p = await auf("POST", "/api/auth/login", { email, password: passwort });
+    const fach = { authorization: `Bearer ${p.token}` };
+    const pruefseite = await browser.newPage({ extraHTTPHeaders: fach, locale: "de-DE" });
+    try {
+      await pruefseite.goto(`${origin}/validierung`);
+      await pruefseite.getByText("Offene Regelvorschläge aus Klara", { exact: false }).click();
+      await pruefseite.getByRole("link", { name: titel, exact: true }).click();
+      const vorschlag = pruefseite.getByTestId("bib-vorschlag");
+      await vorschlag.waitFor();
+      expect(await vorschlag.getAttribute("data-vorschlag-id")).toBe(stand.proposals[0].id);
+      expect(await pruefseite.locator('[data-testid="bib-vorschlag"]:focus').count()).toBe(1);
+      await vorschlag.getByTestId("bib-vorschlag-uebernehmen").click();
+      await vorschlag.waitFor({ state: "detached" });
+      const neuladen = pruefseite.waitForResponse((r) =>
+        r.url().includes("/api/validation/board?ansicht=klara-regelvorschlaege"),
+      );
+      await pruefseite.goto(`${origin}/validierung`);
+      expect(await (await neuladen).json()).toEqual([]);
+      expect(await pruefseite.getByRole("link", { name: titel, exact: true }).count()).toBe(0);
+    } finally {
+      await pruefseite.close();
+    }
+    await auf(
+      "PUT",
+      ziel,
+      {
+        action: "revise-release",
+        changes: { statement: "Für den Einkauf von Brumalit gelten inzwischen vier Angebote." },
+        expectedVersion: 2,
+      },
+      fach,
+    );
+    await page.goto(url);
+    const status = page.getByRole("region", { name: "Änderungsvorschläge aus dieser Notiz" });
+    await status.getByRole("link", { name: titel }).waitFor();
+    expect(await status.textContent()).toContain("v1 → v2");
+    await status.getByRole("link", { name: /3/ }).click();
+    const fassung = page.getByTestId("gespeicherte-fassung");
+    await fassung.waitFor();
+    expect(await fassung.getAttribute("data-fassung")).toBe("3");
+    expect(await fassung.textContent()).toContain("vier Angebote");
+    await page.goto(url);
+    await status.getByRole("link", { name: titel }).click();
+    await fassung.waitFor();
+    expect(await fassung.getAttribute("data-fassung")).toBe("2");
+    await fassung.getByText("Freigegeben von Fachprüfung", { exact: true }).waitFor();
+    expect(await fassung.textContent()).toContain(neu);
+    expect(await fassung.textContent()).not.toContain("vier Angebote");
+    for (const [sprache, historie, teilen, suche, publikum] of [
+      [
+        "en",
+        "Amendments from this note",
+        "Consciously share as knowledge",
+        "Find an approved entry",
+        "Anyone who can read the entry",
+      ],
+      [
+        "nl",
+        "Wijzigingsvoorstellen uit deze notitie",
+        "Bewust als kennis delen",
+        "Zoek een goedgekeurd artikel",
+        "Iedereen met leestoegang tot het artikel",
+      ],
+    ] as const) {
+      await page.evaluate((wert) => localStorage.setItem("kw.sprache", wert), sprache);
+      await page.goto(url);
+      await page
+        .getByRole("region", { name: historie })
+        .getByRole("link", { name: titel })
+        .waitFor();
+      await pane.getByRole("button", { name: teilen }).click();
+      await pane.getByTestId("wissen-art").selectOption("regel");
+      await pane.getByLabel(suche).fill("Brumalit");
+      await pane.getByRole("button", { name: `${titel} · v3` }).click();
+      await pane.getByText(publikum, { exact: false }).waitFor();
+    }
+  } finally {
+    await page.close();
+  }
 }, 60000);

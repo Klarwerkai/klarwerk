@@ -68,6 +68,8 @@ export default {
       "In dieser Fassung lässt sich die zitierte Stelle nicht eindeutig zuordnen.",
     "quellen.fokus.volltext": "Vollständige Fassung und Quellen",
     "quellen.fokus.aktuellerEintrag": "Heutigen Eintrag öffnen",
+    "quellen.gespeichert.beschlussbeleg":
+      "Beleg zur Freigabe · Auszug aus Notizfassung {{version}}",
     "quellen.gespeichert.titel": "Verwendete Fassung {{version}} · gespeichert am {{zeit}}",
     "quellen.gespeichert.laedt": "Gespeicherte Fassung wird geladen …",
     "quellen.gespeichert.fehler":
@@ -144,6 +146,8 @@ export default {
       "The cited passage could not be uniquely identified in this version.",
     "quellen.fokus.volltext": "Full version and sources",
     "quellen.fokus.aktuellerEintrag": "Open the current entry",
+    "quellen.gespeichert.beschlussbeleg":
+      "Evidence for this approval · excerpt from note version {{version}}",
     "quellen.gespeichert.titel": "Version {{version}} in use · saved on {{zeit}}",
     "quellen.gespeichert.laedt": "Loading saved version …",
     "quellen.gespeichert.fehler":
@@ -221,6 +225,8 @@ export default {
       "De geciteerde passage is in deze versie niet eenduidig terug te vinden.",
     "quellen.fokus.volltext": "Volledige versie en bronnen",
     "quellen.fokus.aktuellerEintrag": "Huidig item openen",
+    "quellen.gespeichert.beschlussbeleg":
+      "Onderbouwing van deze goedkeuring · fragment uit notitieversie {{version}}",
     "quellen.gespeichert.titel": "Gebruikte versie {{version}} · opgeslagen op {{zeit}}",
     "quellen.gespeichert.laedt": "Opgeslagen versie wordt geladen …",
     "quellen.gespeichert.fehler":

@@ -16,6 +16,7 @@ import {
 } from "./types";
 
 export interface KoFilter {
+  offeneKlaraVorschlaege?: true;
   type?: KnowledgeType;
   status?: KoStatus;
   category?: string;
@@ -338,6 +339,11 @@ export function koCandidateScore(ko: KnowledgeObject, terms: readonly string[]):
 }
 
 function matches(ko: KnowledgeObject, filter: KoFilter): boolean {
+  if (
+    filter.offeneKlaraVorschlaege === true &&
+    !ko.proposals?.some((p) => p.origin === "Klara" && p.status === "offen")
+  )
+    return false;
   if (filter.type && ko.type !== filter.type) {
     return false;
   }

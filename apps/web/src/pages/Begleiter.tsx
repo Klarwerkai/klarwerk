@@ -61,6 +61,7 @@ import {
   KlaraEchtGespraech,
   useKlaraKiLage,
 } from "../components/klara-vorschau/KlaraEchtGespraech";
+import { KlaraNotizen } from "../components/klara-vorschau/KlaraNotizen";
 import {
   type Absendeergebnis,
   KlaraAuftragKarte,
@@ -215,6 +216,27 @@ export function Begleiter(): JSX.Element {
         </ModalRegion>
       </ModalBoundaryProvider>
     </div>
+  );
+}
+
+function BegleiterNotizen(): JSX.Element {
+  const { t } = useTranslation();
+  const [offen, setOffen] = useState(false);
+  return (
+    <details
+      data-testid="begleiter-notizen"
+      className="rounded-card border border-hairline bg-surface px-3 py-2"
+      onToggle={(event) => setOffen(event.currentTarget.open)}
+    >
+      <summary className="cursor-pointer text-[12.5px] font-semibold text-ink">
+        {t("begleiter.notizenWissen")}
+      </summary>
+      {offen && (
+        <div className="mt-2">
+          <KlaraNotizen />
+        </div>
+      )}
+    </details>
   );
 }
 
@@ -1575,6 +1597,9 @@ function BegleiterInhalt(): JSX.Element {
               >
                 {t("kalender.titel")}
               </a>
+              {kontoId && sitzungBeantwortet && echt.kontoId === kontoId && (
+                <BegleiterNotizen key={kontoId} />
+              )}
               <VormachenFlaeche />
               <MeineFunktionen />
               <section data-testid="begleiter-funktionen">

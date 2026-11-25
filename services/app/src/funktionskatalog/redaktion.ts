@@ -12,6 +12,7 @@ export type Belegart =
   | "investor"
   | "oldrelease"
   | "contract"
+  | "planning"
   | "delivery"
   | "mac";
 

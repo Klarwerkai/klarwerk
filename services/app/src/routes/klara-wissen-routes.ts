@@ -30,23 +30,37 @@ export function klaraWissenRoutes(
         fehler(reply, e);
       }
     });
+    app.get<{ Params: { id: string } }>(
+      "/api/me/klara/notizen/:id/wissen/stand",
+      async (req, reply) => {
+        const u = await guards.requirePermission("ko.read", req, reply);
+        if (!u) return;
+        try {
+          return await dienst.beitragsstand(u, req.params.id);
+        } catch (e) {
+          fehler(reply, e);
+        }
+      },
+    );
     for (const weg of ["vorschau", "pruefen", "uebernehmen"] as const) {
-      app.post<{ Params: { id: string }; Body: { fassung?: unknown; ziel?: unknown } }>(
-        `/api/me/klara/notizen/:id/wissen/${weg}`,
-        async (req, reply) => {
-          const u = await guards.requirePermission("ko.create", req, reply);
-          if (!u) return;
-          try {
-            const x = req.body ?? {};
-            if (weg === "vorschau")
-              return await dienst.vorschau(u, req.params.id, x.fassung, wissensZiel(x.ziel));
-            if (weg === "pruefen") return await dienst.pruefe(u, req.params.id);
-            return await dienst.uebernehmen(u, req.params.id, x);
-          } catch (e) {
-            fehler(reply, e);
-          }
-        },
-      );
+      app.post<{
+        Params: { id: string };
+        Body: { fassung?: unknown; ziel?: unknown; modus?: unknown };
+      }>(`/api/me/klara/notizen/:id/wissen/${weg}`, async (req, reply) => {
+        const u = await guards.requirePermission("ko.create", req, reply);
+        if (!u) return;
+        try {
+          const x = req.body ?? {};
+          if (weg !== "pruefen" && x.modus === "regelvorschlag")
+            return await dienst.regelvorschlag(u, req.params.id, x, weg === "uebernehmen");
+          if (weg === "vorschau")
+            return await dienst.vorschau(u, req.params.id, x.fassung, wissensZiel(x.ziel));
+          if (weg === "pruefen") return await dienst.pruefe(u, req.params.id);
+          return await dienst.uebernehmen(u, req.params.id, x);
+        } catch (e) {
+          fehler(reply, e);
+        }
+      });
     }
   };
 }

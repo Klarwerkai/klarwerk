@@ -406,6 +406,68 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
     expect(formatKoTimestamp("2026-11-24T12:30:00Z", "en-GB", "short")).toMatch(/^24 Nov 2026 /);
   });
 
+  it("zeigt dem Leser den angenommenen Notizauszug nur an der daraus entstandenen Fassung", async () => {
+    const f = await bestand();
+    const freigabe = await f.app.inject({
+      method: "PUT",
+      url: `/api/kos/${f.id}`,
+      headers: f.admin,
+      payload: { action: "admin-validate" },
+    });
+    expect(freigabe.statusCode).toBe(200);
+    const beleg = {
+      notizId: "private-besprechung-18",
+      fassung: 2,
+      auszug: "Der Einkauf prüft ab 800 Euro.",
+    };
+    const { proposal } = await f.services.ko.addProposal(f.id, "einkauf", {
+      baseVersion: 3,
+      statement: "Ab 800 Euro prüft der Einkauf.",
+      notizbeleg: beleg,
+    });
+    const verzeichnis = await f.app.inject({
+      method: "GET",
+      url: "/api/directory",
+      headers: f.viewer,
+    });
+    const pruefer = verzeichnis
+      .json<{ id: string; name: string }[]>()
+      .find((konto) => konto.name === "W3 Admin");
+    if (!pruefer) throw new Error("Fachprüfer fehlt");
+    await f.services.ko.decideProposal(f.id, proposal.id, pruefer.id, "uebernehmen", {
+      trust: 100,
+    });
+    await f.services.ko.reviseUndFreigeben(
+      f.id,
+      { statement: "Eine spätere Fassung." },
+      "wartung",
+      { trust: 100, expectedVersion: 4 },
+    );
+    for (const fassung of [3, 4, 5]) {
+      const { container: seite } = await gespeicherteAnsicht(
+        f,
+        f.viewer,
+        createElement(GespeicherteFassung, {
+          koId: f.id,
+          fassung,
+          ankerId: null,
+        }),
+      );
+      await bis(() => expect(marke(seite, "")).not.toBeNull());
+      if (fassung === 4) {
+        await bis(() =>
+          expect(seite.querySelector('[data-testid="beschluss-freigabe"]')?.textContent).toContain(
+            "W3 Admin",
+          ),
+        );
+      } else {
+        expect(seite.querySelector('[data-testid="beschluss-freigabe"]')).toBeNull();
+      }
+      expect(seite.textContent?.includes(beleg.auszug)).toBe(fassung === 4);
+      expect(seite.innerHTML).not.toContain(beleg.notizId);
+    }
+  });
+
   it("alte Anker bleiben ungeprüft und eine fehlende gebundene Fassung bleibt ohne Ersatz", async () => {
     const f = await bestand();
     const saetze = await f.services.ko.versionsOf(f.id);

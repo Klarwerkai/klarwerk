@@ -6586,18 +6586,24 @@ export class KoService {
       clearBody?: boolean;
       baseVersion: number;
       origin?: string;
+      notizbeleg?: KoProposal["notizbeleg"];
       /** package:pruefablauf: die benannte Prüfperson. Ihr Freigaberecht prüft die Route. */
       pruefer?: string;
       /** AW06-K02: die Kontoregel des Einreichers; die Route leitet sie aus seinem Recht ab. */
       kontoregel?: KoProposal["kontoregel"];
     },
-    opts: { operation?: { id: string; fingerprint: string }; schreibkontext?: object } = {},
+    opts: {
+      operation?: { id: string; fingerprint: string };
+      schreibkontext?: object;
+      pruefeZiel?: (ko: KnowledgeObject) => void;
+    } = {},
   ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
     if (opts.operation && !opts.schreibkontext) {
       const operation = opts.operation;
       return this.mitKoPaar([id], (kontext) =>
         this.imPaarVorgang(kontext, async (tx) => {
           const ko = await this.require(id, tx);
+          opts.pruefeZiel?.(ko);
           const quittung = this.rueckwegQuittung(ko, author, "propose", operation);
           if (quittung) {
             const proposal = ko.proposals?.find((p) => p.id === quittung.proposalId);
@@ -6644,6 +6650,7 @@ export class KoService {
           ...(input.clearBody === true ? { clearBody: true } : {}),
           status: "offen",
           ...(input.origin ? { origin: input.origin } : {}),
+          ...(input.notizbeleg ? { notizbeleg: input.notizbeleg } : {}),
           ...(input.pruefer ? { pruefer: input.pruefer } : {}),
           ...(input.kontoregel ? { kontoregel: input.kontoregel } : {}),
         };
@@ -6673,6 +6680,12 @@ export class KoService {
                 payload: {
                   proposalId: proposal.id,
                   baseVersion: proposal.baseVersion,
+                  ...(proposal.notizbeleg
+                    ? {
+                        notizId: proposal.notizbeleg.notizId,
+                        notizFassung: proposal.notizbeleg.fassung,
+                      }
+                    : {}),
                   ...(proposal.pruefer ? { pruefer: proposal.pruefer } : {}),
                   ...(proposal.kontoregel ? { kontoregel: proposal.kontoregel } : {}),
                 },
@@ -6736,7 +6749,11 @@ export class KoService {
           "Den eigenen Änderungsvorschlag gibt niemand selbst frei — er muss von jemand anders geprüft werden.",
         );
       }
-      if (entscheidung === "uebernehmen" && vorschlag.baseVersion !== ko.version) {
+      if (
+        entscheidung === "uebernehmen" &&
+        (vorschlag.baseVersion !== ko.version ||
+          (vorschlag.notizbeleg && ko.status !== "validiert"))
+      ) {
         throw new KoError(
           "KO_STALE",
           "Die Basis dieses Vorschlags ist überholt. Die aktuelle Fassung und der offene Vorschlag bleiben erhalten.",
@@ -6781,6 +6798,12 @@ export class KoService {
         };
       }
       if (entscheidung === "ablehnen") {
+        if (vorschlag.notizbeleg && !opts.note?.trim()) {
+          throw new KoError(
+            "INVALID_SOURCE",
+            "Für die Ablehnung dieser Regeländerung fehlt die Begründung.",
+          );
+        }
         const abgelehnt: KoProposal = {
           ...vorschlag,
           status: "abgelehnt",

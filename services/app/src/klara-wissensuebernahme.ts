@@ -4,6 +4,7 @@ import type { ReferenzPruefdienst } from "../../ask";
 import type { AuditService } from "../../audit";
 import {
   type CreateKoInput,
+  type KnowledgeObject,
   type KoService,
   createOperationFingerprint,
 } from "../../knowledge-object";
@@ -22,6 +23,7 @@ import {
 } from "./klara-wissensziel";
 import { darfSehen } from "./sichtbarkeit";
 import { type SpacesRepo, darfInSpaceSchreiben, darfSpaceInhalteLesen } from "./spaces";
+import { gebundenePruefentscheidung } from "./verifizierungsmarke";
 import type { VorlagenEinreichungPort } from "./vorlagen";
 
 export type { KlaraWissensHerkunft };
@@ -202,7 +204,12 @@ export class KlaraWissensDienst {
     };
   }
 
-  async vorschau(user: SessionUser, id: string, fassung: unknown, ziel: WissensZiel) {
+  private async uebernahmegrundlage(
+    user: SessionUser,
+    id: string,
+    fassung: unknown,
+    spaceId?: string,
+  ) {
     if (!can(user.role, "ko.create")) throw new WissensFehler(403, "Kein Beitragsrecht.");
     const n = await this.original(user, id);
     const teil = n.wissensHerkunft?.besprechung?.verarbeitung;
@@ -219,10 +226,8 @@ export class KlaraWissensDienst {
         "Der Importtext wurde geändert. Bitte eine nachvollziehbare neue Antwortfassung importieren.",
       );
     const space =
-      ziel.art === "space"
-        ? (await this.d.spaces.aktuelle()).find((s) => s.id === ziel.spaceId)
-        : null;
-    if (ziel.art === "space" && (!space || !darfSpaceInhalteLesen(space, user.id)))
+      spaceId !== undefined ? (await this.d.spaces.aktuelle()).find((s) => s.id === spaceId) : null;
+    if (spaceId !== undefined && (!space || !darfSpaceInhalteLesen(space, user.id)))
       throw new WissensFehler(404, "Ziel nicht gefunden.");
     if (space && !darfInSpaceSchreiben(space, user))
       throw new WissensFehler(403, "Kein Schreibrecht im Ziel.");
@@ -248,6 +253,140 @@ export class KlaraWissensDienst {
           "Geschützte Quelle darf über diesen Weg nicht weitergegeben werden.",
         );
     }
+    return { n, space, notizQuellen };
+  }
+
+  async regelvorschlag(user: SessionUser, id: string, roh: unknown, einreichen: boolean) {
+    const x = objekt(roh);
+    const koId = text(x.koId, 200);
+    const basis = x.basis;
+    const aussage = text(x.aussage, 4000);
+    const auszug = text(x.auszug, 4000);
+    if (!Number.isSafeInteger(basis) || Number(basis) < 1)
+      throw new WissensFehler(400, "Gelesene Basisfassung fehlt.");
+    const ko = await this.d.ko.get(koId);
+    if (!ko || !darfSehen(user, ko)) throw new WissensFehler(404, "Regel nicht verfügbar.");
+    const pruefeZiel = (stand: KnowledgeObject) => {
+      if (!darfSehen(user, stand)) throw new WissensFehler(404, "Regel nicht verfügbar.");
+      if (
+        stand.status !== "validiert" ||
+        stand.version !== basis ||
+        stand.spaceId !== ko.spaceId ||
+        stand.confidentiality !== ko.confidentiality
+      )
+        throw new WissensFehler(409, "Regelfassung geändert; erneut prüfen.");
+    };
+    const pruefenUndUebernehmen = async () => {
+      pruefeZiel(ko);
+      const { n, space } = await this.uebernahmegrundlage(user, id, x.fassung, ko.spaceId);
+      if (!n.inhalt.includes(auszug) || aussage === ko.statement.trim())
+        throw new WissensFehler(
+          400,
+          "Originalauszug und eine geänderte Kernaussage werden benötigt.",
+        );
+      const notizbeleg = { notizId: n.id, fassung: n.fassung, auszug };
+      const stempel = createOperationFingerprint({
+        koId,
+        basis,
+        bisher: ko.statement,
+        aussage,
+        notizbeleg,
+        quelle: abdruck(n.inhalt),
+        spaceId: space?.id,
+        spaceVersion: space?.version,
+        stufe: ko.confidentiality,
+        akteur: user.id,
+        rolle: user.role,
+      });
+      const vorschau = {
+        koId,
+        titel: ko.title,
+        basis: ko.version,
+        bisher: ko.statement,
+        aussage,
+        auszug,
+        stempel,
+        stufe: ko.confidentiality,
+        space: space?.name ?? null,
+      };
+      if (!einreichen) return vorschau;
+      if (x.bewusst !== true || x.stempel !== stempel)
+        throw new WissensFehler(409, "Vorschau erneut prüfen und bestätigen.");
+      const operation = {
+        id: `klara-regel-${abdruck(JSON.stringify([n.id, n.fassung, koId, basis]))}`,
+        fingerprint: stempel,
+      };
+      const { proposal } = await this.d.ko.addProposal(
+        koId,
+        user.id,
+        {
+          statement: aussage,
+          baseVersion: ko.version,
+          origin: "Klara",
+          notizbeleg,
+          kontoregel: can(user.role, "users.manage")
+            ? "freiwillige-zweitpruefung"
+            : "pflichtpruefung",
+        },
+        { operation, pruefeZiel },
+      );
+      return {
+        koId,
+        basis: proposal.baseVersion,
+        vorschlagId: proposal.id,
+        status: proposal.status,
+      };
+    };
+    return einreichen
+      ? this.d.vorlagen.sperre(null, pruefenUndUebernehmen, ko.spaceId)
+      : pruefenUndUebernehmen();
+  }
+
+  private async regelstaende(user: SessionUser, notizId: string) {
+    const belege = await this.d.audit.list({ actor: user.id, action: "ko.proposed" });
+    const bindungen = belege.filter(
+      (e) => e.payload.notizId === notizId && typeof e.payload.notizFassung === "number",
+    );
+    return Promise.all(
+      bindungen.reverse().map(async (e) => {
+        const notizFassung = Number(e.payload.notizFassung);
+        const ko = await this.d.ko.get(e.target);
+        const p =
+          ko && darfSehen(user, ko)
+            ? ko.proposals?.find(
+                (v) =>
+                  v.id === e.payload.proposalId &&
+                  v.author === user.id &&
+                  v.notizbeleg?.notizId === notizId &&
+                  v.notizbeleg.fassung === notizFassung,
+              )
+            : undefined;
+        if (!p || !ko) return { notizFassung, stand: "nicht_verfuegbar" as const };
+        const rueckfrage = p.rueckfragen?.at(-1);
+        return {
+          notizFassung,
+          stand: p.status === "offen" && rueckfrage ? ("rueckfrage" as const) : p.status,
+          koId: ko.id,
+          titel: ko.title,
+          basis: p.baseVersion,
+          aktuelleVersion: ko.version,
+          aktuelleVersionFreigegeben: ko.status === "validiert",
+          ergebnisVersion: p.resultVersion,
+          grund: p.status === "offen" ? rueckfrage?.text : p.note,
+          entschiedenVon: p.decidedBy,
+        };
+      }),
+    );
+  }
+
+  async vorschau(user: SessionUser, id: string, fassung: unknown, ziel: WissensZiel) {
+    if (ziel.art === "space" && !ziel.spaceId) throw new WissensFehler(404, "Ziel nicht gefunden.");
+    const { n, space, notizQuellen } = await this.uebernahmegrundlage(
+      user,
+      id,
+      fassung,
+      ziel.art === "space" ? ziel.spaceId : undefined,
+    );
     const bezug = ziel.vorlage ? { ...ziel.vorlage, spaceId: space?.id } : null;
     const kennzeichnung = n.wissensHerkunft
       ? `<p>Importangaben: Projekt ${html(n.wissensHerkunft.projekt)} · Antwortfassung ${html(n.wissensHerkunft.antwortFassung)} · Anbieter ${html(n.wissensHerkunft.anbieter ?? "unbekannt")} · Modell ${html(n.wissensHerkunft.modell ?? "unbekannt")}. Keine automatische fachliche Bestätigung.</p>${n.wissensHerkunft.aussagen
@@ -312,6 +451,51 @@ export class KlaraWissensDienst {
       bezug: entscheid.bezug,
     };
   }
+  async beitragsstand(user: SessionUser, id: string) {
+    await this.original(user, id);
+    const belegliste = await this.d.audit.list({
+      actor: user.id,
+      action: "klara.wissen.uebernommen",
+    });
+    const zuordnungen = new Map<number, string>();
+    for (const beleg of belegliste) {
+      const fassung = beleg.payload.fassung;
+      if (
+        beleg.payload.notizId === id &&
+        typeof fassung === "number" &&
+        Number.isSafeInteger(fassung) &&
+        fassung > 0
+      )
+        zuordnungen.set(fassung, beleg.target);
+    }
+    const beitraege = await Promise.all(
+      [...zuordnungen]
+        .sort(([a], [b]) => b - a)
+        .map(async ([notizFassung, ziel]) => {
+          const ko = await this.d.ko.get(ziel);
+          if (!ko || !darfSehen(user, ko))
+            return { notizFassung, stand: "nicht_verfuegbar" as const };
+          let stand: "offen" | "validiert" | "abgelehnt" | "rueckfrage" = ko.status;
+          if (stand === "offen" && ko.validationDecisionRef) {
+            const beleg = gebundenePruefentscheidung(
+              ko,
+              await this.d.audit.list({ target: ko.id }),
+            );
+            if (
+              beleg?.payload.koVersion === ko.version &&
+              ["ko.rated", "ko.returned-to-author", "ko.returned-to-owner"].includes(beleg.action)
+            ) {
+              if (beleg.payload.verdict === "down") stand = "abgelehnt";
+              if (beleg.payload.verdict === "warn") stand = "rueckfrage";
+            }
+          }
+          return { notizFassung, id: ko.id, version: ko.version, stand };
+        }),
+    );
+    const regelvorschlaege = await this.regelstaende(user, id);
+    return { beitraege, regelvorschlaege };
+  }
+
   async uebernehmen(user: SessionUser, id: string, roh: unknown) {
     const x = objekt(roh);
     if (x.bewusst !== true) throw new WissensFehler(400, "Bewusste Übernahme fehlt.");
@@ -333,10 +517,12 @@ export class KlaraWissensDienst {
           await this.original(user, id);
           ko = await this.d.ko.create(v.input, operation, undefined, ziel.spaceId);
           await this.d.vorlagen.vermerke(ko.id, v.bezug, user, ziel.spaceId);
-          await this.d.audit.record({
-            actor: user.id,
-            action: "klara.wissen.uebernommen",
-            target: ko.id,
+        }
+        // Nach Antwortverlust kann die Anlage schon existieren und ihre Zuordnung noch fehlen.
+        const zuordnung = { actor: user.id, action: "klara.wissen.uebernommen", target: ko.id };
+        if (!wiederholt || !(await this.d.audit.exists(zuordnung))) {
+          await this.d.audit.recordOnce(`klara.wissen.uebernommen:${ko.id}`, {
+            ...zuordnung,
             payload: { notizId: id, fassung: v.fassung },
           });
         }

@@ -12,6 +12,7 @@ function text(de: string, en: string, nl: string): KatalogText {
 }
 
 const belegtitel: Record<Belegart, KatalogText> = {
+  planning: text("Auftrag zum Ausbau", "Development task", "Ontwikkelopdracht"),
   register: text(
     "Funktionsregister · Eintrag",
     "Feature register · entry",

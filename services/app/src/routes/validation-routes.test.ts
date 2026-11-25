@@ -205,6 +205,7 @@ describe("JOB 3003 · Station 4 — Stufe und Herkunft am Pruef-Board", () => {
     });
     const offen = await services.ko.create({
       title: "Internes Alltagswissen",
+      confidentiality: "intern",
       statement: "Nichts Geheimes — dieses Objekt muss jeder Pruefer sehen.",
       type: "best_practice",
       category: "Anlage 1",
@@ -319,4 +320,72 @@ describe("JOB 3003 · Station 4 — Stufe und Herkunft am Pruef-Board", () => {
       { id: "q-1", label: "Handbuch Anlagenbetrieb, Kapitel 4", kind: "external" },
     ]);
   });
+});
+
+it("zeigt fremde offene Klara-Regelvorschläge am Prüfbrett mit heutiger Sichtbarkeit und tatsächlicher Zuständigkeit", async () => {
+  const { app, services, pruefer, fremd } = await setup();
+  try {
+    const me = await app.inject({ method: "GET", url: "/api/auth/me", headers: pruefer });
+    const adminId = me.json<{ id: string }>().id;
+    const lesen = async (headers: Auth) => {
+      const r = await app.inject({
+        method: "GET",
+        url: "/api/validation/board?ansicht=klara-regelvorschlaege",
+        headers,
+      });
+      expect(r.statusCode, r.body).toBe(200);
+      return r.json<unknown[]>();
+    };
+    const ko = await services.ko.create({
+      title: "Regel im Einkauf",
+      statement: "Eine Freigabe.",
+      type: "best_practice",
+      category: "Einkauf",
+      author: "autor",
+      confidentiality: "intern",
+    });
+    await services.ko.setOwnership(ko.id, { owner: adminId }, adminId);
+    const eingabe = {
+      statement: "Zwei Freigaben.",
+      baseVersion: ko.version,
+      origin: "Klara",
+      notizbeleg: { notizId: "persoenlich", fassung: 1, auszug: "Privater Auszug" },
+    };
+    await services.ko.addProposal(ko.id, adminId, eingabe);
+    await services.ko.addProposal(ko.id, "autor", {
+      statement: "Anderer Weg.",
+      baseVersion: ko.version,
+      origin: "Klara",
+    });
+    const p = await services.ko.addProposal(ko.id, "autor", eingabe);
+    const zeile = {
+      koId: ko.id,
+      vorschlagId: p.proposal.id,
+      titel: ko.title,
+      basis: ko.version,
+      bezug: "verantwortlich",
+      am: p.proposal.at,
+    };
+    expect(await lesen(pruefer)).toEqual([zeile]);
+    expect(await lesen(fremd)).toEqual([]);
+    await services.ko.setQuellrechte(ko.id, { stufe: "intern", leser: [] }, "autor");
+    expect(await lesen(pruefer)).toEqual([]);
+    await services.ko.setQuellrechte(ko.id, { stufe: "intern", leser: [adminId] }, "autor");
+    expect(await lesen(pruefer)).toEqual([zeile]);
+    const erledigt = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${ko.id}`,
+      headers: pruefer,
+      payload: {
+        action: "decide-proposal",
+        proposalId: p.proposal.id,
+        decision: "ablehnen",
+        note: "Die bisherige Regel gilt.",
+      },
+    });
+    expect(erledigt.statusCode, erledigt.body).toBe(200);
+    expect(await lesen(pruefer)).toEqual([]);
+  } finally {
+    await app.close();
+  }
 });

@@ -149,6 +149,11 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
   }
   const restore = appFuer("klara_f_restore_test");
   token = await login(restore);
+  const beitragsstand = await call(restore, "GET", `/notizen/${n.id}/wissen/stand`);
+  expect(beitragsstand.statusCode, beitragsstand.body).toBe(200);
+  expect(beitragsstand.json().beitraege).toEqual([
+    { notizFassung: n.fassung, id, version: 1, stand: "offen" },
+  ]);
   const wieder = await call(restore, "POST", `/notizen/${n.id}/wissen/uebernehmen`, body);
   expect(wieder.statusCode, wieder.body).toBe(200);
   expect(wieder.json()).toMatchObject({ beitrag: { id }, wiederholt: true });
@@ -319,4 +324,38 @@ it("F15 · Besprechungsfassung, private Übergabe und Folgeaufgabe überstehen P
       })
     ).statusCode,
   ).toBe(404);
+});
+
+it("liest den offenen Regelvorschlag aus PostgreSQL am Prüfeinstieg und prüft die Quellrechte bei jedem Abruf", async () => {
+  const pool = createPool(`${url}/klara_f_test`);
+  poolAbschluesse.push(poolAbschluss(pool));
+  const dienste = buildPgServices(pool);
+  const app = buildApp(dienste);
+  apps.push(app);
+  const ko = await dienste.ko.create({
+    title: "Einkaufsregel Prüfboard",
+    statement: "Eine Freigabe.",
+    type: "best_practice",
+    category: "Einkauf",
+    author: "autor",
+    confidentiality: "intern",
+  });
+  const v = await dienste.ko.addProposal(ko.id, "einkauf", {
+    baseVersion: ko.version,
+    statement: "Zwei Freigaben.",
+    origin: "Klara",
+    notizbeleg: { notizId: "lokale-testnotiz", fassung: 1, auszug: "Zwei Freigaben." },
+  });
+  async function aufDemBoard() {
+    const r = await app.inject({
+      method: "GET",
+      url: "/api/validation/board?ansicht=klara-regelvorschlaege",
+      headers: adminKopf,
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    return r.json<{ vorschlagId: string }[]>().some((zeile) => zeile.vorschlagId === v.proposal.id);
+  }
+  expect(await aufDemBoard()).toBe(true);
+  await dienste.ko.setQuellrechte(ko.id, { stufe: "intern", leser: [] }, "autor");
+  expect(await aufDemBoard()).toBe(false);
 });
