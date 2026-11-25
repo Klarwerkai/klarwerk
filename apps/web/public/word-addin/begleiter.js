@@ -10,8 +10,8 @@
 // die Begleitapp liest es dort unter derselben Anmeldung.
 //
 // WAS DER BLOCK TUT, und wann:
-//   · NICHTS, solange der Schalter „Mit Begleitapp verbinden" in den Einstellungen aus ist. Er ist
-//     bei jedem Laden des Fensters aus; die Wahl wird nirgends gespeichert.
+//   · Erst per Klick im Hauptpanel oder in den Einstellungen. Beide bedienen dieselbe Verbindung.
+//     Bei jedem Laden des Fensters ist sie aus; die Wahl wird nirgends gespeichert.
 //   · EINGESCHALTET meldet er dieses Fenster an (Host, Fassung, Dokumentkennung, Dateiname) und
 //     danach alle zwei Sekunden: die aktuelle Markierung (höchstens 4.000 Zeichen, dazu die volle
 //     Länge) sowie bei erlaubtem Mitlesen die Prüfpassage (bis 2.000 Zeichen) mit Auswahlstand.
@@ -45,6 +45,9 @@
     var BEGLEITER_TEXTE = {
       de: {
         titel: "Mit Begleitapp verbinden",
+        verbinden: "Klara-App verbinden",
+        trennen: "Trennen",
+        kurzVerbunden: "Klara-App verbunden",
         hinweis: "Teilt Host, Dateiname und Markierung (bis 4.000 Zeichen) mit der Begleitapp auf deinem Konto. Bei aktivem Mitlesen sieht sie auch die Prüfpassage am Cursor (bis 2.000 Zeichen).",
         aus: "Nicht verbunden.",
         verbindet: "Verbindet …",
@@ -56,6 +59,9 @@
       },
       en: {
         titel: "Connect companion app",
+        verbinden: "Connect Klara app",
+        trennen: "Disconnect",
+        kurzVerbunden: "Klara app connected",
         hinweis: "Shares the host, file name and selection (up to 4,000 characters) with the companion app on your account. When reading is enabled it also shows the passage at the cursor (up to 2,000 characters).",
         aus: "Not connected.",
         verbindet: "Connecting …",
@@ -67,6 +73,9 @@
       },
       nl: {
         titel: "Verbinden met begeleider-app",
+        verbinden: "Klara-app verbinden",
+        trennen: "Verbinding verbreken",
+        kurzVerbunden: "Klara-app verbonden",
         hinweis: "Deelt de host, bestandsnaam en selectie (maximaal 4.000 tekens) met de begeleider-app op je account. Bij ingeschakeld meelezen toont deze ook de passage bij de cursor (maximaal 2.000 tekens).",
         aus: "Niet verbonden.",
         verbindet: "Verbinden …",
@@ -362,13 +371,14 @@
 
     function begleiterAnmelden() {
       var runde = begleiterRunde;
+      var instanz = begleiterInstanz;
+      begleiterUnterwegs = true;
       begleiterDokumentLesen(function (dokument) {
         if (runde !== begleiterRunde || !begleiterAn) { return; }
         begleiterDokument = dokument;
         var host = begleiterHost();
-        begleiterUnterwegs = true;
         begleiterAbruf("POST", "/adapter", {
-          instanz: begleiterInstanz,
+          instanz: instanz,
           host: host.host,
           hostFassung: host.fassung,
           dokument: dokument,
@@ -376,8 +386,12 @@
           // Serverneustart übernimmt der Kanal es samt Stopp und klärt danach auftragsbezogen.
           laufend: begleiterLaufendMelden()
         }).then(function (antwort) {
+          if (runde !== begleiterRunde || !begleiterAn) {
+            // Das erste DELETE kann vor diesem POST beim Server angekommen sein.
+            if (antwort.status === 201) { begleiterAbmelden(instanz); }
+            return;
+          }
           begleiterUnterwegs = false;
-          if (runde !== begleiterRunde || !begleiterAn) { return; }
           if (antwort.status === 201) {
             begleiterAnmeldung++;
             begleiterVergleichZiel = null;
@@ -391,8 +405,9 @@
             begleiterLageSetzen(antwort.status === 401 ? "anmeldung" : "getrennt");
           }
         }, function () {
+          if (runde !== begleiterRunde || !begleiterAn) { return; }
           begleiterUnterwegs = false;
-          if (runde === begleiterRunde && begleiterAn) { begleiterLageSetzen("getrennt"); }
+          begleiterLageSetzen("getrennt");
         });
       });
     }
@@ -419,8 +434,8 @@
       }
       begleiterUnterwegs = true;
       begleiterAbruf("PUT", "/adapter/" + begleiterInstanz, koerper).then(function (antwort) {
-        begleiterUnterwegs = false;
         if (runde !== begleiterRunde || !begleiterAn) { return; }
+        begleiterUnterwegs = false;
         if (antwort.status === 200) {
           // Nacharbeit 65 (Ben): entfernt wird nur, was der Kanal ausdrücklich quittiert hat; ein
           // abgewiesenes Endergebnis bleibt und geht mit dem nächsten Takt erneut hinaus.
@@ -447,8 +462,9 @@
           begleiterLageSetzen(antwort.status === 401 ? "anmeldung" : "getrennt");
         }
       }, function () {
+        if (runde !== begleiterRunde || !begleiterAn) { return; }
         begleiterUnterwegs = false;
-        if (runde === begleiterRunde && begleiterAn) { begleiterLageSetzen("getrennt"); }
+        begleiterLageSetzen("getrennt");
       });
     }
 
@@ -808,9 +824,12 @@
       begleiterTimer = setInterval(function () { begleiterPassageAuffrischen(); begleiterMelden(); }, BEGLEITER_TAKT_MS);
     }
 
+    function begleiterAbmelden(instanz) {
+      begleiterAbruf("DELETE", "/adapter/" + instanz, null, true).then(null, function () { /* Serverfrist räumt ab */ });
+    }
+
     function begleiterTrennen() {
       var instanz = begleiterInstanz;
-      var warAngemeldet = begleiterAngemeldet;
       begleiterVergleichZiel = null;
       begleiterRunde += 1;
       begleiterLetztePassageBindung = null;
@@ -832,9 +851,7 @@
       clearInterval(begleiterTimer);
       begleiterTimer = null;
       begleiterLageSetzen("aus");
-      if (instanz && warAngemeldet) {
-        begleiterAbruf("DELETE", "/adapter/" + instanz, null, true).then(null, function () { /* Frist räumt ab */ });
-      }
+      if (instanz) { begleiterAbmelden(instanz); }
       begleiterInstanz = null;
     }
 
@@ -843,15 +860,39 @@
       var titel = document.getElementById("einst-begleiter-text");
       var lageZeile = document.getElementById("einst-begleiter-lage");
       if (!schalter || !titel || !lageZeile) { return; }
-      titel.textContent = begleiterT("titel");
+      var officeDa = Boolean(window.Office && Office.context && Office.context.document);
+      var lage = (!officeDa && !begleiterAn) ? "keinOffice" : begleiterLage;
+      var hinweisText = begleiterT("hinweis");
+      begleiterTextSetzen(titel, begleiterT("titel"));
       schalter.setAttribute("aria-checked", begleiterAn ? "true" : "false");
       schalter.className = begleiterAn ? "schalter an" : "schalter";
-      var officeDa = Boolean(window.Office && Office.context && Office.context.document);
-      lageZeile.textContent = (!officeDa && !begleiterAn) ? begleiterT("keinOffice") : begleiterT(begleiterLage);
+      schalter.disabled = !officeDa && !begleiterAn;
+      begleiterTextSetzen(lageZeile, begleiterT(lage));
       lageZeile.setAttribute("data-lage", begleiterLage);
-      lageZeile.setAttribute("title", begleiterT("hinweis"));
-      var hinweis = document.getElementById("einst-begleiter-hinweis");
-      if (hinweis) hinweis.textContent = begleiterT("hinweis");
+      lageZeile.setAttribute("title", hinweisText);
+      begleiterTextSetzen(document.getElementById("einst-begleiter-hinweis"), hinweisText);
+
+      var direkt = document.getElementById("mini-begleiter-knopf");
+      var direktLage = document.getElementById("mini-begleiter-lage");
+      var direktHinweis = document.getElementById("mini-begleiter-hinweis");
+      if (!direkt || !direktLage || !direktHinweis) { return; }
+      var direktGruppe = document.getElementById("mini-begleiter");
+      if (direktGruppe) direktGruppe.classList.toggle("mini-begleiter-verfuegbar", officeDa || begleiterAn);
+      direkt.disabled = schalter.disabled;
+      begleiterTextSetzen(direkt, begleiterT(begleiterAn ? "trennen" : "verbinden"));
+      begleiterTextSetzen(direktLage, begleiterT(lage === "verbunden" ? "kurzVerbunden" : lage));
+      direktLage.setAttribute("data-lage", lage);
+      begleiterTextSetzen(direktHinweis, hinweisText);
+      direktHinweis.hidden = begleiterAn || !officeDa;
+    }
+
+    // Der Sprachtakt darf dieselbe Statusmeldung nicht alle 1,5 Sekunden neu vorlesen lassen.
+    function begleiterTextSetzen(element, text) {
+      if (element && element.textContent !== text) { element.textContent = text; }
+    }
+
+    function begleiterUmschalten() {
+      if (begleiterAn) { begleiterTrennen(); } else { begleiterVerbinden(); }
     }
 
     function begleiterAnschliessen() {
@@ -869,6 +910,7 @@
       schalter.type = "button";
       schalter.id = "einst-begleiter";
       schalter.setAttribute("role", "switch");
+      schalter.setAttribute("aria-labelledby", text.id);
       var knopf = document.createElement("span");
       knopf.className = "knopf";
       schalter.appendChild(knopf);
@@ -885,9 +927,10 @@
       hinweis.className = "einst-hinweis";
       schalter.setAttribute("aria-describedby", hinweis.id);
       gruppe.insertBefore(hinweis, lageZeile.nextSibling);
-      schalter.addEventListener("click", function () {
-        if (begleiterAn) { begleiterTrennen(); } else { begleiterVerbinden(); }
-      });
+      schalter.addEventListener("click", begleiterUmschalten);
+      var direkt = document.getElementById("mini-begleiter-knopf");
+      if (direkt) { direkt.addEventListener("click", begleiterUmschalten); }
+      document.addEventListener("kw-word-language", begleiterZeichnen);
       // Das Fenster schliesst: abmelden, solange der Seitenabbau es noch zulässt.
       window.addEventListener("pagehide", function () { if (begleiterAn) { begleiterTrennen(); } });
       begleiterZeichnen();

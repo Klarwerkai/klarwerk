@@ -2,6 +2,7 @@
 (() => {
   if (!window.KlarwerkWordMinimal) return;
   const el = (id) => document.getElementById(id);
+  const companion = el("mini-begleiter");
   const toolRoots = ["section-capture", "kw-einstellungen", "kw-hilfe"];
   window.kwWordUi = window.KlarwerkWordMinimal.create({
     header: "kw-kopf",
@@ -63,6 +64,7 @@
       }
     },
     paint: (page) => {
+      if (companion) companion.hidden = page !== "home";
       el("section-ask").hidden = page !== "home";
       for (const id of toolRoots)
         el(id).hidden =
@@ -91,6 +93,7 @@
     ],
   });
   const ui = window.kwWordUi;
+  if (companion) el("mini-context").after(companion);
   const compareStop = el("wv-abbrechen");
   if (compareStop) {
     const refresh = () =>

@@ -26,7 +26,7 @@ export default {
     "begleiter.kontext.laden": "Word-Kontext wird gelesen …",
     "begleiter.kontext.fehler": "Word-Kontext nicht lesbar: {{grund}}",
     "begleiter.kontext.leer":
-      "Kein Word-Fenster verbunden. In Word: Klara öffnen → Einstellungen → „Mit Begleitapp verbinden“.",
+      "Kein Word-Fenster verbunden. Öffne Klara in Word und wähle „Klara-App verbinden“.",
     "begleiter.kontext.host.word-mac": "Word für Mac",
     "begleiter.kontext.host.word-web": "Word im Web",
     "begleiter.kontext.host.word-windows": "Word für Windows",
@@ -126,7 +126,7 @@ export default {
     "begleiter.passage.cursor": "{{titel}} · Satz am Cursor",
     "begleiter.passage.verbinden": "Word verbinden",
     "begleiter.passage.anleitung":
-      "Öffne Klara im gewünschten Word-Dokument. Wähle im Klara-Menü „Einstellungen“ und aktiviere „Mit Begleitapp verbinden“.",
+      "Öffne Klara im gewünschten Word-Dokument und wähle „Klara-App verbinden“. Nach dem Neuladen der Seitenleiste kannst du das Fenster dort wieder verbinden.",
     "begleiter.vergleich.frueherePassage": "Zuvor geprüfte Passage",
     "begleiter.passage.frage": "Ist das korrekt?",
     "begleiter.passage.geaendert":
@@ -201,7 +201,7 @@ export default {
     "begleiter.kontext.laden": "Reading Word context …",
     "begleiter.kontext.fehler": "Word context not readable: {{grund}}",
     "begleiter.kontext.leer":
-      "No Word window connected. In Word: open Klara → Settings → “Connect companion app”.",
+      "No Word window connected. Open Klara in Word and choose “Connect Klara app”.",
     "begleiter.kontext.host.word-mac": "Word for Mac",
     "begleiter.kontext.host.word-web": "Word on the web",
     "begleiter.kontext.host.word-windows": "Word for Windows",
@@ -295,7 +295,7 @@ export default {
     "begleiter.passage.cursor": "{{titel}} · Sentence at cursor",
     "begleiter.passage.verbinden": "Connect Word",
     "begleiter.passage.anleitung":
-      "Open Klara in the Word document you want to check. In the Klara menu, choose Settings and turn on “Connect companion app”.",
+      "Open Klara in the Word document you want to check and choose “Connect Klara app”. If you reload the pane, use the same button to reconnect.",
     "begleiter.vergleich.frueherePassage": "Previously checked passage",
     "begleiter.passage.frage": "Is this correct?",
     "begleiter.passage.geaendert": "The passage in Word has changed. Check the passage now shown.",
@@ -362,7 +362,7 @@ export default {
     "begleiter.kontext.laden": "Word-context wordt gelezen …",
     "begleiter.kontext.fehler": "Word-context niet leesbaar: {{grund}}",
     "begleiter.kontext.leer":
-      "Geen Word-venster verbonden. In Word: Klara openen → Instellingen → „Verbinden met begeleider-app”.",
+      "Er is geen Word-venster verbonden. Open Klara in Word en kies ‘Klara-app verbinden’.",
     "begleiter.kontext.host.word-mac": "Word voor Mac",
     "begleiter.kontext.host.word-web": "Word op het web",
     "begleiter.kontext.host.word-windows": "Word voor Windows",
@@ -456,7 +456,7 @@ export default {
     "begleiter.passage.cursor": "{{titel}} · Zin bij de cursor",
     "begleiter.passage.verbinden": "Word verbinden",
     "begleiter.passage.anleitung":
-      "Open Klara in het Word-document dat je wilt controleren. Kies in het Klara-menu ‘Instellingen’ en zet ‘Verbinden met begeleider-app’ aan.",
+      "Open Klara in het Word-document dat je wilt controleren en kies ‘Klara-app verbinden’. Na het herladen van het zijpaneel kun je het venster met dezelfde knop opnieuw verbinden.",
     "begleiter.vergleich.frueherePassage": "Eerder gecontroleerde passage",
     "begleiter.passage.frage": "Klopt dit?",
     "begleiter.passage.geaendert":

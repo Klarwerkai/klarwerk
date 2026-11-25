@@ -12,7 +12,7 @@ keine Hostabnahme.
 | --- | --- | --- |
 | Native Begleitapp (Swift 6.1 im Sprachmodus 5, AppKit, WKWebView) | `apps/desktop/klara-begleiter/` | Ein schwebendes, randloses Fenster mit der Figur; Ziehen, Tastaturschritte, Andocken, Zurücksetzen, Ein-/Ausblenden, Wiederfinden (Control-Option-K), Menüleistensymbol; Bildschirmrand, Mehrmonitor, Skalierung, Spaces und Vollbild. Kein Dock-Symbol, kein Autostart. |
 | Webfläche der App | `apps/web/src/pages/Begleiter.tsx` (Route `/begleiter`, ohne Hülle) | Figur mit tatsächlichem Zustand, Word-Kontext, eigenes Klara-Gespräch (Klara 01), Sprechen/Diktieren/Vorlesen (Klara 02), Bedienung der Figur, Fassungen. |
-| Office-Adapter im Word-Fenster | `apps/web/public/word-addin/begleiter.js` (Schalter „Mit Begleitapp verbinden“ in den Einstellungen des Klara-Seitenfensters) | Meldet Host, Hostfassung, Dateiname, Prüfsumme der Dokumentadresse und Markierung; führt Einfügen und „Frage in Word“ aus. Aus, bis die Person einschaltet. |
+| Office-Adapter im Word-Fenster | `apps/web/public/word-addin/begleiter.js` („Klara-App verbinden“ im Klara-Seitenfenster oder „Mit Begleitapp verbinden“ in dessen Einstellungen) | Meldet Host, Hostfassung, Dateiname, Prüfsumme der Dokumentadresse und Markierung; führt Einfügen und „Frage in Word“ aus. Aus, bis die Person einschaltet. |
 | Kontextkanal | `services/app/src/klara-begleiter.ts`, Routen `/api/me/klara/begleiter/*` | Bindet Adapter und Begleitapp an das eigene Konto; weist fremde, nicht angemeldete und veraltete Meldungen ab; ohne aktiven Adapter keine Auswahl. Nur Arbeitsspeicher. |
 | Bauen/Installieren/Entfernen | `scripts/klara-office/begleiter-{bauen,installieren,entfernen}.sh` | Eigener App-Pfad, keine Administratorrechte, kein LaunchAgent. |
 
@@ -29,7 +29,7 @@ liefert, den vorhandenen freigegebenen Avatar `klara/klara-avatar-v1.png` (SHA-2
 
 ```
 Word für Mac / Word im Web (Klara-Seitenfenster, begleiter.js)
-   │  nur nach „Mit Begleitapp verbinden“: Host, Hostfassung, Dateiname,
+   │  nach dem Verbinden in Word: Host, Hostfassung, Dateiname,
    │  SHA-256 der Dokumentadresse (32 Zeichen), Markierung ≤ 4.000 Zeichen + Länge
    ▼
 Klarwerk-Instanz (dieselbe wie das Seitenfenster), Konto aus der Sitzung,
@@ -105,7 +105,7 @@ bash scripts/klara-office/begleiter-installieren.sh   # → ~/Applications/Klara
 | Ein-/Ausblenden, Wiederfinden | Menüleiste „Figur ausblenden/einblenden“; Control-Option-K holt die Figur zum Mauszeiger (auf dessen Bildschirm) |
 | Reduzierte Bewegung | Menüleiste oder Häkchen im Gespräch; Vorgabe folgt „Bewegung reduzieren“ von macOS |
 | Fläche der Figur | in der Lage „Figur“ ist das Fenster 96 × 96 pt und durchsichtig — mehr verdeckt sie vom Dokument nicht |
-| Word verbinden | In Word: Klara öffnen → Einstellungen → „Mit Begleitapp verbinden“ (je Dokumentfenster) |
+| Word verbinden | Klara im gewünschten Dokument öffnen und „Klara-App verbinden“ wählen. Nach dem Neuladen der Seitenleiste ist derselbe Klick erneut erforderlich. |
 | Mehrere Word-Fenster | Die Begleitapp listet jedes verbundene Fenster mit Host, Fassung und Dateiname; „Dieses Fenster verwenden“ bindet eines. Ohne Wahl gilt das Fenster mit der jüngsten Markierungsänderung. |
 
 Figurzustände (tatsächlich, nicht gespielt): bereit · wartet auf Antwort (Frage läuft oder Word
@@ -136,7 +136,7 @@ Geheimnisse, keine echten Kundendaten. Bildbelege nach `docs/operations/klara-of
 | --- | --- | --- | --- |
 | A1 | `begleiter-bauen.sh`, `begleiter-installieren.sh` | `BAU.txt`, `INSTALLATION.txt` mit Pfad, Fassung, Bau, `autostart=nein`; App startet | |
 | A2 | Anmelden in der App | Figur erscheint unten rechts; Menüleiste zeigt Fassung und „verbunden“ | |
-| A3 | Word für Mac: Dokument öffnen, Klara → Einstellungen → verbinden | Begleitapp: „Word für Mac · Fassung … · aktiv“, Dateiname; grauer Punkt verschwindet | |
+| A3 | Word für Mac: Dokument öffnen, in Klara „Klara-App verbinden“ wählen | Begleitapp: „Word für Mac · Fassung … · aktiv“, Dateiname; grauer Punkt verschwindet | |
 | A4 | Text markieren | Markierung erscheint in der Begleitapp (≤ 2 s) | |
 | A5 | Figur über das Word-Fenster ziehen, Pfeiltasten, Umschalt+Pfeil | bewegt sich; Word behält den Fokus beim Ziehen | |
 | A6 | Links/rechts andocken, zurücksetzen, ausblenden, Control-Option-K | jeweils sichtbar wirksam | |

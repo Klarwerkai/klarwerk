@@ -208,8 +208,18 @@ function bereichVon(stelle: { ort: string; text: string }): Bereich {
   return bereich;
 }
 
+// Der Schnellzugriff gehört zum ausgelieferten Word-Panel. Eine eigene Nachbildung würde
+// weiter bestehen, wenn der Einstieg im echten Dokument versehentlich entfernt würde.
+const schnellzugriff = new DOMParser()
+  .parseFromString(
+    readFileSync(repoPfad("apps/web/public/word-addin/taskpane.html"), "utf8"),
+    "text/html",
+  )
+  .getElementById("mini-begleiter")?.outerHTML;
+
 function markup(): string {
   return [
+    schnellzugriff ?? "",
     '<div id="kw-einstellungen"><div class="einst-gruppe">',
     '<div class="einst-zeile"><span></span><button id="einst-absatzblick"></button></div>',
     "</div></div>",
@@ -347,6 +357,136 @@ describe("A1 · aus, bis die Person einschaltet", () => {
     vi.advanceTimersByTime(30_000);
     expect(aufrufe).toEqual([]);
   });
+});
+
+describe("Begleitapp aus der Word-Startansicht verbinden", () => {
+  const direkt = (): HTMLButtonElement => {
+    const knopf = document.querySelector<HTMLButtonElement>("#mini-begleiter-knopf");
+    if (!knopf) throw new Error("Der Verbindungsbutton fehlt im Word-Panel.");
+    return knopf;
+  };
+
+  function direktlage(): string | undefined {
+    return document.getElementById("mini-begleiter-lage")?.dataset.lage;
+  }
+
+  it.each([
+    ["de", /verbinden/i, /Dateiname/i, /Markierung/i, /Cursor/i],
+    ["en", /connect/i, /file name/i, /selection/i, /cursor/i],
+    ["nl", /verbind/i, /bestandsnaam/i, /selectie/i, /cursor/i],
+  ] as const)(
+    "zeigt vor dem Teilen die Erklärung auf %s",
+    (sprache, aktion, datei, auswahl, cursor) => {
+      g.lang = sprache;
+      document.dispatchEvent(new Event("kw-word-language"));
+      const knopf = direkt();
+      const hinweis = document.getElementById("mini-begleiter-hinweis");
+      expect(knopf.textContent).toMatch(aktion);
+      expect(knopf.disabled).toBe(false);
+      expect(hinweis?.hidden).toBe(false);
+      expect(knopf.getAttribute("aria-describedby")?.split(/\s+/)).toContain(hinweis?.id);
+      const text = hinweis?.textContent ?? "";
+      for (const wort of [datei, auswahl, cursor, /4[.,\s]?000/, /2[.,\s]?000/]) {
+        expect(text).toMatch(wort);
+      }
+      expect(direktlage()).toBe("aus");
+      expect(schalter().getAttribute("aria-checked")).toBe("false");
+      expect(aufrufe).toEqual([]);
+    },
+  );
+
+  it("verbindet und trennt in beiden Richtungen über denselben Adapter", async () => {
+    direkt().click();
+    await bis(() => meldungen().length > 0);
+    expect(anmeldungen()).toHaveLength(1);
+    expect(direktlage()).toBe("verbunden");
+    expect(direkt().textContent).toBe("Trennen");
+    expect(schalter().getAttribute("aria-checked")).toBe("true");
+
+    schalter().click();
+    expect(direktlage()).toBe("aus");
+    expect(aufrufe.filter((a) => a.methode === "DELETE")).toHaveLength(1);
+    const nachTrennung = aufrufe.length;
+    await takt();
+    expect(aufrufe).toHaveLength(nachTrennung);
+
+    schalter().click();
+    await bis(() => direktlage() === "verbunden");
+    expect(direktlage()).toBe("verbunden");
+    expect(anmeldungen()).toHaveLength(2);
+    direkt().click();
+    expect(schalter().getAttribute("aria-checked")).toBe("false");
+    expect(direktlage()).toBe("aus");
+    expect(aufrufe.filter((a) => a.methode === "DELETE")).toHaveLength(2);
+  });
+
+  it("zeigt nach abgewiesener Anmeldung den Anmeldehinweis auch am Direktbutton", async () => {
+    anmeldeStatus = 401;
+    direkt().click();
+    await bis(() => direktlage() === "anmeldung");
+    expect(direktlage()).toBe("anmeldung");
+    expect(lage()).toBe("Bitte zuerst bei Klarwerk anmelden.");
+    expect(document.getElementById("mini-begleiter-lage")?.textContent).toBe(lage());
+    expect(meldungen()).toEqual([]);
+  });
+
+  it("räumt nach verspätetem 201 ausschließlich das zuvor getrennte Fenster auf", async () => {
+    let freigeben = (): void => {};
+    const ersteAntwort = new Promise<void>((resolve) => {
+      freigeben = resolve;
+    });
+    vi.mocked(window.fetch).mockImplementationOnce(async (pfad, init) => {
+      const ergebnis = await serverAttrappe(String(pfad), init);
+      await ersteAntwort;
+      return ergebnis;
+    });
+
+    direkt().click();
+    await bis(() => anmeldungen().length === 1);
+    expect(direktlage()).toBe("verbindet");
+    const alt = `/api/me/klara/begleiter/adapter/${anmeldungen()[0]?.rumpf?.instanz}`;
+    schalter().click();
+    expect(direktlage()).toBe("aus");
+    const geloescht = () => aufrufe.filter((a) => a.methode === "DELETE").map((a) => a.pfad);
+    expect(geloescht()).toEqual([alt]);
+
+    direkt().click();
+    await bis(() => direktlage() === "verbunden");
+    expect(anmeldungen()).toHaveLength(2);
+    const neu = `/api/me/klara/begleiter/adapter/${anmeldungen()[1]?.rumpf?.instanz}`;
+    expect(neu).not.toBe(alt);
+    freigeben();
+    await bis(() => geloescht().length === 2);
+    expect(geloescht()).toEqual([alt, alt]);
+    const neueMeldungen = meldungen().length;
+    await takt();
+    expect(meldungen().length).toBeGreaterThan(neueMeldungen);
+    expect(meldungen().every((m) => m.pfad === neu)).toBe(true);
+    expect(direktlage()).toBe("verbunden");
+  });
+
+  it.each([
+    ["gespeichert", URL_DOKUMENT],
+    ["ungespeichert", ""],
+  ])(
+    "wartet nach einem Neuladen desselben Dokuments (%s) erneut auf den Klick",
+    async (_art, url) => {
+      (g.Office as { context: { document: { url: string } } }).context.document.url = url;
+      direkt().click();
+      await bis(() => direktlage() === "verbunden");
+      expect(direktlage()).toBe("verbunden");
+      window.dispatchEvent(new Event("pagehide"));
+      expect(aufrufe.filter((a) => a.methode === "DELETE")).toHaveLength(1);
+      vi.clearAllTimers();
+      starten();
+      const nachNeuladen = aufrufe.length;
+      await takt();
+      expect(direktlage()).toBe("aus");
+      expect(schalter().getAttribute("aria-checked")).toBe("false");
+      expect(aufrufe).toHaveLength(nachNeuladen);
+      expect(anmeldungen()).toHaveLength(1);
+    },
+  );
 });
 
 describe("A2 · KO-02-05 — die Anmeldung trägt, was Office liefert", () => {

@@ -118,6 +118,43 @@
   min-height: 24px;
   font-size: 11.5px;
 }
+.kw-minimal #mini-begleiter:not(.mini-begleiter-verfuegbar) {
+  display: none;
+}
+.kw-minimal #mini-begleiter {
+  flex: 0 0 auto;
+  margin: 0 12px 8px;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--hairline, #e9e5de);
+  color: var(--muted, #525b6b);
+  font-size: 12px;
+}
+.mini-begleiter-zeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+#mini-begleiter-lage {
+  flex: 1 1 8em;
+}
+#mini-begleiter-lage[data-lage="verbunden"] {
+  color: var(--vergleich-gruen, #16613a);
+  font-weight: 600;
+}
+#mini-begleiter-lage[data-lage="getrennt"],
+#mini-begleiter-lage[data-lage="anmeldung"] {
+  color: var(--warn-text, #79520b);
+}
+.kw-minimal #mini-begleiter-knopf {
+  color: var(--brand-text, #9c5009);
+  font-weight: 600;
+}
+#mini-begleiter-hinweis {
+  margin: 4px 0 0;
+  line-height: 1.35;
+}
 .mini-menu {
   margin: 0 12px 8px;
   padding: 5px;

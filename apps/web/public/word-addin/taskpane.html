@@ -25,14 +25,7 @@
   <script src="vormachen.js?v=__KW_FASSUNG__"></script>
 </head>
 <body>
-  <!-- ============================================================================================
-       JOB 3056 K1 — DER KOPF (Ruhe.dc.html Z.17-26 / Main.dc.html Z.17-23 / Einstellungen Z.17-20).
-       ============================================================================================
-       Links der Zurueck-Chevron (nur im Antwortzustand, in den Einstellungen und in der Hilfe) und
-       der Titel; rechts der Umschalter Fragen | Erfassen (nur auf den beiden Flaechen) und das
-       Zahnrad. Sonst NICHTS: die Sprachwahl lebt in den Einstellungen weiter (#lang-*), der Stand
-       im Fuss der Einstellungen (#kw-stand), Sitzung und Zustimmung in der Gruppe „Konto" bzw. als
-       Schalterzeile, der KI-Stand von KLARWERK (W1-Vertrauenskopf) unter „Wie Klara antwortet". -->
+  <!-- JOB 3056 K1: UI-MIN übernimmt diesen Kopf samt seinen Handlern in die Kontextansicht. -->
   <header id="kw-kopf">
     <div id="kw-kopf-links">
       <button type="button" id="kw-zurueck" class="kw-icon hidden">
@@ -45,8 +38,6 @@
       <img id="kw-marke-logo" class="hidden" alt="" />
     </div>
     <div id="kw-kopf-rechts">
-      <!-- WP-KLARA-ASK (Teil 3): zwei Bereiche — Fragen (das Funktionsversprechen) und Erfassen
-           (der bestehende Entwurf-Sender). Segment-Knoepfe, kein Framework, buildlos. -->
       <div class="tabs" id="kw-segment" role="tablist" aria-label="Bereiche">
         <button type="button" id="tab-ask" class="active" data-t="tabAsk"></button>
         <button type="button" id="tab-capture" data-t="tabCapture"></button>
@@ -57,13 +48,15 @@
     </div>
     <div id="kw-kopf-ki" role="status" aria-live="polite">–</div><!-- R-0378: KI-Zeile der Sitzung (renderKlaraS4) --></header>
 
-  <!-- WP-KLARA-ASK (Teil 1): Klara fragen — Auswahl als Frage, quellengebundene Antwort aus dem
-       VALIDIERTEN Werkswissen ueber den BESTEHENDEN Konsolen-Vertrag POST /api/ask (Same-Origin-
-       Session; serverseitige Permission ko.read wie in der Fragen-Konsole — kein neuer Guard). -->
+  <div id="mini-begleiter" hidden>
+    <div class="mini-begleiter-zeile">
+      <span id="mini-begleiter-lage" role="status"></span>
+      <button type="button" id="mini-begleiter-knopf" aria-describedby="mini-begleiter-hinweis" disabled></button>
+    </div>
+    <p id="mini-begleiter-hinweis"></p>
+  </div>
   <div id="section-ask">
-    <!-- RUHE (Ruhe.dc.html Z.28-31): die Lupe und der EINE Satz — oder, wenn die Sitzung fehlt
-         bzw. der Server nicht erreichbar ist, EIN Satz und EIN Knopf (checkSession). Das
-         Begriffsbild (KA1) erscheint darunter nur mit Begriffen aus einem offenen Word-Dokument. -->
+    <!-- Ruhe.dc.html Z.28–31: checkSession steuert den Zugang, KA1 liefert Begriffe aus Word. -->
     <div id="ask-ruhe">
       <svg id="ask-ruhe-lupe" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
       <div id="ask-ruhe-satz" data-t="askRuheSatz"></div>

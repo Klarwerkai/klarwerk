@@ -345,9 +345,7 @@ describe("S3 · KO-02-05 — der Word-Kontext kommt ausschliesslich vom Adapter"
     await montiere();
     await klick(figur());
     await bis(() => Boolean(q(document, "begleiter-kontext-leer")), 120);
-    expect(q(document, "begleiter-kontext-leer")?.textContent).toContain(
-      "Mit Begleitapp verbinden",
-    );
+    expect(q(document, "begleiter-kontext-leer")?.textContent).toContain("Klara-App verbinden");
 
     const angemeldet = await wordFenster("POST", `${BASIS}/adapter`, {
       instanz: FENSTER,
@@ -549,9 +547,9 @@ describe("Direktvergleich in der Klara-App", () => {
     await montiere();
     await gespraechOffen();
     for (const [sprache, verbindung, schalter] of [
-      ["de", "Word verbinden", "Mit Begleitapp verbinden"],
-      ["en", "Connect Word", "Connect companion app"],
-      ["nl", "Word verbinden", "Verbinden met begeleider-app"],
+      ["de", "Word verbinden", "Klara-App verbinden"],
+      ["en", "Connect Word", "Connect Klara app"],
+      ["nl", "Word verbinden", "Klara-app verbinden"],
     ]) {
       await befehlDerApp("einstellungen-oeffnen");
       await klick(q(document, `sprach-schalter-${sprache}`));
