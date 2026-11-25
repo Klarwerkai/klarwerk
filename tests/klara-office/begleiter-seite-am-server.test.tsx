@@ -24,7 +24,7 @@
 //       wird am Kanal wirklich zurückgezogen; bei einer übergebenen geht der Stopp an das ausführende
 //       Word-Fenster, der Knopf bleibt bis zu dessen Bestätigung erreichbar.
 //   S9  UI-MIN-12 · Entwurf kontogebunden mit Ursprung über Schliessen/Neumontage; Zielwechsel fragt.
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QueryClient,
   QueryClientProvider,
@@ -45,7 +45,15 @@ import { Begleiter } from "../../apps/web/src/pages/Begleiter";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
 import { APP_VERSION } from "../../apps/web/src/version";
 import { BEGLEITER_AUFTRAEGE_MERKEN_MAX } from "../../services/app/src/klara-begleiter";
-import { bis, klick, medienStub, q, ruhe, taste, tippe } from "../fe003-tutorial-fragen/huelle";
+import {
+  bis as bisInEchtzeit,
+  klick,
+  medienStub,
+  q,
+  ruhe,
+  taste,
+  tippe,
+} from "../fe003-tutorial-fragen/huelle";
 import {
   type Aufbau,
   type Draht,
@@ -89,6 +97,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
   localStorage.clear();
   sessionStorage.clear();
   begleiterEntwurfZuruecksetzen();
@@ -126,7 +135,20 @@ afterEach(async () => {
   draht.setzeApp(null);
   draht.setzeCookie(null);
   draht.aufrufe.length = 0;
+  vi.useRealTimers();
 });
+
+/** Wie im gemeinsamen UI-Helfer vergehen je Versuch 25 ms. Der echte Poller läuft auf der
+ * Testuhr, zusammen mit der Uhr des Servers für Aktivität, Gültigkeit und Ausstellungszeit. */
+async function bis(bedingung: () => boolean, versuche = 60): Promise<void> {
+  if (!vi.isFakeTimers()) return bisInEchtzeit(bedingung, versuche);
+  for (let i = 0; i < versuche && !bedingung(); i++) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25);
+    });
+  }
+  expect(bedingung(), `Wartebedingung nach ${versuche * 25} ms nicht erfüllt`).toBe(true);
+}
 
 function abbauen(): void {
   if (root) {
@@ -211,6 +233,11 @@ function figur(): HTMLButtonElement {
 const nachrichten = (art: string) => anApp.filter((n) => n.art === art);
 
 describe("J · Desktop-Schnellsuche im erhaltenen Begleiter", () => {
+  // Die Palette verwendet einen eigenen Eingabe-Debounce. Beide Bedienfälle laufen in Echtzeit.
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
+
   it("öffnet dieselbe Wissenssuche, übergibt das echte Ziel und erhält den Gesprächsentwurf", async () => {
     await vorrichtung();
     if (!aufbau) throw new Error("App fehlt");
