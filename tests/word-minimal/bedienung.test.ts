@@ -561,8 +561,21 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
           "must not provide",
         ]);
         expect((await page.locator(".kw-korrektur ins").textContent())?.trim()).toBe("not");
+        const entwurf = page.locator("#ask-input");
+        await entwurf.fill("My next question");
+        // Users can continue composing while the fresh source read for Apply is in flight.
+        await page.route(
+          "**/api/kos/wifi",
+          async (route) => {
+            await entwurf.press("End");
+            await entwurf.pressSequentially(" about this rule");
+            await route.fallback();
+          },
+          { times: 1 },
+        );
         await page.getByRole("button", { name: aktion, exact: true }).click();
         await page.getByRole("heading", { name: urteil, exact: true }).waitFor();
+        expect(await entwurf.inputValue()).toBe("My next question about this rule");
         expect(kontrollen).toEqual([gastWlan, gastWlan, firmenregel.replace(/\.$/, "")]);
         expect(await page.evaluate("window.__wordWrites")).toEqual([["provide", "not ", "Before"]]);
         expect(await page.locator(".kw-korrektur").count()).toBe(0);

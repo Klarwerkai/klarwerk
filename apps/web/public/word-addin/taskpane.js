@@ -6750,7 +6750,7 @@
       if (aktionen.childElementCount) { block.appendChild(aktionen); }
     }
 
-    function renderAskOutcome(outcome, truncated) {
+    function renderAskOutcome(outcome, truncated, entwurfBehalten) {
       var truncatedNote = truncated
         ? " " + t("askTruncated", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
         : "";
@@ -6765,7 +6765,8 @@
         // JOB 3056 K1: die gestellte Frage steht als gedaempfte Zeile ueber der Karte; das
         // Frage-Feld bleibt unten (es IST die neue Frage), die Ruhe tritt zurueck.
         document.getElementById("ask-frage-zeile").textContent = currentAskQuestion;
-        document.getElementById("ask-input").value = "";
+        // Die automatische Nachprüfung stellt die frühere Frage. Der neue Entwurf gehört dem Nutzer.
+        if (!entwurfBehalten) document.getElementById("ask-input").value = "";
         kwFlaecheZeichnen();
         updateAskState();
         // mega34 B2 / W1-VERTRAUENSKOPF-08 B: Einstufung (derselbe Text wie im eingefuegten Absatz), Vorbehalt, Konfliktlage,
@@ -7134,7 +7135,7 @@
           // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
           // Anmeldung: Karte weg, Sperre auf (Knopf sofern angemeldet), dann erst das Ergebnis.
           askWartezustand(false);
-          renderAskOutcome(outcome, prep.truncated);
+          renderAskOutcome(outcome, prep.truncated, Boolean(nachpruefung));
         });
       };
       // Fail-open: ein synchroner Fehler — aus getSelectedDataAsync selbst oder aus dem Absenden
