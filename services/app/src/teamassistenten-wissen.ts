@@ -12,10 +12,31 @@ import {
 import { type KnowledgeRef, rankCandidates } from "../../reasoner";
 import { htmlToPlainText } from "../../structure";
 import { darfSehen } from "./sichtbarkeit";
-import type { TeamSprache, TeamassistentWissen } from "./teamassistenten";
+
+export type TeamUrteil = "belegt" | "widerspruch" | "offen";
+export type TeamSprache = "de" | "en" | "nl";
+export interface TeamDefinition {
+  name: string;
+  aufgabe: string;
+  sachfragen?: boolean;
+  quellen: string[];
+  beispiele: { frage: string; erwartet: TeamUrteil }[];
+}
+
+export interface TeamassistentWissen {
+  quellstand(user: SessionUser, definition: TeamDefinition): Promise<Record<string, number> | null>;
+  fragen(
+    user: SessionUser,
+    definition: TeamDefinition,
+    frage: string,
+    sprache: TeamSprache,
+    gebundeneQuellen?: Readonly<Record<string, number>>,
+    pruefeSitzung?: () => Promise<void>,
+  ): Promise<TeamAntwort>;
+}
 
 export interface TeamAntwort {
-  stand: "belegt" | "widerspruch" | "offen";
+  stand: TeamUrteil;
   text: string;
   quellen: { id: string; version: number; titel: string; auszug: string; href: string }[];
 }

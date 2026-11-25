@@ -8,10 +8,10 @@ import {
 } from "../../ask";
 import type { SessionUser } from "../../auth";
 import type { Conflict } from "../../conflicts";
-import type { KnowledgeObject } from "../../knowledge-object";
-import { halbwertszeitenAusVerlauf } from "../../knowledge-object/src/frische";
-import type { TeamDefinition, TeamSprache } from "./teamassistenten";
+import { type KnowledgeObject, halbwertszeitenAusVerlauf } from "../../knowledge-object";
 import {
+  type TeamDefinition,
+  type TeamSprache,
   baueTeamassistentWissen,
   pruefeTeamAntwortVorAuslieferung,
 } from "./teamassistenten-wissen";

@@ -418,6 +418,7 @@ export {
   discloseFrische,
   fristHinweiseFuer,
   haltbarkeitAbgelaufen,
+  halbwertszeitenAusVerlauf,
   type GelernteHalbwertszeiten,
 } from "./src/frische";
 // JOB 557 (Pedi 13.08.2026): das kanonische Eigentümer-Aggregat. OHNE diesen Export bliebe es

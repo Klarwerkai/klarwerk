@@ -5,33 +5,14 @@ import type { SessionUser } from "../../auth";
 import { can } from "../../rbac";
 import { rechtekontextStempel } from "./rechtekontext";
 import {
-  type TeamAntwort,
+  type TeamDefinition,
+  type TeamSprache,
+  type TeamUrteil,
+  type TeamassistentWissen,
   offeneTeamAntwort,
   pruefeTeamAntwortVorAuslieferung,
 } from "./teamassistenten-wissen";
 import type { TeamFassung, TeamsRepo } from "./teams";
-
-export type TeamUrteil = "belegt" | "widerspruch" | "offen";
-export type TeamSprache = "de" | "en" | "nl";
-export interface TeamDefinition {
-  name: string;
-  aufgabe: string;
-  sachfragen?: boolean;
-  quellen: string[];
-  beispiele: { frage: string; erwartet: TeamUrteil }[];
-}
-
-export interface TeamassistentWissen {
-  quellstand(user: SessionUser, definition: TeamDefinition): Promise<Record<string, number> | null>;
-  fragen(
-    user: SessionUser,
-    definition: TeamDefinition,
-    frage: string,
-    sprache: TeamSprache,
-    gebundeneQuellen?: Readonly<Record<string, number>>,
-    pruefeSitzung?: () => Promise<void>,
-  ): Promise<TeamAntwort>;
-}
 
 interface Pruefung {
   sprache: TeamSprache;
