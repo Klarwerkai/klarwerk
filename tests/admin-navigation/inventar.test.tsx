@@ -188,7 +188,7 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
   it("A4 · und jedes Thema der Verwaltung ist selbst adressierbar", () => {
     const pfade = alleZiele().map((z) => z.path);
     const fehlend = ADMIN_SECTIONS.filter((s) => !pfade.includes(adminHref(s.id))).map((s) => s.id);
-    expect(ADMIN_SECTIONS, "die sieben Themen der Vorlage").toHaveLength(7);
+    expect(ADMIN_SECTIONS, "sieben Verwaltungsbereiche und der Funktionskatalog").toHaveLength(8);
     expect(fehlend, `Thema ohne Weg: ${fehlend.join(" · ")}`).toEqual([]);
   });
 

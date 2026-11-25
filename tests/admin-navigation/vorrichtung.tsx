@@ -320,7 +320,9 @@ export function reiterNamen(stand: Stand): string[] {
 export function aktivesThema(stand: Stand): string {
   return (
     stand.container
-      .querySelector('[data-einst="reiter"][aria-pressed="true"]')
+      .querySelector(
+        '[data-einst="reiter"][aria-pressed="true"], [data-einst="reiter"][aria-current="page"]',
+      )
       ?.textContent?.trim() ?? ""
   );
 }

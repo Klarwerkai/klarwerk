@@ -136,6 +136,7 @@ import {
   WerkseinstellungenDetail,
 } from "./AdminDatenDetails";
 import { DemopaketeDetail, TestimporteDetail } from "./AdminDemoDetails";
+import { AdminFunktionskatalog } from "./AdminFunktionskatalog";
 import {
   KiDetail,
   KiDupDetail,
@@ -739,7 +740,11 @@ export function Admin(): JSX.Element {
     <EinstellungenSeite
       titel={t("einst.titel")}
       seitenSchluessel="admin"
-      reiter={ADMIN_SECTIONS.map((s) => ({ id: s.id, label: t(s.labelKey) }))}
+      reiter={ADMIN_SECTIONS.map((s) => ({
+        id: s.id,
+        label: t(s.labelKey),
+        ...(s.id === "funktionen" ? { href: adminHref(s.id) } : {}),
+      }))}
       aktiv={section ?? ""}
       onWechsel={(id) => {
         // Ein Themenwechsel beginnt ohne Filter — der Filter gehört zu der Liste, aus der er kam.
@@ -1204,6 +1209,7 @@ export function Admin(): JSX.Element {
             </Zeilenkarte>
           ) : null}
 
+          {section === "funktionen" ? <AdminFunktionskatalog /> : null}
           {section === "sicherheit" ? (
             <SicherheitsZeilen wert={wert} oeffne={(karte) => geheZu("sicherheit", karte)} />
           ) : null}

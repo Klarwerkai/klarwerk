@@ -19,11 +19,13 @@
 // Sonst steht auf der Fläche kein Satz — Pedis Maßstab 04.09.: Apple Pages, Knopf und Feld
 // erklären sich selbst.
 import type { ReactNode } from "react";
+import { GuardedLink } from "../../app/NavGuardContext";
 import { cx } from "../ui";
 
 export interface Reiter {
   id: string;
   label: string;
+  href?: string;
 }
 
 /**
@@ -73,23 +75,36 @@ export function Reiterspalte({
           <span data-einst="label">{start.label}</span>
         </button>
       ) : null}
-      {reiter.map((r) => (
-        <button
-          key={r.id}
-          type="button"
-          data-einst="reiter"
-          aria-pressed={aktiv === r.id}
-          onClick={() => onWechsel(r.id)}
-          className={cx(
-            "rounded-[9px] px-3.5 py-2.5 text-left text-[14px]",
-            aktiv === r.id
-              ? "border border-hairline bg-surface font-semibold text-text"
-              : "text-muted-2 hover:text-text",
-          )}
-        >
-          {r.label}
-        </button>
-      ))}
+      {reiter.map((r) => {
+        const klasse = cx(
+          "rounded-[9px] px-3.5 py-2.5 text-left text-[14px]",
+          aktiv === r.id
+            ? "border border-hairline bg-surface font-semibold text-text"
+            : "text-muted-2 hover:text-text",
+        );
+        return r.href ? (
+          <GuardedLink
+            key={r.id}
+            to={r.href}
+            data-einst="reiter"
+            aria-current={aktiv === r.id ? "page" : undefined}
+            className={klasse}
+          >
+            {r.label}
+          </GuardedLink>
+        ) : (
+          <button
+            key={r.id}
+            type="button"
+            data-einst="reiter"
+            aria-pressed={aktiv === r.id}
+            onClick={() => onWechsel(r.id)}
+            className={klasse}
+          >
+            {r.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

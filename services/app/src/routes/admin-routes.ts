@@ -29,6 +29,7 @@ import { type FactoryReset, FirmenresetFehler, factoryResetUnavailable } from ".
 import { schalterAn } from "../feature-flags";
 import { FirmenresetSso, FirmenresetSsoFehler, sitzungsSchluessel } from "../firmenreset-sso";
 import type { BegriffeRepo } from "../firmenwoerterbuch";
+import { funktionskatalog } from "../funktionskatalog/katalog";
 import { type Guards, tokenFromRequest } from "../http";
 import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
 import { type Produktfassung, type UmfangAuskunft, umfangAuskunft } from "../sicherungsumfang";
@@ -827,6 +828,12 @@ export function adminRoutes(
         reply.code(200).send(result);
       });
     }
+
+    app.get("/api/admin/funktionen", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) return;
+      return reply.header("Cache-Control", "private, no-store").send(funktionskatalog);
+    });
 
     // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Status der Demodaten für die Bereitschafts-
     // Checkliste. Bis mega14 gab es zu Demodaten nur POST (laden) und DELETE (entfernen) — die

@@ -41,11 +41,9 @@ export const ADMIN_SECTIONS = [
   { id: "berichte", labelKey: "adm.sec.berichte" },
   // System: Bereitschaft, Erweiterte Module (Stufe 2), Werkseinstellungen im eigenen Abschnitt
   { id: "system", labelKey: "adm.sec.system" },
-  // Vorführdaten: Demodaten, Beispiel-/Demopakete und das Aufräumen von Testimporten an EINEM
-  // Auffindeort. ADMIN-16 (produkt:20261009:admin-demo-diagnose): bewusst ZULETZT — die tägliche
-  // Verwaltung beginnt nicht mit Vorführwerkzeugen; auf der Startseite steht das Thema unter
-  // „Organisation und Betrieb" (`lib/adminUebersicht.ts`).
+  // Vorführdaten und Funktionskatalog stehen am Ende der Themenliste.
   { id: "vorfuehrdaten", labelKey: "adm.sec.vorfuehrdaten" },
+  { id: "funktionen", labelKey: "funktionskatalog.nav" },
 ] as const;
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];

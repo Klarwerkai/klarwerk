@@ -249,7 +249,7 @@ describe("ADMIN-16 · Betrieb und Demo in Chromium", () => {
         `() => [...document.querySelectorAll('[data-einst="reiter"]')].map((b) => (b.textContent || '').trim())`,
       ),
     );
-    expect(reiter[reiter.length - 1]).toBe(t("adm.sec.vorfuehrdaten"));
+    expect(reiter.slice(-2)).toEqual([t("adm.sec.vorfuehrdaten"), t("funktionskatalog.nav")]);
     expect(stand?.seitenfehler).toEqual([]);
   }, 60_000);
 });

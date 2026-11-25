@@ -8,7 +8,7 @@
 // eine Antwort gibt es nur, wo ein Fall sie ausdrücklich nennt.
 //
 //   K1  Die tägliche Verwaltung (Startseite: Menschen, Spaces, Qualität; Thema „Benutzer und
-//       Rollen") führt keinen Vorführweg. Das Thema „Vorführdaten" steht zuletzt in der
+//       Rollen") führt keinen Vorführweg. Das Thema „Vorführdaten" steht direkt vor „Funktionen" in der
 //       Themenleiste und auf der Startseite unter „Organisation und Betrieb".
 //   K3  Das Öffnen der Karten schreibt nichts; der Wert der Zeile sagt vorher, worum es geht.
 //   K5  Pfad, Rückweg und Neuladen tragen den Kontext; die Seitenhilfe nennt keine internen
@@ -93,12 +93,12 @@ describe("ADMIN-16 · K1 · Vorführwerkzeuge sind nachgeordnet und eindeutig au
     expect(betrieb).toEqual(expect.arrayContaining(["demo", "pakete", "testimporte"]));
   });
 
-  it("die Themenleiste beginnt mit „Benutzer und Rollen“ und endet mit „Vorführdaten“", async () => {
+  it("die Themenleiste beginnt mit „Benutzer und Rollen“ und führt nach „Vorführdaten“ zum Funktionskatalog", async () => {
     const s = await admin(adminHref("konten"));
     const namen = reiterNamen(s);
     expect(namen).toHaveLength(ADMIN_SECTIONS.length);
     expect(namen[0]).toBe(t("adm.sec.konten"));
-    expect(namen[namen.length - 1]).toBe(t("adm.sec.vorfuehrdaten"));
+    expect(namen.slice(-2)).toEqual([t("adm.sec.vorfuehrdaten"), t("funktionskatalog.nav")]);
   });
 
   it("„Benutzer und Rollen“ trägt keine Paket- oder Aufräumzeile", async () => {

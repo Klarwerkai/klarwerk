@@ -2654,6 +2654,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.
   // Bewusst dieselbe Schranke wie Laden/Entfernen — die Auskunft „hier stehen Demodaten" ist
   // Verwaltungswissen und gehört nicht in jede Rolle.
+  "GET /api/admin/funktionen": { protection: "users.manage" },
   "GET /api/admin/demo-seed": { protection: "users.manage" },
   "POST /api/admin/demo-seed": { protection: "users.manage" },
   "DELETE /api/admin/demo-seed": { protection: "users.manage" },

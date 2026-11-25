@@ -141,6 +141,7 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
       // ADMIN-16: Pakete und Testimporte gehören zum Betrieb, nicht zu Import oder Qualität.
       { art: "verwaltung", section: "vorfuehrdaten", detail: "pakete" },
       { art: "verwaltung", section: "vorfuehrdaten", detail: "testimporte" },
+      { art: "verwaltung", section: "funktionen" },
       { art: "verwaltung", section: "system", detail: "werk" },
     ],
   },
