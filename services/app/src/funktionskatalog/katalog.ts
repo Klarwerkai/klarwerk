@@ -5,6 +5,7 @@ import { klara } from "./register-klara";
 import { klarwerk } from "./register-klarwerk";
 import { themen } from "./themen";
 import type { Funktionskatalog, KatalogEintrag, KatalogStatus, KatalogText } from "./vertrag";
+import { funktionswege } from "./wege";
 
 function text(de: string, en: string, nl: string): KatalogText {
   return { de, en, nl };
@@ -168,4 +169,5 @@ export const funktionskatalog: Funktionskatalog = {
   stand: "2026-11-25",
   groups: themen,
   entries: [...klarwerk, ...klara, ...ergaenzungen].map(erschliesse),
+  wege: funktionswege,
 };

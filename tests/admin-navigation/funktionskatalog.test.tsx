@@ -45,6 +45,21 @@ const e: KatalogEintrag = {
 const katalog: Funktionskatalog = {
   stand: "2026-11-25",
   groups: [{ id: "termine", label: text("Termine", "Schedule", "Planning") }],
+  wege: [
+    {
+      id: "testweg",
+      titel: text("Ein Kalenderweg", "A calendar path", "Een agendaroute"),
+      verbindungen: [
+        {
+          von: "word-0",
+          nach: "kalender",
+          text: text("Termin übernehmen", "Use the date", "Afspraak overnemen"),
+          stand: "vorgesehen",
+          beleg: text("Vertrag K-42", "Contract K-42", "Contract K-42"),
+        },
+      ],
+    },
+  ],
   entries: [
     e,
     ...Array.from(
@@ -156,5 +171,72 @@ describe("Funktionskatalog der Verwaltung", () => {
     );
     await klicke(stand.container.querySelector("[data-katalog-dialog] button"));
     expect(ort(stand)).toBe(`${pfad}&q=K-42`);
+  });
+});
+describe("Funktionslandkarte", () => {
+  it("folgt gerichteten Wegen samt Beleg, öffnet das Detail und kehrt zur Station zurück", async () => {
+    await oeffne();
+    await klicke(katalogSeite().querySelector('nav a[href*="ansicht=karte"]'));
+    const map = katalogSeite().querySelector('[data-testid="funktionskarte"]');
+    expect(map?.querySelectorAll("[data-station]")).toHaveLength(2);
+    expect(map?.querySelectorAll("path[marker-end]")).toHaveLength(1);
+    const pfeil = map?.querySelector('[data-katalog-pfeil="word-0-kalender"]');
+    expect(pfeil?.getAttribute("aria-label")).toContain("Word 0 → Kalender lesen");
+    await act(async () => {
+      pfeil?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await beruhige(3);
+    expect(ort(stand)).toContain("von=word-0");
+    expect(map?.querySelector("[data-katalog-kante]")?.textContent).toContain("Vertrag K-42");
+    await verlauf(stand, -1);
+    const panel = map?.querySelector('[data-katalog-station="word-0"]');
+    expect(panel?.textContent).toContain("Termin übernehmen");
+    expect(panel?.textContent).toContain("Vertrag K-42");
+    await klicke(panel?.querySelector('a[href*="knoten=kalender"]'));
+    expect(ort(stand)).toContain("knoten=kalender");
+    const ziel = map?.querySelector('[data-katalog-station="kalender"]');
+    expect(ziel?.textContent).toContain("Hierher führt");
+    await klicke(ziel?.querySelector('a[aria-haspopup="dialog"]'));
+    expect(stand.container.querySelector("[data-katalog-dialog] h2")?.textContent).toBe(
+      "Kalender lesen",
+    );
+    await verlauf(stand, -1);
+    expect(stand.container.querySelector("[data-katalog-dialog]")).toBeNull();
+    expect(map?.querySelector('[data-station="kalender"]')?.getAttribute("aria-current")).toBe(
+      "step",
+    );
+  });
+  it("erhält nicht verknüpfte Funktionen mit Produktherkunft und reagiert auf leere Filter", async () => {
+    await oeffne(`${pfad}&ansicht=karte&knoten=word-2`);
+    const map = katalogSeite().querySelector('[data-testid="funktionskarte"]');
+    expect(map?.textContent).toContain("kein fachlicher Weg");
+    expect(map?.querySelectorAll("path[marker-end]")).toHaveLength(0);
+    expect(map?.querySelector("ol")?.textContent).toBe("Klara in Microsoft 365TermineWord 2");
+    await tippe(katalogSeite().querySelector("input[type=search]"), "xxxyyy");
+    expect(katalogSeite().textContent).toContain("Keine passenden Funktionen gefunden");
+    await klicke(button("Filter zurücksetzen"));
+    expect(katalogSeite().querySelector('[data-testid="funktionswege-graph"]')).not.toBeNull();
+  });
+  it("zeigt die drei Beispielergebnisse und den gemeinsamen Umstieg auch nach Sprachwechsel", async () => {
+    const { funktionskatalog } = await import("../../services/app/src/funktionskatalog/katalog");
+    ohneNetz({ "/api/admin/funktionen": funktionskatalog });
+    await sprache("en");
+    await oeffne(`${pfad}&ansicht=karte&weg=dokumentpruefung&knoten=V02`);
+    const beispiel = katalogSeite().querySelector("[data-katalog-vergleich]");
+    expect(beispiel?.querySelector("output")?.textContent).toContain("Contradiction");
+    await klicke(button("must not"));
+    expect(beispiel?.querySelector("output")?.textContent).toContain("Match");
+    await klicke(button("channel 11"));
+    expect(beispiel?.querySelector("output")?.textContent).toContain("Open");
+    const map = katalogSeite().querySelector('[data-testid="funktionskarte"]');
+    await klicke(map?.querySelector('[data-station="V03"]'));
+    await klicke(map?.querySelector('[data-katalog-station] a[href*="weg=wissensfreigabe"]'));
+    expect(ort(stand)).toContain("weg=wissensfreigabe");
+    expect(ort(stand)).toContain("knoten=V03");
+    await sprache("nl");
+    expect(map?.querySelector("[data-katalog-netz]")?.textContent).toContain(
+      "Alle routes en overstappen",
+    );
+    expect(map?.textContent).not.toContain("funktionskatalog.");
   });
 });

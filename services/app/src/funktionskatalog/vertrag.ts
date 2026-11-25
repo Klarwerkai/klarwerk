@@ -26,8 +26,25 @@ export interface KatalogEintrag {
   scope?: KatalogText;
 }
 
+export type KatalogKantenstand = "nachgewiesen" | "dokumentiert" | "vorgesehen";
+
+export interface KatalogVerbindung {
+  von: string;
+  nach: string;
+  text: KatalogText;
+  stand: KatalogKantenstand;
+  beleg: KatalogText;
+}
+
+export interface KatalogWeg {
+  id: string;
+  titel: KatalogText;
+  verbindungen: KatalogVerbindung[];
+}
+
 export interface Funktionskatalog {
   stand: string;
   groups: { id: string; label: KatalogText }[];
   entries: KatalogEintrag[];
+  wege: KatalogWeg[];
 }
