@@ -1598,6 +1598,15 @@ function BegleiterInhalt(): JSX.Element {
               </a>
               {kontoId && sitzungBeantwortet && echt.kontoId === kontoId && (
                 <div key={kontoId} className="space-y-3">
+                  <a
+                    href="/teamworkflows"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="begleiter-teamworkflows"
+                    className={KNOPF}
+                  >
+                    {t("begleiter.teamworkflows")}
+                  </a>
                   <Funktionsbereich
                     testId="begleiter-teamassistenten"
                     titel={t("begleiter.teamassistenten")}

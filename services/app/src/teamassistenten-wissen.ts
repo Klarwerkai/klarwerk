@@ -24,6 +24,7 @@ export interface TeamDefinition {
 }
 
 export interface TeamassistentWissen {
+  konfliktstand(quellen: Record<string, number>): Promise<string>;
   quellstand(user: SessionUser, definition: TeamDefinition): Promise<Record<string, number> | null>;
   fragen(
     user: SessionUser,
@@ -156,6 +157,19 @@ function gegenteil(aussage: string, quelle: string) {
     ["toegestaan", "verboden"],
   ];
   if (gegenseitigeErsetzung(aussage, quelle, gegensatzpaare)) return true;
+  // A requirement and its explicit negation must concern the same item.
+  // Restrict the determiner to a direct object and leave qualified claims open.
+  const positiveAnforderung = (satz: string) => {
+    if (
+      /\b(?:nicht|not|niet|nur|only|alleen|und|and|en|oder|or|of|unless|außer|tenzij)\b/u.test(satz)
+    )
+      return satz;
+    return satz
+      .replace(/\b(braucht|benötigt|erfordert) k(ein(?:e|en|em|er|es)?)\b/u, "$1 $2")
+      .replace(/\b(vereist) geen\b/u, "$1 een");
+  };
+  if (aussage !== quelle && positiveAnforderung(aussage) === positiveAnforderung(quelle))
+    return true;
   const zahl = /\d+(?:[.,]\d+)?/gu;
   if (
     /\b(?:beträgt|kostet|costs|lasts|bedraagt|kost)\s+[€£$]?\s*\d/u.test(aussage) &&
@@ -352,6 +366,18 @@ export function baueTeamassistentWissen(dienste: {
     );
   };
   return {
+    async konfliktstand(quellen) {
+      if (Object.keys(quellen).length < 2) return "[]";
+      const konflikte = (await dienste.conflicts.unresolved()).filter(
+        (k) =>
+          k.type === "truth" &&
+          Object.hasOwn(quellen, k.koA) &&
+          Object.hasOwn(quellen, k.koB) &&
+          (k.koAVersion === undefined || k.koAVersion === quellen[k.koA]) &&
+          (k.koBVersion === undefined || k.koBVersion === quellen[k.koB]),
+      );
+      return JSON.stringify(konflikte.map((k) => k.id).sort());
+    },
     async quellstand(user, definition) {
       const artikel = await lade(user, definition.quellen);
       return artikel.length === definition.quellen.length && artikel.length > 0

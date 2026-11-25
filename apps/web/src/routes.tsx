@@ -205,6 +205,9 @@ const Richtlinien = lazy(() =>
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
 // produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
 const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
+const Teamworkflows = lazy(() =>
+  import("./pages/Teamworkflows").then((m) => ({ default: m.Teamworkflows })),
+);
 const Teamassistenten = lazy(() =>
   import("./pages/Teamassistenten").then((m) => ({ default: m.Teamassistenten })),
 );
@@ -264,6 +267,7 @@ const PAGES: Record<string, ComponentType> = {
   // Ohne diesen Eintrag fiele die berechtigte Rolle auf `PlaceholderPage` statt auf die Fläche.
   gesamtanweisungen: GesamtanweisungBereich,
   teamassistenten: Teamassistenten,
+  teamworkflows: Teamworkflows,
   fragen: Ask,
   bibliothek: Library,
   extern: ExternalKnowledge,

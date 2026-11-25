@@ -12,6 +12,13 @@ export async function pruefeKlaraTeamfassung(
   await page.getByTestId("begleiter-figur").click();
   await page.getByTestId("begleiter-menue-knopf").click();
   await page.getByTestId("klara-menue-funktionen").click();
+  const auf = page.waitForEvent("popup");
+  await page.getByTestId("begleiter-teamworkflows").press("Enter");
+  const workflows = await auf;
+  await workflows.waitForURL(new URL("/teamworkflows", vorher).href);
+  await workflows.getByRole("heading", { level: 1 }).waitFor();
+  expect((await workflows.request.get("/api/teamworkflows")).status()).toBe(200);
+  await workflows.close();
   const bereich = page.getByTestId("begleiter-teamassistenten");
   await bereich.locator("summary").press("Enter");
   await bereich.getByTestId("teamassistent-auswahl").selectOption(id);

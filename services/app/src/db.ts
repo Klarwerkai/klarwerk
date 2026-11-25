@@ -106,9 +106,11 @@ import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
-// produkt:20261009:admin-teams: die Fassungen der Teams — neben den Spaces, die sie binden.
 import { TEAMASSISTENTEN_SCHEMA } from "./teamassistenten";
 import { TEAMS_SCHEMA } from "./teams";
+import { WORKFLOW_LAEUFE_SCHEMA } from "./teamworkflow-laeufe-repo";
+// produkt:20261009:admin-teams: die Fassungen der Teams — neben den Spaces, die sie binden.
+import { TEAMWORKFLOWS_SCHEMA } from "./teamworkflows";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte und zusätzlich angelegte Sprachen.
 import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
 // ADMIN-15: Fassungen des Unternehmensprofils und der internen Richtlinien samt Handlungsprotokoll.
@@ -453,6 +455,8 @@ export const schemas = [
   // R-0468: append-only Verhaltensfassungen, additiv ohne Seed/Extension/Fremdschlüssel.
   VERHALTENSARTEFAKTE_SCHEMA,
   TEAMASSISTENTEN_SCHEMA,
+  TEAMWORKFLOWS_SCHEMA,
+  WORKFLOW_LAEUFE_SCHEMA,
 ];
 
 // ================================================================================================

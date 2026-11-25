@@ -99,6 +99,7 @@ describe("JOB 3060 · H1 · die drei Orte der Navigation", () => {
       "aufgaben",
       "gesamtanweisungen",
       "teamassistenten",
+      "teamworkflows",
       "konflikte",
       "duplikate",
       "wissensnetz",

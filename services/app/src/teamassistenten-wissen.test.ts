@@ -122,6 +122,28 @@ describe("Wissensgrundlage der Teamassistenten", () => {
     expect(url.searchParams.get("stelle")).toBe(guest);
   });
 
+  it.each([
+    [
+      "de",
+      "Die Bestellung erfordert eine Unterschrift.",
+      "Die Bestellung erfordert keine Unterschrift.",
+      "Die Bestellung erfordert keine andere Freigabe.",
+    ],
+    [
+      "nl",
+      "De bestelling vereist een handtekening.",
+      "De bestelling vereist geen handtekening.",
+      "De bestelling vereist geen ander besluit.",
+    ],
+  ] as const)(
+    "unterscheidet eine verneinte Anforderung von einem anderen Gegenstand (%s)",
+    async (sprache, regel, gegen, anders) => {
+      const w = wissen([artikel(regel)]);
+      expect((await w.fragen(user, beispiel, gegen, sprache)).stand).toBe("widerspruch");
+      expect((await w.fragen(user, beispiel, anders, sprache)).stand).toBe("offen");
+    },
+  );
+
   it.each<[TeamSprache, string, string, string, string]>([
     [
       "de",

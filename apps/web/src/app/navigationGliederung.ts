@@ -80,6 +80,7 @@ const OBERGRUPPE_JE_ZIEL: Record<string, ObergruppeId> = {
   // fragt ihn für JEDES Navigationsziel (`direktzugangZiele`).
   gesamtanweisungen: "arbeiten",
   teamassistenten: "arbeiten",
+  teamworkflows: "arbeiten",
   fragen: "arbeiten",
   bibliothek: "arbeiten",
   wissensnetz: "arbeiten",

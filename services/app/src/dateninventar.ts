@@ -956,6 +956,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "teamworkflows",
+    name: "Gemeinsame Workflows",
+    inhalt:
+      "Team, Verantwortliche, Ablaufdefinitionen mit Assistentenfassungen, Prüfergebnisse, Freigaben, Falltexte, Entscheidungen und Ergebnisse einzelner Läufe.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kontokennungen der verantwortlichen und handelnden Personen sowie freiwillige Angaben im Falltext.",
+    ablage: { ort: DATENBANK, tabellen: ["team_workflows", "team_workflow_laeufe"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Die verantwortliche Person kann unveröffentlichte Entwürfe löschen und Freigaben zurückziehen. Der Bestandsreset entfernt Workflows und Läufe samt Entscheidungen.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Eigene Definitionen und für das Team freigegebene Läufe werden über den zugriffsgeschützten Workflowbereich angezeigt.",
+    },
+  },
+  {
     id: "teamassistenten",
     name: "Teamassistenten",
     inhalt:

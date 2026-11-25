@@ -201,6 +201,9 @@
   text-align: left;
   padding: 10px;
 }
+.kw-minimal a.mini-function {
+  display: block;
+}
 .mini-room:focus {
   outline: none;
 }

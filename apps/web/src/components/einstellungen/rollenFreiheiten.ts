@@ -35,6 +35,7 @@ export const STICHWORT_JE_EINTRAG: Record<string, string | null> = {
   profil: null, // das eigene Konto hat jede Rolle
   fragen: "einst.rollen.wort.fragen",
   teamassistenten: "einst.rollen.wort.fragen",
+  teamworkflows: "workflows.nutzen",
   bibliothek: "einst.rollen.wort.lesen",
   wissensnetz: "einst.rollen.wort.lesen",
   extern: "einst.rollen.wort.lesen",

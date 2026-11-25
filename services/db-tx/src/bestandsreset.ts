@@ -154,6 +154,8 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "conflict_pair_obligations",
   "conflict_pair_obligation_runs",
   // Saved assistant versions reference approved sources and their examples.
+  "team_workflow_laeufe",
+  "team_workflows",
   "team_assistenten",
   "answer_snapshots",
   "answer_records",

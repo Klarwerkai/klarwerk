@@ -62,6 +62,13 @@
         ),
       );
     }
+    const workflows = node("a", "mini-function", t("teamWorkflows"));
+    workflows.href = "/teamworkflows";
+    workflows.target = "_blank";
+    workflows.rel = "noopener noreferrer";
+    workflows.dataset.miniText = "teamWorkflows";
+    functions.append(workflows);
+
     async function teamAssistants(room, stamp) {
       const retry = () => guarded((generation) => teamAssistants(room, generation));
       room.replaceChildren(node("p", "mini-meta", t("loading")));

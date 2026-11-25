@@ -434,6 +434,16 @@ export class TeamassistentDienst {
     if (version !== stand.aktiv) throw new TeamassistentFehler(409, "STAND_GEAENDERT");
     return stand.freigaben.find((f) => f.version === version) ?? fehlt();
   }
+  /** Internal workflow gate. Membership alone neither grants access to a source nor pins its current version. */
+  async workflowBindung(id: string, user: SessionUser, version: number, teamId: string) {
+    const freigabe = await this.teamfassung(id, user, version);
+    const quelle = await this.quellen(user, freigabe.definition);
+    const { stand, team } = await this.laden(id, user);
+    if (team.id !== teamId || !team.mitglieder.includes(user.id)) return fehlt();
+    if (stand.aktiv !== version || !isDeepStrictEqual(quelle, freigabe.pruefung.quellstand))
+      throw new TeamassistentFehler(409, "QUELLEN_GEAENDERT");
+    return { quellen: quelle, konflikte: await this.wissen.konfliktstand(quelle) };
+  }
   async fragen(
     id: string,
     user: SessionUser,

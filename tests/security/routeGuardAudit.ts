@@ -2796,6 +2796,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // A5-G15: klara-notiz-routes.ts — requireUser vor jedem persönlichen Zugriff, Konto aus user.id.
   // Ausgabe zusätzlich über build-app.ts:6290–6310 / klaraWissen.original und aktuelle Quellrechte.
   // :93–108 — eigene Liste; Quellschutz und lesbar filtern vor der Ausgabe.
+  "GET /api/teamworkflows": { protection: "ko.read" },
+  "GET /api/teamworkflows/:id": { protection: "ko.read" },
+  "GET /api/teamworkflows/:id/laeufe": { protection: "ko.read" },
+  "POST /api/teamworkflows/:id/laeufe": { protection: "ko.read" },
+  "GET /api/teamworkflows/:id/laeufe/:laufId": { protection: "ko.read" },
+  "POST /api/teamworkflows/:id/laeufe/:laufId/weiter": { protection: "ko.read" },
+  "POST /api/teamworkflows": { protection: "ko.create" },
+  "PUT /api/teamworkflows/:id": { protection: "ko.create" },
+  "DELETE /api/teamworkflows/:id": { protection: "ko.create" },
+  "POST /api/teamworkflows/:id/pruefen": { protection: "ko.create" },
+  "POST /api/teamworkflows/:id/freigeben": { protection: "ko.create" },
+  "POST /api/teamworkflows/:id/zurueckziehen": { protection: "ko.create" },
   "GET /api/teamassistenten": { protection: "ko.read" },
   "GET /api/teamassistenten/:id": { protection: "ko.read" },
   "POST /api/teamassistenten": { protection: "ko.create" },

@@ -215,18 +215,21 @@ export const ergaenzungen: Redaktionseintrag[] = [
     id: "P04",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk", "office", "app"],
-    status: "planned",
+    status: "available",
     title: {
       de: "Einen Teamablauf mit Entscheidung und Wiederaufnahme gestalten",
       en: "Design a team workflow with review and resumption",
       nl: "Een teamworkflow met besluitvorming en hervatting ontwerpen",
     },
     description: {
-      de: "Ein Team legt Auslöser, Schritte, Zuständigkeiten und Entscheidungen fest. Bei einer Unterbrechung sieht es, welche Aktion bereits erfolgt ist und wo die Arbeit weitergeht.",
-      en: "A team defines the trigger, steps, responsibilities and decisions. After an interruption it can see which action was completed and where work resumes.",
-      nl: "Een team kiest de aanleiding, stappen, verantwoordelijkheden en beslismomenten. Na een onderbreking ziet het welke actie al is uitgevoerd en waar het werk wordt hervat.",
+      de: "In Klarwerk stellst du Schritte zusammen, wählst bei Bedarf eine freigegebene Teamassistentenfassung und prüfst den Ablauf im Test. Nach der Freigabe sieht das Team, wer am Zug ist, worauf die Entscheidung beruht und wie der Lauf weitergeht. Klara und Office öffnen denselben Arbeitsbereich.",
+      en: "In Klarwerk, assemble steps, choose a published team assistant version if needed and test the workflow. Once published, the team can see whose turn it is, the basis for a decision and how to resume. Klara and Office open the same workspace.",
+      nl: "In Klarwerk stel je stappen samen, kies je zo nodig een vrijgegeven versie van een teamassistent en test je de workflow. Na vrijgave ziet het team wie aan zet is, waarop een besluit berust en hoe het werk verdergaat. Klara en Office openen dezelfde werkruimte.",
     },
     ablauf: "P04",
-    belege: [["planning", "produkt:20261125:teamablauf-gepruefte-entscheidung"]],
+    belege: [
+      ["delivery", "25.11.2026 · .1147 · P04"],
+      ["planning", "produkt:20261125:teamablauf-gepruefte-entscheidung"],
+    ],
   },
 ];

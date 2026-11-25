@@ -657,6 +657,8 @@ import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { teamassistentenRoutes } from "./routes/teamassistenten-routes";
 import { teamsRoutes } from "./routes/teams-routes";
+import { workflowLaufRoutes } from "./routes/teamworkflow-lauf-routes";
+import { teamworkflowRoutes } from "./routes/teamworkflow-routes";
 import { technischeDatenRoutes } from "./routes/technische-daten-routes";
 // ADMIN-15: Unternehmensprofil und interne Richtlinien.
 import { unternehmenRoutes } from "./routes/unternehmen-routes";
@@ -719,6 +721,18 @@ import {
 } from "./teamassistenten";
 import { baueTeamassistentWissen } from "./teamassistenten-wissen";
 import { InMemoryTeamsRepo, PgTeamsRepo, TeamAufloesendeSpaces, type TeamsRepo } from "./teams";
+import {
+  InMemoryWorkflowLaeufe,
+  PgWorkflowLaeufe,
+  type WorkflowLaeufeRepo,
+} from "./teamworkflow-laeufe-repo";
+import { TeamworkflowLaufDienst } from "./teamworkflow-lauf";
+import {
+  InMemoryTeamworkflowRepo,
+  PgTeamworkflowRepo,
+  TeamworkflowDienst,
+  type TeamworkflowRepo,
+} from "./teamworkflows";
 import { quellenlageAus, quellsperreAus } from "./technische-daten-quellen";
 import { type TransportTls, tlsServerFabrik } from "./transport-tls";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
@@ -895,6 +909,8 @@ export interface AppServices {
    */
   teams: TeamsRepo;
   teamassistenten: TeamassistentDienst;
+  teamworkflows: TeamworkflowDienst;
+  workflowLaeufe: TeamworkflowLaufDienst;
   /**
    * produkt:20261007:templates-default — die Fassungen der Vorlagen, Standards, Space-Vorgaben,
    * Nutzung und Begriffe (`vorlagen.ts`). Im Postgres-Betrieb haltbar (`PgVorlagenAblage`).
@@ -1591,6 +1607,8 @@ export function assembleServices(
     // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     teams?: TeamsRepo;
     teamassistentRepo?: TeamassistentRepo;
+    teamworkflowRepo?: TeamworkflowRepo;
+    workflowLaufRepo?: WorkflowLaeufeRepo;
     // produkt:20261007:templates-default: gesetzt von `buildPgServices`; sonst im Speicher.
     vorlagen?: VorlagenAblage;
     // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -2061,6 +2079,16 @@ export function assembleServices(
     nachfolgerBekannt: async (id) => (await repos.users.findById(id))?.approved === true,
   });
 
+  const teamassistenten = new TeamassistentDienst(
+    opts.teamassistentRepo ?? new InMemoryTeamassistentRepo(),
+    teams,
+    baueTeamassistentWissen({ ko, conflicts, ask }),
+  );
+  const teamworkflows = new TeamworkflowDienst(
+    opts.teamworkflowRepo ?? new InMemoryTeamworkflowRepo(),
+    teams,
+    teamassistenten,
+  );
   return {
     audit,
     wissensuebergabe,
@@ -2099,10 +2127,13 @@ export function assembleServices(
     // produkt:20261007:artikel-gemeinsam — Postgres, wenn injiziert, sonst im Speicher.
     gemeinsameEntwuerfe: opts.gemeinsameEntwuerfe ?? new InMemoryGemeinsamerEntwurfRepo(),
     teams,
-    teamassistenten: new TeamassistentDienst(
-      opts.teamassistentRepo ?? new InMemoryTeamassistentRepo(),
-      teams,
-      baueTeamassistentWissen({ ko, conflicts, ask }),
+    teamassistenten,
+    teamworkflows,
+    workflowLaeufe: new TeamworkflowLaufDienst(
+      opts.workflowLaufRepo ?? new InMemoryWorkflowLaeufe(),
+      teamworkflows,
+      teamassistenten,
+      async (id) => (await repos.users.findById(id))?.name,
     ),
     // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
     vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
@@ -2684,6 +2715,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
       teams: new PgTeamsRepo(pool),
       teamassistentRepo: new PgTeamassistentRepo(pool),
+      teamworkflowRepo: new PgTeamworkflowRepo(pool),
+      workflowLaufRepo: new PgWorkflowLaeufe(pool),
       // produkt:20261007:templates-default: Vorlagen, Standards, Space-Vorgaben, Nutzung und
       // Begriffe überleben Neuladen, Neustart und Deploy (`VORLAGEN_SCHEMA`, angelegt von `migrate()`).
       vorlagen: new PgVorlagenAblage(pool),
@@ -7013,6 +7046,8 @@ export function buildApp(
     ),
   );
   app.register(teamassistentenRoutes(services.teamassistenten, guards, klaraSessions));
+  app.register(teamworkflowRoutes(services.teamworkflows, guards));
+  app.register(workflowLaufRoutes(services.workflowLaeufe, guards));
   // produkt:20261009:admin-teams: Teams anlegen, bearbeiten, Mitglieder mit Wirkungsvorschau,
   // archivieren — für die Kontoverwaltung (`users.manage`).
   app.register(

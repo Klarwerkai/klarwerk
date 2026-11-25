@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   User,
   Users,
+  Workflow,
 } from "lucide-react";
 import type { Role } from "../api/types";
 // AUFTRAG-mega51 BLOCK A: die bewachten Deep-Link-Routen ziehen ihren Pfad aus derselben
@@ -123,6 +124,15 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Bot,
         minRole: "viewer",
         section: "P03",
+        shot: "",
+      },
+      {
+        id: "teamworkflows",
+        path: "/teamworkflows",
+        labelKey: "workflows.titel",
+        icon: Workflow,
+        minRole: "viewer",
+        section: "P04",
         shot: "",
       },
       {
@@ -503,6 +513,7 @@ const WEITERE_BEREICHE_IDS = [
   // `tests/app/h1-navigation-orte.test.ts` ab: ein Punkt ohne Ort fiele still aus dem Bild.
   "gesamtanweisungen",
   "teamassistenten",
+  "teamworkflows",
   "konflikte",
   "duplikate",
   "wissensnetz",

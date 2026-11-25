@@ -288,6 +288,8 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // R-0468: eine CREATE TABLE IF NOT EXISTS mit PK, ohne Seed/Extension/Fremdschlüssel.
   { stufe: "VERHALTENSARTEFAKTE_SCHEMA", risiko: "ADDITIV" },
   { stufe: "TEAMASSISTENTEN_SCHEMA", risiko: "ADDITIV" },
+  { stufe: "TEAMWORKFLOWS_SCHEMA", risiko: "ADDITIV" },
+  { stufe: "WORKFLOW_LAEUFE_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

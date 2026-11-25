@@ -180,6 +180,7 @@ export default {
     "begleiter.ziel.jetzt": "Hierhin: {{titel}}",
     "begleiter.notizenWissen": "Notizen und Wissensvorschläge",
     "begleiter.teamassistenten": "Teamassistenten",
+    "begleiter.teamworkflows": "Teamworkflows in Klarwerk öffnen",
     "begleiter.funktionen.fragen":
       "Fragen stellen – Antworten aus Wissen, das du lesen darfst; dieses Gespräch sendet keinen Dokumenttext.",
     "begleiter.funktionen.markierung":
@@ -346,6 +347,7 @@ export default {
     "begleiter.ziel.jetzt": "Here: {{titel}}",
     "begleiter.notizenWissen": "Notes and knowledge proposals",
     "begleiter.teamassistenten": "Team assistants",
+    "begleiter.teamworkflows": "Open team workflows in Klarwerk",
     "begleiter.funktionen.fragen":
       "Ask questions – answers from knowledge you may read; this conversation sends no document text.",
     "begleiter.funktionen.markierung":
@@ -515,6 +517,7 @@ export default {
     "begleiter.ziel.jetzt": "Hierheen: {{titel}}",
     "begleiter.notizenWissen": "Notities en kennisvoorstellen",
     "begleiter.teamassistenten": "Teamassistenten",
+    "begleiter.teamworkflows": "Teamworkflows openen in Klarwerk",
     "begleiter.funktionen.fragen":
       "Vragen stellen – antwoorden uit kennis die je mag lezen; dit gesprek stuurt geen documenttekst.",
     "begleiter.funktionen.markierung":

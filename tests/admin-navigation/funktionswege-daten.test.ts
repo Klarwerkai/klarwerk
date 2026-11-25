@@ -62,7 +62,8 @@ describe("Redaktionelle Funktionswege", () => {
       ["P03", "P04"],
     ]);
     expect(weg?.verbindungen.find((k) => k.nach === "P03")?.stand).toBe("nachgewiesen");
-    expect(weg?.verbindungen.find((k) => k.nach === "P04")?.stand).toBe("vorgesehen");
+    expect(weg?.verbindungen.find((k) => k.nach === "P04")?.stand).toBe("nachgewiesen");
+    expect(entries.find((e) => e.id === "P04")?.status).toBe("available");
     expect(entries.find((e) => e.id === "P03")?.status).toBe("available");
     const auftraege = {
       P02: [

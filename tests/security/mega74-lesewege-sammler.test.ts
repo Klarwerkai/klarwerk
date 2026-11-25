@@ -218,7 +218,74 @@ const TEAMFRAGE: Eintrag = {
     "Teammitgliedschaft und aktive Assistentenfassung begrenzen den Aufruf. Der Wissensdienst liest die ausgewählten Artikel im Rechtekontext des fragenden Kontos und prüft zitierte Versionen vor der Rückgabe erneut.",
 };
 
+function laufMitQuellen(einstieg: "starten" | "lesen" | "weiter"): Eintrag {
+  const lauf = "services/app/src/teamworkflow-lauf.ts";
+  const assistent = "services/app/src/teamassistenten.ts";
+  const wissen = "services/app/src/teamassistenten-wissen.ts";
+  return {
+    urteil: "DIENST_FILTERT",
+    kette: [
+      ...(einstieg === "lesen" ? [] : [{ datei: lauf, funktion: einstieg }]),
+      { datei: lauf, funktion: "lesen" },
+      { datei: lauf, funktion: "bindung" },
+      { datei: assistent, funktion: "workflowBindung" },
+      { datei: assistent, funktion: "quellen" },
+      { datei: wissen, funktion: "quellstand" },
+      { datei: wissen, funktion: "lade" },
+      { datei: wissen, funktion: "lesbar" },
+    ],
+    entscheidung: "darfSehen",
+    grund:
+      "Die Laufansicht schützt die Entscheidung und den bisherigen Verlauf mit der weiterhin freigegebenen Assistentenfassung, den aktuellen Rechten und den gebundenen Wissensfassungen.",
+  };
+}
+
 const REGISTER: Record<string, Eintrag> = {
+  "GET /api/teamworkflows/:id/laeufe": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Die Liste der Vorgänge enthält nach der Prüfung des Teamzugangs nur Laufkennungen, Fassungen, Status, Position, Startkonto und Zeitstand.",
+  },
+  "POST /api/teamworkflows/:id/laeufe": laufMitQuellen("starten"),
+  "GET /api/teamworkflows/:id/laeufe/:laufId": laufMitQuellen("lesen"),
+  "POST /api/teamworkflows/:id/laeufe/:laufId/weiter": laufMitQuellen("weiter"),
+  "GET /api/teamworkflows": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Liste der zum angemeldeten Konto gehörenden Teams und Workflow-Metadaten, ohne Artikeltext.",
+  },
+  "GET /api/teamworkflows/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Mitglieder erhalten den freigegebenen Ablauf ihres Teams. Nur die verantwortliche Person mit Bearbeitungsrecht erhält ihren Entwurf und ihre Probedaten.",
+  },
+  "POST /api/teamworkflows": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Die berechtigte Person legt innerhalb ihres Teams eine eigene Workflowdefinition an.",
+  },
+  "PUT /api/teamworkflows/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Die verantwortliche Person ändert ihren eigenen Entwurf in der erwarteten Revision.",
+  },
+  "DELETE /api/teamworkflows/:id": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Der erfolgreiche Löschaufruf für einen eigenen unveröffentlichten Entwurf liefert keinen Inhalt.",
+  },
+  "POST /api/teamworkflows/:id/pruefen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Die verantwortliche Person erhält ihren Entwurf mit dem Ausgang der Testschritte. Quelleninhalte sind kein Bestandteil der Prüfübersicht.",
+  },
+  "POST /api/teamworkflows/:id/freigeben": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Die Veröffentlichung einer geprüften Fassung liefert die eigene Definition und den Freigabestand.",
+  },
+  "POST /api/teamworkflows/:id/zurueckziehen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Der Rückzug der aktiven Teamfassung gibt die Autorenansicht zurück.",
+  },
   "GET /api/teamassistenten": {
     urteil: "KEIN_KO_INHALT",
     grund:
