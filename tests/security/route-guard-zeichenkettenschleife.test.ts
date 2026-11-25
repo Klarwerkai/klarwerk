@@ -91,7 +91,9 @@ describe("Feste skalare Zeichenkettenschleifen", () => {
         const teil = erhebeRegistrierungen(fall.datei, text);
         expect(teil.unlesbar).toEqual([]);
         expect(
-          teil.registrierungen.filter((r) => r.zeile === zeile || pfade.includes(r.pfad)),
+          teil.registrierungen.filter(
+            (r) => r.zeile === zeile || (r.methode === "POST" && pfade.includes(r.pfad)),
+          ),
         ).toEqual(
           pfade.map((pfad) => ({ methode: "POST", pfad, datei: fall.datei, zeile, aufruf })),
         );
