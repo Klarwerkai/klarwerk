@@ -132,11 +132,13 @@ const oktoberstand: Record<KatalogStatus, KatalogText> = {
 };
 
 function erschliesse({ ablauf, belege, oktober, ...eintrag }: Redaktionseintrag): KatalogEintrag {
+  const schritte = ablaeufe[ablauf];
+  if (!schritte) throw new Error(`Fehlender Ablauf im Funktionsregister: ${eintrag.id}`);
   const sources = belege.map(([art, reference]) => ({ label: belegtitel[art], reference }));
   if (oktober) sources.push({ label: oktoberstand[oktober], reference: "19.10.2026" });
   return {
     ...eintrag,
-    ...ablaeufe[ablauf],
+    ...schritte,
     scope: eintrag.scope ?? umfang[eintrag.status],
     sources,
   };

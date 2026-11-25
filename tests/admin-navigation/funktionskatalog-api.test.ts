@@ -40,9 +40,9 @@ describe("Redaktioneller Produktkatalog", () => {
     for (const id of ["140", "235"]) expect(eintraege.get(id)?.status).toBe("excluded");
     expect(eintraege.get("193")?.status).toBe("deferred");
     expect(eintraege.get("260")?.status).toBe("idea");
-    expect(eintraege.get("P01")?.sources[0].reference).toContain("05.11.2026");
+    expect(eintraege.get("P01")?.sources[0]?.reference).toContain("05.11.2026");
     for (const id of ["425", "426"]) expect(eintraege.get(id)?.status).toBe("planned");
-    expect(eintraege.get("V05")?.sources[0].reference).toContain(".1138");
+    expect(eintraege.get("V05")?.sources[0]?.reference).toContain(".1138");
     expect(eintraege.get("V05")?.title.nl).toMatch(/bron/);
     expect(eintraege.get("V04")?.platforms).toEqual(["app"]);
     expect(eintraege.get("321")?.status).toBe("available");
