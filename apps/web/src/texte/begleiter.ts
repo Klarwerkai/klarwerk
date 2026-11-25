@@ -122,6 +122,12 @@ export default {
     "begleiter.vorschlag.erklaeren": "Erklären",
     "begleiter.passage.titel": "Passage in Word",
     "begleiter.passage.pruefen": "Diese Passage prüfen",
+    "begleiter.passage.markierung": "{{titel}} · Markierung",
+    "begleiter.passage.cursor": "{{titel}} · Satz am Cursor",
+    "begleiter.passage.verbinden": "Word verbinden",
+    "begleiter.passage.anleitung":
+      "Öffne Klara im gewünschten Word-Dokument. Wähle im Klara-Menü „Einstellungen“ und aktiviere „Mit Begleitapp verbinden“.",
+    "begleiter.vergleich.frueherePassage": "Zuvor geprüfte Passage",
     "begleiter.passage.frage": "Ist das korrekt?",
     "begleiter.passage.geaendert":
       "Die Stelle in Word hat sich geändert. Prüfe die jetzt angezeigte Passage.",
@@ -285,6 +291,12 @@ export default {
     "begleiter.vorschlag.erklaeren": "Explain",
     "begleiter.passage.titel": "Passage in Word",
     "begleiter.passage.pruefen": "Check this passage",
+    "begleiter.passage.markierung": "{{titel}} · Selection",
+    "begleiter.passage.cursor": "{{titel}} · Sentence at cursor",
+    "begleiter.passage.verbinden": "Connect Word",
+    "begleiter.passage.anleitung":
+      "Open Klara in the Word document you want to check. In the Klara menu, choose Settings and turn on “Connect companion app”.",
+    "begleiter.vergleich.frueherePassage": "Previously checked passage",
     "begleiter.passage.frage": "Is this correct?",
     "begleiter.passage.geaendert": "The passage in Word has changed. Check the passage now shown.",
     "begleiter.vorschlag.erklaerenFrage": "Explain the selected passage.",
@@ -440,6 +452,12 @@ export default {
     "begleiter.vorschlag.erklaeren": "Uitleggen",
     "begleiter.passage.titel": "Passage in Word",
     "begleiter.passage.pruefen": "Deze passage controleren",
+    "begleiter.passage.markierung": "{{titel}} · Selectie",
+    "begleiter.passage.cursor": "{{titel}} · Zin bij de cursor",
+    "begleiter.passage.verbinden": "Word verbinden",
+    "begleiter.passage.anleitung":
+      "Open Klara in het Word-document dat je wilt controleren. Kies in het Klara-menu ‘Instellingen’ en zet ‘Verbinden met begeleider-app’ aan.",
+    "begleiter.vergleich.frueherePassage": "Eerder gecontroleerde passage",
     "begleiter.passage.frage": "Klopt dit?",
     "begleiter.passage.geaendert":
       "De passage in Word is gewijzigd. Controleer de passage die nu wordt getoond.",

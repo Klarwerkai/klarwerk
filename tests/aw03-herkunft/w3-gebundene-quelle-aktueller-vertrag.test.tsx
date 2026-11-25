@@ -10,14 +10,18 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { type ReactNode, act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
+import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import type { AnweisungLesestand, KoVersionSnapshot } from "../../apps/web/src/api/types";
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import {
   GespeicherteFassung,
   GespeicherteFassungAnsicht,
 } from "../../apps/web/src/components/GespeicherteFassung";
+import { ZitierteQuellansicht } from "../../apps/web/src/components/ZitierteQuellansicht";
 import { LesestandAnsicht } from "../../apps/web/src/components/gesamtanweisung/LesestandAnsicht";
 import i18n from "../../apps/web/src/i18n";
 import { zitatAusFragment, zitatFragment } from "../../apps/web/src/lib/belegstelle";
+import { formatKoTimestamp } from "../../apps/web/src/lib/koDates";
 import { leseGespeicherteFassung } from "../../apps/web/src/lib/objektbezug";
 import { quellabschnitteAus as webAbschnitte } from "../../apps/web/src/lib/quellabschnitt";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -140,7 +144,15 @@ function revision(app: App, auth: Auth, id: string, sourceRecordId: string) {
   });
 }
 
-async function gespeicherteAnsicht(f: Awaited<ReturnType<typeof bestand>>, auth: Auth) {
+async function gespeicherteAnsicht(
+  f: Awaited<ReturnType<typeof bestand>>,
+  auth: Auth,
+  element = createElement(GespeicherteFassung, {
+    koId: f.id,
+    fassung: 1,
+    ankerId: f.anker.id,
+  }) as ReactNode,
+) {
   vi.stubGlobal("fetch", async (input: unknown) => {
     const res = await f.app.inject({ method: "GET", url: String(input), headers: auth });
     // Auch der heutige Rechtekontext-Kopf läuft durch den unveränderten API-Client.
@@ -154,13 +166,7 @@ async function gespeicherteAnsicht(f: Awaited<ReturnType<typeof bestand>>, auth:
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
-  const container = await zeichne(
-    createElement(
-      QueryClientProvider,
-      { client },
-      createElement(GespeicherteFassung, { koId: f.id, fassung: 1, ankerId: f.anker.id }),
-    ),
-  );
+  const container = await zeichne(createElement(QueryClientProvider, { client }, element));
   return { client, container };
 }
 
@@ -311,7 +317,12 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
     ]);
     expect(marke(richtig, "-aussage")?.querySelector("mark")).toBeNull();
     expect(treffer(await anzeigen(1, zitat, "<p>Other sentence.</p>"))[0]?.textContent).toBe(zitat);
-    expect(treffer(await anzeigen(1, zitat, `<p>${zitat}</p><p>${zitat}</p>`))).toHaveLength(0);
+    const doppelt = await anzeigen(1, zitat, `<p>${zitat}</p><p>${zitat}</p>`);
+    expect(treffer(doppelt)).toHaveLength(0);
+    expect(doppelt.querySelector('[data-testid="quellenfokus-zitat"]')).toBeNull();
+    expect(doppelt.querySelector('[data-testid="quellenfokus-ohne-zitat"]')?.textContent).toContain(
+      "nicht eindeutig",
+    );
     expect(treffer(await anzeigen(2, zitat))).toHaveLength(0);
     expect(treffer(await anzeigen(1, "must provide access"))).toHaveLength(0);
     expect(treffer(await anzeigen(1, "uest Wi-Fi"))).toHaveLength(0);
@@ -320,6 +331,61 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
     expect(zitatFragment("x".repeat(601))).toBe("");
     expect(zitatAusFragment("#zitat=one&zitat=two")).toBe("");
   });
+
+  it.each([
+    ["de", "Vollständige Fassung und Quellen", "Heutigen Eintrag öffnen"],
+    ["en", "Full version and sources", "Open the current entry"],
+    ["nl", "Volledige versie en bronnen", "Huidig item openen"],
+  ])(
+    "öffnet Zitat, Freigabeperson und vollständige Fassung in %s",
+    async (lang, volltext, aktuell) => {
+      const f = await bestand();
+      const zitat = "W3 heutige Fachüberarbeitung";
+      const freigabe = await f.app.inject({
+        method: "PUT",
+        url: `/api/kos/${f.id}`,
+        headers: f.admin,
+        payload: { action: "admin-validate" },
+      });
+      expect(freigabe.statusCode, freigabe.body).toBe(200);
+      await i18n.changeLanguage(lang);
+      const { container } = await gespeicherteAnsicht(
+        f,
+        f.viewer,
+        createElement(AuthProvider, {
+          children: createElement(
+            MemoryRouter,
+            {},
+            createElement(ZitierteQuellansicht, { koId: f.id, fassung: 3, ankerId: null, zitat }),
+          ),
+        }),
+      );
+      await bis(() =>
+        expect(
+          container.querySelector('[data-testid="quellenfokus-freigabe"]')?.textContent,
+        ).toContain("W3 Admin"),
+      );
+      expect(container.querySelector('[data-testid="quellenfokus-zitat"]')?.textContent).toBe(
+        zitat,
+      );
+      const gespeichert = (await f.services.ko.versionsOf(f.id)).find((v) => v.version === 3);
+      expect(marke(container, "-titel")?.textContent).toBe(gespeichert?.snapshot.title);
+      expect(marke(container, "-titelzeile")?.textContent).toContain(
+        formatKoTimestamp(gespeichert?.at, lang),
+      );
+      expect(marke(container, "-titelzeile")?.textContent).toContain("3");
+      const details = container.querySelector("details");
+      expect(details?.open).toBe(false);
+      const summary = details?.querySelector("summary");
+      expect(summary?.textContent).toBe(volltext);
+      await act(async () => summary?.click());
+      expect(details?.open).toBe(true);
+      expect(details?.textContent).toContain("W3 Quelltext 8.");
+      const link = container.querySelector('a[data-testid="quellenfokus-aktuell"]');
+      expect(link?.textContent).toBe(aktuell);
+      expect(link?.getAttribute("href")).toBe(`/wissen/${f.id}`);
+    },
+  );
 
   it("alte Anker bleiben ungeprüft und eine fehlende gebundene Fassung bleibt ohne Ersatz", async () => {
     const f = await bestand();

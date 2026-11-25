@@ -470,6 +470,109 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
   }, 45000);
 
   it.each([
+    ["de-DE", "de", "Stimmt das?", "Korrektur übernehmen", "Stimmt mit der Quelle überein"],
+    ["en-GB", "en", "Is this correct?", "Apply correction", "Matches the source"],
+    ["nl-NL", "nl", "Klopt dit?", "Correctie overnemen", "Komt overeen met de bron"],
+  ])(
+    "Word-Korrektur in %s: Originalstelle bearbeiten und echte Nachprüfung",
+    async (display, locale, frage, aktion, urteil) => {
+      const page = await open("taskpane.html", false, "", display, {
+        paragraphs: [gastWlan],
+        index: 0,
+      });
+      try {
+        // Word.run and the identity remain the normal fixture. Model only the held passage's
+        // editable range, so subsequent GET-selection calls cannot accidentally find the old text.
+        await page.evaluate(`(() => {
+        const d=Office.context.document, basis=d.getSelection();
+        const range={...basis.paragraphs.items[0].getRange(),text:${JSON.stringify(gastWlan)},
+          search(query){const pos=this.text.indexOf(query);return {load(){},items:pos < 0 ? [] : [{
+            text:query, insertText:(text,ort)=>{ if(ort!=="Before") throw Error("unexpected range");
+            this.text=this.text.slice(0,pos)+text+this.text.slice(pos); window.__wordWrites.push([query,text,ort]); }
+          }]};}
+        };
+        d.getSelection=()=>range;
+      })()`);
+        const kontrollen: string[] = [];
+        let version = 1;
+        await page.route("**/api/kos/wifi", (route) =>
+          route.fulfill({
+            json: {
+              id: "wifi",
+              title: "Guest Wi-Fi separation",
+              version,
+              status: "validiert",
+              statement: firmenregel,
+            },
+          }),
+        );
+        await page.route("**/execute", (route) => {
+          const payload = route.request().postDataJSON();
+          expect(payload.locale).toBe(locale);
+          expect(payload.question).toBe(frage);
+          kontrollen.push(payload.selection);
+          const correct = payload.selection === firmenregel.replace(/\.$/, "");
+          const kopf = correct ? "Result B." : "Result A.";
+          return route.fulfill({
+            json: {
+              result: {
+                answered: true,
+                answer: kopf,
+                sources: ["wifi"],
+                citedSources: ["wifi"],
+                steps: [{ sourceId: "wifi", snippet: firmenregel }],
+                dokumentUrteil: {
+                  art: correct ? "bestaetigt" : "widersprochen",
+                  texte: { [locale ?? ""]: kopf },
+                },
+              },
+              absaetze: [
+                { text: kopf, quellen: ["wifi"] },
+                { text: firmenregel, quellen: ["wifi"] },
+              ],
+              quellenStand: { wifi: 1 },
+            },
+          });
+        });
+        const fragen = async () => {
+          await page.locator("#ask-input").fill(frage!);
+          await page.locator("#ask-btn").click();
+          await page.getByRole("button", { name: aktion, exact: true }).waitFor();
+        };
+        await fragen();
+        // Source changed after showing a proposal: reject without altering Word.
+        version = 2;
+        await page.getByRole("button", { name: aktion, exact: true }).click();
+        await page.waitForFunction(
+          "Boolean(document.querySelector('.kw-vergleich-meldung')?.textContent)",
+        );
+        expect(await page.evaluate("window.__wordWrites")).toEqual([]);
+        version = 1;
+        await fragen();
+        const href = await page.locator("#ask-herkunft a").getAttribute("href");
+        expect(href).toContain("/wissen/wifi?fassung=1&ansicht=gespeichert#zitat=");
+        // Move the cursor to another, identical paragraph after the check. The check and recheck
+        // must use the held range and must not modify the paragraph under the new cursor.
+        await page.evaluate(
+          `Office.context.document.getSelection=()=>({text:${JSON.stringify(gastWlan)},load(){}})`,
+        );
+        expect(await page.locator(".kw-korrektur p > span").allTextContents()).toEqual([
+          "must provide",
+          "must not provide",
+        ]);
+        expect((await page.locator(".kw-korrektur ins").textContent())?.trim()).toBe("not");
+        await page.getByRole("button", { name: aktion, exact: true }).click();
+        await page.getByRole("heading", { name: urteil, exact: true }).waitFor();
+        expect(kontrollen).toEqual([gastWlan, gastWlan, firmenregel.replace(/\.$/, "")]);
+        expect(await page.evaluate("window.__wordWrites")).toEqual([["provide", "not ", "Before"]]);
+        expect(await page.locator(".kw-korrektur").count()).toBe(0);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each([
     { frage: "is this correct", absatz: 1, bezug: "at the cursor" },
     { frage: "is this correct", absatz: 2, bezug: "above the cursor" },
     { frage: "Is this correct according to company policy?", absatz: 1, bezug: "at the cursor" },

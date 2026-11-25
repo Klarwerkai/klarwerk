@@ -21,8 +21,7 @@
 // DER WORD-KONTEXT kommt AUSSCHLIESSLICH vom Office-Adapter im Word-Fenster (`word-addin/
 // begleiter.js`) über den Kanal des eigenen Kontos. Ein inaktives Fenster liefert keine Auswahl;
 // Fragen zur Markierung und das Einfügen laufen über dieses Word-Fenster zurück. Das Gespräch hier
-// sendet keinen Dokumenttext. Verlangt eine Frage ohne verbundenes Word das Dokument, erklärt die
-// Fläche den Verbindungsweg GENAU DANN — am Auftrag, nicht vorher (UI-MIN-04).
+// übergibt Dokumentfragen an Word. Ohne Verbindung lässt sich die Anleitung im Fragefeld öffnen.
 import {
   type CSSProperties,
   type FormEvent,
@@ -35,6 +34,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
+import { KALENDER_PFAD } from "../api/eigenerKalender";
 import type { KlaraObjektbezug } from "../api/klaraGespraech";
 import { useSession } from "../app/AuthContext";
 import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext";
@@ -669,6 +669,8 @@ function BegleiterInhalt(): JSX.Element {
     .reverse();
   const letzteWordFrage = sichtbareAktionen.find((aktion) => aktion.art === "frage");
   const vergleichId = sichtbareAktionen.find((aktion) => aktion.vergleich)?.id;
+  const passageSchonGezeigt =
+    Boolean(passage) && letzteWordFrage?.vergleich?.dokument.trim() === passage?.text.trim();
   useEffect(() => {
     if (vorfuehrung && offen && !menueSeite && vergleichId) {
       aktuellerVergleichRef.current?.scrollIntoView?.({ block: "start" });
@@ -735,6 +737,11 @@ function BegleiterInhalt(): JSX.Element {
   useEffect(() => {
     anNative({ art: "name", name });
   }, [name]);
+
+  const fenstersprache = toReasonerLocale(i18n.language);
+  useEffect(() => {
+    anNative({ art: "sprache", sprache: fenstersprache });
+  }, [fenstersprache]);
 
   const setzeReduziert = useCallback((an: boolean): void => {
     setReduziert(an);
@@ -1408,13 +1415,17 @@ function BegleiterInhalt(): JSX.Element {
     zielFrage?.instanz != null
       ? (kontext?.adapter.find((a) => a.instanz === zielFrage.instanz && a.aktiv) ?? null)
       : null;
-  const kontextZeile = !adapter
-    ? t("begleiter.figur.ohneWord")
-    : !adapter.aktiv
-      ? t("begleiter.zeile.inaktiv", { host, titel })
-      : auswahl
-        ? t("begleiter.zeile.markiert", { host, titel })
-        : t("begleiter.zeile.word", { host, titel });
+  const kontextZeile = kontextFehler
+    ? t("begleiter.kontext.fehler", { grund: kontextFehler })
+    : !wordStandBekannt
+      ? t("begleiter.kontext.laden")
+      : !adapter
+        ? t("begleiter.figur.ohneWord")
+        : !adapter.aktiv
+          ? t("begleiter.zeile.inaktiv", { host, titel })
+          : auswahl
+            ? t("begleiter.zeile.markiert", { host, titel })
+            : t("begleiter.zeile.word", { host, titel });
   const kiKurz = ki.abgeschaltet
     ? t("assistenzminimal.ki.aus")
     : ki.ohneModell
@@ -1457,7 +1468,7 @@ function BegleiterInhalt(): JSX.Element {
       <header className="flex items-center gap-2 border-b border-hairline bg-surface px-3 py-2">
         {figur}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-ink">{name}</p>
+          {!app && <p className="truncate text-[13px] font-semibold text-ink">{name}</p>}
           <p data-testid="begleiter-zustand" aria-live="polite" className="text-[11px] text-muted">
             {zustandText}
           </p>
@@ -1532,6 +1543,15 @@ function BegleiterInhalt(): JSX.Element {
             <VerlaufSeite pfad="/begleiter" onZumGespraech={zurueck} />
           ) : menueSeite === "funktionen" ? (
             <div className="space-y-3">
+              <a
+                href={KALENDER_PFAD}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="begleiter-kalender"
+                className={KNOPF}
+              >
+                {t("kalender.titel")}
+              </a>
               <VormachenFlaeche />
               <MeineFunktionen />
               <section data-testid="begleiter-funktionen">
@@ -1798,12 +1818,14 @@ function BegleiterInhalt(): JSX.Element {
                   {t("begleiter.kontext.auswahl.titel")}
                   {host ? ` · ${host}` : ""}
                 </p>
-                <p
-                  data-testid="begleiter-auswahl-text"
-                  className="max-h-16 overflow-y-auto whitespace-pre-wrap text-[12px] text-text"
-                >
-                  {kuerze(auswahl.text, 600)}
-                </p>
+                {!passageSchonGezeigt && (
+                  <p
+                    data-testid="begleiter-auswahl-text"
+                    className="max-h-16 overflow-y-auto whitespace-pre-wrap text-[12px] text-text"
+                  >
+                    {kuerze(auswahl.text, 600)}
+                  </p>
+                )}
                 {auswahl.gekuerzt || auswahl.text.length > 600 ? (
                   <p className="text-[11px] text-muted-2">
                     {t("begleiter.kontext.auswahl.gekuerzt", { laenge: auswahl.laenge })}
@@ -1883,6 +1905,9 @@ function BegleiterInhalt(): JSX.Element {
                     >
                       <BegleiterDirektvergleich
                         vergleich={a.vergleich}
+                        anderePassage={
+                          !!passage && a.vergleich.dokument.trim() !== passage.text.trim()
+                        }
                         zeigen={
                           adapter.aktiv && a.id === letzteWordFrage?.id && !aktionLaeuft(adapter)
                             ? () => {
@@ -1963,7 +1988,7 @@ function BegleiterInhalt(): JSX.Element {
                     {t("begleiter.wordhilfe.verbunden", { titel: titel ?? "" })}
                   </p>
                 ) : (
-                  <p className="mt-0.5">{t("begleiter.kontext.leer")}</p>
+                  <p className="mt-0.5">{t("begleiter.passage.anleitung")}</p>
                 )}
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {wordVerbunden && adapter ? (
@@ -2149,16 +2174,44 @@ function BegleiterInhalt(): JSX.Element {
                 {sprechen.hinweis}
               </output>
             ) : null}
+            {kontextBestaetigt && !adapter?.aktiv && wordHilfeFuer === null ? (
+              <details
+                data-testid="begleiter-word-verbinden"
+                className="rounded-btn border border-hairline bg-page px-2.5 py-2 text-[12px]"
+              >
+                <summary
+                  data-testid="begleiter-word-verbinden-knopf"
+                  className="cursor-pointer font-semibold text-brand-text focus-visible:outline-brand"
+                >
+                  {t("begleiter.passage.verbinden")}
+                </summary>
+                <p className="mt-1.5 leading-relaxed text-text">
+                  {t("begleiter.passage.anleitung")}
+                </p>
+              </details>
+            ) : null}
             {adapter && passage ? (
               <section
                 data-testid="begleiter-pruefpassage"
                 aria-label={t("begleiter.passage.titel")}
                 className="space-y-1.5 rounded-btn border border-hairline bg-page px-2.5 py-2"
               >
-                <p className={KLEINTITEL}>{t("begleiter.passage.titel")}</p>
-                <p className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-snug text-ink">
-                  {passage.text}
+                <p
+                  data-testid="begleiter-passagenbezug"
+                  className="break-words text-[12px] font-semibold text-text"
+                >
+                  {t(auswahl ? "begleiter.passage.markierung" : "begleiter.passage.cursor", {
+                    titel,
+                  })}
                 </p>
+                {!passageSchonGezeigt && (
+                  <p
+                    data-testid="begleiter-passagentext"
+                    className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-snug text-ink"
+                  >
+                    {passage.text}
+                  </p>
+                )}
                 <button
                   type="button"
                   data-testid="begleiter-passage-pruefen"

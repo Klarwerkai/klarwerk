@@ -560,7 +560,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
             ? eintrag("Zur Figur einklappen", #selector(einklappen))
             : eintrag("Gespräch öffnen", #selector(gespraechOeffnen))
         return [
-            eintrag("Klara beenden", #selector(beenden), taste: "q"),wechsel, eintrag("\(panel.anzeigeName) schließen", #selector(schliessen))]
+            eintrag(fensterInhalt.beendenTitel, #selector(beenden), taste: "q"), wechsel, eintrag("\(panel.anzeigeName) schließen", #selector(schliessen))]
     }
 
     @objc private func einklappenAusMenue() { einklappen() }
@@ -636,7 +636,11 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         case "name":
             // UI-MIN-15: der persönliche Name aus dem Profil für Titelleiste und Bedienungshilfen.
             panel.setzeName(n["name"] as? String)
-            fensterInhalt.setzeName(panel.anzeigeName)
+        case "sprache":
+            guard let sprache = n["sprache"] as? String, ["de", "en", "nl"].contains(sprache) else { return }
+            fensterInhalt.setzeSprache(sprache)
+            UserDefaults.standard.set(sprache, forKey: "fenstersprache")
+            NSApp.mainMenu?.item(at: 0)?.submenu?.item(withTag: Self.beendenTag)?.title = fensterInhalt.beendenTitel
         case "bewegen":
             setzeRahmen(Lage.verschoben(panel.frame, dx: zahl(n["dx"]), dy: zahl(n["dy"]), in: flaechen()))
         case "griff":
@@ -793,13 +797,17 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     /// MACOS-20261014 · MAC-04/UI-05: das Hauptmenü einer Mac-App. Eine Menüleisten-App zeigt es nicht
     /// an, aber ihre Tastenkürzel wirken, solange das Gespräch aktiv ist — ohne „Bearbeiten“ gingen im
     /// Gespräch weder Kopieren/Einsetzen noch Widerrufen (⌘Z) über die Tastatur.
+    private static let beendenTag = 1
+
     private func baueHauptmenue() {
         let haupt = NSMenu()
 
         let app = NSMenu(title: "Klara")
         app.addItem(eintrag("Einstellungen …", #selector(einstellungenOeffnen), taste: ","))
         app.addItem(.separator())
-        app.addItem(eintrag("Klara Begleiter beenden", #selector(beenden), taste: "q"))
+        let beendenEintrag = eintrag(fensterInhalt.beendenTitel, #selector(beenden), taste: "q")
+        beendenEintrag.tag = Self.beendenTag
+        app.addItem(beendenEintrag)
         let appEintrag = NSMenuItem()
         appEintrag.submenu = app
         haupt.addItem(appEintrag)
@@ -881,7 +889,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         menu.addItem(eintrag("Klara Begleiter \(einst.fassung) (\(einst.bau))", nil))
         menu.addItem(eintrag("Webfläche \(webFassung ?? "–") · \(einst.server.host ?? "")", nil))
         menu.addItem(.separator())
-        menu.addItem(eintrag("Klara Begleiter beenden", #selector(beenden), taste: "q"))
+        menu.addItem(eintrag(fensterInhalt.beendenTitel, #selector(beenden), taste: "q"))
     }
 
     @objc private func wiederfindenAusMenue() { wiederfinden() }

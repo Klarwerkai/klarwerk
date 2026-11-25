@@ -88,9 +88,11 @@ function Quellverweis({
 
 export function BegleiterDirektvergleich({
   vergleich,
+  anderePassage,
   zeigen,
 }: {
   vergleich: BegleiterVergleich;
+  anderePassage?: boolean;
   zeigen: (() => void) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
@@ -113,7 +115,13 @@ export function BegleiterDirektvergleich({
       <div className="space-y-2.5 p-3">
         <dl className="space-y-2.5">
           <div>
-            <dt className={etikett}>{t("begleiter.vergleich.dokument")}</dt>
+            <dt className={etikett}>
+              {t(
+                anderePassage
+                  ? "begleiter.vergleich.frueherePassage"
+                  : "begleiter.vergleich.dokument",
+              )}
+            </dt>
             <dd className={zitat}>
               <Wortlaut text={vergleich.dokument} marke={vergleich.dokumentMarke} farbe={farbe} />
             </dd>

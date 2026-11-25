@@ -100,25 +100,30 @@ function askVergleichSpanne(tokens, von, bis) {
   return { start: tokens[von].index, end: letztes.index + letztes[0].length };
 }
 
+function askVergleichTokenGrenzen(dokument, beleg) {
+  let vorn = 0;
+  while (vorn < dokument.length && vorn < beleg.length && dokument[vorn][0] === beleg[vorn][0])
+    vorn++;
+  let dEnde = dokument.length;
+  let bEnde = beleg.length;
+  while (dEnde > vorn && bEnde > vorn && dokument[dEnde - 1][0] === beleg[bEnde - 1][0]) {
+    dEnde--;
+    bEnde--;
+  }
+  return { vorn, dEnde, bEnde };
+}
+
 function askVergleichMarken(vergleich) {
   const dokument = askVergleichToken(vergleich.dokument);
   const beleg = askVergleichToken(vergleich.belege[0].text);
   if (!dokument.length || !beleg.length) return;
-  let vorn = 0;
-  while (vorn < dokument.length && vorn < beleg.length && dokument[vorn][0] === beleg[vorn][0])
-    vorn++;
+  const { vorn, dEnde, bEnde } = askVergleichTokenGrenzen(dokument, beleg);
   if (vergleich.art === "bestaetigt") {
     if (vorn === dokument.length && vorn === beleg.length) {
       vergleich.dokumentMarke = askVergleichSpanne(dokument, 0, dokument.length);
       vergleich.belegMarke = askVergleichSpanne(beleg, 0, beleg.length);
     }
     return;
-  }
-  let dEnde = dokument.length;
-  let bEnde = beleg.length;
-  while (dEnde > vorn && bEnde > vorn && dokument[dEnde - 1][0] === beleg[bEnde - 1][0]) {
-    dEnde--;
-    bEnde--;
   }
   const geaendert = Math.max(dEnde - vorn, bEnde - vorn);
   // Nur EINE enge Stelle in sonst übereinstimmendem Wortlaut auszeichnen.
@@ -135,6 +140,126 @@ function askVergleichMarken(vergleich) {
   }
   vergleich.dokumentMarke = spanne(dokument, dEnde);
   vergleich.belegMarke = spanne(beleg, bEnde);
+}
+
+// A correction is a single local token edit. Keep Word's spacing, punctuation and formatting
+// outside that edit. A held Word range supplies the scope even if the cursor has since moved.
+function askWortkorrektur(outcome, quellen) {
+  const v = outcome?.direktvergleich;
+  if (
+    outcome?.kind !== "answered" ||
+    v?.art !== "widersprochen" ||
+    !v.dokumentMarke ||
+    !v.belegMarke ||
+    outcome.abgeschnitten ||
+    outcome.lage === "belegt_mit_konflikt" ||
+    outcome.konflikte?.length ||
+    v.belege.length !== 1 ||
+    v.quellfassungen?.length !== 1
+  )
+    return null;
+  const beleg = v.belege[0];
+  const fassung = v.quellfassungen[0];
+  const quelle = quellen.find((q) => q.id === fassung.id);
+  if (
+    !beleg.woertlich ||
+    beleg.quellen.length !== 1 ||
+    beleg.quellen[0] !== fassung.id ||
+    !quelle?.geladen ||
+    quelle.status !== "validiert" ||
+    quelle.version !== fassung.fassung ||
+    typeof quelle.passage !== "string" ||
+    !beleg.text ||
+    quelle.passage.split(beleg.text).length !== 2 ||
+    /[\r\n\t]/.test(v.dokument + beleg.text)
+  )
+    return null;
+
+  const alt = askVergleichToken(v.dokument);
+  const neu = askVergleichToken(beleg.text);
+  if (!alt.length || !neu.length) return null;
+  const { vorn, dEnde, bEnde } = askVergleichTokenGrenzen(alt, neu);
+  if (dEnde === vorn && bEnde === vorn) return null;
+  const ab = (tokens) => (vorn ? tokens[vorn - 1].index + tokens[vorn - 1][0].length : 0);
+  const bis = (tokens, ende) =>
+    ende < tokens.length ? tokens[ende].index : tokens.at(-1).index + tokens.at(-1)[0].length;
+  let start = ab(alt);
+  let ende = bis(alt, dEnde);
+  const altTeil = v.dokument.slice(start, ende);
+  let ersatz = beleg.text.slice(ab(neu), bis(neu, bEnde));
+  // Prefer retaining the separator before the changed word, then the one after it.
+  let i = 0;
+  while (i < altTeil.length && /\s/u.test(altTeil[i]) && altTeil[i] === ersatz[i]) i++;
+  start += i;
+  ersatz = ersatz.slice(i);
+  while (
+    ende > start &&
+    ersatz &&
+    /\s/u.test(v.dokument[ende - 1]) &&
+    v.dokument[ende - 1] === ersatz.at(-1)
+  ) {
+    ende--;
+    ersatz = ersatz.slice(0, -1);
+  }
+  const vorher = v.dokument.slice(start, ende);
+  let suche = vorher;
+  let ort = "Replace";
+  if (!suche) {
+    const rechts = alt.find((token) => token.index === start);
+    const davor = alt.find((token) => token.index + token[0].length === start);
+    if (!rechts && !davor) return null;
+    suche = (rechts || davor)[0];
+    ort = rechts ? "Before" : "After";
+  }
+  if (suche.replace(/\^/g, "^^").length > 255 || v.dokument.split(suche).length !== 2) return null;
+  return {
+    vorher,
+    ersatz,
+    suche,
+    ort,
+    start,
+    kontext: askVergleichSpanne(alt, Math.max(0, vorn - 1), Math.min(alt.length, dEnde + 1)),
+    nachher: v.dokument.slice(0, start) + ersatz + v.dokument.slice(ende),
+  };
+}
+
+async function wordKorrekturAnwenden(word, anker, korrektur, gilt) {
+  if (!gilt()) return "veraltet";
+  let gesendet = false;
+  try {
+    return await word.run(anker.bereich, async (ctx) => {
+      const bereich = anker.bereich;
+      bereich.load("text");
+      const fund = bereich.search(korrektur.suche.replace(/\^/g, "^^"), {
+        matchCase: true,
+        matchWildcards: false,
+        ignorePunct: false,
+        ignoreSpace: false,
+      });
+      fund.load("items/text");
+      await ctx.sync();
+      if (
+        !gilt() ||
+        bereich.text !== anker.original ||
+        fund.items.length !== 1 ||
+        fund.items[0].text !== korrektur.suche
+      )
+        return "veraltet";
+      const ziel = fund.items[0];
+      if (korrektur.ersatz) ziel.insertText(korrektur.ersatz, korrektur.ort);
+      else ziel.delete();
+      // Read the *same tracked passage* in the edit batch for the next real question.
+      bereich.load("text");
+      gesendet = true;
+      await ctx.sync();
+      if (!gilt() || bereich.text.trim() !== korrektur.nachher) return "ungewiss";
+      anker.original = bereich.text;
+      anker.text = korrektur.nachher;
+      return "geschrieben";
+    });
+  } catch {
+    return gesendet ? "ungewiss" : "veraltet";
+  }
 }
 
 function askVergleichBeleg(absatz, schritte) {

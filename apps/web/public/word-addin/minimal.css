@@ -410,6 +410,29 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+.kw-korrektur {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border-inline-start: 3px solid var(--pos-text);
+  background: var(--surface);
+}
+.kw-korrektur strong {
+  display: inline-block;
+  min-width: 5ch;
+  margin-inline-end: 6px;
+  font-size: 12px;
+}
+.kw-korrektur del,
+.kw-korrektur ins {
+  color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.kw-korrektur button {
+  justify-self: start;
+  margin-top: 4px;
+}
 .kw-vergleich p {
   margin: 0;
   color: var(--muted);

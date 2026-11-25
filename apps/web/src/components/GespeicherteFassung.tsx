@@ -21,7 +21,7 @@
 //     Abgleich gegen den Inhaltsabdruck der Revision; beim Abschnitt des Absatzes geöffnet;
 //   · keines von beiden — ausdrücklich „nicht erhalten“.
 // Das Original in der Quelle bleibt als Verweis daneben und ist als HEUTIGER Stand benannt.
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useKoVersions, useQuellrevision } from "../api/hooks";
 import type { KoVersionSnapshot, QuellrevisionInhalt } from "../api/types";
@@ -52,7 +52,13 @@ function Fassungswortlaut({
   aussage,
   html,
   zitat,
-}: { aussage: string; html: string | null; zitat: string }): JSX.Element {
+  meldeTreffer,
+}: {
+  aussage: string;
+  html: string | null;
+  zitat: string;
+  meldeTreffer: (gefunden: boolean) => void;
+}): JSX.Element {
   const aussageRef = useRef<HTMLParagraphElement>(null);
   const koerperRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -60,19 +66,19 @@ function Fassungswortlaut({
     const text = aussageRef.current;
     if (!koerper || !text || !zitat) return;
     const fund = eindeutigeZitatstelle(koerper, text, zitat);
+    meldeTreffer(Boolean(fund));
     if (!fund) return;
     const marken = markiereFundstelle(koerper.contains(fund.start.knoten) ? koerper : text, fund);
     for (const marke of marken) {
       marke.className =
         "rounded-sm bg-amber-200 text-slate-950 underline decoration-amber-700 decoration-2 underline-offset-2";
     }
-    marken[0]?.scrollIntoView?.({ block: "center" });
     return () => {
       for (const marke of marken) {
         marke.replaceWith(...marke.childNodes);
       }
     };
-  }, [zitat]);
+  }, [zitat, meldeTreffer]);
   return (
     <>
       <p
@@ -97,15 +103,17 @@ export function GespeicherteFassungAnsicht({
   zitat = "",
   lage,
   quellinhalt,
+  freigabeperson,
 }: {
   fassung: number;
   ankerId: string | null;
   zitat?: string;
+  freigabeperson?: string | null;
   lage: GespeicherteFassungLage;
   /** Fehlt er (reine Anzeige), steht bei einer Revision nur ihr Stand, kein Öffnungsweg. */
   quellinhalt?: QuellinhaltPlatz;
 }): JSX.Element {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   if (lage.art === "laedt") {
     return (
       <p className={`mb-3 ${HINWEIS}`} data-testid={`${GESPEICHERT_MARKE}-laedt`}>
@@ -128,106 +136,188 @@ export function GespeicherteFassungAnsicht({
       </p>
     );
   }
+  return (
+    <Fassungskarte
+      key={JSON.stringify([satz.koId, satz.version, zitat])}
+      satz={satz}
+      ankerId={ankerId}
+      zitat={zitat}
+      freigabeperson={freigabeperson}
+      quellinhalt={quellinhalt}
+    />
+  );
+}
+
+function Fassungskarte({
+  satz,
+  ankerId,
+  zitat,
+  freigabeperson,
+  quellinhalt,
+}: {
+  satz: KoVersionSnapshot;
+  ankerId: string | null;
+  zitat: string;
+  freigabeperson?: string | null;
+  quellinhalt?: QuellinhaltPlatz;
+}): JSX.Element {
+  const { t, i18n } = useTranslation();
+  const [gefunden, meldeTreffer] = useState(false);
   const ko = satz.snapshot;
   const abschnitte = quellabschnitteAus(ko.sources);
   const auszuege = new Map(
     (ko.sources ?? []).map((s): [string, string | null] => [s.id, s.excerpt]),
   );
+  const Volltext = zitat ? "details" : Fragment;
+  const zeit = formatKoTimestamp(satz.at, i18n.language) ?? satz.at;
+  const zeitzeile = (
+    <p
+      className={zitat ? "mt-1 text-sm text-muted" : HINWEIS}
+      data-testid={`${GESPEICHERT_MARKE}-titelzeile`}
+    >
+      {t("quellen.gespeichert.titel", { version: satz.version, zeit })}
+    </p>
+  );
   return (
     <Card
-      className="mb-3"
+      className={zitat ? "mx-auto w-full max-w-3xl p-5 sm:p-8" : "mb-3"}
       interactive={false}
       data-testid={GESPEICHERT_MARKE}
       data-fassung={String(satz.version)}
     >
-      <p className={HINWEIS} data-testid={`${GESPEICHERT_MARKE}-titelzeile`}>
-        {t("quellen.gespeichert.titel", {
-          version: satz.version,
-          zeit: formatKoTimestamp(satz.at, i18n.language) ?? satz.at,
-        })}
-      </p>
+      {zitat && (
+        <div className="mb-5">
+          <p className="mb-3 text-sm font-semibold text-brand-text">{t("quellen.fokus.stelle")}</p>
+          {gefunden ? (
+            <blockquote
+              data-testid="quellenfokus-zitat"
+              className="border-l-4 border-amber-500 pl-4 text-2xl font-semibold leading-snug text-text sm:text-3xl"
+            >
+              <mark
+                dir="auto"
+                className="box-decoration-clone rounded-sm bg-amber-100 px-0.5 text-slate-950"
+              >
+                {zitat}
+              </mark>
+            </blockquote>
+          ) : (
+            <p data-testid="quellenfokus-ohne-zitat" className="text-base text-muted">
+              {t("quellen.fokus.keineStelle")}
+            </p>
+          )}
+        </div>
+      )}
+      {!zitat && zeitzeile}
       <h2
-        className="mt-1 text-[17px] font-semibold text-text"
+        className={
+          zitat
+            ? "break-words text-xl font-semibold text-text"
+            : "mt-1 text-[17px] font-semibold text-text"
+        }
         data-testid={`${GESPEICHERT_MARKE}-titel`}
+        dir="auto"
       >
         {ko.title}
       </h2>
-      <Fassungswortlaut
-        key={`${satz.koId}:${satz.version}`}
-        aussage={ko.statement}
-        html={ko.bodyHtml ?? null}
-        zitat={zitat}
-      />
-      {abschnitte === null ? (
-        <p className={`mt-2 ${HINWEIS}`} data-testid={`${GESPEICHERT_MARKE}-quellen-unbekannt`}>
-          {t("quellen.abschnitteUnbekannt")}
+      {zitat && (
+        <p data-testid="quellenfokus-freigabe" className="mt-1 text-sm font-medium text-text">
+          {freigabeperson
+            ? t("begleiter.vergleich.freigegebenVon", { person: freigabeperson })
+            : t("begleiter.vergleich.freigabeUnbekannt")}
         </p>
-      ) : abschnitte.length > 0 ? (
-        <div className="mt-2">
-          <p className={HINWEIS}>{t("quellen.abschnitteTitel")}</p>
-          <ul className={`${HINWEIS} list-none space-y-1`}>
-            {abschnitte.map((q, i) => {
-              const gewaehlt = ankerId !== null && q.ankerId === ankerId;
-              const original = sichererVerweis(q.url);
-              const auszug = q.ankerId ? auszuege.get(q.ankerId) : null;
-              const stand =
-                q.stand === "geprueft" ? t("quellen.standGeprueft") : t("quellen.standUngeprueft");
-              let damals: ReactNode = null;
-              if (auszug) {
-                damals = (
-                  <q className="block" data-testid={`${GESPEICHERT_MARKE}-auszug`}>
-                    {auszug}
-                  </q>
-                );
-              } else if (q.quellrevision) {
-                damals = quellinhalt ? quellinhalt(q.quellrevision, gewaehlt) : null;
-              } else {
-                damals = (
-                  <span
-                    className="block"
-                    data-testid={`${GESPEICHERT_MARKE}-quellinhalt-nicht-erhalten`}
+      )}
+      {zitat && zeitzeile}
+      <Volltext>
+        {zitat && (
+          <summary
+            data-testid="quellenfokus-volltext"
+            className="mt-5 cursor-pointer border-t border-line pt-4 text-sm font-semibold text-brand-text"
+          >
+            {t("quellen.fokus.volltext")}
+          </summary>
+        )}
+        <Fassungswortlaut
+          key={`${satz.koId}:${satz.version}`}
+          aussage={ko.statement}
+          html={ko.bodyHtml ?? null}
+          zitat={zitat}
+          meldeTreffer={meldeTreffer}
+        />
+        {abschnitte === null ? (
+          <p className={`mt-2 ${HINWEIS}`} data-testid={`${GESPEICHERT_MARKE}-quellen-unbekannt`}>
+            {t("quellen.abschnitteUnbekannt")}
+          </p>
+        ) : abschnitte.length > 0 ? (
+          <div className="mt-2">
+            <p className={HINWEIS}>{t("quellen.abschnitteTitel")}</p>
+            <ul className={`${HINWEIS} list-none space-y-1`}>
+              {abschnitte.map((q, i) => {
+                const gewaehlt = ankerId !== null && q.ankerId === ankerId;
+                const original = sichererVerweis(q.url);
+                const auszug = q.ankerId ? auszuege.get(q.ankerId) : null;
+                const stand =
+                  q.stand === "geprueft"
+                    ? t("quellen.standGeprueft")
+                    : t("quellen.standUngeprueft");
+                let damals: ReactNode = null;
+                if (auszug) {
+                  damals = (
+                    <q className="block" data-testid={`${GESPEICHERT_MARKE}-auszug`}>
+                      {auszug}
+                    </q>
+                  );
+                } else if (q.quellrevision) {
+                  damals = quellinhalt ? quellinhalt(q.quellrevision, gewaehlt) : null;
+                } else {
+                  damals = (
+                    <span
+                      className="block"
+                      data-testid={`${GESPEICHERT_MARKE}-quellinhalt-nicht-erhalten`}
+                    >
+                      {t("quellen.gespeichert.quellinhaltNichtErhalten")}
+                    </span>
+                  );
+                }
+                return (
+                  <li
+                    key={q.ankerId ?? `${q.bezeichnung}-${i}`}
+                    data-testid={`${GESPEICHERT_MARKE}-quellabschnitt`}
+                    data-stand={q.stand}
+                    data-fundstelle={q.fundstelle ?? ""}
+                    data-gewaehlt={gewaehlt ? "true" : "false"}
+                    aria-current={gewaehlt ? "true" : undefined}
+                    className={gewaehlt ? "font-semibold text-text" : undefined}
                   >
-                    {t("quellen.gespeichert.quellinhaltNichtErhalten")}
-                  </span>
+                    {gewaehlt ? `${t("quellen.gespeichert.gewaehlt")}: ` : null}
+                    {q.bezeichnung || t("quellen.dateiOhneName")}
+                    {q.quellfassung !== null
+                      ? ` · ${t("quellen.quellfassung", { version: q.quellfassung })}`
+                      : null}
+                    {q.quellrevision
+                      ? ` · ${t("quellen.revision", { revision: q.quellrevision })}`
+                      : null}
+                    {` · ${stand}`}
+                    {original ? (
+                      <>
+                        {" · "}
+                        <a href={original} target="_blank" rel="noopener noreferrer">
+                          {t("quellen.originalOeffnen")}
+                        </a>
+                      </>
+                    ) : null}
+                    {damals}
+                  </li>
                 );
-              }
-              return (
-                <li
-                  key={q.ankerId ?? `${q.bezeichnung}-${i}`}
-                  data-testid={`${GESPEICHERT_MARKE}-quellabschnitt`}
-                  data-stand={q.stand}
-                  data-fundstelle={q.fundstelle ?? ""}
-                  data-gewaehlt={gewaehlt ? "true" : "false"}
-                  aria-current={gewaehlt ? "true" : undefined}
-                  className={gewaehlt ? "font-semibold text-text" : undefined}
-                >
-                  {gewaehlt ? `${t("quellen.gespeichert.gewaehlt")}: ` : null}
-                  {q.bezeichnung || t("quellen.dateiOhneName")}
-                  {q.quellfassung !== null
-                    ? ` · ${t("quellen.quellfassung", { version: q.quellfassung })}`
-                    : null}
-                  {q.quellrevision
-                    ? ` · ${t("quellen.revision", { revision: q.quellrevision })}`
-                    : null}
-                  {` · ${stand}`}
-                  {original ? (
-                    <>
-                      {" · "}
-                      <a href={original} target="_blank" rel="noopener noreferrer">
-                        {t("quellen.originalOeffnen")}
-                      </a>
-                    </>
-                  ) : null}
-                  {damals}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
-      <p className={`mt-2 ${HINWEIS}`}>
-        {t("quellen.gespeichert.hinweis", { version: satz.version })}
-      </p>
+              })}
+            </ul>
+          </div>
+        ) : null}
+      </Volltext>
+      {!zitat && (
+        <p className={`mt-2 ${HINWEIS}`}>
+          {t("quellen.gespeichert.hinweis", { version: satz.version })}
+        </p>
+      )}
     </Card>
   );
 }
@@ -315,11 +405,13 @@ export function GespeicherteFassung({
   fassung,
   ankerId,
   zitat = "",
+  freigabeperson,
 }: {
   koId: string;
   fassung: number;
   ankerId: string | null;
   zitat?: string;
+  freigabeperson?: string | null;
 }): JSX.Element {
   const abfrage = useKoVersions(koId);
   const lage: GespeicherteFassungLage = abfrage.isError
@@ -332,6 +424,7 @@ export function GespeicherteFassung({
       fassung={fassung}
       ankerId={ankerId}
       zitat={zitat}
+      freigabeperson={freigabeperson}
       lage={lage}
       quellinhalt={(sourceRecordId, gewaehlt) => (
         <DamaligerQuellinhalt koId={koId} sourceRecordId={sourceRecordId} anfangsOffen={gewaehlt} />

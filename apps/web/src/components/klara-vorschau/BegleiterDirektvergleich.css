@@ -1,4 +1,5 @@
 [data-vorfuehrung="an"] .begleiter-direktvergleich {
+  container-type: inline-size;
   width: 100%;
   max-width: 56rem;
   margin-inline: auto;
@@ -42,4 +43,25 @@
 
 [data-vorfuehrung="an"] .begleiter-direktvergleich :is(button, p, .begleiter-ki-hinweis) {
   font-size: 0.9375rem;
+}
+
+@container (min-width: 38rem) {
+  [data-vorfuehrung="an"] .begleiter-direktvergleich dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  [data-vorfuehrung="an"] .begleiter-direktvergleich dl > div:only-child {
+    grid-column: 1 / -1;
+  }
+
+  [data-vorfuehrung="an"] .begleiter-direktvergleich dl > div + div {
+    grid-column: 2;
+    margin-top: 0;
+    padding-top: 0;
+    padding-inline-start: 1rem;
+    border-top: 0;
+    border-inline-start: 1px solid rgb(var(--kw-hairline));
+  }
 }

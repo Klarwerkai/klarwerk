@@ -62,6 +62,11 @@ export default {
     "quellen.standUngeprueft": "Quellstand ungeprüft",
     "quellen.fassungOeffnen": "Fassung {{version}} öffnen",
     "quellen.originalOeffnen": "Original in der Quelle öffnen (heutiger Stand)",
+    "quellen.fokus.stelle": "Zitierte Textstelle",
+    "quellen.fokus.keineStelle":
+      "In dieser Fassung lässt sich die zitierte Stelle nicht eindeutig zuordnen.",
+    "quellen.fokus.volltext": "Vollständige Fassung und Quellen",
+    "quellen.fokus.aktuellerEintrag": "Heutigen Eintrag öffnen",
     "quellen.gespeichert.titel": "Verwendete Fassung {{version}} · gespeichert am {{zeit}}",
     "quellen.gespeichert.laedt": "Gespeicherte Fassung wird geladen …",
     "quellen.gespeichert.fehler":
@@ -132,6 +137,11 @@ export default {
     "quellen.standUngeprueft": "Source state unverified",
     "quellen.fassungOeffnen": "Open version {{version}}",
     "quellen.originalOeffnen": "Open original in the source (its state today)",
+    "quellen.fokus.stelle": "Cited passage",
+    "quellen.fokus.keineStelle":
+      "The cited passage could not be uniquely identified in this version.",
+    "quellen.fokus.volltext": "Full version and sources",
+    "quellen.fokus.aktuellerEintrag": "Open the current entry",
     "quellen.gespeichert.titel": "Version {{version}} in use · saved on {{zeit}}",
     "quellen.gespeichert.laedt": "Loading saved version …",
     "quellen.gespeichert.fehler":
@@ -203,6 +213,11 @@ export default {
     "quellen.standUngeprueft": "Bronstand niet gecontroleerd",
     "quellen.fassungOeffnen": "Versie {{version}} openen",
     "quellen.originalOeffnen": "Origineel in de bron openen (stand van vandaag)",
+    "quellen.fokus.stelle": "Geciteerde passage",
+    "quellen.fokus.keineStelle":
+      "De geciteerde passage is in deze versie niet eenduidig terug te vinden.",
+    "quellen.fokus.volltext": "Volledige versie en bronnen",
+    "quellen.fokus.aktuellerEintrag": "Huidig item openen",
     "quellen.gespeichert.titel": "Gebruikte versie {{version}} · opgeslagen op {{zeit}}",
     "quellen.gespeichert.laedt": "Opgeslagen versie wordt geladen …",
     "quellen.gespeichert.fehler":

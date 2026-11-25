@@ -473,6 +473,9 @@ describe("Direktvergleich in der Klara-App", () => {
     await bis(() => Boolean(q(document, "begleiter-passage-pruefen")), 160);
     const vorschau = q(document, "begleiter-pruefpassage");
     expect(vorschau?.closest("form")).toBe(feld.closest("form"));
+    expect(q(document, "begleiter-passagenbezug")?.textContent).toBe(
+      "Vertrag Muster.docx · Sentence at cursor",
+    );
     expect(vorschau?.textContent).toContain(text);
     const pruefen = q<HTMLButtonElement>(document, "begleiter-passage-pruefen");
     expect(pruefen?.textContent).toBe("Check this passage");
@@ -488,9 +491,79 @@ describe("Direktvergleich in der Klara-App", () => {
       { art: "frage", text: "Is this correct?", locale: "en", auswahlStand: 3, pruefpassage: text },
     ]);
     expect(draht.aufrufe.some((a) => a.url === "/api/ask")).toBe(false);
-    expect((await aktualisiere(3, null)).statusCode).toBe(200);
+    const [auftrag] = tick.json().aktionen;
+    const antworte = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+      seq: 3,
+      auswahl: null,
+      auswahlStand: 3,
+      passage: { text, stand: 3 },
+      erledigt: [
+        {
+          id: auftrag.id,
+          stand: "erledigt",
+          ergebnis: "Antwort",
+          vergleich: {
+            art: "offen",
+            dokument: text,
+            dokumentMarke: null,
+            belegMarke: null,
+            belege: [],
+            zeigbar: false,
+          },
+        },
+      ],
+    });
+    expect(antworte.statusCode, antworte.body).toBe(200);
+    await bis(() => Boolean(q(document, "begleiter-direktvergleich")), 160);
+    expect(q(document, "begleiter-passagentext")).toBeNull();
+    expect(q(document, "begleiter-pruefpassage")?.textContent).toContain("Check this passage");
+    expect(q(document, "begleiter-direktvergleich")?.textContent).toContain(text);
+    expect(feld.value).toBe("Unsent draft");
+    const anders = "Guests may use the internet.";
+    await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+      seq: 4,
+      auswahl: { text: anders, laenge: anders.length, stand: 4 },
+      auswahlStand: 4,
+      passage: { text: anders, stand: 4 },
+    });
+    await bis(() => q(document, "begleiter-passagentext")?.textContent === anders, 160);
+    expect(q(document, "begleiter-passagenbezug")?.textContent).toBe(
+      "Vertrag Muster.docx · Selection",
+    );
+    expect(q(document, "begleiter-direktvergleich")?.textContent).toContain(
+      "Previously checked passage",
+    );
+    const leer = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+      seq: 5,
+      auswahl: null,
+      auswahlStand: 5,
+      passage: null,
+    });
+    expect(leer.statusCode, leer.body).toBe(200);
     await bis(() => q(document, "begleiter-pruefpassage") === null, 160);
     expect(q(document, "begleiter-passage-pruefen")).toBeNull();
+  });
+
+  it("meldet die Sprache an die native App und erklärt den tatsächlichen Verbindungsschalter in allen drei Sprachen", async () => {
+    await vorrichtung();
+    await montiere();
+    await gespraechOffen();
+    for (const [sprache, verbindung, schalter] of [
+      ["de", "Word verbinden", "Mit Begleitapp verbinden"],
+      ["en", "Connect Word", "Connect companion app"],
+      ["nl", "Word verbinden", "Verbinden met begeleider-app"],
+    ]) {
+      await befehlDerApp("einstellungen-oeffnen");
+      await klick(q(document, `sprach-schalter-${sprache}`));
+      await taste(q(document, "begleiter-gespraech") as HTMLElement, "Escape");
+      await bis(
+        () => q(document, "begleiter-word-verbinden-knopf")?.textContent === verbindung,
+        160,
+      );
+      expect(q(document, "begleiter-word-verbinden")?.textContent).toContain(schalter);
+      expect(nachrichten("sprache").at(-1)).toMatchObject({ sprache });
+      expect(q(document, "begleiter-passage-pruefen")).toBeNull();
+    }
   });
 
   it("prüft den Cursorabsatz auf Englisch, zeigt Quellen und Fundstelle und beginnt nach Clear einen neuen Vergleich", async () => {
@@ -747,6 +820,7 @@ describe("S5 · UI-MIN-01/11 — Gespräch der Begleitapp: vier Bereiche, Rest i
       "begleiter-menue-knopf",
       "begleiter-schliessen",
       "begleiter-kontext-zeile",
+      "begleiter-word-verbinden-knopf",
       "begleiter-eingabe",
       "begleiter-senden",
     ]);
@@ -760,6 +834,11 @@ describe("S5 · UI-MIN-01/11 — Gespräch der Begleitapp: vier Bereiche, Rest i
       "Einstellungen",
       "Hilfe",
     ]);
+    await klick(q(g, "klara-menue-funktionen"));
+    const kalender = q<HTMLAnchorElement>(g, "begleiter-kalender");
+    expect(kalender?.textContent).toBe("Mein Kalender");
+    expect(kalender?.pathname).toBe("/kalender");
+    expect(kalender?.target).toBe("_blank");
   });
 });
 

@@ -13,12 +13,11 @@ import WebKit
 /// In der kleinen Figurenansicht verdeckt sie weder den Avatar noch dessen Ziehgriff.
 final class BegleitInhalt: NSView {
     let webView: GriffWebView
-    private let kopf = NSVisualEffectView()
+    let beendenLeiste = NSTitlebarAccessoryViewController()
     private let beenden: NSButton
-    private let titel = NSTextField(labelWithString: FigurPanel.neutralerName)
+    var beendenTitel: String { beenden.title }
     private let einstieg = BegleitEinstieg()
     var webBereit = false { didSet { needsLayout = true } }
-    func setzeName(_ name: String) { titel.stringValue = name }
     var figur = false {
         didSet { needsLayout = true }
     }
@@ -28,48 +27,57 @@ final class BegleitInhalt: NSView {
         beenden = NSButton(title: "Klara beenden", target: ziel, action: aktion)
         super.init(frame: webView.frame)
         autoresizingMask = [.width, .height]
-        kopf.material = .headerView
-        kopf.blendingMode = .withinWindow
-        kopf.state = .active
-        titel.font = .systemFont(ofSize: 13, weight: .semibold)
-        titel.lineBreakMode = .byTruncatingTail
-        kopf.addSubview(titel)
         beenden.bezelStyle = .rounded
-        beenden.font = .systemFont(ofSize: 12)
+        beenden.controlSize = .small
         beenden.keyEquivalent = "q"
         beenden.keyEquivalentModifierMask = [.command]
-        beenden.toolTip = "Klara vollständig beenden (⌘Q)"
-        beenden.setAccessibilityHelp("Beendet die Klara-App. Gespräch schließen blendet dagegen nur das Gespräch aus.")
-        kopf.addSubview(beenden)
+        let halter = NSView(frame: NSRect(x: 0, y: 0, width: 110, height: 22))
+        beenden.frame = halter.bounds.insetBy(dx: 3, dy: 0)
+        halter.addSubview(beenden)
+        beendenLeiste.view = halter
+        beendenLeiste.layoutAttribute = .right
         addSubview(webView)
-        addSubview(kopf)
         einstieg.target = ziel
         einstieg.action = oeffnen
         einstieg.bezelStyle = .regularSquare
         einstieg.isBordered = false
-        einstieg.image = NSImage(systemSymbolName: "bubble.left.fill", accessibilityDescription: "Klara öffnen")
         einstieg.imageScaling = .scaleProportionallyUpOrDown
-        einstieg.toolTip = "Klara öffnen · Ziehen zum Verschieben"
-        einstieg.setAccessibilityLabel("Klara öffnen")
+        let bevorzugt = Locale.preferredLanguages.first?.prefix(2).lowercased() ?? "de"
+        setzeSprache(UserDefaults.standard.string(forKey: "fenstersprache") ?? bevorzugt)
         einstieg.beiZiehen = { dx, dy in webView.beiZiehen?(dx, dy) }
         einstieg.nachZiehen = { webView.nachZiehen?() }
         addSubview(einstieg)
+    }
+
+    func setzeSprache(_ sprache: String) {
+        let beendenText: String
+        let oeffnenText: String
+        let ziehenText: String
+        switch sprache {
+        case "en":
+            (beendenText, oeffnenText, ziehenText) = ("Quit Klara", "Open Klara", "Drag to move")
+        case "nl":
+            (beendenText, oeffnenText, ziehenText) = ("Klara afsluiten", "Klara openen", "Sleep om te verplaatsen")
+        default:
+            (beendenText, oeffnenText, ziehenText) = ("Klara beenden", "Klara öffnen", "Ziehen zum Verschieben")
+        }
+        beenden.title = beendenText
+        beenden.toolTip = "\(beendenText) (⌘Q)"
+        beenden.setAccessibilityLabel(beendenText)
+        einstieg.image = NSImage(systemSymbolName: "bubble.left.fill", accessibilityDescription: oeffnenText)
+        einstieg.toolTip = "\(oeffnenText) · \(ziehenText)"
+        einstieg.setAccessibilityLabel(oeffnenText)
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func layout() {
         super.layout()
-        let hoehe: CGFloat = figur ? 0 : 36
         let ersatz = figur && !webBereit
         einstieg.isHidden = !ersatz
         einstieg.frame = bounds.insetBy(dx: 16, dy: 16)
         webView.isHidden = ersatz
-        kopf.isHidden = figur
-        kopf.frame = NSRect(x: 0, y: bounds.height - hoehe, width: bounds.width, height: hoehe)
-        titel.frame = NSRect(x: 12, y: 9, width: max(0, bounds.width - 152), height: 18)
-        beenden.frame = NSRect(x: max(0, bounds.width - 124), y: 4, width: 116, height: 28)
-        webView.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - hoehe))
+        webView.frame = bounds
     }
 }
 
@@ -226,6 +234,10 @@ final class FigurPanel: NSPanel {
     func alsGespraech(_ an: Bool) {
         if an {
             styleMask = Self.gespraechMaske
+            if let leiste = (contentView as? BegleitInhalt)?.beendenLeiste,
+               !titlebarAccessoryViewControllers.contains(where: { $0 === leiste }) {
+                addTitlebarAccessoryViewController(leiste)
+            }
             title = anzeigeName
             titleVisibility = .visible
             isOpaque = true
@@ -233,6 +245,10 @@ final class FigurPanel: NSPanel {
             isMovable = true
             minSize = Self.gespraechMindestgroesse
         } else {
+            if let leiste = (contentView as? BegleitInhalt)?.beendenLeiste,
+               let index = titlebarAccessoryViewControllers.firstIndex(where: { $0 === leiste }) {
+                removeTitlebarAccessoryViewController(at: index)
+            }
             styleMask = Self.figurMaske
             isOpaque = false
             backgroundColor = .clear

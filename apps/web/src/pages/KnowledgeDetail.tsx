@@ -12,6 +12,7 @@ import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SpaceZeile } from "../components/SpaceZeile";
 import { VorlagenHerkunft } from "../components/VorlagenHerkunft";
+import { ZitierteQuellansicht } from "../components/ZitierteQuellansicht";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
 import { STELLE_PARAM, zitatAusFragment } from "../lib/belegstelle";
@@ -62,10 +63,27 @@ import { useGelesenerStand } from "../lib/useGelesenerStand";
 // (die Bibliotheks-LISTE zeigt weiter den Originaltitel), steht in der Rückgabe unter ABWEICHUNGEN.
 export function KnowledgeDetail(): JSX.Element {
   const { id = "" } = useParams();
+  const [params] = useSearchParams();
+  const { hash } = useLocation();
+  const gespeichert = leseGespeicherteFassung(params);
+  const zitat = zitatAusFragment(hash);
+  if (gespeichert && zitat)
+    return (
+      <ZitierteQuellansicht
+        koId={id}
+        fassung={gespeichert.fassung}
+        ankerId={gespeichert.ankerId}
+        zitat={zitat}
+      />
+    );
+  return <Wissenseintrag />;
+}
+
+function Wissenseintrag(): JSX.Element {
+  const { id = "" } = useParams();
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const { hash } = useLocation();
   // produkt:20261007:artikel-gemeinsam: der Weg zum gemeinsamen Entwurf nur für Bearbeitende.
   const darfBearbeiten = useRole().role !== "viewer";
   // `edit=1` gehört zu GENAU DEM Eintrag, für den der Deep-Link kam (SCRUM-417). Bliebe er beim
@@ -216,7 +234,6 @@ export function KnowledgeDetail(): JSX.Element {
           koId={id}
           fassung={gespeichert.fassung}
           ankerId={gespeichert.ankerId}
-          zitat={zitatAusFragment(hash)}
         />
       ) : null}
       {/* R-1107: ist dieser Eintrag in einem Führungsartikel aufgegangen, sagt die Zeile worin. */}

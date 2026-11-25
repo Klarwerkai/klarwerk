@@ -29,6 +29,7 @@ export type AnNative =
   | { art: "reduziert"; an: boolean }
   // UI-MIN-15 (Nacharbeit 46): der persönliche Name bzw. „Deine Assistenz“ für die Titelleiste.
   | { art: "name"; name: string }
+  | { art: "sprache"; sprache: "de" | "en" | "nl" }
   // UI-MIN-06/14 (Nacharbeit 47): Anzahl laufender Vorgänge — als Antwort auf `vorgaenge-melden`
   // (`anfrage` = dessen Nummer) und bei jeder Änderung. Die App blendet erst nach bestätigter 0 aus.
   | { art: "vorgaenge"; anzahl: number; anfrage?: number }

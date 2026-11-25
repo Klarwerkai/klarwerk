@@ -154,3 +154,109 @@ describe("Direktvergleich – Auswahl im Word-Host", () => {
     expect(original.treffer[0]?.select).not.toHaveBeenCalled();
   });
 });
+
+type Korrektur = {
+  vorher: string;
+  ersatz: string;
+  suche: string;
+  ort: string;
+  nachher: string;
+};
+
+const korrekturen = runInNewContext(`${vergleich}
+  ;({
+    plan(dokument, beleg, status, fassung, passage, outcome) {
+      const direktvergleich = askDirektvergleich("widersprochen", dokument,
+        [{ text: beleg, quellen: ["quelle"] }], [{ sourceId: "quelle", snippet: beleg }], true, { quelle: 1 });
+      return askWortkorrektur({ kind: "answered", direktvergleich, ...outcome },
+        [{ id: "quelle", geladen: true, status, version: fassung, passage }]);
+    },
+    anwenden: wordKorrekturAnwenden
+  })`) as {
+  plan: (
+    alt: string,
+    neu: string,
+    status: string,
+    version: number,
+    passage: string,
+    outcome?: object,
+  ) => Korrektur | null;
+  anwenden: (word: object, anker: object, plan: Korrektur, gilt: () => boolean) => Promise<string>;
+};
+
+describe("Wortkorrektur aus dem bestätigten Satzbeleg", () => {
+  const regel = satz.replace("must provide", "must not provide");
+  it.each([
+    [satz, regel, "provide", "not ", "Before"],
+    [regel, satz, "not ", "", "Replace"],
+    [
+      "Der Zugang ist hier erlaubt.",
+      "Der Zugang ist hier gesperrt.",
+      "erlaubt",
+      "gesperrt",
+      "Replace",
+    ],
+    [
+      "De toegang is hier toegestaan.",
+      "De toegang is hier verboden.",
+      "toegestaan",
+      "verboden",
+      "Replace",
+    ],
+  ])("beschränkt den Eingriff auf die geänderte Stelle in %s", (alt, neu, suche, ersatz, ort) => {
+    expect(korrekturen.plan(alt, neu, "validiert", 1, neu)).toMatchObject({
+      suche,
+      ersatz,
+      ort,
+      nachher: neu,
+    });
+  });
+
+  it("bietet nur genau einen bestätigten Beleg und einen eindeutigen Eingriff an", () => {
+    expect(korrekturen.plan(satz, regel, "pruefung", 1, regel)).toBeNull();
+    expect(korrekturen.plan(satz, regel, "validiert", 2, regel)).toBeNull();
+    expect(korrekturen.plan(satz, regel, "validiert", 1, "")).toBeNull();
+    expect(korrekturen.plan(satz, regel, "validiert", 1, `${regel} ${regel}`)).toBeNull();
+    expect(
+      korrekturen.plan(satz, regel, "validiert", 1, regel, { konflikte: ["offen"] }),
+    ).toBeNull();
+    expect(
+      korrekturen.plan(satz, regel, "validiert", 1, regel, { abgeschnitten: true }),
+    ).toBeNull();
+    const wiederholung = "The users may only only change their own settings.";
+    const eindeutig = wiederholung.replace("only only", "only");
+    expect(korrekturen.plan(wiederholung, eindeutig, "validiert", 1, eindeutig)).toBeNull();
+  });
+
+  it.each(["geaendert", "mehrdeutig", "verworfen"])(
+    "schreibt nichts, wenn der gebundene Word-Bereich %s ist",
+    async (grund) => {
+      const plan = korrekturen.plan(satz, regel, "validiert", 1, regel)!;
+      const schreiben = vi.fn();
+      const treffer = { text: plan.suche, insertText: schreiben, delete: schreiben };
+      const bereich = {
+        text: grund === "geaendert" ? `${satz} ` : satz,
+        load: vi.fn(),
+        search: () => ({
+          load: vi.fn(),
+          items: grund === "mehrdeutig" ? [treffer, treffer] : [treffer],
+        }),
+      };
+      const anker = { bereich, original: satz, text: satz };
+      let gueltig = true;
+      const ctx = {
+        sync: async () => {
+          gueltig = grund !== "verworfen";
+        },
+      };
+      const word = {
+        run: (gebunden: object, lauf: (context: typeof ctx) => unknown) => {
+          expect(gebunden).toBe(bereich);
+          return lauf(ctx);
+        },
+      };
+      expect(await korrekturen.anwenden(word, anker, plan, () => gueltig)).toBe("veraltet");
+      expect(schreiben).not.toHaveBeenCalled();
+    },
+  );
+});
