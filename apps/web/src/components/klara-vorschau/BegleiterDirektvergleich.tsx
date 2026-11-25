@@ -54,7 +54,7 @@ function Quellverweis({
   fassung: number | undefined;
   nummer: number;
   zitat: string;
-  quelle?: Belegfassung;
+  quelle: Belegfassung | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   const name = useAuthorName();

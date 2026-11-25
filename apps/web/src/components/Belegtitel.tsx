@@ -6,7 +6,7 @@ const PAKET_PRAEFIX = "[Beispiel] ";
 export function Belegtitel({
   titel,
   demoSeed,
-}: { titel: string; demoSeed?: boolean }): JSX.Element {
+}: { titel: string; demoSeed?: boolean | undefined }): JSX.Element {
   const { t } = useTranslation();
   if (!demoSeed || !titel.startsWith(PAKET_PRAEFIX) || titel.length === PAKET_PRAEFIX.length) {
     return <>{titel}</>;
