@@ -1377,7 +1377,8 @@
       pruefeDokument,
       frage,
       frageAbbrechen,
-      persoenlicheAnfrage: (pfad, methode, koerper) => api(pfad, methode, koerper, pfad.startsWith("/api/office/teamassistenten/")),
+      persoenlicheAnfrage: (pfad, methode, koerper) =>
+        api(pfad, methode, koerper, pfad.startsWith("/api/office/teamassistenten/")),
       verwendenVorbereiten,
       verwendenBestaetigen,
       zustimmen,
