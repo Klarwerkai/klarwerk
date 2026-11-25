@@ -3,6 +3,8 @@ export type KatalogText = Record<KatalogSprache, string>;
 export type KatalogPlattform = "klarwerk" | "office" | "app";
 export type KatalogStatus =
   | "available"
+  | "poc"
+  | "contract"
   | "partial"
   | "commissioned"
   | "planned"

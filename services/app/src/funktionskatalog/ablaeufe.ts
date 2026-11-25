@@ -865,18 +865,6 @@ export const ablaeufe: Record<string, Ablauf> = {
       nl: "Agendapunt met onderbouwing",
     },
   },
-  a309: {
-    input: {
-      de: "Zeitregel und Auftrag",
-      en: "Schedule and assignment",
-      nl: "Tijdregel en opdracht",
-    },
-    output: {
-      de: "Zuordenbare Ausführung",
-      en: "Traceable execution",
-      nl: "Herleidbare uitvoering",
-    },
-  },
   a316: {
     input: {
       de: "Anwendung und angemeldetes Konto",
@@ -887,18 +875,6 @@ export const ablaeufe: Record<string, Ablauf> = {
       de: "Verbundener Arbeitskontext",
       en: "Connected workspace",
       nl: "Verbonden werkcontext",
-    },
-  },
-  a321: {
-    input: {
-      de: "Aktuelles Word-Dokument",
-      en: "Current Word document",
-      nl: "Huidig Word-document",
-    },
-    output: {
-      de: "Ergebnis an der richtigen Stelle",
-      en: "Result at the intended location",
-      nl: "Resultaat op de bedoelde plek",
     },
   },
   a326: {
@@ -1335,26 +1311,26 @@ export const ablaeufe: Record<string, Ablauf> = {
   },
   d282: {
     input: {
-      de: "Persönlich gespeicherte Merkposten",
-      en: "Saved personal memories",
-      nl: "Opgeslagen persoonlijke gegevens",
+      de: "Wunsch, gespeicherte Erinnerungen zu prüfen",
+      en: "Request to review stored memories",
+      nl: "Verzoek om opgeslagen gegevens te bekijken",
     },
     output: {
-      de: "Geprüfter oder bereinigter Bestand",
-      en: "Reviewed or cleared memory",
-      nl: "Gecontroleerd of opgeschoond geheugen",
+      de: "Eingesehene oder gelöschte Erinnerung",
+      en: "Memory viewed or deleted",
+      nl: "Bekeken of verwijderd geheugenitem",
     },
   },
   d291: {
     input: {
-      de: "Gespeicherte eigene Arbeitswege",
-      en: "Saved personal workflows",
-      nl: "Opgeslagen eigen werkwijzen",
+      de: "Eigene gespeicherte Routinen",
+      en: "Saved personal routines",
+      nl: "Opgeslagen eigen routines",
     },
     output: {
-      de: "Übersicht bearbeitbarer Routinen",
-      en: "List of editable routines",
-      nl: "Overzicht van bewerkbare routines",
+      de: "Übersicht eigener Funktionen",
+      en: "List of personal functions",
+      nl: "Overzicht van eigen functies",
     },
   },
   d300: {
@@ -1371,14 +1347,14 @@ export const ablaeufe: Record<string, Ablauf> = {
   },
   d301: {
     input: {
-      de: "Freigegebener Kalenderzugang",
-      en: "Authorised calendar connection",
-      nl: "Geautoriseerde agendaverbinding",
+      de: "Ausgewählter externer Kalender und Freigabe",
+      en: "Chosen external calendar and permission",
+      nl: "Gekozen externe agenda en toestemming",
     },
     output: {
-      de: "Verknüpfte Termine",
-      en: "Linked appointments",
-      nl: "Gekoppelde afspraken",
+      de: "Verbundener Kalender",
+      en: "Connected calendar",
+      nl: "Gekoppelde agenda",
     },
   },
   d303: {
@@ -1535,6 +1511,342 @@ export const ablaeufe: Record<string, Ablauf> = {
       de: "Aktualisierte Einrichtungswahl",
       en: "Updated setup choices",
       nl: "Bijgewerkte instellingskeuzes",
+    },
+  },
+  d298: {
+    input: {
+      de: "Recherchefrage und erlaubte externe Suche",
+      en: "Research question and authorised external search",
+      nl: "Onderzoeksvraag en toegestane externe zoekdienst",
+    },
+    output: {
+      de: "Rechercheergebnis mit nachlesbaren Quellen",
+      en: "Research findings with traceable sources",
+      nl: "Onderzoeksresultaat met controleerbare bronnen",
+    },
+  },
+  d299: {
+    input: {
+      de: "Bewusst ausgewählte freigegebene Quellen",
+      en: "Approved sources selected for sharing",
+      nl: "Goedgekeurde bronnen die bewust zijn geselecteerd",
+    },
+    output: {
+      de: "Begrenzter Quellenzugriff für die andere KI",
+      en: "Bounded source access for the other AI",
+      nl: "Afgebakende brontoegang voor de andere AI",
+    },
+  },
+  d306: {
+    input: {
+      de: "Unvollständige oder widersprüchliche Datumsangabe",
+      en: "Missing or conflicting date",
+      nl: "Ontbrekende of tegenstrijdige datum",
+    },
+    output: {
+      de: "Rückfrage zur Klärung der Frist",
+      en: "Clarifying question about the deadline",
+      nl: "Vervolgvraag om de termijn te verduidelijken",
+    },
+  },
+  d308: {
+    input: {
+      de: "Neue Frist und vorhandene Termine",
+      en: "New deadline and existing events",
+      nl: "Nieuwe termijn en bestaande afspraken",
+    },
+    output: {
+      de: "Bestehende Frist zugeordnet, Doppeleintrag vermieden",
+      en: "Existing deadline matched, duplicate avoided",
+      nl: "Bestaande termijn gekoppeld, dubbel item voorkomen",
+    },
+  },
+  d313: {
+    input: {
+      de: "Gelöschter Termin mit verknüpftem Auftrag",
+      en: "Deleted event linked to a scheduled task",
+      nl: "Verwijderde afspraak met een gekoppelde opdracht",
+    },
+    output: {
+      de: "Zugehöriger Zeitauftrag pausiert",
+      en: "Linked scheduled task paused",
+      nl: "Gekoppelde geplande opdracht gepauzeerd",
+    },
+  },
+  d315: {
+    input: {
+      de: "Wiederholter Auslöser für denselben Lauf",
+      en: "Repeated trigger for the same run",
+      nl: "Herhaalde trigger voor dezelfde uitvoering",
+    },
+    output: {
+      de: "Einmalige Wirkung trotz Wiederholung",
+      en: "One effect across repeat triggers",
+      nl: "Eenmalig effect ondanks herhaling",
+    },
+  },
+  d344: {
+    input: {
+      de: "Ausgewähltes Ergebnis einer ChatGPT-Unterhaltung",
+      en: "Selected result from a ChatGPT conversation",
+      nl: "Geselecteerd resultaat uit een ChatGPT-gesprek",
+    },
+    output: {
+      de: "Entwurf mit nachvollziehbarer Herkunft",
+      en: "Draft with traceable origin",
+      nl: "Concept met herleidbare herkomst",
+    },
+  },
+  d295: {
+    input: {
+      de: "Bewusste Auswahl von Beobachtung und Umfang",
+      en: "User-selected observation and scope",
+      nl: "Bewust gekozen observatie en bereik",
+    },
+    output: {
+      de: "Begrenzte Beobachtung mit Stoppmöglichkeit",
+      en: "Bounded observation that the user can stop",
+      nl: "Afgebakende observatie die de gebruiker kan stoppen",
+    },
+  },
+  d71: {
+    input: {
+      de: "Zwei fachlich bestätigte Dublettenkandidaten",
+      en: "Two reviewed duplicate candidates",
+      nl: "Twee gecontroleerde mogelijke duplicaten",
+    },
+    output: {
+      de: "Bewusst zusammengeführter Wissenseintrag",
+      en: "Knowledge entry merged by decision",
+      nl: "Bewust samengevoegd kennisitem",
+    },
+  },
+  d59: {
+    input: {
+      de: "Anfrage nach vertraulichem Wissen",
+      en: "Query about confidential knowledge",
+      nl: "Vraag naar vertrouwelijke kennis",
+    },
+    output: {
+      de: "Auskunft entsprechend den Sichtrechten",
+      en: "Response consistent with visibility rights",
+      nl: "Antwoord volgens de zichtbaarheidsrechten",
+    },
+  },
+  d171: {
+    input: {
+      de: "Betrieblicher Abschaltentscheid",
+      en: "Operational decision to disable AI",
+      nl: "Beheerbesluit om AI uit te schakelen",
+    },
+    output: {
+      de: "KI-Verarbeitung zentral gesperrt",
+      en: "AI processing centrally disabled",
+      nl: "AI-verwerking centraal uitgeschakeld",
+    },
+  },
+  d181: {
+    input: {
+      de: "Gelöschter Eintrag im Papierkorb",
+      en: "Deleted item in the recycle bin",
+      nl: "Verwijderd item in de prullenbak",
+    },
+    output: {
+      de: "Wiederhergestellter Eintrag",
+      en: "Restored item",
+      nl: "Hersteld item",
+    },
+  },
+  d272: {
+    input: {
+      de: "Quellenverweis in einer Antwort",
+      en: "Source reference in a reply",
+      nl: "Bronvermelding in een antwoord",
+    },
+    output: {
+      de: "Quelle mit sichtbarer Unsicherheit",
+      en: "Source with uncertainty indicated",
+      nl: "Bron met aanduiding van onzekerheid",
+    },
+  },
+  d283: {
+    input: {
+      de: "Persönlicher Inhalt zur Übergabe",
+      en: "Personal content proposed for transfer",
+      nl: "Persoonlijke inhoud voor overdracht",
+    },
+    output: {
+      de: "Bewusst eingereichter Firmenwissensentwurf",
+      en: "Company knowledge draft submitted for review",
+      nl: "Bedrijfskennisconcept ter beoordeling ingediend",
+    },
+  },
+  d287: {
+    input: {
+      de: "Laufender oder rücknehmbarer Auftrag",
+      en: "Running or reversible task",
+      nl: "Lopende of terugneembare opdracht",
+    },
+    output: {
+      de: "Gestoppter oder zurückgenommener Schritt",
+      en: "Step stopped or reversed",
+      nl: "Gestopte of teruggedraaide stap",
+    },
+  },
+  d305: {
+    input: {
+      de: "Ereignis mit normativer Bedeutung",
+      en: "Event concerning a standard",
+      nl: "Gebeurtenis rond een norm",
+    },
+    output: {
+      de: "Eingeordnete Normänderung",
+      en: "Classified change to a standard",
+      nl: "Geduid normwijziging",
+    },
+  },
+  d309: {
+    input: {
+      de: "Auftrag mit einem einzelnen Zeitpunkt",
+      en: "Task with a single scheduled time",
+      nl: "Opdracht met een eenmalig tijdstip",
+    },
+    output: {
+      de: "Einmal eingeplanter Lauf",
+      en: "Run scheduled once",
+      nl: "Eenmalig ingeplande uitvoering",
+    },
+  },
+  d310: {
+    input: {
+      de: "Auftrag mit Wiederholungsregel",
+      en: "Task with a recurrence rule",
+      nl: "Opdracht met een herhalingsregel",
+    },
+    output: {
+      de: "Wiederkehrende Ausführungsreihe",
+      en: "Recurring series of runs",
+      nl: "Terugkerende reeks uitvoeringen",
+    },
+  },
+  d312: {
+    input: {
+      de: "Verpasster Ausführungstermin",
+      en: "Missed scheduled run",
+      nl: "Gemiste geplande uitvoering",
+    },
+    output: {
+      de: "Nachvollziehbarer Umgang mit dem versäumten Lauf",
+      en: "Recorded handling of the missed run",
+      nl: "Vastgelegde opvolging van de gemiste uitvoering",
+    },
+  },
+  d261: {
+    input: {
+      de: "Persönliche Einstellungen für Klara",
+      en: "Personal Klara preferences",
+      nl: "Persoonlijke instellingen voor Klara",
+    },
+    output: {
+      de: "Gespeicherte Konfiguration",
+      en: "Saved preferences",
+      nl: "Opgeslagen configuratie",
+    },
+  },
+  d322: {
+    input: {
+      de: "Ausgewählter Textvorschlag und Einfügestelle",
+      en: "Selected suggested text and insertion point",
+      nl: "Gekozen tekstvoorstel en invoegpositie",
+    },
+    output: {
+      de: "Vorschlag bewusst in Word eingefügt",
+      en: "Suggested text inserted on request",
+      nl: "Tekstvoorstel bewust in Word ingevoegd",
+    },
+  },
+  d323: {
+    input: {
+      de: "Überarbeiteter Word-Artikel und Ursprungsfassung",
+      en: "Edited Word article and its source version",
+      nl: "Bewerkt Word-artikel en oorspronkelijke versie",
+    },
+    output: {
+      de: "Neue Fassung am bisherigen Wissenseintrag",
+      en: "New version linked to the original knowledge entry",
+      nl: "Nieuwe versie bij hetzelfde kennisitem",
+    },
+  },
+  d330: {
+    input: {
+      de: "Datenwert auf einer Folie",
+      en: "Data point on a slide",
+      nl: "Gegevenswaarde op een dia",
+    },
+    output: {
+      de: "Datenquelle am Folienelement",
+      en: "Source linked to the slide element",
+      nl: "Gegevensbron bij het dia-element",
+    },
+  },
+  d331: {
+    input: {
+      de: "Zahlen auf der Folie und Quelldaten",
+      en: "Slide figures and source records",
+      nl: "Cijfers op de dia en brongegevens",
+    },
+    output: {
+      de: "Vergleich und markierte Abweichungen",
+      en: "Comparison with discrepancies marked",
+      nl: "Vergelijking met gemarkeerde afwijkingen",
+    },
+  },
+  d332: {
+    input: {
+      de: "Ergebnis und Rechenschritte der Folie",
+      en: "Slide result and its calculation steps",
+      nl: "Uitkomst en rekenstappen op de dia",
+    },
+    output: {
+      de: "Nachvollziehbarer Rechenweg",
+      en: "Traceable calculation",
+      nl: "Herleidbare berekening",
+    },
+  },
+  d335: {
+    input: {
+      de: "Fehlender Wert im Foliensatz",
+      en: "Missing value in a slide deck",
+      nl: "Ontbrekende waarde in de presentatie",
+    },
+    output: {
+      de: "Quellengebundene Ergänzung oder offene Frage",
+      en: "Sourced addition or open question",
+      nl: "Aanvulling met bron of openstaande vraag",
+    },
+  },
+  d352: {
+    input: {
+      de: "Anforderung und vorliegende Angebote",
+      en: "Requirements and received offers",
+      nl: "Behoefte en ontvangen offertes",
+    },
+    output: {
+      de: "Vergleichbare Angebotsübersicht",
+      en: "Comparable offer summary",
+      nl: "Vergelijkbaar offerteoverzicht",
+    },
+  },
+  d362: {
+    input: {
+      de: "Tabellarischer Scan",
+      en: "Scanned table",
+      nl: "Gescande tabel",
+    },
+    output: {
+      de: "Prüfbare Zeilen und Spalten",
+      en: "Rows and columns ready for review",
+      nl: "Rijen en kolommen ter controle",
     },
   },
   V01: {

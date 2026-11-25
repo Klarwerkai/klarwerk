@@ -5,7 +5,7 @@ export const klara: Redaktionseintrag[] = [
     id: "249",
     group: "gesprach-und-personlichkeit",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Persönliche Assistenz im Produkt",
       en: "Open your assistant in Klarwerk",
@@ -27,7 +27,7 @@ export const klara: Redaktionseintrag[] = [
     id: "250",
     group: "gesprach-und-personlichkeit",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Dauerhaftes Gespräch",
       en: "Continue a personal conversation",
@@ -49,7 +49,7 @@ export const klara: Redaktionseintrag[] = [
     id: "251",
     group: "gesprach-und-personlichkeit",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Seiten- und Auswahlkontext",
       en: "Use the current page or selection",
@@ -71,7 +71,7 @@ export const klara: Redaktionseintrag[] = [
     id: "252",
     group: "gesprach-und-personlichkeit",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Kontext bewusst wechseln",
       en: "Switch context deliberately",
@@ -93,7 +93,7 @@ export const klara: Redaktionseintrag[] = [
     id: "253",
     group: "gesprach-und-personlichkeit",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Kontextfreie Frage",
       en: "Ask without document context",
@@ -115,7 +115,7 @@ export const klara: Redaktionseintrag[] = [
     id: "254",
     group: "gesprach-und-personlichkeit",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Assistenzname und Avatar wählen",
       en: "Choose a name and avatar",
@@ -163,7 +163,7 @@ export const klara: Redaktionseintrag[] = [
     id: "256",
     group: "gesprach-und-personlichkeit",
     platforms: ["app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Figur verschieben und minimieren",
       en: "Move or minimise the character",
@@ -185,7 +185,7 @@ export const klara: Redaktionseintrag[] = [
     id: "257",
     group: "gesprach-und-personlichkeit",
     platforms: ["office", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Fenster schließen und wieder öffnen",
       en: "Close and reopen the window",
@@ -276,7 +276,7 @@ export const klara: Redaktionseintrag[] = [
     id: "261",
     group: "gesprach-und-personlichkeit",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Setupbereich Klara",
       en: "Configure Klara",
@@ -287,7 +287,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Manage personal settings and see which capabilities are available in the current environment.",
       nl: "Beheer persoonlijke instellingen en bekijk welke functies in de huidige omgeving beschikbaar zijn.",
     },
-    ablauf: "a261",
+    ablauf: "d261",
     belege: [
       ["register", "#261 · 19.10.2026"],
       ["appendix", "19.10.2026 · 20"],
@@ -315,12 +315,17 @@ export const klara: Redaktionseintrag[] = [
       ["appendix", "19.10.2026 · 20"],
       ["contract", "produkt:20261012:klara-setup-shortcuts-hostpruefung · .993 · 11.11.2026"],
     ],
+    scope: {
+      de: "Die Tastaturbedienung hat einen Lieferbeleg. Ob sämtliche Kürzel im jeweiligen Host funktionieren, braucht eine Hostprüfung.",
+      en: "The keyboard controls have delivery evidence. Complete shortcut coverage requires a test in each host.",
+      nl: "De toetsenbordbediening heeft een leveringsbewijs. Volledige werking van de sneltoetsen vereist een test per host.",
+    },
   },
   {
     id: "263",
     group: "gesprach-und-personlichkeit",
     platforms: ["app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Minimalistische Mac-/Web-Oberfläche",
       en: "Use a compact Mac or web interface",
@@ -343,7 +348,7 @@ export const klara: Redaktionseintrag[] = [
     id: "264",
     group: "gesprach-und-personlichkeit",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Eigeninitiative einstellen",
       en: "Choose the level of initiative",
@@ -365,7 +370,7 @@ export const klara: Redaktionseintrag[] = [
     id: "265",
     group: "sprache-und-antworten",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Diktat",
       en: "Dictate text",
@@ -388,7 +393,7 @@ export const klara: Redaktionseintrag[] = [
     id: "266",
     group: "sprache-und-antworten",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Aufträge sprechen",
       en: "Give a spoken instruction",
@@ -410,7 +415,7 @@ export const klara: Redaktionseintrag[] = [
     id: "267",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Vorlesen",
       en: "Listen to an answer",
@@ -432,7 +437,7 @@ export const klara: Redaktionseintrag[] = [
     id: "268",
     group: "sprache-und-antworten",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Gesprochene Fehlerrückmeldung",
       en: "Report a wrong answer by voice",
@@ -454,7 +459,7 @@ export const klara: Redaktionseintrag[] = [
     id: "269",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Belegte Wissensantwort",
       en: "Get a sourced knowledge answer",
@@ -477,7 +482,7 @@ export const klara: Redaktionseintrag[] = [
     id: "270",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Fragen an Dokumente",
       en: "Ask questions about documents",
@@ -499,7 +504,7 @@ export const klara: Redaktionseintrag[] = [
     id: "271",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Begonnene Frage fortsetzen",
       en: "Resume an unfinished question",
@@ -521,7 +526,7 @@ export const klara: Redaktionseintrag[] = [
     id: "272",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Quellen öffnen und Unsicherheit zeigen",
       en: "Open sources and inspect uncertainty",
@@ -532,7 +537,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Inspect the passage, edition and limitations behind an answer, including missing evidence.",
       nl: "Bekijk de passage, versie en beperkingen achter een antwoord, inclusief ontbrekende onderbouwing.",
     },
-    ablauf: "a269",
+    ablauf: "d272",
     belege: [
       ["register", "#272 · 19.10.2026"],
       ["appendix", "19.10.2026 · 21"],
@@ -543,7 +548,7 @@ export const klara: Redaktionseintrag[] = [
     id: "273",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Zweite Einschätzung",
       en: "Request a second opinion",
@@ -592,7 +597,7 @@ export const klara: Redaktionseintrag[] = [
     id: "275",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Text erklären und zusammenfassen",
       en: "Explain or summarise text",
@@ -614,7 +619,7 @@ export const klara: Redaktionseintrag[] = [
     id: "276",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Übersetzen und umformulieren",
       en: "Translate or rephrase",
@@ -636,7 +641,7 @@ export const klara: Redaktionseintrag[] = [
     id: "277",
     group: "sprache-und-antworten",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Schreibvorschlag bewusst übernehmen",
       en: "Apply a writing suggestion",
@@ -658,7 +663,7 @@ export const klara: Redaktionseintrag[] = [
     id: "278",
     group: "sprache-und-antworten",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Widersprüche und Lücken erklären",
       en: "Explain conflicts and gaps",
@@ -680,7 +685,7 @@ export const klara: Redaktionseintrag[] = [
     id: "279",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Private Notizen",
       en: "Keep private notes",
@@ -702,7 +707,7 @@ export const klara: Redaktionseintrag[] = [
     id: "280",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Persönliche Aufgaben",
       en: "Manage personal tasks",
@@ -741,12 +746,17 @@ export const klara: Redaktionseintrag[] = [
       ["appendix", "19.10.2026 · 22"],
       ["contract", "produkt:20261008:klara-gedaechtnis · .1081 · 11.11.2026"],
     ],
+    scope: {
+      de: "Die Gedächtnisgrundlage ist geliefert. Für die vollständige persönliche Verwaltung stehen weitere Nachweise aus.",
+      en: "The memory foundation has been delivered. Full personal management still needs further evidence.",
+      nl: "De geheugenbasis is geleverd. Voor volledig persoonlijk beheer is aanvullend bewijs nodig.",
+    },
   },
   {
     id: "282",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Gedächtnis ansehen und löschen",
       en: "Review and erase personal memory",
@@ -769,7 +779,7 @@ export const klara: Redaktionseintrag[] = [
     id: "283",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Persönliches zu Firmenwissen machen",
       en: "Share personal work as company knowledge",
@@ -780,7 +790,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Choose which note or result to contribute to a shared article or space.",
       nl: "Kies welke notitie of welk resultaat aan een gedeeld artikel of een kennisruimte wordt toegevoegd.",
     },
-    ablauf: "a279",
+    ablauf: "d283",
     belege: [
       ["register", "#283 · 19.10.2026"],
       ["appendix", "19.10.2026 · 22"],
@@ -813,7 +823,7 @@ export const klara: Redaktionseintrag[] = [
     id: "285",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Aktionen ausführen",
       en: "Carry out an authorised action",
@@ -835,7 +845,7 @@ export const klara: Redaktionseintrag[] = [
     id: "286",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Aktionsverlauf",
       en: "Inspect action history",
@@ -857,7 +867,7 @@ export const klara: Redaktionseintrag[] = [
     id: "287",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Stopp und Rücknahme",
       en: "Stop or undo an action",
@@ -868,7 +878,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Stop further steps and reverse eligible changes while preserving other people’s work.",
       nl: "Stop vervolgstappen en draai daarvoor geschikte wijzigingen terug met behoud van andermans werk.",
     },
-    ablauf: "a285",
+    ablauf: "d287",
     belege: [
       ["register", "#287 · 19.10.2026"],
       ["appendix", "19.10.2026 · 22"],
@@ -879,7 +889,7 @@ export const klara: Redaktionseintrag[] = [
     id: "288",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Mehrteilige Arbeit übernehmen",
       en: "Delegate a multi-step task",
@@ -902,7 +912,7 @@ export const klara: Redaktionseintrag[] = [
     id: "289",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Arbeit nach Unterbrechung fortsetzen",
       en: "Resume work after an interruption",
@@ -925,7 +935,7 @@ export const klara: Redaktionseintrag[] = [
     id: "290",
     group: "personliche-arbeit",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Eigene benannte KI-Funktionen",
       en: "Name your own AI functions",
@@ -971,7 +981,7 @@ export const klara: Redaktionseintrag[] = [
     id: "292",
     group: "personliche-arbeit",
     platforms: ["app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Durch Vormachen lernen",
       en: "Teach Klara by demonstration",
@@ -999,7 +1009,7 @@ export const klara: Redaktionseintrag[] = [
     id: "293",
     group: "personliche-arbeit",
     platforms: ["app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Einmalig oder dauerhaft lernen",
       en: "Learn once or keep a rule",
@@ -1044,7 +1054,7 @@ export const klara: Redaktionseintrag[] = [
     id: "295",
     group: "personliche-arbeit",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Begrenzte aktive Beobachtung",
       en: "Limit active observation",
@@ -1055,7 +1065,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Keep observation visible, restrict it to authorised applications and pause it when needed.",
       nl: "Maak meekijken zichtbaar, beperk het tot toegestane toepassingen en pauzeer het wanneer nodig.",
     },
-    ablauf: "a290",
+    ablauf: "d295",
     belege: [
       ["register", "#295 · 19.10.2026"],
       ["appendix", "19.10.2026 · 22"],
@@ -1066,7 +1076,7 @@ export const klara: Redaktionseintrag[] = [
     id: "296",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Skills und Werkzeuge",
       en: "Use skills and tools",
@@ -1088,7 +1098,7 @@ export const klara: Redaktionseintrag[] = [
     id: "297",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Mit anderen KIs arbeiten",
       en: "Work alongside other AI tools",
@@ -1121,7 +1131,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Run a sourced search within the product budget and configured cost limits.",
       nl: "Voer een zoekopdracht met bronvermelding uit binnen het productbudget en de ingestelde kostengrenzen.",
     },
-    ablauf: "a290",
+    ablauf: "d298",
     belege: [
       ["register", "#298 · 19.10.2026"],
       ["appendix", "19.10.2026 · 22"],
@@ -1131,7 +1141,7 @@ export const klara: Redaktionseintrag[] = [
     id: "299",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissen für andere KI bereitstellen",
       en: "Provide knowledge to another AI",
@@ -1142,7 +1152,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Deliberately hand selected permitted sources to a separate AI workflow.",
       nl: "Draag bewust geselecteerde, toegestane bronnen over aan een afzonderlijk AI-werkproces.",
     },
-    ablauf: "a290",
+    ablauf: "d299",
     belege: [
       ["register", "#299 · 19.10.2026"],
       ["appendix", "19.10.2026 · 22"],
@@ -1181,7 +1191,7 @@ export const klara: Redaktionseintrag[] = [
     id: "301",
     group: "kalender-und-fristen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Vorhandenen Kalender anbinden",
       en: "Connect an existing calendar",
@@ -1204,7 +1214,7 @@ export const klara: Redaktionseintrag[] = [
     id: "302",
     group: "kalender-und-fristen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Erinnerungen verwalten",
       en: "Manage reminders",
@@ -1227,7 +1237,7 @@ export const klara: Redaktionseintrag[] = [
     id: "303",
     group: "kalender-und-fristen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Fristen aus Informationen erkennen",
       en: "Detect deadlines in source material",
@@ -1250,7 +1260,7 @@ export const klara: Redaktionseintrag[] = [
     id: "304",
     group: "kalender-und-fristen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Zertifikate und Lizenzabläufe verfolgen",
       en: "Track certificate and licence expiry",
@@ -1273,7 +1283,7 @@ export const klara: Redaktionseintrag[] = [
     id: "305",
     group: "kalender-und-fristen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Normereignisse unterscheiden",
       en: "Distinguish standards milestones",
@@ -1284,7 +1294,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Track announcement, publication, entry into force, transition and replacement as separate events.",
       nl: "Leg aankondiging, publicatie, inwerkingtreding, overgangstermijn en vervanging afzonderlijk vast.",
     },
-    ablauf: "a300",
+    ablauf: "d305",
     belege: [
       ["register", "#305 · 19.10.2026"],
       ["appendix", "19.10.2026 · 23"],
@@ -1296,7 +1306,7 @@ export const klara: Redaktionseintrag[] = [
     id: "306",
     group: "kalender-und-fristen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Unklare Fristen klären",
       en: "Clarify ambiguous deadlines",
@@ -1307,7 +1317,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Ask which date or reference time applies when sources conflict or details are missing.",
       nl: "Vraag welke datum of referentietijd geldt wanneer bronnen elkaar tegenspreken of gegevens ontbreken.",
     },
-    ablauf: "a300",
+    ablauf: "d306",
     belege: [
       ["register", "#306 · 19.10.2026"],
       ["appendix", "19.10.2026 · 23"],
@@ -1341,7 +1351,7 @@ export const klara: Redaktionseintrag[] = [
     id: "308",
     group: "kalender-und-fristen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Doppelte Fristen vermeiden",
       en: "Prevent duplicate deadlines",
@@ -1352,7 +1362,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Recognise repeated source material, copies and previously dismissed detections.",
       nl: "Herken herhaald bronmateriaal, kopieën en eerder afgewezen suggesties.",
     },
-    ablauf: "a300",
+    ablauf: "d308",
     belege: [
       ["register", "#308 · 19.10.2026"],
       ["appendix", "19.10.2026 · 23"],
@@ -1375,7 +1385,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Run an explicitly delegated task at the agreed time.",
       nl: "Voer een uitdrukkelijk gedelegeerde taak uit op het afgesproken tijdstip.",
     },
-    ablauf: "a309",
+    ablauf: "d309",
     belege: [
       ["register", "#309 · 19.10.2026"],
       ["appendix", "19.10.2026 · 23"],
@@ -1397,7 +1407,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Keep the recurrence or event trigger in a persistent schedule outside the language model.",
       nl: "Bewaar het herhalingspatroon of de gebeurtenistrigger in een vaste planning buiten het taalmodel.",
     },
-    ablauf: "a309",
+    ablauf: "d310",
     belege: [
       ["register", "#310 · 19.10.2026"],
       ["appendix", "19.10.2026 · 23"],
@@ -1441,7 +1451,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Use the agreed policy to catch up, notify, summarise or skip a missed occurrence.",
       nl: "Volg de afspraak om een gemiste uitvoering in te halen, te melden, samen te vatten of over te slaan.",
     },
-    ablauf: "a309",
+    ablauf: "d312",
     belege: [
       ["register", "#312 · 19.10.2026"],
       ["appendix", "19.10.2026 · 23"],
@@ -1452,7 +1462,7 @@ export const klara: Redaktionseintrag[] = [
     id: "313",
     group: "kalender-und-fristen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Kalenderlöschung mit Auftrag abstimmen",
       en: "Coordinate calendar and task deletion",
@@ -1463,7 +1473,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Clarify what should happen to the related assignment when a calendar entry is removed.",
       nl: "Bepaal wat er met de gekoppelde opdracht gebeurt wanneer een agenda-item wordt verwijderd.",
     },
-    ablauf: "a309",
+    ablauf: "d313",
     belege: [
       ["register", "#313 · 19.10.2026"],
       ["appendix", "19.10.2026 · 23"],
@@ -1508,7 +1518,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Keep a repeat or resumed run from carrying out the same action twice.",
       nl: "Voorkom dat een herhaalde of hervatte uitvoering dezelfde handeling twee keer verricht.",
     },
-    ablauf: "a309",
+    ablauf: "d315",
     belege: [
       ["register", "#315 · 19.10.2026"],
       ["appendix", "19.10.2026 · 23"],
@@ -1541,7 +1551,7 @@ export const klara: Redaktionseintrag[] = [
     id: "317",
     group: "office-und-desktop",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Office-Plattformen und Sprachen",
       en: "See supported Office platforms and languages",
@@ -1618,12 +1628,17 @@ export const klara: Redaktionseintrag[] = [
       ["appendix", "19.10.2026 · 24"],
       ["investor", "05.11.2026 · 6"],
     ],
+    scope: {
+      de: "Die Teillieferungen decken Schritte in Word ab. Für den vollständigen Rückweg zum bestehenden Wissensartikel wird ein eigener durchgängiger Nachweis benötigt.",
+      en: "Partial deliveries cover steps within Word. Returning to the existing knowledge article requires separate end-to-end evidence.",
+      nl: "Deelleveringen dekken stappen in Word. Het hele traject terug naar het bestaande kennisartikel vereist een aparte integrale toets.",
+    },
   },
   {
     id: "320",
     group: "office-und-desktop",
     platforms: ["office"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Word-Web-Seitenbereich",
       en: "Open the Word web task pane",
@@ -1685,7 +1700,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Apply a suggestion at the intended document position and read it back there.",
       nl: "Neem een voorstel op de bedoelde plaats in het document over en lees het daar terug.",
     },
-    ablauf: "a321",
+    ablauf: "d322",
     belege: [
       ["register", "#322 · 19.10.2026"],
       ["appendix", "19.10.2026 · 24"],
@@ -1706,18 +1721,23 @@ export const klara: Redaktionseintrag[] = [
       en: "Return edited content, images and source information as a new version of the original item.",
       nl: "Breng bewerkte inhoud, afbeeldingen en broninformatie als nieuwe versie terug in het oorspronkelijke item.",
     },
-    ablauf: "a321",
+    ablauf: "d323",
     belege: [
       ["register", "#323 · 19.10.2026"],
       ["appendix", "19.10.2026 · 24"],
       ["historic", "12.09.2026 · A-roundtrip"],
     ],
+    scope: {
+      de: "Die Teillieferungen decken Schritte in Word ab. Für den vollständigen Rückweg zum bestehenden Wissensartikel wird ein eigener durchgängiger Nachweis benötigt.",
+      en: "Partial deliveries cover steps within Word. Returning to the existing knowledge article requires separate end-to-end evidence.",
+      nl: "Deelleveringen dekken stappen in Word. Het hele traject terug naar het bestaande kennisartikel vereist een aparte integrale toets.",
+    },
   },
   {
     id: "324",
     group: "office-und-desktop",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Excel anbinden",
       en: "Connect Excel",
@@ -1864,7 +1884,7 @@ export const klara: Redaktionseintrag[] = [
     id: "330",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Datenherkunft an Folien",
       en: "Trace data on a slide",
@@ -1875,7 +1895,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Link a number or statement to its source, period, unit and slide element.",
       nl: "Koppel een getal of uitspraak aan bron, periode, eenheid en dia-element.",
     },
-    ablauf: "a330",
+    ablauf: "d330",
     belege: [
       ["register", "#330 · 19.10.2026"],
       ["appendix", "19.10.2026 · 25"],
@@ -1888,7 +1908,7 @@ export const klara: Redaktionseintrag[] = [
     id: "331",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Daten auf Folien validieren",
       en: "Validate slide data",
@@ -1899,7 +1919,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Check evidence quality and expert approval for the version used in the slide.",
       nl: "Controleer de kwaliteit van de onderbouwing en de vakinhoudelijke goedkeuring van de gebruikte versie.",
     },
-    ablauf: "a330",
+    ablauf: "d331",
     belege: [
       ["register", "#331 · 19.10.2026"],
       ["appendix", "19.10.2026 · 25"],
@@ -1911,7 +1931,7 @@ export const klara: Redaktionseintrag[] = [
     id: "332",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Rechenwege nachvollziehen",
       en: "Trace a slide calculation",
@@ -1922,7 +1942,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Expose the inputs, formula and derived values behind a statement on a slide.",
       nl: "Maak de invoer, formule en afgeleide waarden achter een uitspraak op een dia zichtbaar.",
     },
-    ablauf: "a330",
+    ablauf: "d332",
     belege: [
       ["register", "#332 · 19.10.2026"],
       ["appendix", "19.10.2026 · 25"],
@@ -1934,7 +1954,7 @@ export const klara: Redaktionseintrag[] = [
     id: "333",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Bilder und OCR auf Folien",
       en: "Use images and OCR on slides",
@@ -1957,7 +1977,7 @@ export const klara: Redaktionseintrag[] = [
     id: "334",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Bearbeitbare Präsentationen entwickeln",
       en: "Create editable presentations",
@@ -1980,7 +2000,7 @@ export const klara: Redaktionseintrag[] = [
     id: "335",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Datenlücken ergänzen",
       en: "Fill presentation data gaps",
@@ -1991,7 +2011,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Identify missing values, obtain or request them and review the additions.",
       nl: "Spoor ontbrekende waarden op, zoek of vraag ze op en controleer de aanvullingen.",
     },
-    ablauf: "a334",
+    ablauf: "d335",
     belege: [
       ["register", "#335 · 19.10.2026"],
       ["appendix", "19.10.2026 · 25"],
@@ -2003,7 +2023,7 @@ export const klara: Redaktionseintrag[] = [
     id: "336",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Fassungen und Präsentationstiefen",
       en: "Manage presentation versions and detail levels",
@@ -2026,7 +2046,7 @@ export const klara: Redaktionseintrag[] = [
     id: "337",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Vortrag vorbereiten",
       en: "Prepare a talk",
@@ -2049,7 +2069,7 @@ export const klara: Redaktionseintrag[] = [
     id: "338",
     group: "powerpoint",
     platforms: ["office"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Rückmeldungen zurückführen",
       en: "Feed presentation feedback back into knowledge",
@@ -2099,7 +2119,7 @@ export const klara: Redaktionseintrag[] = [
     id: "340",
     group: "browser-und-quellen",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Browserinhalte bewusst erfassen",
       en: "Capture selected web content",
@@ -2122,7 +2142,7 @@ export const klara: Redaktionseintrag[] = [
     id: "341",
     group: "browser-und-quellen",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Technische Webdaten übernehmen",
       en: "Capture technical web data",
@@ -2139,12 +2159,17 @@ export const klara: Redaktionseintrag[] = [
       ["appendix", "19.10.2026 · 26"],
       ["oldrelease", "1.0.0-beta.1.990"],
     ],
+    scope: {
+      de: "Der technische Übernahmeweg ist in .990 belegt. Wie viel Arbeitszeit er Menschen im Alltag erspart, ist noch nicht gemessen.",
+      en: "The technical capture workflow has evidence in .990. Time saved in day-to-day work has yet to be measured.",
+      nl: "De technische overname is aangetoond in .990. Hoeveel tijd dit mensen in de praktijk bespaart, is nog niet gemeten.",
+    },
   },
   {
     id: "342",
     group: "browser-und-quellen",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Im Browser gezielt einfügen",
       en: "Insert into a chosen browser target",
@@ -2166,7 +2191,7 @@ export const klara: Redaktionseintrag[] = [
     id: "343",
     group: "browser-und-quellen",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Browseraktionen ausführen",
       en: "Perform a browser action",
@@ -2200,7 +2225,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Select an actual result and save the content with its origin.",
       nl: "Selecteer een daadwerkelijk resultaat en bewaar de inhoud met de herkomst.",
     },
-    ablauf: "a340",
+    ablauf: "d344",
     belege: [
       ["register", "#344 · 19.10.2026"],
       ["appendix", "19.10.2026 · 26"],
@@ -2211,7 +2236,7 @@ export const klara: Redaktionseintrag[] = [
     id: "345",
     group: "besprechungen-und-nacharbeit",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Besprechungsnotizen aufbereiten",
       en: "Structure meeting notes",
@@ -2276,7 +2301,7 @@ export const klara: Redaktionseintrag[] = [
     id: "348",
     group: "besprechungen-und-nacharbeit",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Gespräch mit Dokumentstellen verbinden",
       en: "Connect a meeting to a document passage",
@@ -2298,7 +2323,7 @@ export const klara: Redaktionseintrag[] = [
     id: "349",
     group: "besprechungen-und-nacharbeit",
     platforms: ["office", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Dokumente nachbearbeiten",
       en: "Revise documents after a meeting",
@@ -2341,7 +2366,7 @@ export const klara: Redaktionseintrag[] = [
     id: "351",
     group: "besprechungen-und-nacharbeit",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Übergaben vorbereiten",
       en: "Prepare a handover",
@@ -2364,7 +2389,7 @@ export const klara: Redaktionseintrag[] = [
     id: "352",
     group: "beschaffung",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Angebote vorbereiten und vergleichen",
       en: "Prepare and compare purchasing offers",
@@ -2375,7 +2400,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Compare offers against approved requirements and identifiable permitted sources.",
       nl: "Vergelijk offertes met goedgekeurde eisen en herkenbare toegestane bronnen.",
     },
-    ablauf: "a352",
+    ablauf: "d352",
     belege: [
       ["register", "#352 · 19.10.2026"],
       ["appendix", "19.10.2026 · 26"],
@@ -2387,7 +2412,7 @@ export const klara: Redaktionseintrag[] = [
     id: "353",
     group: "beschaffung",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Beschaffungsroutine speichern",
       en: "Save a purchasing routine",
@@ -2442,7 +2467,7 @@ export const klara: Redaktionseintrag[] = [
     id: "355",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Text in Bildern automatisch mitlesen",
       en: "Read images automatically",
@@ -2464,7 +2489,7 @@ export const klara: Redaktionseintrag[] = [
     id: "356",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Texterkennung in Bildern einstellen (OCR)",
       en: "Control automatic OCR",
@@ -2486,7 +2511,7 @@ export const klara: Redaktionseintrag[] = [
     id: "357",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Fotos und Scans lesen",
       en: "Read photos and scans",
@@ -2508,7 +2533,7 @@ export const klara: Redaktionseintrag[] = [
     id: "358",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Erkannte Textstelle im Originalbild zeigen",
       en: "Locate OCR text in the original image",
@@ -2535,7 +2560,7 @@ export const klara: Redaktionseintrag[] = [
     id: "359",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Erkannten Bildtext dauerhaft korrigieren",
       en: "Correct OCR text permanently",
@@ -2562,7 +2587,7 @@ export const klara: Redaktionseintrag[] = [
     id: "360",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Korrektur erhalten und zurücksetzen",
       en: "Keep or reset an OCR correction",
@@ -2584,7 +2609,7 @@ export const klara: Redaktionseintrag[] = [
     id: "361",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "partial",
     title: {
       de: "Unsichere Texterkennung kenntlich machen",
       en: "Flag uncertain OCR results",
@@ -2610,7 +2635,7 @@ export const klara: Redaktionseintrag[] = [
     id: "362",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Tabellen aus Bildern",
       en: "Extract tables from images",
@@ -2621,7 +2646,7 @@ export const klara: Redaktionseintrag[] = [
       en: "Reconstruct an editable table while retaining its image source.",
       nl: "Reconstrueer een bewerkbare tabel met behoud van de bronafbeelding.",
     },
-    ablauf: "a355",
+    ablauf: "d362",
     belege: [
       ["register", "#362 · 19.10.2026"],
       ["appendix", "19.10.2026 · 28"],
@@ -2633,7 +2658,7 @@ export const klara: Redaktionseintrag[] = [
     id: "363",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Mehrseitige Scans",
       en: "Read multi-page scans",
@@ -2656,7 +2681,7 @@ export const klara: Redaktionseintrag[] = [
     id: "364",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Bildtext und Dokumenttext vergleichen",
       en: "Compare image text with document text",
@@ -2679,7 +2704,7 @@ export const klara: Redaktionseintrag[] = [
     id: "365",
     group: "bildanalyse-und-ocr",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Gezielte Bild- oder Bereichsfrage",
       en: "Ask about a selected image region",
@@ -2724,7 +2749,7 @@ export const klara: Redaktionseintrag[] = [
     id: "367",
     group: "einfuhrung-und-tutorials",
     platforms: ["klarwerk", "app"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Fragen-Tutorial",
       en: "Follow the questions tutorial",
@@ -2746,7 +2771,7 @@ export const klara: Redaktionseintrag[] = [
     id: "368",
     group: "einfuhrung-und-tutorials",
     platforms: ["klarwerk", "app"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Persönliche Einführung",
       en: "Start a personal introduction",
@@ -2870,5 +2895,10 @@ export const klara: Redaktionseintrag[] = [
       ["register", "#373 · 19.10.2026"],
       ["appendix", "19.10.2026 · 20"],
     ],
+    scope: {
+      de: "Das Fragen-Tutorial ist belegt. Weitere Lernwege werden separat geführt.",
+      en: "The question tutorial has evidence. Other learning paths are tracked separately.",
+      nl: "De rondleiding voor vragen is aangetoond. Andere leertrajecten worden afzonderlijk bijgehouden.",
+    },
   },
 ];

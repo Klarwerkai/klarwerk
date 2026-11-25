@@ -27,6 +27,8 @@ import texte from "../texte/funktionskatalog";
 const produkte: KatalogPlattform[] = ["klarwerk", "office", "app"];
 const statusListe: KatalogStatus[] = [
   "available",
+  "poc",
+  "contract",
   "partial",
   "commissioned",
   "planned",
@@ -42,6 +44,8 @@ const feld =
 const knopf =
   "inline-flex items-center justify-center gap-1 rounded-btn border border-hairline bg-surface px-3 py-2 text-sm font-medium text-text hover:bg-hairline-soft focus-visible:outline-brand";
 const badgeFarben: Record<KatalogStatus, string> = {
+  poc: "bg-trust-info-bg text-trust-info-text",
+  contract: "bg-trust-warn-bg text-trust-warn-text",
   available: "bg-trust-pos-bg text-trust-pos-text",
   partial: "bg-trust-warn-bg text-trust-warn-text",
   commissioned: "bg-trust-info-bg text-trust-info-text",

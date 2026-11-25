@@ -38,6 +38,7 @@ describe("Redaktioneller Produktkatalog", () => {
   it("trennt Erstumfang, spätere Betriebsstufe, Idee und tatsächlich vorgeführte Funktion", () => {
     const eintraege = new Map(funktionskatalog.entries.map((e) => [e.id, e]));
     for (const id of ["140", "235"]) expect(eintraege.get(id)?.status).toBe("excluded");
+    expect(eintraege.get("017")?.status).toBe("poc");
     expect(eintraege.get("193")?.status).toBe("deferred");
     expect(eintraege.get("260")?.status).toBe("idea");
     expect(eintraege.get("P01")?.sources[0]?.reference).toContain("05.11.2026");

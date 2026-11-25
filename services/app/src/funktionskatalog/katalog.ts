@@ -54,6 +54,16 @@ const belegtitel: Record<Belegart, KatalogText> = {
 };
 
 const umfang: Record<KatalogStatus, KatalogText> = {
+  poc: text(
+    "Das Oktoberregister belegt den dort geprüften Teilumfang im Proof of Concept (PoC).",
+    "The October register records the scope tested in the proof of concept (PoC).",
+    "Het oktoberregister documenteert de afgebakende werking die in de proof of concept (PoC) is getoetst.",
+  ),
+  contract: text(
+    "Im zugeordneten Auftrag sind einzelne Kriterien belegt. Die vollständige Funktion und ihre Nutzung in jedem genannten Arbeitsort sind offen.",
+    "Individual criteria in the associated contract have evidence. The complete feature and its use in each listed environment are still open.",
+    "Voor afzonderlijke criteria in de bijbehorende opdracht is er bewijs. De volledige functie en het gebruik in elke genoemde omgeving staan nog open.",
+  ),
   available: text(
     "Der Beleg gilt für den beschriebenen Arbeitsweg und die angegebene Fassung.",
     "The evidence applies to the documented workflow and version.",
@@ -97,6 +107,16 @@ const umfang: Record<KatalogStatus, KatalogText> = {
 };
 
 const oktoberstand: Record<KatalogStatus, KatalogText> = {
+  poc: text(
+    "Oktoberstand · im PoC-Teilumfang belegt",
+    "October status · within proof-of-concept scope",
+    "Oktoberstatus · binnen de getoetste proefomvang",
+  ),
+  contract: text(
+    "Oktoberstand · Teilbeleg im Auftrag",
+    "October status · partial contract evidence",
+    "Oktoberstatus · deelbewijs binnen de opdracht",
+  ),
   available: text(
     "Oktoberstand · im PoC belegt",
     "October status · verified in the proof of concept",

@@ -5,7 +5,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "001",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissen frei erfassen",
       en: "Capture know-how in your own words",
@@ -27,7 +27,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "002",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Geführtes Experteninterview",
       en: "Interview an expert",
@@ -49,7 +49,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "003",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Foto-Wissensinterview",
       en: "Start an interview from a photo",
@@ -71,7 +71,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "004",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Negativwissen erfassen",
       en: "Record what went wrong",
@@ -94,7 +94,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "005",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Freitext strukturieren",
       en: "Structure free text",
@@ -116,7 +116,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "006",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Zusatzangaben zum Wissen (Metadaten)",
       en: "Add metadata",
@@ -138,7 +138,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "007",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Dateien importieren",
       en: "Import files",
@@ -160,7 +160,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "008",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Word-Inhalte importieren",
       en: "Import Word content",
@@ -183,7 +183,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "009",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Große Ordnerbestände importieren",
       en: "Import large folders",
@@ -205,7 +205,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "010",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Importfortschritt anzeigen",
       en: "Track import progress",
@@ -227,7 +227,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "011",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Importprotokoll und Wiederaufnahme",
       en: "Inspect and resume an import",
@@ -249,7 +249,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "012",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wiederimport ohne Dubletten",
       en: "Reimport without duplicates",
@@ -271,7 +271,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "013",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Import-Prüfwarteschlange",
       en: "Review the import queue",
@@ -293,7 +293,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "014",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Importierten Volltext durchsuchen",
       en: "Search imported full text",
@@ -315,7 +315,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "015",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Quellen und Fassungen erhalten",
       en: "Preserve sources and editions",
@@ -337,7 +337,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "016",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "E-Mail als Wissensentwurf",
       en: "Turn an email into a draft",
@@ -360,7 +360,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "017",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Teams- und Slack-Wissen importieren",
       en: "Import Teams and Slack conversations",
@@ -382,7 +382,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "018",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Jira-Vorgänge importieren",
       en: "Import Jira issues",
@@ -404,7 +404,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "019",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Confluence-Bereiche auswählen",
       en: "Choose Confluence spaces",
@@ -427,7 +427,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "020",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Confluence-Seiten übernehmen",
       en: "Import Confluence pages",
@@ -449,7 +449,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "021",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Confluence-Hierarchie übernehmen",
       en: "Preserve the Confluence hierarchy",
@@ -471,7 +471,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "022",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Confluence-Anhänge übernehmen",
       en: "Import Confluence attachments",
@@ -493,7 +493,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "023",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Confluence-Rechte übernehmen",
       en: "Respect Confluence permissions",
@@ -515,7 +515,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "024",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Confluence-Änderungen abgleichen",
       en: "Synchronise Confluence changes",
@@ -653,7 +653,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "030",
     group: "erfassen-und-importieren",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Quellrechte beim Import einstufen",
       en: "Classify source access on import",
@@ -676,7 +676,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "031",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Private Entwürfe verwalten",
       en: "Manage private drafts",
@@ -699,7 +699,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "032",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Entwurf mit Datei sichern",
       en: "Save a draft with its file",
@@ -721,7 +721,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "033",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Arbeit beim Wechsel erhalten",
       en: "Keep work when switching views",
@@ -743,7 +743,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "034",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Bewusst einreichen",
       en: "Submit a draft deliberately",
@@ -765,7 +765,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "035",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Gemeinsamer Entwurfspool",
       en: "Share a draft for collaboration",
@@ -787,7 +787,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "036",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Einheitlicher Wissenseditor",
       en: "Use one knowledge editor",
@@ -809,7 +809,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "037",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Formatierung und Hinweisblöcke",
       en: "Format text and callouts",
@@ -831,7 +831,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "038",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Vorlagen und persönlicher Standard",
       en: "Choose templates and a default",
@@ -853,7 +853,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "039",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Bild- und Dateianhänge",
       en: "Attach images and files",
@@ -875,7 +875,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "040",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Bilder gezielt auswählen",
       en: "Select a specific image",
@@ -897,7 +897,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "041",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Bilder und Anhänge einfügen",
       en: "Insert and resize attachments",
@@ -919,7 +919,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "042",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Bildbeschreibungen bearbeiten",
       en: "Edit image descriptions",
@@ -942,7 +942,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "043",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Datei- und Bildgrößen begrenzen",
       en: "Limit file and image sizes",
@@ -964,7 +964,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "044",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Inhalt zuerst lesen",
       en: "Read the content first",
@@ -986,7 +986,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "045",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Am selben Artikel weiterarbeiten",
       en: "Continue in the same article",
@@ -1034,7 +1034,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "047",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Parallelbearbeitung erkennen",
       en: "Detect concurrent editing",
@@ -1056,7 +1056,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "048",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Zeitgleich gemeinsam schreiben (Coediting)",
       en: "Collaborate on article versions",
@@ -1104,7 +1104,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "050",
     group: "entwurfe-und-inhalte",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Veröffentlichung und Hinweise wählen",
       en: "Choose publication notices",
@@ -1126,7 +1126,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "051",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissensbibliothek",
       en: "Browse the knowledge library",
@@ -1149,7 +1149,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "052",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Suche und kombinierte Filter",
       en: "Search with combined filters",
@@ -1172,7 +1172,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "053",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Gespeicherte Ansichten",
       en: "Save a library view",
@@ -1195,7 +1195,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "054",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Fachbegriffe und Synonyme suchen",
       en: "Find terms and synonyms",
@@ -1244,7 +1244,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "056",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Aktueller Suchindex",
       en: "Keep the search index current",
@@ -1266,7 +1266,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "057",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Bestandsabhängige Treffermenge",
       en: "Size the search candidate set",
@@ -1288,7 +1288,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "058",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Berechtigte Suche",
       en: "Search within your permissions",
@@ -1310,7 +1310,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "059",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Existenzschutz vertraulicher Inhalte",
       en: "Protect the existence of sensitive entries",
@@ -1321,7 +1321,7 @@ export const klarwerk: Redaktionseintrag[] = [
       en: "Only disclose a hint about a protected entry when the reader may know it exists.",
       nl: "Toon alleen een aanwijzing naar een beschermd item als de lezer van het bestaan mag weten.",
     },
-    ablauf: "a58",
+    ablauf: "d59",
     belege: [
       ["register", "#059 · 19.10.2026"],
       ["appendix", "19.10.2026 · 7"],
@@ -1333,7 +1333,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "060",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Ähnliches Wissen beim Schreiben",
       en: "Suggest related work while writing",
@@ -1355,7 +1355,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "061",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Aus Treffern Fragen stellen",
       en: "Ask about a search result",
@@ -1377,7 +1377,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "062",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Globale Befehlspalette",
       en: "Open the command palette",
@@ -1399,7 +1399,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "063",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Desktop-Schnellsuche",
       en: "Search from the desktop",
@@ -1422,7 +1422,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "064",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissenshaus und Themenorientierung",
       en: "Explore the knowledge map",
@@ -1444,7 +1444,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "065",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Firmen- und Partnerfilter",
       en: "Filter company and partner content",
@@ -1466,7 +1466,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "066",
     group: "bibliothek-und-suche",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Aktivitätsübersicht",
       en: "See recent knowledge activity",
@@ -1509,7 +1509,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "068",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissenspunkte aus Dokumenten",
       en: "Extract claims from documents",
@@ -1558,7 +1558,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "070",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Dubletten erkennen und vergleichen",
       en: "Detect and compare duplicates",
@@ -1580,7 +1580,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "071",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Dubletten bewusst zusammenführen",
       en: "Merge duplicate entries",
@@ -1591,7 +1591,7 @@ export const klarwerk: Redaktionseintrag[] = [
       en: "Review the match and choose whether to merge the entries or withdraw the finding.",
       nl: "Beoordeel de overeenkomst en kies of de items worden samengevoegd of de melding wordt ingetrokken.",
     },
-    ablauf: "a70",
+    ablauf: "d71",
     belege: [
       ["register", "#071 · 19.10.2026"],
       ["appendix", "19.10.2026 · 8"],
@@ -1602,7 +1602,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "072",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Widersprüche mit Originalzitaten",
       en: "Show conflicts with exact quotations",
@@ -1625,7 +1625,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "073",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Konfliktarten unterscheiden",
       en: "Distinguish types of conflict",
@@ -1647,7 +1647,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "074",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Konfliktboard und Konfliktgruppen",
       en: "Review the conflict board",
@@ -1691,7 +1691,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "076",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Empfehlung mit Belegstärke",
       en: "Explain the strength of evidence",
@@ -1719,7 +1719,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "077",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Hintergrundprüfung",
       en: "Run background checks",
@@ -1741,7 +1741,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "078",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wiederholte Fehlalarme vermeiden",
       en: "Suppress repeated false alarms",
@@ -1763,7 +1763,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "079",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Prüfaufträge zuweisen",
       en: "Assign reviews",
@@ -1785,7 +1785,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "080",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Prüfboard bedienen",
       en: "Work from the review board",
@@ -1832,12 +1832,13 @@ export const klarwerk: Redaktionseintrag[] = [
       en: "The demo account uses one approval. Someone with approval rights can confirm their own contribution there.",
       nl: "In het demoaccount volstaat één goedkeuring. Wie de vereiste rechten heeft, kan daar een eigen bijdrage goedkeuren.",
     },
+    oktober: "poc",
   },
   {
     id: "082",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Prüfstatus sichtbar machen",
       en: "Show review status",
@@ -1859,7 +1860,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "083",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Fassungsgebundene Prüfung",
       en: "Bind reviews to a version",
@@ -1881,7 +1882,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "084",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Begrenzte Wissensvorschau",
       en: "Preview knowledge before submission",
@@ -1903,7 +1904,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "085",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Text gegen Firmenwissen prüfen",
       en: "Check text against company knowledge",
@@ -1925,7 +1926,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "086",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Vertragstexte prüfen",
       en: "Review contract wording",
@@ -1947,7 +1948,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "087",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Inhaltsqualität anzeigen",
       en: "Identify content quality issues",
@@ -1969,7 +1970,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "088",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Unabhängige Referenz-KI",
       en: "Obtain an independent AI review",
@@ -1991,7 +1992,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "089",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Referenzmodell verwalten",
       en: "Manage the review model",
@@ -2013,7 +2014,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "090",
     group: "wissensprufung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Prüfbare Antwortbelege",
       en: "Trace an answer to supporting passages",
@@ -2062,7 +2063,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "092",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissenslücken erfassen",
       en: "Record knowledge gaps",
@@ -2084,7 +2085,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "093",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissenslücke bis zur Antwort",
       en: "Track a gap through to an answer",
@@ -2106,7 +2107,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "094",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Passende Fachkundige finden",
       en: "Find a subject expert",
@@ -2128,7 +2129,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "095",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Anleitungen und Dokumente erzeugen",
       en: "Generate instructions and documents",
@@ -2150,7 +2151,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "096",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Problemlösung unterstützen",
       en: "Support troubleshooting",
@@ -2172,7 +2173,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "097",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Vor bekannten Fehlversuchen warnen",
       en: "Warn about known failed approaches",
@@ -2194,7 +2195,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "098",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Änderungsfolgen sichtbar machen",
       en: "Trace the impact of a source change",
@@ -2216,7 +2217,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "099",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Neue Quelle bewusst übernehmen",
       en: "Adopt a revised source",
@@ -2238,7 +2239,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "100",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissensgültigkeit und Wiedervorlage",
       en: "Schedule knowledge reviews",
@@ -2260,7 +2261,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "101",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Wissenspflege als Routine",
       en: "Set up a knowledge maintenance routine",
@@ -2283,7 +2284,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "102",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Verantwortung und Vertretung",
       en: "Assign ownership and cover",
@@ -2306,7 +2307,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "103",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Verantwortung übertragen (Ownership)",
       en: "Transfer ownership",
@@ -2328,7 +2329,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "104",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Verwaistes Wissen kuratieren",
       en: "Curate orphaned knowledge",
@@ -2350,7 +2351,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "105",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissensvermächtnis",
       en: "Prepare a knowledge handover",
@@ -2398,7 +2399,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "107",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissenssprints",
       en: "Plan a knowledge sprint",
@@ -2420,7 +2421,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "108",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wöchentliches Wissensupdate",
       en: "Prepare a weekly knowledge update",
@@ -2442,7 +2443,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "109",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Nützlichkeit zurückmelden",
       en: "Collect usefulness feedback",
@@ -2464,7 +2465,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "110",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Falsche Antworten beanstanden",
       en: "Report an incorrect answer",
@@ -2486,7 +2487,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "111",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Was-wäre-wenn-Vergleich",
       en: "Compare what-if scenarios",
@@ -2508,7 +2509,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "112",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Historische Wissensauskunft",
       en: "Look up historical knowledge",
@@ -2530,7 +2531,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "113",
     group: "wissen-pflegen-und-nutzen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Antworten historisch vergleichen",
       en: "Compare answers across time",
@@ -2552,7 +2553,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "114",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Getrennte Arbeitsbereiche (Spaces)",
       en: "Organise shared spaces",
@@ -2595,7 +2596,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "116",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissensprojekte",
       en: "Organise knowledge by project",
@@ -2618,7 +2619,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "117",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissensnetz",
       en: "Explore the knowledge network",
@@ -2641,7 +2642,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "118",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Status fachlicher Beziehungen",
       en: "Show the status of a relationship",
@@ -2663,7 +2664,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "119",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Kommentare und Diskussionen",
       en: "Comment on an article version",
@@ -2685,7 +2686,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "120",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Interner Chat",
       en: "Chat inside the workspace",
@@ -2707,7 +2708,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "121",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Aufgabenfläche",
       en: "See assigned work",
@@ -2729,7 +2730,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "122",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Erwähnungen und persönliche Hinweise",
       en: "See mentions and personal notifications",
@@ -2751,7 +2752,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "123",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Standort- und Schichtwissen",
       en: "Distinguish site and shift knowledge",
@@ -2773,7 +2774,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "124",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Gesamtanweisungen",
       en: "Manage cross-team instructions",
@@ -2795,7 +2796,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "125",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Anlagenzugang per QR-Code",
       en: "Open equipment knowledge by QR code",
@@ -2843,7 +2844,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "127",
     group: "zusammenarbeit-und-organisation",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Sprachanmerkungen an Zeichnungen",
       en: "Attach voice notes to drawings",
@@ -2865,7 +2866,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "128",
     group: "lernen-und-befahigung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Rollenbezogene Lernpfade",
       en: "Build role-based learning paths",
@@ -2888,7 +2889,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "129",
     group: "lernen-und-befahigung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Verständnisfragen",
       en: "Ask comprehension questions",
@@ -2910,7 +2911,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "130",
     group: "lernen-und-befahigung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Kenntnisnahme einer Fassung",
       en: "Acknowledge a specific edition",
@@ -2932,7 +2933,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "131",
     group: "lernen-und-befahigung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Firmenwörterbuch",
       en: "Use a company glossary",
@@ -2954,7 +2955,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "132",
     group: "lernen-und-befahigung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Bildschirmabläufe zu Anleitungen",
       en: "Turn screen recordings into instructions",
@@ -3002,7 +3003,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "134",
     group: "kennzahlen-und-management",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissenskennzahlen",
       en: "Measure knowledge activity",
@@ -3024,7 +3025,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "135",
     group: "kennzahlen-und-management",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissensrisiken",
       en: "Identify knowledge risks",
@@ -3062,12 +3063,17 @@ export const klarwerk: Redaktionseintrag[] = [
       ["register", "#136 · 19.10.2026"],
       ["appendix", "19.10.2026 · 13"],
     ],
+    scope: {
+      de: "Berechnung und Eingabe einzelner Werte sind belegt. Das übergreifende Lagebild hat einen eigenen offenen Auftrag.",
+      en: "Calculation and input of individual figures have evidence. The overall management view has its own open commission.",
+      nl: "Voor berekening en invoer van afzonderlijke waarden is er bewijs. Het overkoepelende overzicht heeft een eigen openstaande opdracht.",
+    },
   },
   {
     id: "137",
     group: "kennzahlen-und-management",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Reale Werte erfassen",
       en: "Record actual measurements",
@@ -3089,7 +3095,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "138",
     group: "kennzahlen-und-management",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Trends und nächste Schritte",
       en: "Explain trends and next actions",
@@ -3184,7 +3190,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "142",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Ersteinrichtung einer Firma",
       en: "Set up a company instance",
@@ -3207,7 +3213,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "143",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Anmeldung und Sitzungen",
       en: "Manage sign-in and sessions",
@@ -3229,7 +3235,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "144",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Einladung und Registrierung",
       en: "Invite and register users",
@@ -3251,7 +3257,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "145",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Nutzer und Rollen",
       en: "Manage users and roles",
@@ -3274,7 +3280,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "146",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Teams verwalten",
       en: "Manage teams",
@@ -3296,7 +3302,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "147",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Eigenes Profil berichtigen",
       en: "Correct your profile",
@@ -3319,7 +3325,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "148",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Unternehmensanmeldung",
       en: "Enable company sign-in",
@@ -3389,7 +3395,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "151",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Einmalkennwort übergeben",
       en: "Hand over a temporary password",
@@ -3411,7 +3417,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "152",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Letzten Verwalter schützen",
       en: "Protect the last administrator",
@@ -3433,7 +3439,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "153",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Rollenvorschau",
       en: "Preview another role",
@@ -3455,7 +3461,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "154",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Verwaltungsübersicht",
       en: "Open the administration overview",
@@ -3477,7 +3483,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "155",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Unternehmensprofil und Richtlinien",
       en: "Maintain company information and policies",
@@ -3499,7 +3505,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "156",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Integrationen verwalten",
       en: "Manage integrations",
@@ -3521,7 +3527,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "157",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Qualitätsaufgaben verwalten",
       en: "Manage quality tasks",
@@ -3543,7 +3549,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "158",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Funktionsschalter",
       en: "Switch product features on or off",
@@ -3565,7 +3571,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "159",
     group: "konten-und-verwaltung",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Produktbudgets verwalten",
       en: "Manage product budgets",
@@ -3587,7 +3593,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "160",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Leserechte auf allen Wegen",
       en: "Enforce read permissions throughout",
@@ -3631,7 +3637,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "162",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Strengere Anhangrechte",
       en: "Apply stricter attachment permissions",
@@ -3653,7 +3659,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "163",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Vertraulichkeit bei Erfassung",
       en: "Classify information at capture",
@@ -3675,7 +3681,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "164",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Quellenkopien und Rechteentzug",
       en: "Handle source copies and revoked access",
@@ -3697,7 +3703,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "165",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Rechteentzug in Gesprächen",
       en: "Honour revoked access in conversations",
@@ -3720,7 +3726,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "166",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "KI je Schutzstufe",
       en: "Select AI by protection level",
@@ -3767,12 +3773,13 @@ export const klarwerk: Redaktionseintrag[] = [
       en: "External AI is enabled by default for the demo and can be switched off. Source permissions and confidentiality apply to each request.",
       nl: "Voor de demo staat externe AI standaard aan en kan deze worden uitgezet. Bronrechten en vertrouwelijkheid gelden bij iedere vraag.",
     },
+    oktober: "poc",
   },
   {
     id: "168",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Persönlicher Freigabekontext",
       en: "Use the right personal consent context",
@@ -3794,7 +3801,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "169",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Ausgehenden Text prüfen",
       en: "Review outgoing text",
@@ -3816,7 +3823,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "170",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Externe Inhalte kennzeichnen",
       en: "Label external material",
@@ -3838,7 +3845,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "171",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "KI zentral abschalten",
       en: "Disable AI centrally",
@@ -3849,7 +3856,7 @@ export const klarwerk: Redaktionseintrag[] = [
       en: "Suspend AI processing while keeping authorised human reading available.",
       nl: "Stop de AI-verwerking terwijl bevoegde personen de inhoud kunnen blijven lezen.",
     },
-    ablauf: "a166",
+    ablauf: "d171",
     belege: [
       ["register", "#171 · 19.10.2026"],
       ["appendix", "19.10.2026 · 16"],
@@ -3860,7 +3867,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "172",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Datensparsame Voreinstellungen",
       en: "Minimise data by default",
@@ -3882,7 +3889,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "173",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Auskunft und Löschantrag",
       en: "Handle access and erasure requests",
@@ -3925,7 +3932,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "175",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Änderungen nachvollziehbar protokollieren (Auditspur)",
       en: "Preserve an audit trail",
@@ -3948,7 +3955,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "176",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Verständliche Auditeinsicht",
       en: "Inspect the audit history",
@@ -3991,7 +3998,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "178",
     group: "rechte-und-datenschutz",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "KI-Kennzeichnung und Unterrichtung",
       en: "Disclose AI involvement",
@@ -4039,7 +4046,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "180",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Versionshistorie",
       en: "Inspect version history",
@@ -4062,7 +4069,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "181",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Papierkorb und Wiederherstellung",
       en: "Restore items from the recycle bin",
@@ -4073,7 +4080,7 @@ export const klarwerk: Redaktionseintrag[] = [
       en: "Recover deleted material in accordance with its current permissions and retention rules.",
       nl: "Herstel verwijderde inhoud binnen de geldende rechten en bewaartermijnen.",
     },
-    ablauf: "a180",
+    ablauf: "d181",
     belege: [
       ["register", "#181 · 19.10.2026"],
       ["appendix", "19.10.2026 · 17"],
@@ -4085,7 +4092,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "182",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissensbestand bereinigen",
       en: "Clean up a knowledge collection",
@@ -4107,7 +4114,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "183",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Firmenreset",
       en: "Reset a company instance",
@@ -4130,7 +4137,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "184",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissen exportieren",
       en: "Export knowledge",
@@ -4153,7 +4160,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "185",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Markdown, HTML und MediaWiki exportieren",
       en: "Export Markdown, HTML or MediaWiki",
@@ -4201,7 +4208,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "187",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Antwort kopieren oder herunterladen",
       en: "Copy or download an answer",
@@ -4223,7 +4230,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "188",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "JSON-Austausch",
       en: "Exchange knowledge as JSON",
@@ -4246,7 +4253,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "189",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Entscheidungsbelege exportieren",
       en: "Export decision evidence",
@@ -4268,7 +4275,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "190",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Wissensnetz exportieren",
       en: "Export the knowledge network",
@@ -4316,7 +4323,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "192",
     group: "sicherung-und-datenaustausch",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Sicherungsnachweise im Adminbereich",
       en: "Inspect backup evidence in administration",
@@ -4364,7 +4371,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "194",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Eigene Unternehmensinstanz",
       en: "Run a dedicated company instance",
@@ -4386,7 +4393,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "195",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Kundeninstallation",
       en: "Install at a customer site",
@@ -4408,7 +4415,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "196",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Betriebsmodelle aus einer Codebasis",
       en: "Support operating models from one codebase",
@@ -4430,7 +4437,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "197",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Updates und Rückfall",
       en: "Update and roll back",
@@ -4491,6 +4498,11 @@ export const klarwerk: Redaktionseintrag[] = [
       ["appendix", "19.10.2026 · 18"],
       ["contract", "aufnahme:20260922:gesamt-wissensarchitektur · .1020 · 11.11.2026"],
     ],
+    scope: {
+      de: "Die Modellschicht ist austauschbar. Der Nachweis für die Gesamtarchitektur ist weiter offen.",
+      en: "The model layer can be replaced. Verification of the overall architecture is outstanding.",
+      nl: "De modellaag is vervangbaar. Toetsing van de volledige architectuur staat nog open.",
+    },
   },
   {
     id: "200",
@@ -4523,7 +4535,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "201",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Modellvergleich",
       en: "Compare models",
@@ -4546,7 +4558,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "202",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "KI-Ausfall überbrücken",
       en: "Keep working during an AI outage",
@@ -4568,7 +4580,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "203",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Modell und Anbieter wählen",
       en: "Choose a provider and model",
@@ -4590,7 +4602,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "204",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Geheimnisse sicher betreiben",
       en: "Manage secrets securely",
@@ -4633,7 +4645,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "206",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Verschlüsselte Verbindung",
       en: "Verify encrypted connections",
@@ -4655,7 +4667,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "207",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Schutz vor fremden Schreibaufrufen",
       en: "Protect writes from other sites",
@@ -4677,7 +4689,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "208",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Stabile Datenbankoperationen",
       en: "Keep database operations consistent",
@@ -4699,7 +4711,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "209",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Ladeumfang begrenzen",
       en: "Limit the amount loaded",
@@ -4784,7 +4796,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "213",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Programmierschnittstelle für andere Systeme (API)",
       en: "Use the integration API",
@@ -4806,7 +4818,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "214",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Zugang für KI-Werkzeuge (MCP)",
       en: "Connect tools through MCP",
@@ -4828,7 +4840,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "215",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Ereignismeldungen an andere Systeme (Webhooks)",
       en: "Deliver webhooks",
@@ -4935,7 +4947,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "220",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Technische Fehlerprotokolle",
       en: "Keep technical error logs",
@@ -4957,7 +4969,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "221",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Datensparsame Betriebsdaten (Telemetrie)",
       en: "Minimise telemetry",
@@ -4979,7 +4991,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "222",
     group: "betrieb-und-schnittstellen",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Supportkontakt im Produkt",
       en: "Find the support contact",
@@ -5027,7 +5039,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "224",
     group: "bedienung-und-zugang",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Navigation und Orientierung",
       en: "Navigate the workspace",
@@ -5050,7 +5062,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "225",
     group: "bedienung-und-zugang",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Erste Schritte und Hilfen",
       en: "Get started with contextual help",
@@ -5073,7 +5085,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "226",
     group: "bedienung-und-zugang",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Lade-, Leer- und Fehlerzustände",
       en: "Distinguish loading, empty and error states",
@@ -5146,12 +5158,13 @@ export const klarwerk: Redaktionseintrag[] = [
       en: "The web interface and catalogue support German, English and Dutch. The chosen language also applies to feature explanations.",
       nl: "De webinterface en de catalogus ondersteunen Duits, Engels en Nederlands. De gekozen taal geldt ook voor de uitleg van functies.",
     },
+    oktober: "poc",
   },
   {
     id: "229",
     group: "bedienung-und-zugang",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Sprachübergreifende Antworten",
       en: "Answer across languages",
@@ -5174,7 +5187,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "230",
     group: "bedienung-und-zugang",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Mobile Erfassung",
       en: "Capture knowledge on the move",
@@ -5196,7 +5209,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "231",
     group: "bedienung-und-zugang",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Offline-Erfassung",
       en: "Capture while offline",
@@ -5239,7 +5252,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "233",
     group: "bedienung-und-zugang",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Sprachbedienbarer Kiosk",
       en: "Use a voice-enabled kiosk",
@@ -5383,6 +5396,11 @@ export const klarwerk: Redaktionseintrag[] = [
       ["appendix", "19.10.2026 · 19"],
       ["historic", "12.09.2026 · A-demo"],
     ],
+    scope: {
+      de: "Das Unternehmensprofil und Teile des Demoaufbaus sind beschrieben. Eine getrennte Bereitstellung mit dem vollständigen Datenpaket hat einen eigenen Nachweis.",
+      en: "The company profile and parts of demo setup are documented. A separate deployment with a complete data pack requires its own evidence.",
+      nl: "Het organisatieprofiel en delen van de demo-inrichting zijn beschreven. Een aparte installatie met het hele gegevenspakket vereist een eigen bewijs.",
+    },
   },
   {
     id: "239",
@@ -5411,7 +5429,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "240",
     group: "demo-und-abnahme",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Geführter Erklärmodus",
       en: "Use guided demonstration mode",
@@ -5449,12 +5467,17 @@ export const klarwerk: Redaktionseintrag[] = [
       ["register", "#241 · 19.10.2026"],
       ["appendix", "19.10.2026 · 19"],
     ],
+    scope: {
+      de: "Belegt ist ein abgegrenztes Branchenpaket. Eine Abnahme im jeweiligen Kundenbetrieb steht gesondert an.",
+      en: "A bounded industry package has been verified. Acceptance in a customer’s environment is a separate step.",
+      nl: "Een afgebakend branchepakket is getoetst. Acceptatie in de eigen klantomgeving is een afzonderlijke stap.",
+    },
   },
   {
     id: "242",
     group: "demo-und-abnahme",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Vollständige Demo-Abnahme",
       en: "Run a complete demo acceptance",
@@ -5478,7 +5501,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "243",
     group: "demo-und-abnahme",
     platforms: ["klarwerk"],
-    status: "partial",
+    status: "contract",
     title: {
       de: "Gemeinsame PoC-Abnahme",
       en: "Review the proof of concept together",
@@ -5522,7 +5545,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "245",
     group: "demo-und-abnahme",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Kundenbereitschaft anzeigen",
       en: "View customer readiness",
@@ -5544,7 +5567,7 @@ export const klarwerk: Redaktionseintrag[] = [
     id: "246",
     group: "demo-und-abnahme",
     platforms: ["klarwerk"],
-    status: "available",
+    status: "poc",
     title: {
       de: "Demo und Diagnose trennen",
       en: "Keep demo and diagnostics distinct",
@@ -5611,6 +5634,11 @@ export const klarwerk: Redaktionseintrag[] = [
       ["historic", "12.09.2026 · A-ci"],
       ["contract", "aufnahme:20260922:demo-datenpaket · .905 · 11.11.2026"],
     ],
+    scope: {
+      de: "Das Unternehmensprofil und Teile des Demoaufbaus sind beschrieben. Eine getrennte Bereitstellung mit dem vollständigen Datenpaket hat einen eigenen Nachweis.",
+      en: "The company profile and parts of demo setup are documented. A separate deployment with a complete data pack requires its own evidence.",
+      nl: "Het organisatieprofiel en delen van de demo-inrichting zijn beschreven. Een aparte installatie met het hele gegevenspakket vereist een eigen bewijs.",
+    },
   },
   {
     id: "425",

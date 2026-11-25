@@ -1647,7 +1647,12 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "ko.assign",
     grund: "Personen-Matching hinter Schalter; ko.assign = controller/admin.",
   },
-  "GET /api/admin/funktionen": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Admin-Katalog mit redaktionellen Produktbeschreibungen einschließlich geplanter Funktionen." },
+  "GET /api/admin/funktionen": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund:
+      "Admin-Katalog mit redaktionellen Produktbeschreibungen einschließlich geplanter Funktionen.",
+  },
   "GET /api/admin/demo-seed": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Admin." },
   // JOB 3277: die Demopaket-Übersicht nennt Beschreibung, Umfang und den GEZÄHLTEN Stand
   // (geladen/bearbeitet) — kein Wissensinhalt, aber Verwaltungswissen über diese Instanz.
