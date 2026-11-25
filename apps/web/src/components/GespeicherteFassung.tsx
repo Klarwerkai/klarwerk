@@ -103,7 +103,7 @@ export function GespeicherteFassungAnsicht({
   zitat = "",
   lage,
   quellinhalt,
-  freigabeperson,
+  freigabeperson = null,
 }: {
   fassung: number;
   ankerId: string | null;
@@ -158,8 +158,8 @@ function Fassungskarte({
   satz: KoVersionSnapshot;
   ankerId: string | null;
   zitat: string;
-  freigabeperson?: string | null;
-  quellinhalt?: QuellinhaltPlatz;
+  freigabeperson: string | null;
+  quellinhalt: QuellinhaltPlatz | undefined;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [gefunden, meldeTreffer] = useState(false);
@@ -405,7 +405,7 @@ export function GespeicherteFassung({
   fassung,
   ankerId,
   zitat = "",
-  freigabeperson,
+  freigabeperson = null,
 }: {
   koId: string;
   fassung: number;
