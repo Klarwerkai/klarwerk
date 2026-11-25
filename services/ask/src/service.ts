@@ -125,6 +125,7 @@ import {
   hashAnswerSnapshot,
   isGapPriority,
   isGapRuecknahmeGrund,
+  modelAnswerTextHash,
 } from "./types";
 import {
   type VergleichsSeiten,
@@ -1753,6 +1754,7 @@ export class AskService {
       aufrufer,
       kiBeginn,
       modelllauf,
+      result.answer === rawMitLauf.answer ? antwortRolle : undefined,
     );
     // REF-01: die Aussage-zu-Passagen-Bindung. Grundlage ist der VOLLSTÄNDIG AUSGELIEFERTE Text —
     // samt der Wörterbucherklärungen des Zuschnitts. Sie sind Teil der Antwort; was keine Fundstelle
@@ -2264,6 +2266,7 @@ export class AskService {
     // R-0317: die Kennung des Laufprotokoll-Datensatzes dieser Antwort (Reasoner.answer) — fehlt
     // auf dem Retrieval-Weg ohne Modelllauf und ohne verdrahtetes Laufprotokoll.
     modelllauf: string | undefined,
+    antwortRolle: ReferenzRolle | undefined,
   ): Promise<string | null> {
     const repo = this.answerSnapshots;
     if (!repo) {
@@ -2351,6 +2354,16 @@ export class AskService {
       // dessen eigenen Rechten. Fehlt er, steht der Grund daneben.
       modelRunId: modelllauf ?? null,
       modelRunIdReason: modelllauf === undefined ? "no_model_run_recorded" : null,
+      ...(modelllauf &&
+      result.answered &&
+      result.answer &&
+      !result.demo &&
+      antwortRolle?.modell &&
+      antwortRolle.stufe !== "deterministic"
+        ? {
+            modelAnswer: { textHash: modelAnswerTextHash(result.answer), tier: antwortRolle.stufe },
+          }
+        : {}),
     };
     const mitStatus: AnswerEvidenceSnapshot = { ...roh, status: answerSnapshotStatus(roh) };
     const snapshot: AnswerEvidenceSnapshot = {

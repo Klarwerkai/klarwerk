@@ -152,6 +152,20 @@ describe("REF-02 · P2 — nur administrativ erlaubte Optionen", () => {
     expect(anthropic.pruefungen()).toBe(0);
   });
 
+  it("sperrt denselben konfigurierten Modellweg vor dem Aufruf auch bei gemeldeter Versions-ID", async () => {
+    const { reasoner, openai } = aufbau();
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "openai", perTask: {}, referenzpruefung: ["openai"] }),
+    );
+    expect(
+      reasoner.referenzPruefer(
+        { anbieter: openai.provider.name, modell: "gpt-fiktiv-1-2026-01-01", stufe: "cloud" },
+        false,
+      ),
+    ).toEqual({ grund: "nicht_unabhaengig" });
+    expect(openai.pruefungen()).toBe(0);
+  });
+
   it("P2b · die Reihenfolge der Liste entscheidet: lokal vor Anthropic", async () => {
     const { reasoner } = aufbau();
     await reasoner.setTaskConfig(

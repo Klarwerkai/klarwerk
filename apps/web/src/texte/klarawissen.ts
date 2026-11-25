@@ -63,6 +63,16 @@ export default {
     "klarawissen.frei": "Freies Schreiben",
     "klarawissen.vorschau": "Vorschau zeigen",
     "klarawissen.pruefen": "Aussagen und Belege prüfen",
+    "klarawissen.modellpruefung.ursprung": "Erstellermodell nachgewiesen",
+    "klarawissen.modellpruefung.pruefer": "Unabhängiges Prüfmodell",
+    "klarawissen.modellpruefung.fassungGeaendert":
+      "Die Notiz oder eine ihrer Quellen hat sich geändert. Öffne die aktuelle Fassung.",
+    "klarawissen.modellpruefung.laeuft": "Quellen werden geprüft …",
+    "klarawissen.modellpruefung.neueFassung":
+      "Die Notiz hat inzwischen eine andere Fassung. Öffne sie erneut.",
+    "klarawissen.modellpruefung.unverfuegbar":
+      "Notiz oder Quelle ist für dieses Konto nicht verfügbar.",
+    "klarawissen.modellpruefung.fehler": "Die Quellenprüfung konnte nicht abgeschlossen werden.",
     "klarawissen.offen": "Referenzprüfung offen: kein bestätigter Quellenbeleg.",
     "klarawissen.verantwortlich": "Verantwortlich:",
     "klarawissen.kontoregel":
@@ -154,6 +164,15 @@ export default {
     "klarawissen.frei": "Free writing",
     "klarawissen.vorschau": "Show preview",
     "klarawissen.pruefen": "Check claims against evidence",
+    "klarawissen.modellpruefung.ursprung": "Originating model verified",
+    "klarawissen.modellpruefung.pruefer": "Independent review model",
+    "klarawissen.modellpruefung.fassungGeaendert":
+      "The note or one of its sources has changed. Open the current version.",
+    "klarawissen.modellpruefung.laeuft": "Checking sources…",
+    "klarawissen.modellpruefung.neueFassung":
+      "The note has a newer version. Reopen it to check that version.",
+    "klarawissen.modellpruefung.unverfuegbar": "The note or source is unavailable to this account.",
+    "klarawissen.modellpruefung.fehler": "The source check could not be completed.",
     "klarawissen.offen": "Reference check open: no confirmed supporting source.",
     "klarawissen.verantwortlich": "Responsible:",
     "klarawissen.kontoregel":
@@ -245,6 +264,16 @@ export default {
     "klarawissen.frei": "Vrij schrijven",
     "klarawissen.vorschau": "Voorbeeld tonen",
     "klarawissen.pruefen": "Uitspraken en bewijs controleren",
+    "klarawissen.modellpruefung.ursprung": "Oorspronkelijk model vastgesteld",
+    "klarawissen.modellpruefung.pruefer": "Onafhankelijk controlemodel",
+    "klarawissen.modellpruefung.fassungGeaendert":
+      "De notitie of een van de bronnen is gewijzigd. Open de huidige versie.",
+    "klarawissen.modellpruefung.laeuft": "Bronnen worden gecontroleerd…",
+    "klarawissen.modellpruefung.neueFassung":
+      "De notitie heeft een nieuwere versie. Open deze opnieuw.",
+    "klarawissen.modellpruefung.unverfuegbar":
+      "De notitie of bron is voor dit account niet beschikbaar.",
+    "klarawissen.modellpruefung.fehler": "De broncontrole kon niet worden voltooid.",
     "klarawissen.offen": "Referentiecontrole open: geen bevestigde ondersteunende bron.",
     "klarawissen.verantwortlich": "Verantwoordelijk:",
     "klarawissen.kontoregel":

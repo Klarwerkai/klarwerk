@@ -99,6 +99,10 @@ export class ProtokollModelRunRepo implements ModelRunRepo {
     return this.inner.recent(limit);
   }
 
+  async findById(id: string): Promise<ModelRunRecord | undefined> {
+    return this.inner.findById?.(id);
+  }
+
   zwischen(von: string, bis: string, limit: number): Promise<ModelRunRecord[]> {
     if (this.inner.zwischen) {
       return this.inner.zwischen(von, bis, limit);

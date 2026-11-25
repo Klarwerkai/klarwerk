@@ -289,6 +289,10 @@ export interface ModellVerbrauch {
 /** Die Spur EINES Laufs: hat in ihm wirklich ein Modellaufruf stattgefunden — und was kostete er? */
 export interface ModellAufrufSpur {
   gerufen: boolean;
+  /** Modellkennung aus dem HTTP-Antwortumschlag, unabhängig vom angefragten Alias. */
+  gemeldetesModell?: string;
+  /** Nur am Antwortweg belegt, nur im Arbeitsspeicher dieses einen Versuchs. */
+  antwortWortlaut?: string;
   /**
    * Ben Lauf 3 R1 N1: wie viele Modellaufrufe in diesem Lauf WIRKLICH ausgeführt wurden. `gerufen`
    * allein verdeckt, dass von drei Aufrufen einer keinen Verbrauch gemeldet hat; erst der
@@ -371,6 +375,15 @@ export function verbrauchSumme(
     ausgabeToken: bisher.ausgabeToken + weiterer.ausgabeToken,
     gemeldeteAufrufe: bisher.gemeldeteAufrufe + weiterer.gemeldeteAufrufe,
   };
+}
+
+/** Liest ausschließlich die Modellkennung des Anbieters. Der Antworttext verlässt den Versuch nicht. */
+export function meldeAntwortModell(modell: unknown, wortlaut: string): void {
+  const spur = modellAufrufSpur.getStore();
+  if (!spur || !spur.gerufen || spur.aufrufe !== 1) return;
+  if (typeof modell !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/u.test(modell)) return;
+  spur.gemeldetesModell = modell;
+  if (spur.antwortWortlaut !== undefined) spur.antwortWortlaut = wortlaut.trim();
 }
 
 // Was als Tokenzahl durchgeht: eine ganze, nicht-negative, sichere Zahl. Alles andere — Text,

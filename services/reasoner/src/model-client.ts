@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import {
   cappedModelClient,
   meldeAbgeschnitteneModellantwort,
+  meldeAntwortModell,
   meldeModellVerbrauch,
 } from "./model-concurrency";
 // WP-D10 (Fix 3): typisierte Fehlerklassen (Timeout vs. HTTP-Status) — Meldungstexte unverändert.
@@ -162,6 +163,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       // aus einschalten, brach derselbe Code lautlos. Der Fehler lag also nicht im Code,
       // der zuletzt geaendert wurde, sondern in der Modellwahl der Umgebung.
       const data = (await res.json()) as {
+        model?: unknown;
         content?: { type?: string; text?: string }[];
         // JOB 3074: der Verbrauchsblock der Anthropic Messages API. Bis hierher war er nicht etwa
         // ungenutzt, sondern durch diese Typangabe WEGGEWORFEN, bevor ihn irgendwer sehen konnte.
@@ -195,6 +197,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
           zeichen: text.length,
         });
       }
+      meldeAntwortModell(data.model, text ?? "");
       return text ?? "";
     } catch (err) {
       if (timedOut) {
@@ -694,7 +697,9 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
       // AUFTRAG-mega18 Block E (SCRUM-544): kein stilles "" mehr — fehlender/leerer Antwortinhalt
       // wirft einen unterscheidbaren Fehler (reasoning-only / truncated / empty). Das gilt seit
       // JOB 3100 auch für den Bildweg: eine leere Bild-Antwort ist ein Fehler, kein Leerstring.
-      return requireChatContent(data, budget, bezeichnung, budgetFeld);
+      const antwort = requireChatContent(data, budget, bezeichnung, budgetFeld);
+      meldeAntwortModell((data as { model?: unknown } | null)?.model, antwort);
+      return antwort;
     } catch (err) {
       // JOB 3122 RUNDE 2 (bens Korrekturpflicht 2): EIN EMPFANGENER STATUS IST DIE STÄRKERE AUSKUNFT.
       // Seit das Lesen des Fehlerkörpers (oben) im Fehlerweg liegt, kann das Zeitlimit AUCH DANN noch

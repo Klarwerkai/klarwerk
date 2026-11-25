@@ -4,6 +4,7 @@ import type { ModelRunRecord } from "./types";
 // liefert die jüngsten Läufe (read-only Service-/Test-Vertrag).
 export interface ModelRunRepo {
   append(record: ModelRunRecord): Promise<void>;
+  findById?(id: string): Promise<ModelRunRecord | undefined>;
   recent(limit?: number): Promise<ModelRunRecord[]>;
   // Aufnahme gesamt-ki-laufprotokoll (R-2071/V9): Läufe mit Start in [von, bis), jüngste zuerst,
   // höchstens `limit`. Optional, damit schlanke Test-Attrappen gültig bleiben; die Auswertung
@@ -17,6 +18,10 @@ export interface ModelRunRepo {
 
 export class InMemoryModelRunRepo implements ModelRunRepo {
   private readonly items: ModelRunRecord[] = [];
+
+  async findById(id: string): Promise<ModelRunRecord | undefined> {
+    return structuredClone(this.items.find((record) => record.id === id));
+  }
 
   append(record: ModelRunRecord): Promise<void> {
     if (!this.items.some((item) => item.id === record.id)) {

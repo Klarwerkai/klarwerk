@@ -192,6 +192,20 @@ describe("N1 · K1 — gespeichert und nach erneuter Anmeldung identisch mit Rü
   });
 
   it("aus dem Gespräch: der Server übernimmt Wortlaut und Ort der EIGENEN Nachricht", async () => {
+    const artikel = await services.ko.create({
+      title: BEZUG_ARTIKEL.objekt,
+      statement: "Ölwechsel erst nach dem Abkühlen.",
+      type: "best_practice",
+      category: "Wartung",
+      confidentiality: "intern",
+      author: erik.id,
+    });
+    const objektbezug = {
+      ...BEZUG_ARTIKEL,
+      pfad: `/wissen/${artikel.id}`,
+      koId: artikel.id,
+      fassung: artikel.version,
+    };
     const g = await auf(erik.token, "POST", "/api/me/klara/gespraeche", {
       objektbezug: BEZUG_SEITE,
     });
@@ -202,7 +216,7 @@ describe("N1 · K1 — gespeichert und nach erneuter Anmeldung identisch mit Rü
       von: "klara",
       modus: "hilfetext",
       text: `Diese Seite erfasst Wissen. ${GESPRAECHSWORT}`,
-      objektbezug: BEZUG_ARTIKEL,
+      objektbezug,
     });
     expect(n.statusCode, n.body).toBe(201);
     const nachrichtId = (n.json() as { nachricht: { id: string } }).nachricht.id;
@@ -212,7 +226,7 @@ describe("N1 · K1 — gespeichert und nach erneuter Anmeldung identisch mit Rü
       quelle: { gespraechId, nachrichtId },
     });
     expect(notiz.inhalt).toBe(`Diese Seite erfasst Wissen. ${GESPRAECHSWORT}`);
-    expect(notiz.objektbezug).toEqual(BEZUG_ARTIKEL);
+    expect(notiz.objektbezug).toEqual(objektbezug);
     expect(notiz.quelle).toEqual({ gespraechId, nachrichtId });
     const neu = await anmelden(erik.email);
     expect(await oeffne(neu, notiz.id)).toEqual(notiz);

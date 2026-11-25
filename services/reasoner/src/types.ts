@@ -767,6 +767,8 @@ export type ReferenzPrueferGrund =
 
 /** Das Ergebnis EINES Referenz-Prüfaufrufs — Rohtext, Dauer und gemeldeter Verbrauch. */
 export interface ReferenzAufrufErgebnis {
+  /** Vom Transport für genau diesen erfolgreichen Modellaufruf gemeldete Identität. */
+  readonly gemeldetesModell?: string;
   readonly text: string;
   readonly dauerMs: number;
   /** Tokenverbrauch, wie der Anbieter ihn meldet — fehlt, wenn keiner gemeldet wurde. */

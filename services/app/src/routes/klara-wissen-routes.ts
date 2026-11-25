@@ -55,7 +55,17 @@ export function klaraWissenRoutes(
             return await dienst.regelvorschlag(u, req.params.id, x, weg === "uebernehmen");
           if (weg === "vorschau")
             return await dienst.vorschau(u, req.params.id, x.fassung, wissensZiel(x.ziel));
-          if (weg === "pruefen") return await dienst.pruefe(u, req.params.id);
+          if (weg === "pruefen") {
+            const sprache = req.headers["accept-language"]
+              ?.split(/[-,;]/, 1)[0]
+              ?.trim()
+              .toLowerCase();
+            return await dienst.pruefe(
+              u,
+              req.params.id,
+              sprache === "en" || sprache === "nl" ? sprache : "de",
+            );
+          }
           return await dienst.uebernehmen(u, req.params.id, x);
         } catch (e) {
           fehler(reply, e);

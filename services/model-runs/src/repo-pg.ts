@@ -18,6 +18,13 @@ interface ModelRunRow {
 export class PgModelRunRepo implements ModelRunRepo {
   constructor(private readonly pool: Pool) {}
 
+  async findById(id: string): Promise<ModelRunRecord | undefined> {
+    const res = await this.pool.query<ModelRunRow>("SELECT data FROM model_runs WHERE id = $1", [
+      id,
+    ]);
+    return res.rows[0]?.data;
+  }
+
   async append(record: ModelRunRecord): Promise<void> {
     await this.pool.query(
       "INSERT INTO model_runs(id,data) VALUES($1,$2) ON CONFLICT (id) DO NOTHING",

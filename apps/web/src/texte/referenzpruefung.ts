@@ -46,6 +46,8 @@ export default {
       "Für die erlaubten Referenz-KIs fehlt die Freigabe, oder die KI ist abgeschaltet.",
     "referenzpruefung.grund.pruefer_nicht_unabhaengig":
       "Jede erlaubte Referenz-KI nutzt dasselbe Modell wie die Antwort — der unabhängige Nachweis bleibt offen.",
+    "referenzpruefung.grund.pruefer_modell_unbekannt":
+      "Das Prüfmodell hat keine eigene Modellkennung zurückgemeldet.",
     "referenzpruefung.grund.antwortmodell_unbekannt":
       "Das Modell der Antwort ist nicht festgehalten — die Unabhängigkeit ist nicht nachweisbar.",
     "referenzpruefung.grund.zeitlimit":
@@ -136,6 +138,8 @@ export default {
       "Die Verwaltung erteilt die Freigabe oder hebt die KI-Abschaltung auf (Verwaltung → KI).",
     "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
       "Die Verwaltung erlaubt zusätzlich eine Referenz-KI mit einem anderen Modell als die Antwort-KI.",
+    "referenzpruefung.naechster.pruefer_modell_unbekannt":
+      "Wähle in der Verwaltung einen Prüfzugang, der die verwendete Modellkennung zurückmeldet.",
     "referenzpruefung.naechster.antwortmodell_unbekannt":
       "Stellen Sie die Frage erneut. Erst mit festgehaltenem Antwortmodell ist eine unabhängige Prüfung möglich.",
     "referenzpruefung.naechster.zeitlimit": "Versuchen Sie es in einem Moment noch einmal.",
@@ -279,6 +283,8 @@ export default {
       "Approval is missing for the allowed reference AIs, or AI is switched off.",
     "referenzpruefung.grund.pruefer_nicht_unabhaengig":
       "Every allowed reference AI uses the same model as the answer — independent proof remains open.",
+    "referenzpruefung.grund.pruefer_modell_unbekannt":
+      "The review model did not report its model ID.",
     "referenzpruefung.grund.antwortmodell_unbekannt":
       "The answer's model is not recorded — independence cannot be shown.",
     "referenzpruefung.grund.zeitlimit":
@@ -364,6 +370,8 @@ export default {
       "The administration grants approval or lifts the AI switch-off (Administration → AI).",
     "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
       "The administration also allows a reference AI with a different model than the answering AI.",
+    "referenzpruefung.naechster.pruefer_modell_unbekannt":
+      "Choose a review connection in the admin settings that reports the model ID it used.",
     "referenzpruefung.naechster.antwortmodell_unbekannt":
       "Ask the question again. An independent check needs the answer model to be recorded.",
     "referenzpruefung.naechster.zeitlimit": "Try again in a moment.",
@@ -503,6 +511,8 @@ export default {
       "Voor de toegestane referentie-AI's ontbreekt de vrijgave, of AI is uitgeschakeld.",
     "referenzpruefung.grund.pruefer_nicht_unabhaengig":
       "Elke toegestane referentie-AI gebruikt hetzelfde model als het antwoord — het onafhankelijke bewijs blijft open.",
+    "referenzpruefung.grund.pruefer_modell_unbekannt":
+      "Het controlemodel heeft geen eigen model-ID teruggemeld.",
     "referenzpruefung.grund.antwortmodell_unbekannt":
       "Het model van het antwoord is niet vastgelegd — onafhankelijkheid is niet aantoonbaar.",
     "referenzpruefung.grund.zeitlimit":
@@ -591,6 +601,8 @@ export default {
       "Het beheer verleent de vrijgave of heft de AI-uitschakeling op (Beheer → AI).",
     "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
       "Het beheer staat daarnaast een referentie-AI toe met een ander model dan de antwoord-AI.",
+    "referenzpruefung.naechster.pruefer_modell_unbekannt":
+      "Kies in het beheer een controleverbinding die de gebruikte model-ID terugmeldt.",
     "referenzpruefung.naechster.antwortmodell_unbekannt":
       "Stel de vraag opnieuw. Een onafhankelijke controle vraagt een vastgelegd antwoordmodel.",
     "referenzpruefung.naechster.zeitlimit": "Probeer het zo meteen nog eens.",

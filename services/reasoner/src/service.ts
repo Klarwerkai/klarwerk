@@ -426,6 +426,7 @@ function versuchAus(
 // WIRKLICH gerufene Modell und die inhaltsfreie Fehlerzeile —, damit am Ende genau EIN Datensatz
 // je Aufruf entsteht.
 class Laufbuch {
+  gemeldetesModell: string | undefined;
   verbrauch: ModellVerbrauch | undefined;
   model: string | undefined;
   provider: string | undefined;
@@ -447,6 +448,7 @@ class Laufbuch {
     this.provider = provider.name;
     try {
       const ergebnis = await mitModellAufrufSpur(spur, aufruf);
+      this.gemeldetesModell = spur.aufrufe === 1 ? spur.gemeldetesModell : undefined;
       this.uebernimm(spur, provider);
       this.versuchsliste.push(versuchAus(provider, spur, beginn, "erfolg"));
       return ergebnis;
@@ -1915,6 +1917,7 @@ export class Reasoner {
       // PRÜFUNG an den Chokepoint, nicht als gespeicherter Wert.
       const spur: ModellAufrufSpur = {
         gerufen: false,
+        ...(task === "answer" ? { antwortWortlaut: "" } : {}),
         ...this.vertraulichePruefungFuer(provider, confidential),
         ...(kiSperre || extern !== undefined
           ? {
@@ -1972,6 +1975,16 @@ export class Reasoner {
             demo: result.demo,
             provider: provider.name,
             ...(model ? { model } : {}),
+            // Nur ein tatsächlich ausgelieferter Modelltext darf eine Notiz belegen. Quellen-
+            // Rückfall und serverseitig umformulierte Dokumenturteile erhalten keinen Nachweis.
+            ...(task === "answer" &&
+            spur.aufrufe === 1 &&
+            spur.gemeldetesModell &&
+            "answer" in result &&
+            typeof result.answer === "string" &&
+            result.answer.trim() === spur.antwortWortlaut
+              ? { reportedModel: spur.gemeldetesModell }
+              : {}),
             // JOB 3074: nur, wenn wirklich ein Verbrauch gemeldet wurde. Fehlt er, FEHLT das Feld —
             // kein Nullwert, keine Schätzung (services/model-runs/src/types.ts).
             ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
@@ -2119,6 +2132,7 @@ export class Reasoner {
       demo: false,
       provider: lb.provider ?? this.fallback.name,
       ...(lb.model ? { model: lb.model } : {}),
+      ...(task === "referenz" && lb.gemeldetesModell ? { reportedModel: lb.gemeldetesModell } : {}),
       ...(lb.verbrauch ? { verbrauch: lb.verbrauch } : {}),
       ...(error ? { error } : {}),
       ...(ausgang.status === "success" ? erzeugtFeld(ausgang.erzeugt) : {}),
@@ -2146,6 +2160,7 @@ export class Reasoner {
       demo: boolean;
       provider: string;
       model?: string;
+      reportedModel?: string;
       // JOB 3074: der gemeldete Tokenverbrauch des Laufs — fehlt, wenn keiner genannt wurde.
       verbrauch?: ModellVerbrauch;
       error?: string;
@@ -2175,6 +2190,7 @@ export class Reasoner {
       status,
       ...(extra.error ? { error: extra.error } : {}),
       ...(extra.model ? { model: extra.model } : {}),
+      ...(extra.reportedModel ? { reportedModel: extra.reportedModel } : {}),
       ...(extra.verbrauch ? { verbrauch: extra.verbrauch } : {}),
       ...(extra.erzeugt ? { erzeugt: extra.erzeugt } : {}),
       ...(extra.versuche && extra.versuche.length > 0 ? { versuche: [...extra.versuche] } : {}),
@@ -3233,7 +3249,12 @@ export class Reasoner {
         merke(option.grund);
         continue;
       }
-      if (gleichesModell(option.modell, antwort.modell)) {
+      // Der Clientname benennt auch den konfigurierten Modellweg. Derselbe Weg darf die
+      // Antwort selbst dann nicht prüfen, wenn der Anbieter statt des Alias eine Versions-ID meldete.
+      if (
+        option.provider.name === antwort.anbieter ||
+        gleichesModell(option.modell, antwort.modell)
+      ) {
         merke("nicht_unabhaengig");
         continue;
       }
@@ -3416,6 +3437,7 @@ export class Reasoner {
           return {
             text,
             dauerMs: Math.max(0, Date.now() - beginn),
+            ...(lb.gemeldetesModell ? { gemeldetesModell: lb.gemeldetesModell } : {}),
             ...(lb.verbrauch
               ? {
                   verbrauch: {

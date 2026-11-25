@@ -56,6 +56,8 @@ export interface KlaraNotiz {
   readonly wissensHerkunft?: KlaraWissensHerkunft;
   /** Nur serverseitig aus g/n: null = ohne Antwortbezug, fehlend = ungeklärter Altbestand. */
   readonly antwortId?: string | null;
+  /** Bis zu dieser Notizfassung stammt der Inhalt unverändert aus der KI-Gesprächsnachricht. */
+  readonly antwortTextFassung?: number;
   readonly id: string;
   readonly kontoId: string;
   /** Der Vorgangsschlüssel des Anlegens — eine Wiederholung mit ihm legt nichts Zweites an. */
@@ -530,6 +532,7 @@ export class KlaraNotizDienst {
     let objektbezug: KlaraObjektbezug;
     let quelle: KlaraNotizQuelle | null = null;
     let antwortId: string | null = null;
+    let kiNachricht = false;
     if (weg === "gespraech") {
       // Aus dem Gespräch: Wortlaut und Bezug kommen aus der EIGENEN gespeicherten Nachricht.
       const q = eingabe.quelle as Partial<Record<keyof KlaraNotizQuelle, unknown>> | undefined;
@@ -561,6 +564,7 @@ export class KlaraNotizDienst {
           throw new KlaraNotizFehler(404, "quelle_unbekannt", "Gesprächsnachricht nicht gefunden.");
         }
         antwortId = nachricht.antwortId;
+        kiNachricht = nachricht.modus === "ki";
       }
     } else {
       if (eingabe.quelle !== undefined) {
@@ -601,6 +605,7 @@ export class KlaraNotizDienst {
       objektbezug,
       quelle,
       ...(quelle ? { antwortId } : {}),
+      ...(kiNachricht ? { antwortTextFassung: 1 } : {}),
       angelegtAm: jetzt,
       geaendertAm: jetzt,
       fassung: 1,
@@ -689,6 +694,11 @@ export class KlaraNotizDienst {
     const neu: KlaraNotiz = {
       ...alt,
       ...gewollt,
+      // Ein Titelwechsel ändert den Wortlaut nicht. Nach einer Textänderung bleibt die letzte
+      // unveränderte Fassung stehen, auch wenn später jemand den ursprünglichen Text einsetzt.
+      ...(alt.antwortTextFassung === alt.fassung && inhalt === alt.inhalt
+        ? { antwortTextFassung: alt.fassung + 1 }
+        : {}),
       geaendertAm: this.jetztIso(),
       fassung: alt.fassung + 1,
     };

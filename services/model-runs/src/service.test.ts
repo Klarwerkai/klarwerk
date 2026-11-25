@@ -62,6 +62,25 @@ describe("SCRUM-165: ModelRunService.recent", () => {
     expect(await svc.recent(2)).toHaveLength(2);
   });
 
+  it("gibt die gemeldete Modellkennung nur beim gebundenen Einzelnachweis aus", async () => {
+    const repo = new InMemoryModelRunRepo();
+    await repo.append(
+      record({
+        task: "answer",
+        actor: "anna",
+        demo: false,
+        provider: "cloud:test",
+        model: "alias",
+        reportedModel: "modell-v2",
+      }),
+    );
+    const dienst = new ModelRunService({ repo });
+    expect(await dienst.findById("r1")).toMatchObject({ reportedModel: "modell-v2" });
+    expect(await dienst.findById("fremde-id")).toBeUndefined();
+    expect((await dienst.recent())[0]).not.toHaveProperty("reportedModel");
+    expect((await dienst.vonAkteur("anna"))[0]).not.toHaveProperty("reportedModel");
+  });
+
   it("kappt überzogene Limits auf das Maximum", async () => {
     const repo = new InMemoryModelRunRepo();
     for (let i = 0; i < MAX_MODEL_RUN_LIMIT + 10; i += 1) {

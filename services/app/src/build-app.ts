@@ -4422,6 +4422,7 @@ export function buildApp(
   });
   const gespraechAusgabe = new KlaraGespraechAusgabe({
     antworten: services.answerSnapshots,
+    modellLauf: (id) => services.modelRuns.findById(id),
     rechte: fristenQuellen,
     ko: services.ko,
   });
@@ -6346,6 +6347,7 @@ export function buildApp(
     audit: services.audit,
     // KVS-1: Gesprächsnotizen prüfen ihre Antwortquellen wie Import-Notizen.
     antwortQuellen: (n) => gespraechAusgabe.notizQuellen(n, services.klaraGespraeche),
+    notizModellBeleg: (n) => gespraechAusgabe.notizModellBeleg(n),
   });
   app.register(klaraWissenRoutes(klaraWissen, services.spaces, guards));
   const klaraBesprechung = new KlaraBesprechungsDienst(

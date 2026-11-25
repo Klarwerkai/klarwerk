@@ -9,6 +9,11 @@ import type { ModelRunKosten, ModelRunRecord } from "./types";
 export const DEFAULT_MODEL_RUN_LIMIT = 50;
 export const MAX_MODEL_RUN_LIMIT = 200;
 
+/** Die HTTP-Modellkennung wird nur über den intern gebundenen Einzelnachweis gelesen. */
+function ohnePruefmodell({ reportedModel: _intern, ...lauf }: ModelRunRecord): ModelRunRecord {
+  return lauf;
+}
+
 export function normalizeModelRunLimit(limit?: number): number {
   if (limit === undefined || !Number.isFinite(limit) || limit <= 0) {
     return DEFAULT_MODEL_RUN_LIMIT;
@@ -77,20 +82,25 @@ export class ModelRunService {
   // eine Auskunft, die nach 200 Läufen abbricht, wäre unvollständig, ohne es zu sagen.
   vonAkteur(actor: string): Promise<ModelRunRecord[]> {
     if (this.repo.vonAkteur) {
-      return this.repo.vonAkteur(actor);
+      return this.repo.vonAkteur(actor).then((laeufe) => laeufe.map(ohnePruefmodell));
     }
-    return this.repo
-      .recent(Number.MAX_SAFE_INTEGER)
-      .then((alle) =>
-        alle
-          .filter((r) => actor.length > 0 && r.actor === actor)
-          .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
-      );
+    return this.repo.recent(Number.MAX_SAFE_INTEGER).then((alle) =>
+      alle
+        .filter((r) => actor.length > 0 && r.actor === actor)
+        .map(ohnePruefmodell)
+        .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+    );
   }
 
   // Jüngste ModelRuns (nur Metadaten). Limit defensiv: Default 50, Max 200, ungültig → Default.
   recent(limit?: number): Promise<ModelRunRecord[]> {
-    return this.repo.recent(normalizeModelRunLimit(limit));
+    return this.repo
+      .recent(normalizeModelRunLimit(limit))
+      .then((laeufe) => laeufe.map(ohnePruefmodell));
+  }
+
+  async findById(id: string): Promise<ModelRunRecord | undefined> {
+    return this.repo.findById?.(id);
   }
 
   // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Auswertung der Läufe mit Start in [von, bis).

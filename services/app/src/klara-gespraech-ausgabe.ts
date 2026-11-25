@@ -1,5 +1,12 @@
-import { type AnswerSnapshotRepo, gehoertNutzer, hashAnswerSnapshot } from "../../ask";
+import {
+  type AnswerSnapshotRepo,
+  gehoertNutzer,
+  hashAnswerSnapshot,
+  modelAnswerTextHash,
+} from "../../ask";
 import type { KoService } from "../../knowledge-object";
+import type { ModelRunRecord } from "../../model-runs";
+import type { ReferenzRolle } from "../../reasoner";
 import type { KlaraFristenQuellen } from "./klara-fristen-quellen";
 import type {
   KlaraGespraech,
@@ -21,12 +28,18 @@ export type KlaraGespraechSicht = Pick<
 >;
 
 interface AusgabeDeps {
-  readonly antworten: Pick<AnswerSnapshotRepo, "findRecord" | "latestSnapshot">;
+  readonly antworten: Pick<AnswerSnapshotRepo, "findRecord" | "latestSnapshot" | "findSnapshot">;
+  readonly modellLauf?: (id: string) => Promise<ModelRunRecord | undefined>;
   readonly rechte: Pick<KlaraFristenQuellen, "nutzer" | "lies">;
   readonly ko: Pick<KoService, "get" | "versionsOf">;
 }
 
 type Quelle = { id: string; fassung?: number };
+export interface KlaraNotizModellBeleg {
+  readonly rolle: ReferenzRolle;
+  readonly quellen: readonly { id: string; fassung: number }[];
+  readonly zitierteQuellen: readonly string[];
+}
 const schluessel = (q: Quelle) => JSON.stringify([q.id, q.fassung ?? null]);
 const NICHT_VERFUEGBAR = "Dieser gespeicherte Inhalt ist derzeit nicht verfügbar.";
 const NEUTRAL: KlaraObjektbezug = { pfad: "/fragen", seitenName: "Fragen", objekt: "Gespräch" };
@@ -43,17 +56,17 @@ function objektQuellen(b: KlaraObjektbezug): Quelle[] {
 export class KlaraGespraechAusgabe {
   constructor(private readonly d: AusgabeDeps) {}
 
-  /** Derselbe eigene, unveränderte Beleg für Gespräch, Notiz und Gedächtnis. */
-  async antwortQuellen(
+  private async eigenerAntwortbeleg(
     kontoId: string,
     antwortId: string | null,
     hinweise?: Pick<KlaraNachricht, "quellen" | "quellenAngaben">,
-  ): Promise<Quelle[] | null> {
+    original = false,
+  ) {
     const record = antwortId ? await this.d.antworten.findRecord(antwortId) : undefined;
-    const snapshot =
-      record && gehoertNutzer(record, kontoId)
-        ? await this.d.antworten.latestSnapshot(record.answerId)
-        : undefined;
+    if (!record || record.answerId !== antwortId || !gehoertNutzer(record, kontoId)) return null;
+    const snapshot = original
+      ? await this.d.antworten.findSnapshot(record.answerId, 1)
+      : await this.d.antworten.latestSnapshot(record.answerId);
     if (
       !snapshot ||
       snapshot.answerId !== antwortId ||
@@ -78,11 +91,77 @@ export class KlaraGespraechAusgabe {
     ) {
       return null;
     }
+    return snapshot;
+  }
+
+  /** Derselbe eigene, unveränderte Beleg für Gespräch, Notiz und Gedächtnis. */
+  async antwortQuellen(
+    kontoId: string,
+    antwortId: string | null,
+    hinweise?: Pick<KlaraNachricht, "quellen" | "quellenAngaben">,
+  ): Promise<Quelle[] | null> {
+    const snapshot = await this.eigenerAntwortbeleg(kontoId, antwortId, hinweise);
+    if (!snapshot) return null;
     // Auch tatsächlich herangezogene, nicht zitierte Mischquellen gehören zur Herkunft.
-    return snapshot.evidence.map((q) => ({
+    // Eine spätere Belegrevision kann die Zugriffskontrolle für den ursprünglichen Wortlaut
+    // erweitern, aber keine seiner damaligen Quellen aus ihr herausnehmen.
+    const original =
+      snapshot.snapshotRevision === 1
+        ? snapshot
+        : await this.eigenerAntwortbeleg(kontoId, antwortId, undefined, true);
+    if (!original || original.snapshotRevision !== 1) return null;
+    const evidence =
+      original === snapshot ? snapshot.evidence : [...original.evidence, ...snapshot.evidence];
+    return evidence.map((q) => ({
       id: q.knowledgeObjectId,
       fassung: Number(q.knowledgeObjectVersion),
     }));
+  }
+
+  /** Ausschließlich die unveränderte Kopie einer tatsächlich vom Modell erzeugten eigenen Antwort. */
+  async notizModellBeleg(n: KlaraNotiz): Promise<KlaraNotizModellBeleg | undefined> {
+    if (
+      n.antwortTextFassung !== n.fassung ||
+      n.weg !== "gespraech" ||
+      !n.quelle ||
+      !n.antwortId ||
+      n.wissensHerkunft
+    )
+      return undefined;
+    const snapshot = await this.eigenerAntwortbeleg(n.kontoId, n.antwortId, undefined, true);
+    if (
+      !snapshot?.modelAnswer ||
+      !snapshot.modelRunId ||
+      snapshot.snapshotRevision !== 1 ||
+      snapshot.generationMode !== "model" ||
+      snapshot.modelAnswer.textHash !== modelAnswerTextHash(n.inhalt) ||
+      (snapshot.modelAnswer.tier !== "local" && snapshot.modelAnswer.tier !== "cloud")
+    )
+      return undefined;
+    const lauf = await this.d.modellLauf?.(snapshot.modelRunId);
+    if (
+      !lauf ||
+      lauf.id !== snapshot.modelRunId ||
+      lauf.task !== "answer" ||
+      lauf.actor !== n.kontoId ||
+      lauf.status !== "success" ||
+      lauf.demo ||
+      !lauf.provider ||
+      !lauf.reportedModel
+    )
+      return undefined;
+    return {
+      rolle: {
+        anbieter: lauf.provider,
+        modell: lauf.reportedModel,
+        stufe: snapshot.modelAnswer.tier,
+      },
+      quellen: snapshot.evidence.map((q) => ({
+        id: q.knowledgeObjectId,
+        fassung: Number(q.knowledgeObjectVersion),
+      })),
+      zitierteQuellen: snapshot.citedSources,
+    };
   }
 
   async nachrichtQuellen(kontoId: string, n: KlaraNachricht): Promise<Quelle[] | null> {

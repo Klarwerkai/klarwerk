@@ -692,13 +692,14 @@ export const klara: Redaktionseintrag[] = [
       nl: "Privénotities bijhouden",
     },
     description: {
-      de: "Notizen aufnehmen, ändern und persönlich wiederfinden.",
-      en: "Create, edit and retrieve notes in your personal workspace.",
-      nl: "Maak, wijzig en vind notities in je persoonlijke werkruimte.",
+      de: "Speichere eine Klara-Antwort als persönliche Notiz. Ist das Erstellermodell nachgewiesen, kannst du die Aussagen durch ein anderes Modell gegen die zugehörigen Quellenfassungen prüfen lassen.",
+      en: "Save a Klara answer as a private note. When its originating model is verified, a different model can check each claim against the cited source versions.",
+      nl: "Bewaar een Klara-antwoord als privénotitie. Als het oorspronkelijke model is vastgesteld, kun je de uitspraken door een ander model laten toetsen aan de aangehaalde bronversies.",
     },
     ablauf: "a279",
     belege: [
       ["register", "#279 · 19.10.2026"],
+      ["delivery", "Modellherkunft · .1152"],
       ["appendix", "19.10.2026 · 22"],
       ["oldrelease", "1.0.0-beta.1.941"],
     ],

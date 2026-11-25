@@ -8,6 +8,7 @@ import {
   answerSnapshotIntegrity,
   answerSnapshotStatus,
   hashAnswerSnapshot,
+  modelAnswerTextHash,
 } from "./types";
 
 // ================================================================================================
@@ -285,6 +286,21 @@ describe("W3-A/56 · Abschlussstatus bleibt ehrlich", () => {
 // F · INTEGRITAETSZUSTAENDE
 // ------------------------------------------------------------------------------------------------
 describe("W3-A/56 · Integritätszustände bleiben ehrlich", () => {
+  it("bindet Modellstufe und echten Wortlaut an den unveränderlichen Laufbeleg", () => {
+    const modelAnswer = { textHash: modelAnswerTextHash("Antwort [1]"), tier: "local" } as const;
+    const original = gehasht({ modelRunId: "lauf-1", modelAnswer });
+    for (const geaendert of [
+      {
+        ...original,
+        modelAnswer: { ...modelAnswer, textHash: modelAnswerTextHash("Neue Antwort [1]") },
+      },
+      { ...original, modelAnswer: { ...modelAnswer, tier: "cloud" as const } },
+      { ...original, modelRunId: "lauf-2" },
+    ])
+      expect(hashAnswerSnapshot(geaendert)).not.toBe(original.integrityHash);
+    const { modelAnswer: entfernt, ...ohneBindung } = original;
+    expect(hashAnswerSnapshot(ohneBindung)).not.toBe(original.integrityHash);
+  });
   it("ein unveränderter, vollständig auflösbarer Snapshot ist VALID", () => {
     const s = gehasht({
       evidence: [

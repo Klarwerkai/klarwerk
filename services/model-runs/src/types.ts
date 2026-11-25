@@ -322,6 +322,8 @@ export interface ModelRunRecord {
   // Der Lesepfad darf daraus nichts folgern — insbesondere entsteht daraus keine Anzeige
   // „unbekanntes Modell" und keine Bereinigung.
   model?: string;
+  /** Vom Transport bestätigte Modellkennung für den ausgelieferten Antworttext bzw. das Prüfurteil. */
+  reportedModel?: string;
   // JOB 3074: der Tokenverbrauch dieses Laufs (s. ModelRunVerbrauch oben).
   //
   // DAS FEHLEN IST EINE AUSSAGE — wortgleich zur Regel bei `model` darüber: es heißt „in diesem Lauf

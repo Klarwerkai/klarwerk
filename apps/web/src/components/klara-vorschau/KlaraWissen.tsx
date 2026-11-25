@@ -6,6 +6,7 @@ import { useSession } from "../../app/AuthContext";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import { KNOWLEDGE_TYPES } from "../trust/types";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
+import { KlaraNotizPruefung } from "./KlaraNotizPruefung";
 import { KlaraRegelvorschlag } from "./KlaraRegelvorschlag";
 import { KlaraWissensbeitragStand } from "./KlaraWissensbeitragStand";
 import { starteWissensauftrag, useAusfuehrungen } from "./auftrag";
@@ -47,13 +48,11 @@ export function KlaraWissen({
   const ort = useLocation();
   const umgebung = () => ({ t, navigiere: navigation, ort: () => ort.pathname + ort.search });
   const [fehler, setFehler] = useState("");
-  const [pruefung, setPruefung] = useState("");
   const [laeuft, setLaeuft] = useState(false);
   const aendern = (fn: () => void) => {
     fn();
     setV(null);
     setAuftragId(null);
-    setPruefung("");
   };
   useEffect(() => {
     if (!offen) return;
@@ -110,6 +109,9 @@ export function KlaraWissen({
       <button className={knopf} type="button" disabled={geaendert} onClick={() => setOffen(!offen)}>
         {t("klarawissen.start")}
       </button>
+      {user && !geaendert && (
+        <KlaraNotizPruefung key={`${user.id}:${id}:${fassung}`} id={id} fassung={fassung} />
+      )}
       {user && (
         <KlaraWissensbeitragStand
           konto={user.id}
@@ -247,27 +249,6 @@ export function KlaraWissen({
                   >
                     {t("klarawissen.vorschau")}
                   </button>
-                  <button
-                    data-testid="wissen-pruefen"
-                    type="button"
-                    className={knopf}
-                    disabled={laeuft}
-                    onClick={() =>
-                      void handeln(async () => {
-                        const p = await klaraWissenApi.pruefen(id);
-                        setPruefung(
-                          p.ergebnis.status === "geprueft"
-                            ? p.ergebnis.aussagen
-                                .map((a) => t(`klarawissen.pruef.${a.zustand}`))
-                                .join(" · ")
-                            : t("klarawissen.offen"),
-                        );
-                      })
-                    }
-                  >
-                    {t("klarawissen.pruefen")}
-                  </button>
-                  {pruefung ? <output>{pruefung}</output> : null}
                   {v ? (
                     <div data-testid="wissen-vorschau-inhalt">
                       <p className="whitespace-pre-wrap">{v.original}</p>

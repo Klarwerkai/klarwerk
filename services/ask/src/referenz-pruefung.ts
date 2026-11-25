@@ -90,6 +90,7 @@ export type ReferenzGrund =
   | "pruefer_nicht_verfuegbar"
   | "pruefer_nicht_freigegeben"
   | "pruefer_nicht_unabhaengig"
+  | "pruefer_modell_unbekannt"
   | "antwortmodell_unbekannt"
   | "zeitlimit"
   | "abgebrochen"
@@ -233,6 +234,8 @@ const GRUND_SATZ: Readonly<Record<ReferenzGrund, string>> = {
   pruefer_nicht_freigegeben: "Für die erlaubten Referenz-KIs fehlt die Freigabe.",
   pruefer_nicht_unabhaengig:
     "Jede erlaubte Referenz-KI nutzt dasselbe Modell wie die Antwort — der unabhängige Nachweis bleibt offen.",
+  pruefer_modell_unbekannt:
+    "Der Prüflauf hat keine Modellkennung gemeldet. Seine Unabhängigkeit ist offen.",
   antwortmodell_unbekannt:
     "Das tatsächliche Antwortmodell ist nicht festgehalten — die Unabhängigkeit ist nicht nachweisbar.",
   zeitlimit: "Die Referenz-KI hat nicht innerhalb des Zeitlimits geantwortet.",
@@ -719,6 +722,7 @@ export const REFERENZ_PROTOKOLL_AUSSAGEN_MAX = 100;
 export type ReferenzAntwortweg =
   | "frage"
   | "klara"
+  | "klara_notiz"
   | "addon"
   | "reasoner"
   | "vergleich_heute"
@@ -792,6 +796,12 @@ export interface ReferenzProtokollEintrag {
 export interface ReferenzPruefEingabe<T extends AufloesbaresObjekt = AufloesbaresObjekt> {
   readonly beleg: AussagenBeleg;
   readonly antwortRolle: ReferenzRolle | undefined;
+  /** Schutzstufe des gesamten gebundenen Erzeugungskontexts, auch seiner unzitierten Quellen. */
+  readonly notizKontext?: {
+    readonly vertraulich: boolean;
+    readonly quellen: readonly { id: string; fassung: number }[];
+    readonly pruefeStand: () => Promise<void>;
+  };
   readonly akteur: string;
   /** Lesewege und AKTUELLE Rechte des Fragenden — dieselben wie bei der Fundstellenauflösung. */
   readonly leser: FundstellenLeser<T>;
@@ -857,7 +867,8 @@ export class ReferenzPruefdienst {
     eingabe: ReferenzPruefEingabe<T>,
   ): Promise<ReferenzPruefErgebnis> {
     const pruefId = `ref_${randomUUID()}`;
-    this.merkeKontext(pruefId, eingabe);
+    // Eine persönliche Notiz muss auch für einen weiteren Lauf am Notizweg neu gelesen werden.
+    if (eingabe.antwortweg !== "klara_notiz") this.merkeKontext(pruefId, eingabe);
     return this.sicherLauf(pruefId, eingabe, 1);
   }
 
@@ -1155,7 +1166,8 @@ export class ReferenzPruefdienst {
     };
 
     // 2. PRÜFER — nur administrativ erlaubt, mit anderem Modell als die Antwort.
-    const irgendVertraulich = [...vertraulich.values()].some(Boolean);
+    const kontextVertraulich = eingabe.notizKontext?.vertraulich === true;
+    const irgendVertraulich = kontextVertraulich || [...vertraulich.values()].some(Boolean);
     const wahl = this.deps.waehlePruefer(eingabe.antwortRolle, irgendVertraulich);
     if ("grund" in wahl) {
       const grund: ReferenzGrund = `pruefer_${wahl.grund}` as ReferenzGrund;
@@ -1177,7 +1189,7 @@ export class ReferenzPruefdienst {
     const paket = pruefPaket(
       technisch,
       { modell: pruefer.rolle.modell ?? "", oeffentlich: pruefer.extern },
-      (koId) => this.deps.externErlaubt(vertraulich.get(koId) ?? true),
+      (koId) => this.deps.externErlaubt(kontextVertraulich || (vertraulich.get(koId) ?? true)),
     );
     const pruefbar = paket.posten.filter((p) => p.zustand === "pruefbar");
     for (const p of pruefbar) {
@@ -1246,7 +1258,9 @@ export class ReferenzPruefdienst {
         ...[...quellenstand].sort(),
       ].join("\n"),
     );
-    const treffer = this.cache.get(schluessel);
+    // Bei Modellnotizen zählt die Identität aus genau dieser Transportantwort. Ein
+    // konfigurierter Alias kann heute auf ein anderes Modell zeigen als beim letzten Lauf.
+    const treffer = eingabe.notizKontext ? undefined : this.cache.get(schluessel);
     if (
       treffer &&
       treffer.pruefer.modell === pruefer.rolle.modell &&
@@ -1303,9 +1317,11 @@ export class ReferenzPruefdienst {
         modellaufrufe: 0,
       });
     }
-    const gesendetVertraulich = pruefbar.some((p) =>
-      p.fundstellen.some((f) => vertraulich.get(f.koId) === true),
-    );
+    const gesendetVertraulich =
+      kontextVertraulich ||
+      pruefbar.some((p) => p.fundstellen.some((f) => vertraulich.get(f.koId) === true));
+    // Zwischen Lesen, Versand und Ergebnis können sich Freigabe, Fassung oder Leserechte ändern.
+    await eingabe.notizKontext?.pruefeStand();
     let antwort: Awaited<ReturnType<typeof pruefer.pruefe>>;
     try {
       antwort = await mitGrenzen(
@@ -1320,6 +1336,7 @@ export class ReferenzPruefdienst {
         this.zeitlimitMs,
         eingabe.signal,
       );
+      await eingabe.notizKontext?.pruefeStand();
     } catch (fehler) {
       const grund = grundAusFehler(fehler);
       return fertig({
@@ -1331,6 +1348,28 @@ export class ReferenzPruefdienst {
         ausCache: false,
         modellaufrufe: 1,
       });
+    }
+
+    let pruefrolle = pruefer.rolle;
+    if (eingabe.notizKontext) {
+      const modell = antwort.gemeldetesModell?.trim();
+      const grund = !modell
+        ? "pruefer_modell_unbekannt"
+        : modell.toLowerCase() === eingabe.antwortRolle?.modell?.trim().toLowerCase()
+          ? "pruefer_nicht_unabhaengig"
+          : undefined;
+      if (grund)
+        return fertig({
+          status: "nicht_pruefbar",
+          grund,
+          pruefer: modell ? { ...pruefrolle, modell } : null,
+          paket,
+          aussagen: zusammen(new Map(), grund),
+          ausCache: false,
+          modellaufrufe: 1,
+          ...(antwort.verbrauch ? { verbrauch: antwort.verbrauch } : {}),
+        });
+      pruefrolle = { ...pruefrolle, modell: modell ?? null };
     }
 
     // 5. STRIKT AUSWERTEN.
@@ -1345,7 +1384,7 @@ export class ReferenzPruefdienst {
       return fertig({
         status: "nicht_pruefbar",
         grund: "ungueltige_pruefausgabe",
-        pruefer: pruefer.rolle,
+        pruefer: pruefrolle,
         paket,
         aussagen: zusammen(new Map(), "ungueltige_pruefausgabe"),
         ausCache: false,
@@ -1354,11 +1393,12 @@ export class ReferenzPruefdienst {
       });
     }
     // Nur ein gültiges Urteil wird zum Cachebeleg — nie ein Ausfall.
-    this.cache.set(schluessel, {
-      gespeichert: this.jetzt(),
-      urteile: auswertung.urteile,
-      pruefer: pruefer.rolle,
-    });
+    if (!eingabe.notizKontext)
+      this.cache.set(schluessel, {
+        gespeichert: this.jetzt(),
+        urteile: auswertung.urteile,
+        pruefer: pruefrolle,
+      });
     while (this.cache.size > REFERENZ_CACHE_MAX) {
       const aeltester = this.cache.keys().next().value;
       if (aeltester === undefined) {
@@ -1368,7 +1408,7 @@ export class ReferenzPruefdienst {
     }
     return fertig({
       status: "geprueft",
-      pruefer: pruefer.rolle,
+      pruefer: pruefrolle,
       paket,
       aussagen: zusammen(auswertung.urteile, "kein_urteil"),
       ausCache: false,
@@ -1540,6 +1580,9 @@ export class ReferenzPruefdienst {
     // REF-04 (K6): die gebundenen Quellenfassungen — aus dem Beleg der Antwort, nicht aus dem
     // aktuellen Stand; ein späterer Quellenstand ändert diesen Eintrag nicht.
     const quellen = new Map<string, { koId: string; koVersion: number }>();
+    for (const q of eingabe.notizKontext?.quellen ?? []) {
+      quellen.set(`${q.id}@${q.fassung}`, { koId: q.id, koVersion: q.fassung });
+    }
     for (const a of eingabe.beleg.aussagen) {
       for (const t of a.teile) {
         for (const f of t.fundstellen) {

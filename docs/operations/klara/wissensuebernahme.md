@@ -4,6 +4,8 @@ Die persönliche Notiz bleibt unverändert und privat. Unter „Meine Funktionen
 
 An der gespeicherten Notiz öffnet „Bewusst als Wissen übernehmen“ die Zielwahl. Artikel und Space sind unterschiedliche Ziele. Sichtbarkeit, Kategorie, Bedingungen und eine verfügbare Vorlage werden bewusst gewählt; offene Fragen bleiben offen. Die eigene Person ist für den neuen Beitrag verantwortlich. Ein Beitrag ist zunächst fachlich offen, keine automatische Validierung.
 
+Direkt an einer gespeicherten Gesprächsnotiz öffnet „Aussagen und Belege prüfen“ die Prüfung. Bei neu erzeugten KI-Antworten verbindet Klara den gespeicherten Wortlaut mit dem ursprünglichen Antwortbeleg und Modelllauf des eigenen Kontos. Die Ansicht zeigt das Erstellermodell und nach erfolgreicher Prüfung die Rolle des unabhängigen Prüfmodells. In der Adminsicht sind die Modellkennungen sichtbar. Zu jeder geprüften Aussage lassen sich die Passage und die verwendete Quellenfassung öffnen.
+
 Der bestehende Referenzdienst prüft gebundene Aussagen gegen tatsächlich aufgelöste Passagen und die heutige Quellfassung. Ein Link allein ist kein Beleg. Ohne verfügbaren unabhängigen Prüfer bleibt die Prüfung offen. Importangaben zu Anbieter/Modell sind Herkunftsangaben des ausgewählten Exports, keine unabhängig verifizierte Anbieteridentität. Eine bearbeitete Importnotiz kann keine alte Aussagezuordnung als aktuelle Fassung übernehmen.
 
 ## Schnittstelle für F15, E und G

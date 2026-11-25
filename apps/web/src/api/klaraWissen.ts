@@ -1,5 +1,23 @@
 import { api } from "./client";
-import type { KnowledgeType } from "./types";
+import type { AussagenBelegKurz, KnowledgeType, ReferenzPruefung } from "./types";
+type Modellstufe = NonNullable<ReferenzPruefung["rollen"]["antwort"]>;
+export interface NotizModell {
+  stufe: Modellstufe;
+  anbieter?: string;
+  modell?: string | null;
+}
+export interface NotizQuellenpruefung {
+  fassung: number;
+  modellherkunft: NotizModell | null;
+  beleg: AussagenBelegKurz & { antwortFingerabdruck: string };
+  ergebnis: Omit<ReferenzPruefung, "rollen"> & {
+    rollen: {
+      antwort: NotizModell | Modellstufe | null;
+      pruefer: NotizModell | Modellstufe | null;
+    };
+  };
+  quelltitel?: Record<string, string>;
+}
 export interface WissensZiel {
   art: "artikel" | "space";
   spaceId?: string;
@@ -77,12 +95,7 @@ export const klaraWissenApi = {
     api.get<{ spaces: { id: string; name: string; zugang: string }[] }>("/me/klara/wissen/ziele"),
   vorschau: (id: string, fassung: number, ziel: WissensZiel) =>
     api.post<WissensVorschau>(`${pfad(id)}/vorschau`, { fassung, ziel }),
-  pruefen: (id: string) =>
-    api.post<{
-      fassung: number;
-      ergebnis: { status: string; grund?: string; aussagen: { zustand: string }[] };
-      herkunftUnveraendert: boolean;
-    }>(`${pfad(id)}/pruefen`, {}),
+  pruefen: (id: string) => api.post<NotizQuellenpruefung>(`${pfad(id)}/pruefen`, {}),
   uebernehmen: (v: WissensVorschau, ziel: WissensZiel) =>
     api.post<WissensErgebnis>(`${pfad(v.notizId)}/uebernehmen`, {
       fassung: v.fassung,

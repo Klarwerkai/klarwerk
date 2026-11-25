@@ -1,16 +1,24 @@
 import { createHash } from "node:crypto";
-import { bindeAussagen, bindungsQuelleAus } from "../../ask";
+import {
+  type BindungsQuelle,
+  bindeAussagen,
+  bindungsQuelleAus,
+  referenzSichtFuerFragende,
+} from "../../ask";
 import type { ReferenzPruefdienst } from "../../ask";
 import type { AuditService } from "../../audit";
 import {
   type CreateKoInput,
   type KnowledgeObject,
   type KoService,
+  buildSearchProjection,
   createOperationFingerprint,
+  isConfidential,
 } from "../../knowledge-object";
 import { can } from "../../rbac";
 import { kernaussageAusKlartext } from "../../structure";
 import type { SessionUser } from "./http";
+import type { KlaraNotizModellBeleg } from "./klara-gespraech-ausgabe";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
 import type { KlaraWissensHerkunft } from "./klara-wissensherkunft-typen";
 import {
@@ -47,6 +55,8 @@ export interface WissensDienste {
   vorlagen: VorlagenEinreichungPort;
   referenz: ReferenzPruefdienst;
   audit: AuditService;
+  /** Der eigene Originalsnapshot mit dem tatsächlich protokollierten KI-Lauf. */
+  notizModellBeleg: (n: KlaraNotiz) => Promise<KlaraNotizModellBeleg | undefined>;
   /**
    * KVS-1: Herkunft einer Notiz aus einer Klara-Antwort — derselbe Antwortbeleg wie im Gespräch
    * (`KlaraGespraechAusgabe.notizQuellen`). `null`: kein positiver Herkunftsnachweis.
@@ -55,6 +65,25 @@ export interface WissensDienste {
 }
 /** `antwort`: Quelle aus dem Antwortbeleg einer Gesprächsnotiz (KVS-1). */
 type NotizQuelle = { id: string; fassung: number; antwort?: true };
+function quelleFuerPruefung(ko: KnowledgeObject, mitVolltext: boolean) {
+  const volltext = mitVolltext ? buildSearchProjection(ko, ko.createdAt).bodyText : undefined;
+  return bindungsQuelleAus(ko, volltext);
+}
+
+/** Auch der Entzug eines Quellenankers ohne neue KO-Fassung entwertet die Ausgabe. */
+function quellstand(ko: KnowledgeObject) {
+  return abdruck(
+    JSON.stringify([
+      ko.version,
+      ko.status,
+      ko.confidentiality,
+      ko.quellrechte,
+      ko.sources,
+      ko.schutzdatenQuarantaene,
+    ]),
+  );
+}
+
 /** Kein neuer Bestand: private Originale in KlaraNotizRepo, Beiträge in KoService. */
 export class KlaraWissensDienst {
   constructor(private readonly d: WissensDienste) {}
@@ -149,7 +178,7 @@ export class KlaraWissensDienst {
     }
     return alle;
   }
-  async pruefe(user: SessionUser, id: string) {
+  async pruefe(user: SessionUser, id: string, locale = "de") {
     const n = await this.original(user, id);
     const teil = n.wissensHerkunft?.besprechung?.verarbeitung;
     if (teil && teil.stand !== "abgeschlossen")
@@ -157,12 +186,42 @@ export class KlaraWissensDienst {
         409,
         "Teiltranskript vor gemeinsamer Übernahme vollständig verarbeiten.",
       );
-    const quellen = new Map();
-    for (const q of await this.quellen(n)) {
+    const modellbeleg = await this.d.notizModellBeleg(n);
+    const bezuege = modellbeleg?.quellen ?? (await this.quellen(n));
+    const quellen = new Map<string, BindungsQuelle>();
+    const quelltitel = new Map<string, string>();
+    const quellstaende = new Map<string, string>();
+    let vertraulicherKontext = false;
+    for (const q of bezuege) {
       const ko = await this.d.ko.get(q.id);
-      // Neue Passage erbt keine alte Bestätigung. Nicht gebundene/ersetzte Fassung bleibt offen.
-      if (ko && ko.version === q.fassung) quellen.set(ko.id, bindungsQuelleAus(ko, undefined));
+      if (!ko || !darfSehen(user, ko)) throw new WissensFehler(404, "Notizquelle nicht verfügbar.");
+      if (ko.version !== q.fassung) {
+        if (modellbeleg)
+          throw new WissensFehler(409, "Die gebundene Quellfassung hat sich geändert.");
+        continue;
+      }
+      if (modellbeleg && (ko.status !== "validiert" || ko.schutzdatenQuarantaene))
+        throw new WissensFehler(409, "Die gebundene Quelle ist derzeit nicht freigegeben.");
+      // Auch eine mitgelesene, unzitierte Quelle kann im Notiztext verarbeitet worden sein.
+      if (modellbeleg && isConfidential(ko.confidentiality)) vertraulicherKontext = true;
+      quelltitel.set(ko.id, ko.title);
+      if (modellbeleg) quellstaende.set(ko.id, quellstand(ko));
+      quellen.set(ko.id, quelleFuerPruefung(ko, !!modellbeleg));
     }
+    const pruefeStand = async () => {
+      const aktuell = await this.original(user, id);
+      if (aktuell.fassung !== n.fassung)
+        throw new WissensFehler(409, "Notizfassung geändert; erneut prüfen.");
+      if (modellbeleg) {
+        for (const q of bezuege) {
+          const ko = await this.d.ko.get(q.id);
+          if (!ko || !darfSehen(user, ko))
+            throw new WissensFehler(404, "Notizquelle nicht verfügbar.");
+          if (quellstaende.get(q.id) !== quellstand(ko))
+            throw new WissensFehler(409, "Die gebundene Quellfassung hat sich geändert.");
+        }
+      }
+    };
     const herkunftGueltig =
       !n.wissensHerkunft || n.wissensHerkunft.textAbdruck === abdruck(n.inhalt);
     const behauptungen =
@@ -172,34 +231,51 @@ export class KlaraWissensDienst {
         .join("\n") ?? n.inhalt;
     const beleg = bindeAussagen({
       antwort: behauptungen,
-      sources: [...quellen.keys()],
-      citedSources: [...quellen.keys()],
+      sources: bezuege.map((q) => q.id),
+      citedSources: modellbeleg?.zitierteQuellen ?? [...quellen.keys()],
       quellen,
     });
-    // Manuelle Exportangaben sind keine nachgewiesene tatsächliche Modellidentität.
-    // Ohne einen gebundenen Adapterbeleg darf sich ein unbekanntes Modell nicht selbst bestätigen.
+    // Nur das Konto und der serverseitig gebundene Antwortlauf belegen das Erstellermodell.
     const ergebnis = await this.d.referenz.pruefe({
       beleg,
-      antwortRolle: undefined,
+      antwortRolle: modellbeleg?.rolle,
       akteur: user.id,
-      antwortId: n.id,
+      antwortId: n.antwortId ?? n.id,
+      antwortweg: "klara_notiz",
+      locale,
+      ...(modellbeleg
+        ? {
+            notizKontext: {
+              vertraulich: vertraulicherKontext,
+              quellen: modellbeleg.quellen,
+              pruefeStand,
+            },
+          }
+        : {}),
       leser: {
         aktuell: (id) => this.d.ko.get(id),
         imPapierkorb: async () => undefined,
         fassung: async (id, version) => {
           const aktuell = await this.d.ko.get(id);
           return aktuell && aktuell.version === version && darfSehen(user, aktuell)
-            ? { statement: aktuell.statement, sources: aktuell.sources }
+            ? quelleFuerPruefung(aktuell, !!modellbeleg)
             : undefined;
         },
       },
       darfSehen: (ko) => darfSehen(user, ko),
     });
-    await this.original(user, id);
+    await pruefeStand();
+    const admin = can(user.role, "users.manage");
     return {
       fassung: n.fassung,
       beleg,
-      ergebnis,
+      quelltitel: Object.fromEntries(quelltitel),
+      modellherkunft: modellbeleg
+        ? admin
+          ? modellbeleg.rolle
+          : { stufe: modellbeleg.rolle.stufe }
+        : null,
+      ergebnis: admin ? ergebnis : referenzSichtFuerFragende(ergebnis),
       herkunftUnveraendert: herkunftGueltig,
     };
   }

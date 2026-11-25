@@ -557,6 +557,13 @@ export interface AnswerEvidenceSnapshot {
    */
   readonly modelRunId?: string | null;
   readonly modelRunIdReason?: AnswerNullReason | null;
+  /** Bindet den ausgelieferten Wortlaut und die tatsächlich verwendete Stufe an den Modelllauf. */
+  readonly modelAnswer?: { readonly textHash: string; readonly tier: "cloud" | "local" };
+}
+
+/** Der Gesprächsspeicher entfernt äußeren Leerraum, lässt den Antwortinhalt aber unverändert. */
+export function modelAnswerTextHash(text: string): string {
+  return createHash("sha256").update(text.trim()).digest("hex");
 }
 
 /**
@@ -614,6 +621,12 @@ export function answerSnapshotHashMaterial(snapshot: AnswerEvidenceSnapshot): re
   }
   if (snapshot.modelRunIdReason !== undefined) {
     material.push(`modelRunIdReason=${hashWert(snapshot.modelRunIdReason)}`);
+  }
+  if (snapshot.modelAnswer !== undefined) {
+    material.push(
+      `modelAnswer.textHash=${snapshot.modelAnswer.textHash}`,
+      `modelAnswer.tier=${snapshot.modelAnswer.tier}`,
+    );
   }
   snapshot.evidence.forEach((ref, index) => {
     const teile = [

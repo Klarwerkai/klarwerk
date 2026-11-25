@@ -45,6 +45,7 @@ export const MODEL_RUN_FELDER = [
   // Antwortinhalt.
   "error",
   "model",
+  "reportedModel",
   "verbrauch",
   "kosten",
   "erzeugt",

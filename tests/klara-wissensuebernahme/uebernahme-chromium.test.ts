@@ -114,6 +114,11 @@ it("F08 · echter Browser: gewählter Chat → privates Original → Vorschau �
   notizId =
     (await page.locator('[data-testid="klara-notiz-offen"]').getAttribute("data-notiz")) ?? "";
   expect(notizId).not.toBe("");
+  await page.getByTestId("wissen-pruefen").click();
+  const referenz = page.getByTestId("notiz-quellenpruefung");
+  await referenz.waitFor();
+  expect(await referenz.getAttribute("data-status")).toBe("nicht_pruefbar");
+  expect(await page.getByTestId("notiz-modellherkunft").count()).toBe(0);
   await page.locator('[data-testid="klara-wissen"] > button').click();
   await page.locator('[data-testid="wissen-stufe"]').selectOption("intern");
   await page.getByTestId("wissen-typ").selectOption("best_practice");

@@ -67,6 +67,7 @@ export {
   gehoertNutzer,
   hashAnswerSnapshot,
   legacyValidationZuordnung,
+  modelAnswerTextHash,
 } from "./src/types";
 // W3-C (JOB 541 D3): das reine Lesemodell der Antwort-Erklaerung.
 export { baueAnswerExplanation } from "./src/answer-explanation";
