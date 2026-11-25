@@ -6349,9 +6349,9 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       datei: string,
       text: string,
       methode: string,
-      zeile: number,
       aufrufText: string,
       pfade: readonly string[],
+      fixtureZeile?: number,
     ): void => {
       expect(text.split(aufrufText)).toHaveLength(2);
       const start = text.indexOf(aufrufText);
@@ -6360,7 +6360,8 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       const aufruf = aufrufAn(sf, start);
       expect(aufruf.getEnd()).toBeGreaterThan(start);
       expect(text.slice(start, aufruf.getEnd())).toBe(aufrufText);
-      expect(sf.getLineAndCharacterOfPosition(start).line + 1).toBe(zeile);
+      const zeile = sf.getLineAndCharacterOfPosition(start).line + 1;
+      if (fixtureZeile !== undefined) expect(zeile).toBe(fixtureZeile);
       const arg = aufruf.arguments[0];
       if (!arg) throw new Error("das gebundene Pfadargument fehlt");
       const erhoben = erhebeDatei(datei, text);
@@ -6402,7 +6403,6 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
     const echte = [
       {
         datei: "services/app/src/routes/klara-besprechung-routes.ts",
-        zeile: 27,
         methode: "POST",
         aufruf:
           'app.post<{ Params: { id: string } }>(\n        `/api/me/klara/besprechungen/:id/${weg}`,\n        async (req, reply) => {\n          const u = await guards.requireUser(req, reply);\n          if (!u) return;\n          try {\n            return weg === "lesen"\n              ? await d.sicht(u.id, req.params.id)\n              : weg === "korrektur"\n                ? await d.korrektur(u.id, req.params.id, req.body)\n                : weg === "fristquelle"\n                  ? await d.fristquelle(u.id, req.params.id, req.body)\n                  : weg === "teilschritt"\n                    ? await d.teilschritt(u.id, req.params.id, req.body)\n                    : await d.uebernehmen(u.id, req.params.id, req.body);\n          } catch (e) {\n            if (e instanceof WissensFehler) {\n              reply.code(e.status).send({\n                error: e.status === 404 ? "NOT_FOUND" : "BESPRECHUNG",\n                message: e.message,\n              });\n              return;\n            }\n            sendError(reply, e);\n          }\n        },\n      )',
@@ -6416,7 +6416,6 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       },
       {
         datei: "services/app/src/routes/klara-gespraech-routes.ts",
-        zeile: 413,
         methode: "POST",
         aufruf:
           'app.post<{ Params: { id: string; auftragId: string }; Body: { auftragFassung?: unknown } }>(\n        `/api/me/klara/gespraeche/:id/auftraege/:auftragId/${weg}`,\n        async (request, reply) => {\n          const user = await guards.requireUser(request, reply);\n          if (!user) return;\n          try {\n            const auftrag = await dienst.unterbrecheAuftrag(\n              user.id,\n              request.params.id,\n              request.params.auftragId,\n              weg === "fortsetzen",\n              request.body?.auftragFassung,\n            );\n            await audit.record({\n              actor: user.id,\n              action: `klara.auftrag.${weg}`,\n              target: `klara-auftrag:${auftrag.id}`,\n            });\n            reply.code(200).send({ auftrag: auftragMitVerlauf(auftrag) });\n          } catch (fehler) {\n            antworteMitFehler(reply, fehler);\n          }\n        },\n      )',
@@ -6427,7 +6426,6 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       },
       {
         datei: "services/app/src/routes/klara-wissen-routes.ts",
-        zeile: 46,
         methode: "POST",
         aufruf:
           'app.post<{\n        Params: { id: string };\n        Body: { fassung?: unknown; ziel?: unknown; modus?: unknown };\n      }>(`/api/me/klara/notizen/:id/wissen/${weg}`, async (req, reply) => {\n        const u = await guards.requirePermission("ko.create", req, reply);\n        if (!u) return;\n        try {\n          const x = req.body ?? {};\n          if (weg !== "pruefen" && x.modus === "regelvorschlag")\n            return await dienst.regelvorschlag(u, req.params.id, x, weg === "uebernehmen");\n          if (weg === "vorschau")\n            return await dienst.vorschau(u, req.params.id, x.fassung, wissensZiel(x.ziel));\n          if (weg === "pruefen") return await dienst.pruefe(u, req.params.id);\n          return await dienst.uebernehmen(u, req.params.id, x);\n        } catch (e) {\n          fehler(reply, e);\n        }\n      })',
@@ -6439,7 +6437,6 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       },
       {
         datei: "services/app/src/web-static.ts",
-        zeile: 95,
         methode: "GET",
         aufruf:
           'app.get(pfad, async (_request, reply) => {\n      let roh: string;\n      try {\n        roh = await readFile(join(dist, "word-addin", datei), "utf8");\n      } catch {\n        // LAUT scheitern, nie still als SPA-HTML: ein fehlendes Add-in im Build ist ein Defekt,\n        // kein Navigationspfad (dieselbe Entscheidung wie bei den Assets unten).\n        reply.code(404).type("text/plain").send("Not Found");\n        return;\n      }\n      const koerper = stempleFassung(roh, version);\n      reply\n        .header("Cache-Control", "no-cache")\n        .header(KLARA_FASSUNG_KOPF, version)\n        // Der Validator über den GESENDETEN Körper — s. Kopfkommentar.\n        .header("ETag", `"${createHash("sha256").update(koerper).digest("hex").slice(0, 32)}"`)\n        .type("text/html; charset=utf-8")\n        .send(koerper);\n    })',
@@ -6447,7 +6444,6 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       },
       {
         datei: "services/app/src/wiederanlauf.ts",
-        zeile: 299,
         methode: "POST",
         aufruf:
           'app.post<{ Body: Record<string, unknown> | null }>(\n    `${WIEDERANLAUF_PFAD}/freigabe`,\n    async (request, reply) => {\n      const user = await guards.requirePermission("users.manage", request, reply);\n      if (!user) {\n        return;\n      }\n      const body = request.body && typeof request.body === "object" ? request.body : {};\n      const fehlend = FREIGABE_BESTAETIGUNGEN.filter((b) => body[b] !== true);\n      if (fehlend.length > 0) {\n        reply.code(400).send({\n          error: "BESTAETIGUNG_FEHLT",\n          message:\n            "Die Freigabe braucht alle vier Bestätigungen: Integrität geprüft, Rechteentzüge und Löschmarkierungen nachgeführt, Außenaktionen geprüft.",\n          fehlend,\n        });\n        return;\n      }\n      // Ohne Sicherungsstand gibt es keine Grenze, gegen die „nachgeführt" bestätigt werden könnte.\n      if (!sicherungsstand) {\n        reply.code(409).send({\n          error: "SICHERUNGSSTAND_UNBEKANNT",\n          message: `Der Sicherungsstand ist unbekannt — die Nachführung hat keine Grenze. Mit ${SICHERUNGSSTAND_ENV}=<Sicherungsname oder UTC-Zeit> neu starten.`,\n        });\n        return;\n      }\n      const bericht = await deps.audit.verifyReport();\n      const integritaet = {\n        eintraege: bericht.count,\n        linkageBreaks: bericht.linkageBreaks,\n        unresolvedDeviations: bericht.unresolvedDeviations,\n        uncheckedDeviations: bericht.uncheckedDeviations,\n      };\n      if (\n        bericht.linkageBreaks !== 0 ||\n        bericht.unresolvedDeviations !== 0 ||\n        bericht.uncheckedDeviations !== 0\n      ) {\n        reply.code(409).send({\n          error: "INTEGRITAET",\n          message:\n            "Die Auditkette trägt nicht (Kettenbruch oder unerklärte/ungeprüfte Abweichung) — keine Freigabe.",\n          integritaet,\n        });\n        return;\n      }\n      await deps.audit.recordOnce(`${AKTION_WIEDERANLAUF_FREIGEGEBEN}:${kennung}`, {\n        actor: user.id,\n        action: AKTION_WIEDERANLAUF_FREIGEGEBEN,\n        target: "wiederanlauf",\n        payload: {\n          kennung,\n          bestaetigt: [...FREIGABE_BESTAETIGUNGEN],\n          integritaet,\n          nachfuehrungsgrenze: sicherungsstand,\n        },\n      });\n      freigegeben = true;\n      reply.code(200).send(await auskunft());\n    },\n  )',
@@ -6456,14 +6452,13 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
     ] as const;
     let anzahl = 0;
     for (const fall of echte) {
-      pruefe(
-        fall.datei,
-        LIES_AUS_DEM_BAUM(fall.datei),
-        fall.methode,
-        fall.zeile,
-        fall.aufruf,
-        fall.pfade,
-      );
+      const original = LIES_AUS_DEM_BAUM(fall.datei);
+      for (const text of [
+        original,
+        `// Zwei zusätzliche Zeilen vor der Registrierung.\n\n${original}`,
+      ]) {
+        pruefe(fall.datei, text, fall.methode, fall.aufruf, fall.pfade);
+      }
       anzahl += fall.pfade.length;
     }
     expect(echte).toHaveLength(5);
@@ -6472,15 +6467,15 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       'async (req, reply) => { const user = await guards.requirePermission("ko.read", req, reply); if (!user) return; if (!darfSehen(user, ko)) return; return reply.send(ko); }';
     const tupelAufruf = `tor.get(pfad, ${handler})`;
     const tupel = `function montiere(tor: FastifyInstance) {\nfor (const [pfad, fremd] of [["/fremd/eins", dynamisch], ["/fremd/zwei", anders], ["/fremd/eins", dritt]] as const) {\n${tupelAufruf};\n}\n}`;
-    pruefe("tupel.ts", tupel, "GET", 3, tupelAufruf, ["/fremd/eins", "/fremd/zwei", "/fremd/eins"]);
+    pruefe("tupel.ts", tupel, "GET", tupelAufruf, ["/fremd/eins", "/fremd/zwei", "/fremd/eins"], 3);
     const skalarPfad = "`/anders/${teil}/spur`";
     const skalarAufruf = `api.post(${skalarPfad}, ${handler})`;
     const skalar = `function montiere(api: FastifyInstance) {\nfor (const teil of ["rot", "blau"] as const) {\n${skalarAufruf};\n}\n}`;
-    pruefe("skalar.ts", skalar, "POST", 3, skalarAufruf, ["/anders/rot/spur", "/anders/blau/spur"]);
+    pruefe("skalar.ts", skalar, "POST", skalarAufruf, ["/anders/rot/spur", "/anders/blau/spur"], 3);
     const festeVorlage = "`${WURZEL}/fertig`";
     const festAufruf = `api.patch(${festeVorlage}, ${handler})`;
     const fest = `const WURZEL = "/prima";\nfunction montiere(api: FastifyInstance) {\n${festAufruf};\n}`;
-    pruefe("fest.ts", fest, "PATCH", 3, festAufruf, ["/prima/fertig"]);
+    pruefe("fest.ts", fest, "PATCH", festAufruf, ["/prima/fertig"], 3);
     for (const text of [
       `function montiere(api: FastifyInstance) { for (const teil of unbekannt) { ${skalarAufruf}; } }`,
       `function montiere(api: FastifyInstance) { for (const teil of ["rot", dynamisch]) { ${skalarAufruf}; } }`,
@@ -6511,6 +6506,6 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
     const fremd = `function montiere(tor: FastifyInstance) { for (const [pfad] of [["/nicht"]] as const) { ${fremderAufruf}; } }`;
     expect(erhebeDatei("fremd.ts", fremd).funde).toEqual([]);
     const legacyAufruf = `sammlung.get("/legacy", ${handler})`;
-    pruefe("legacy.ts", `${legacyAufruf};`, "GET", 1, legacyAufruf, ["/legacy"]);
+    pruefe("legacy.ts", `${legacyAufruf};`, "GET", legacyAufruf, ["/legacy"], 1);
   });
 });

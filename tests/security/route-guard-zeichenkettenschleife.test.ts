@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { REPO_WURZEL } from "../support/repoPfad";
 import { schutzartVon } from "./routeGuardAudit";
@@ -25,12 +26,42 @@ function quelle(
   ].join("\n");
 }
 
+// Der Pfad identifiziert die Registrierung. Zeile und kompletter Aufruf sind Ergebnisse,
+// die wir unabhängig von der Erhebung am tatsächlichen TypeScript-Quelltext prüfen.
+function findePostAufruf(datei: string, text: string, kopf: string) {
+  const sf = ts.createSourceFile(datei, text, ts.ScriptTarget.Latest, true);
+  const treffer: ts.CallExpression[] = [];
+  function besuche(knoten: ts.Node): void {
+    if (ts.isCallExpression(knoten) && ts.isPropertyAccessExpression(knoten.expression)) {
+      const ziel = knoten.expression;
+      const pfad = knoten.arguments[0];
+      if (
+        ts.isIdentifier(ziel.expression) &&
+        ziel.expression.text === "app" &&
+        ziel.name.text === "post" &&
+        pfad &&
+        ts.isTemplateExpression(pfad) &&
+        pfad.head.text === kopf
+      ) {
+        treffer.push(knoten);
+      }
+    }
+    ts.forEachChild(knoten, besuche);
+  }
+  besuche(sf);
+  const [aufruf] = treffer;
+  if (treffer.length !== 1 || !aufruf) {
+    throw new Error(`${datei}: ${treffer.length} POST-Registrierungen für ${kopf} gefunden`);
+  }
+  const start = aufruf.getStart(sf);
+  return { zeile: text.slice(0, start).split("\n").length, aufruf: text.slice(start, aufruf.end) };
+}
+
 describe("Feste skalare Zeichenkettenschleifen", () => {
   it("erhebt die zehn echten Wege und beliebige direkte feste Schleifen mit ganzen Metadaten und Wachen", () => {
     const faelle = [
       {
         datei: "services/app/src/routes/klara-besprechung-routes.ts",
-        zeile: 27,
         kopf: "/api/me/klara/besprechungen/:id/",
         wege: ["lesen", "korrektur", "uebernehmen", "fristquelle", "teilschritt"],
         schutz: "auth",
@@ -38,7 +69,6 @@ describe("Feste skalare Zeichenkettenschleifen", () => {
       },
       {
         datei: "services/app/src/routes/klara-gespraech-routes.ts",
-        zeile: 413,
         kopf: "/api/me/klara/gespraeche/:id/auftraege/:auftragId/",
         wege: ["unterbrechen", "fortsetzen"],
         schutz: "auth",
@@ -46,7 +76,6 @@ describe("Feste skalare Zeichenkettenschleifen", () => {
       },
       {
         datei: "services/app/src/routes/klara-wissen-routes.ts",
-        zeile: 34,
         kopf: "/api/me/klara/notizen/:id/wissen/",
         wege: ["vorschau", "pruefen", "uebernehmen"],
         schutz: "ko.create",
@@ -55,31 +84,22 @@ describe("Feste skalare Zeichenkettenschleifen", () => {
     ] as const;
     let anzahl = 0;
     for (const fall of faelle) {
-      const text = readFileSync(join(REPO_WURZEL, fall.datei), "utf8");
-      const vorZeile = text
-        .split("\n")
-        .slice(0, fall.zeile - 1)
-        .join("\n").length;
-      const start = text.indexOf("app.post<", vorZeile);
-      expect(start).toBeGreaterThan(vorZeile);
-      expect(text.slice(0, start).split("\n").length).toBe(fall.zeile);
-      const ende = text.indexOf("\n      );", start);
-      expect(ende).toBeGreaterThan(start);
-      const aufruf = text.slice(start, ende + "\n      )".length);
-      const erwartet = fall.wege.map((weg) => ({
-        methode: "POST",
-        pfad: fall.kopf + weg,
-        datei: fall.datei,
-        zeile: fall.zeile,
-        aufruf,
-      }));
-      const teil = erhebeRegistrierungen(fall.datei, text);
-      expect(teil.unlesbar).toEqual([]);
-      expect(teil.registrierungen.filter((r) => r.zeile === fall.zeile)).toEqual(erwartet);
-      expect(schutzartVon(aufruf)).toBe(fall.schutz);
-      expect(aufruf.indexOf(fall.wache)).toBeGreaterThan(0);
-      expect(aufruf.indexOf(fall.wache)).toBe(aufruf.indexOf("await guards."));
-      anzahl += erwartet.length;
+      const original = readFileSync(join(REPO_WURZEL, fall.datei), "utf8");
+      const pfade = fall.wege.map((weg) => fall.kopf + weg);
+      for (const text of [original, `// Verschiebung der Registrierung\n\n${original}`]) {
+        const { zeile, aufruf } = findePostAufruf(fall.datei, text, fall.kopf);
+        const teil = erhebeRegistrierungen(fall.datei, text);
+        expect(teil.unlesbar).toEqual([]);
+        expect(
+          teil.registrierungen.filter((r) => r.zeile === zeile || pfade.includes(r.pfad)),
+        ).toEqual(
+          pfade.map((pfad) => ({ methode: "POST", pfad, datei: fall.datei, zeile, aufruf })),
+        );
+        expect(schutzartVon(aufruf)).toBe(fall.schutz);
+        expect(aufruf.indexOf(fall.wache)).toBeGreaterThan(0);
+        expect(aufruf.indexOf(fall.wache)).toBe(aufruf.indexOf("await guards."));
+      }
+      anzahl += pfade.length;
     }
     expect(anzahl).toBe(10);
     for (const [name, empfaenger, methode, kopf, werte, rest, block] of [
