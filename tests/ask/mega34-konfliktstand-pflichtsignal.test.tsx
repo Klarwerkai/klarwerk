@@ -350,7 +350,12 @@ describe("mega34 A3 · Desktop: ein unbekannter Konfliktstand behauptet keine Si
     const text = await mountAsk();
 
     expect(text).toContain("Ventil V4 wird jährlich geprüft.");
-    expect(text).not.toContain(GESICHERT);
+    const ohneQuellenliste = document.body.cloneNode(true) as HTMLElement;
+    ohneQuellenliste.querySelector('[data-testid="ask-quellen-liste"]')?.remove();
+    expect(ohneQuellenliste.textContent).not.toContain(GESICHERT);
+    expect(document.querySelector('[data-testid="ask-source-pruefstand"]')?.textContent).toContain(
+      GESICHERT,
+    );
     expect(find('[data-testid="ask-conflict-caveat"]')).not.toBeNull();
     expect(text).toContain(i18n.t("ask.conflictCaveat.title"));
     expect(text).toContain(i18n.t("ask.conflictCaveat.pending"));
@@ -382,9 +387,11 @@ describe("mega34 A3 · Desktop: ein unbekannter Konfliktstand behauptet keine Si
     await i18n.changeLanguage("de");
     netz.kos = [ko()];
     netz.conflicts = "loaded";
-    const text = await mountAsk();
+    await mountAsk();
 
-    expect(text).toContain(GESICHERT);
+    const ohneQuellenliste = document.body.cloneNode(true) as HTMLElement;
+    ohneQuellenliste.querySelector('[data-testid="ask-quellen-liste"]')?.remove();
+    expect(ohneQuellenliste.textContent).toContain(GESICHERT);
     expect(find('[data-testid="ask-conflict-caveat"]')).toBeNull();
   });
 });

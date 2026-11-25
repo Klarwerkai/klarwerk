@@ -2822,6 +2822,9 @@ const de = {
   "ask.error.title": "Die Frage konnte nicht beantwortet werden.",
   "ask.error.body":
     "Die Anfrage ist unterwegs steckengeblieben. Das ist KEINE Aussage über das Wissen — es bedeutet nicht, dass es keine Antwort gibt. Bitte erneut versuchen.",
+  "ask.quellenwechsel.titel": "Die Grundlage für diese Antwort hat sich geändert.",
+  "ask.quellenwechsel.hinweis":
+    "Stelle die Frage erneut. Klarwerk prüft dann die aktuell für dich freigegebenen Quellen.",
   "ask.error.retry": "Erneut versuchen",
   // Aufnahme gesamt-integrations-api (R-0842): die KI-Bremse hat abgewiesen — der Satz mit der
   // Wartezeit kommt vom Server (`services/app/src/anfragebremse.ts`), hier steht nur die Überschrift.

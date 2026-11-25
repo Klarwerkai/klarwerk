@@ -1,6 +1,7 @@
 // RT-001 (bens Sammel-Review 3): anbieterneutrale, strukturierte Fehlerklasse eines Judge-Versuchs
 // (nur Klasse + optionaler HTTP-Status — nie Rohmeldung/Secret/Provider-Detail) reist bis zum Runner.
 import type { AiGeneratedMark } from "../../model-runs";
+import type { QUELLWORTLAUTE, Quellabsatz } from "./quellwortlaute";
 
 // AUFTRAG-mega4 Block D (bens Sammel-Review 4): „unknown" ist der ehrliche Rückfall für einen
 // uneingeordneten geworfenen Fehler. Er darf NICHT als „network" verkleidet werden — sonst meldet die
@@ -161,6 +162,7 @@ export interface AbbruchBefund {
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
+  [QUELLWORTLAUTE]?: Quellabsatz[];
   /** Lokalisierbarer erster Absatz einer belegten Dokumentprüfung. Quellzitate bleiben im Original. */
   dokumentUrteil?: {
     art: "bestaetigt" | "widersprochen";

@@ -2211,6 +2211,9 @@ const nl: typeof de = {
   "ask.error.title": "De vraag kon niet worden beantwoord.",
   "ask.error.body":
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
+  "ask.quellenwechsel.titel": "De basis voor dit antwoord is gewijzigd.",
+  "ask.quellenwechsel.hinweis":
+    "Stel de vraag opnieuw. Klarwerk controleert dan de vrijgegeven bronnen waartoe je nu toegang hebt.",
   "ask.error.retry": "Opnieuw proberen",
   "ask.gebremst.titel": "Even geduld.",
   "ask.offline": "Geen verbinding.",

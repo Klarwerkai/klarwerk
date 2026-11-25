@@ -315,6 +315,7 @@ export async function h4Stand(
     bodyHtml: `<p>${ABSATZ_1}</p><p>${ABSATZ_2}</p>`,
     type: "best_practice",
     category: BEREICH_FREI,
+    confidentiality: "intern",
     author: autorId,
     neededValidations: 1,
     // Die Quelle wird beim Anlegen mitgegeben statt über `add-source` nachgereicht: die öffentliche

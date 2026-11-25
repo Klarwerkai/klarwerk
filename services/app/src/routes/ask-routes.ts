@@ -1239,44 +1239,109 @@ export async function antwortLauf(
     out.aussagen && request.authContext?.authKind === "addon"
       ? { aussagen: aufKernaussagenBeschraenkt(out.aussagen) }
       : {};
-  // P05 (B-10): nach dem letzten Warten der Antwort, vor der Auslieferung — die Anmeldung erneut.
+  // Beide Antworten verwenden dieselbe Kandidatenauswahl. Auch eine nur vorgelegte Quelle
+  // kann den Modelltext beeinflusst haben. Die Meldung zu einem offenen Treffer dagegen belegt
+  // keine Antwort und kann bei weiter offenem Freigabestand zulässig sein.
+  const vorgelegt = ask.quellstaendeDerAntwort?.(out);
+  const antworten =
+    out.zweitmeinung?.status === "verglichen"
+      ? [out.result, out.zweitmeinung.erste, out.zweitmeinung.zweite]
+      : [out.result];
+  const grundlagen = new Set([
+    ...(vorgelegt?.keys() ?? []),
+    ...antworten.flatMap((antwort) => [...antwort.sources, ...antwort.citedSources]),
+  ]);
+  const hinweise = new Map(
+    [...(out.ungeprueft ?? []), ...(out.verschlossen ?? [])].map((h) => [h.id, h]),
+  );
+  const loesung = out.geloesteLuecke;
+  const konfliktseiten = new Map(
+    belastbarkeit.konflikte.flatMap((k) =>
+      k.seiten.flatMap((seite) => (seite.einsehbar ? [[seite.koId, seite] as const] : [])),
+    ),
+  );
+  const wissensquellen = new Set([...grundlagen, ...hinweise.keys()]);
+  if (loesung) wissensquellen.add(loesung.koId);
+  const ids = new Set([...wissensquellen, ...konfliktseiten.keys()]);
+  let aktuell: { id: string; ko: KnowledgeObject | undefined }[];
   let sichtJetzt = grundlage;
-  if (lauf.nachpruefung) {
-    const frisch = await lauf.nachpruefung();
-    if (!frisch) {
-      return;
+  let konfliktsichtJetzt = sicht.seiteSichtbar;
+  let rechteGeaendert = false;
+  try {
+    pruefen();
+    aktuell = await Promise.all(
+      Array.from(ids, async (id) => ({ id, ko: await deps.ko.get(id, pruefen) })),
+    );
+    if (lauf.nachpruefung) {
+      const frisch = await lauf.nachpruefung();
+      if (!frisch) return;
+      rechteGeaendert =
+        !!betrachter && rechtekontextStempel(frisch) !== rechtekontextStempel(betrachter);
+      sichtJetzt = sichtbarkeitsfilterFuer(frisch, lauf.bereich);
+      konfliktsichtJetzt = belastbarkeitsSicht(frisch, lauf.anlass, sichtJetzt).seiteSichtbar;
+    } else if (!betrachter && deps.offeneSpaces) {
+      sichtJetzt = sichtbarkeitsfilterFuer(
+        schluesselBetrachter(await deps.offeneSpaces()),
+        lauf.bereich,
+      );
+      konfliktsichtJetzt = belastbarkeitsSicht(null, lauf.anlass, sichtJetzt).seiteSichtbar;
     }
-    // Zusammenführung mit P14: dieselbe Entscheidung wie am Eingang — samt Firmenfilter.
-    sichtJetzt = sichtbarkeitsfilterFuer(frisch, lauf.bereich);
+    // Nach den asynchronen Quellen- und Rechteabfragen gilt weiterhin die KI-Epoche der Anfrage.
+    pruefen();
+  } catch (fehler) {
+    if (kiAbgeschaltetSenden(reply, fehler, lauf.locale)) return;
+    throw fehler;
   }
-  // P05-AC03 (Ben, Nacharbeit 4): LESERECHTSENTZUG WÄHREND DER VERARBEITUNG. Die Antwort entstand
-  // aus Quellen, die der Fragende beim Eingang sehen durfte. Wurde ihm inzwischen das Leserecht an
-  // einer davon entzogen (Hochstufung auf vertraulich, Space-/Rollenentzug), verlässt die fertige
-  // Antwort den Server nicht: jede herangezogene Quelle wird mit dem AKTUELLEN Stand des Objekts und
-  // des Nutzers gegen dieselbe Sichtregel gehalten, Vertrauliches fällt wie im Fragedienst immer
-  // heraus. Die Absage nennt keine Quelle und keinen Inhalt.
-  // Nacharbeit 6 (Ben): auch eine WÄHREND der Verarbeitung verschwundene Wissenskopie sperrt — in
-  // den Papierkorb gelegt (`ko.get` liefert dann nichts) oder endgelöscht, etwa durch eine gesonderte
-  // personenbezogene oder Lizenzlöschung (P05-AC06). Davon zu unterscheiden ist die nur
-  // UNERREICHBARE externe Quelle einer gewöhnlichen Quellenlöschung (P05-AC01/AC02): dort bleibt die
-  // Kopie bestehen, trägt nur den Vermerk `sourceRemovedAt` am Anker und wird weiter ausgeliefert.
-  // Grenze, benannt: zwischen dieser Lesung und dem Senden liegt kein weiteres Warten; ein Entzug
-  // NACH dem Senden wirkt auf die nächste Anfrage (Beleg- und Frageweg prüfen am Eingang).
-  const herangezogen = [...new Set([...out.result.sources, ...out.result.citedSources])];
-  for (const id of herangezogen) {
-    const jetzt = await deps.ko.get(id);
-    if (!jetzt || isConfidential(jetzt.confidentiality) || !sichtJetzt(jetzt)) {
-      reply.code(409).send({
-        error: "QUELLRECHTE_GEAENDERT",
-        message:
-          lauf.locale === "en"
-            ? "Access to a source used for this answer changed while it was being prepared. Please ask again."
-            : lauf.locale === "nl"
-              ? "De toegang tot een bron voor dit antwoord is tijdens het opstellen gewijzigd. Stel de vraag opnieuw."
-              : "Der Zugriff auf eine herangezogene Quelle hat sich während der Antwort geändert. Bitte erneut fragen.",
-      });
-      return;
-    }
+  if (
+    rechteGeaendert ||
+    aktuell.some(
+      ({ id, ko }) =>
+        !ko ||
+        inSchutzdatenQuarantaene(ko) ||
+        (wissensquellen.has(id) && (isConfidential(ko.confidentiality) || !sichtJetzt(ko))) ||
+        (konfliktseiten.has(id) && !konfliktsichtJetzt(ko)),
+    )
+  ) {
+    reply.code(409).send({
+      error: "QUELLRECHTE_GEAENDERT",
+      message:
+        lauf.locale === "en"
+          ? "Access to a source used for this answer changed while it was being prepared. Please ask again."
+          : lauf.locale === "nl"
+            ? "De toegang tot een bron voor dit antwoord is tijdens het opstellen gewijzigd. Stel de vraag opnieuw."
+            : "Der Zugriff auf eine herangezogene Quelle hat sich während der Antwort geändert. Bitte erneut fragen.",
+    });
+    return;
+  }
+  if (
+    aktuell.some(({ id, ko }) => {
+      if (!ko) return true;
+      const gelesen = vorgelegt?.get(id) ?? out.quellenStand?.[id];
+      const hinweis = hinweise.get(id);
+      const konfliktseite = konfliktseiten.get(id);
+      return (
+        (id === loesung?.koId && (ko.version !== loesung.koVersion || ko.status !== "validiert")) ||
+        (konfliktseite &&
+          (ko.version !== konfliktseite.version ||
+            (ko.status === "validiert") !== konfliktseite.validiert)) ||
+        (grundlagen.has(id) &&
+          (ko.status !== "validiert" ||
+            (vorgelegt && !vorgelegt.has(id)) ||
+            (gelesen !== undefined && ko.version !== gelesen))) ||
+        (hinweis && (ko.status !== hinweis.status || ko.title !== hinweis.title))
+      );
+    })
+  ) {
+    reply.code(409).send({
+      error: "QUELLSTAND_GEAENDERT",
+      message:
+        lauf.locale === "en"
+          ? "A source or its approval changed while the answer was being prepared. Please ask again."
+          : lauf.locale === "nl"
+            ? "Een bron of de goedkeuring ervan is tijdens het beantwoorden gewijzigd. Stel de vraag opnieuw."
+            : "Eine Quelle oder ihre Freigabe hat sich während der Antwort geändert. Bitte erneut fragen.",
+    });
+    return;
   }
   // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
   // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.

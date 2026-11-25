@@ -8,8 +8,36 @@
 // herangezogene Quelle nie trägt.
 import { describe, expect, it } from "vitest";
 import { absatzBelege } from "../../services/app/src/absatz-belege";
+import { QUELLWORTLAUTE } from "../../services/reasoner";
 
 describe("R-0310 · absatzBelege — je Absatz die Quellen, die ihn belegen", () => {
+  it("Ein Originalzitat mit Absatzumbruch und eigener Nummerierung trägt nur seine Quellfassung", () => {
+    const erzeugt = [
+      { text: "Die Quellen weichen ab.", quellen: ["a", "b"] },
+      { text: "Merkblatt: Regel [2]\n\n30 Tage.", quellen: ["a"] },
+      { text: "Vertrag: 45 Tage.", quellen: ["b"] },
+    ];
+    const result = {
+      answered: true,
+      answer: erzeugt.map((x) => x.text).join("\n\n"),
+      sources: ["a", "b"],
+      citedSources: ["a", "b"],
+      [QUELLWORTLAUTE]: erzeugt,
+    };
+    expect(absatzBelege(result)?.map((x) => x.quellen)).toEqual([["a", "b"], ["a"], ["a"], ["b"]]);
+    expect(
+      absatzBelege({ ...result, answer: result.answer.replace("30 Tage", "60 Tage") })?.map(
+        (x) => x.quellen,
+      ),
+    ).toEqual([[], [], [], []]);
+    expect(absatzBelege({ ...result, citedSources: ["a"] })?.map((x) => x.quellen)).toEqual([
+      [],
+      ["a"],
+      ["a"],
+      [],
+    ]);
+  });
+
   it("Z1 · deterministischer Weg: die Antwort IST die Aussage der einen tragenden Quelle — jeder Absatz trägt sie (wörtlich)", () => {
     const aussage = "Offene Profile sind zu bevorzugen.\n\nGeschlossene sind zu begründen.";
     expect(

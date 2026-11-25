@@ -161,8 +161,11 @@ describe("AUFTRAG-mega54 D2 — Sammler: eine Zerlegung, eine Grundform", () => 
   // WAHRHEIT im Sinn von mega54: sie speist weder Prefilter noch Ranking — die Zusage „Vorauswahl und
   // Ranking nutzen EXAKT dieselben Terme" bleibt an `tokenize` allein hängen. Der Sammler zählt sie
   // namentlich, damit eine DRITTE sichtbar wird, statt still durchzugehen.
-  it("es gibt GENAU EINE Zerlegung für Terme im Antwortweg — und die eine, benannte für Zitate", () => {
+  // REF-01 sucht innerhalb der gewählten Quelle nach Unicode-Passagen und Zeichenbereichen.
+  // Diese lokale Zerlegung erreicht weder die Kandidatenauswahl noch das Ranking.
+  it("Suchterme, Zitatdeckung und Fundstellensuche haben jeweils ihre benannte Zerlegung", () => {
     expect(erheben(weg, istZerlegung)).toEqual([
+      "services/ask/src/aussage-fundstellen.ts:woerter",
       "services/reasoner/src/provider-model.ts:zitatWoerter",
       `${DIE_EINE_STELLE}:tokenize`,
     ]);

@@ -2210,6 +2210,9 @@ const en: typeof de = {
   "ask.error.title": "The question could not be answered.",
   "ask.error.body":
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
+  "ask.quellenwechsel.titel": "The basis for this answer has changed.",
+  "ask.quellenwechsel.hinweis":
+    "Ask again to check the sources currently approved and available to you.",
   "ask.error.retry": "Try again",
   "ask.gebremst.titel": "Please wait a moment.",
   "ask.offline": "No connection.",

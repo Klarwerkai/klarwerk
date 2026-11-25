@@ -212,6 +212,92 @@ describe("P05-AC03 · Leserechtsentzug während einer laufenden Antwort", () => 
   });
 });
 
+describe("Quellfassung und Freigabe während einer laufenden Antwort", () => {
+  it("prüft auch vorgelegte Quellen, die das Modell weder als Quelle nennt noch zitiert", async () => {
+    const headers = await anmelden();
+    const zweitquelle = await services.ko.create({
+      title: `${TITEL} Zusatzblatt`,
+      statement: AUSSAGE,
+      type: "best_practice",
+      category: "Instandhaltung",
+      author: adminId,
+      confidentiality: "intern",
+    });
+    await services.validation.adminValidate(zweitquelle.id, adminId);
+    const modellanfrage = services.reasoner.answer.bind(services.reasoner);
+    vi.spyOn(services.reasoner, "answer").mockImplementationOnce(async (...args) => {
+      expect(args[1].map((k) => k.id)).toEqual(expect.arrayContaining([koId, zweitquelle.id]));
+      const antwort = await modellanfrage(...args);
+      return { ...antwort, answer: AUSSAGE, sources: [koId], citedSources: [koId] };
+    });
+    const fragenVorWechsel = services.ask.ask.bind(services.ask);
+    vi.spyOn(services.ask, "ask").mockImplementationOnce(async (...args) => {
+      const out = await fragenVorWechsel(...args);
+      expect(out.result.sources).toEqual([koId]);
+      await services.ko.revise(zweitquelle.id, { statement: "Aktuelles Zusatzblatt." }, adminId);
+      await services.validation.adminValidate(zweitquelle.id, adminId);
+      return out;
+    });
+    const res = await fragen(headers);
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().error).toBe("QUELLSTAND_GEAENDERT");
+    expect(res.body).not.toContain(AUSSAGE);
+    expect(res.body).not.toContain(zweitquelle.id);
+  });
+
+  it("entfernt bei späterer Hochstufung auch den Titel aus einem Wissenslückenhinweis", async () => {
+    await services.ko.markTruthConflictReview(koId, adminId);
+    const headers = await anmelden();
+    const original = services.ask.ask.bind(services.ask);
+    vi.spyOn(services.ask, "ask").mockImplementationOnce(async (...args) => {
+      const out = await original(...args);
+      expect(out.result.answered).toBe(false);
+      expect(out.verschlossen?.map((h) => h.id)).toContain(koId);
+      await services.ko.setConfidentiality(koId, "vertraulich", adminId);
+      return out;
+    });
+    const res = await fragen(headers);
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().error).toBe("QUELLRECHTE_GEAENDERT");
+    expect(res.body).not.toContain(TITEL);
+    expect(res.body).not.toContain(koId);
+  });
+
+  it.each(["neue Fassung", "Freigabe zurückgezogen"] as const)(
+    "%s verlangt eine neue Frage",
+    async (wechsel) => {
+      const headers = await anmelden();
+      const original = services.ask.ask.bind(services.ask);
+      const neueAussage = "An der Spezialpresse SPX9 zum Entlüften zuerst den Zulauf schließen.";
+      vi.spyOn(services.ask, "ask").mockImplementationOnce(async (...args) => {
+        const out = await original(...args);
+        expect(out.result.answer).toContain(AUSSAGE);
+        if (wechsel === "neue Fassung") {
+          await services.ko.revise(koId, { statement: neueAussage }, adminId);
+          await services.validation.adminValidate(koId, adminId);
+        } else {
+          await services.ko.markTruthConflictReview(koId, adminId);
+        }
+        return out;
+      });
+      const res = await fragen(headers);
+      expect(res.statusCode, res.body).toBe(409);
+      expect(res.json().error).toBe("QUELLSTAND_GEAENDERT");
+      expect(res.body).not.toContain(AUSSAGE);
+      expect(res.body).not.toContain(koId);
+      expect(res.body).not.toContain("receipt");
+      const erneut = await fragen(headers);
+      expect(erneut.statusCode, erneut.body).toBe(200);
+      if (wechsel === "neue Fassung") {
+        expect(erneut.json().result.answer).toContain(neueAussage);
+        expect(erneut.json().quellenStand[koId]).toBe(2);
+      } else {
+        expect(erneut.json().result.answered).toBe(false);
+      }
+    },
+  );
+});
+
 // Ben, Nacharbeit 6 — P05-AC06 gegen AC01: eine GESONDERTE Löschung der Wissenskopie (etwa
 // personenbezogen oder Lizenz) während der Antwort sperrt die Ausgabe; eine GEWÖHNLICHE
 // Quellenlöschung (die externe Quelle ist nur unerreichbar, die Kopie bleibt) sperrt sie nicht.

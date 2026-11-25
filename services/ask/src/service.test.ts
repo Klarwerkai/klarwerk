@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 // JOB 3549 R5: `KnowledgeRef`, `ReasonerLocale`, `ReasonerProvider` und `StructureResult` wurden
@@ -23,17 +23,19 @@ async function setup() {
   // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
   // In der echten App tut das die Startorchestrierung in build-app.ts.
   await koService.activateSearchProjectionV2();
-  await koService.create({
+  const ventil = await koService.create({
     title: "Ventil bei Überdruck schließen",
     statement: "Bei Überdruck Ventil X manuell schließen.",
     type: "best_practice",
     category: "Anlage 1",
     author: "anna",
+    confidentiality: "intern",
   });
   const audit = new AuditService({ repo: new InMemoryAuditRepo() });
   const gaps = new InMemoryGapRepo();
+  const reasoner = new Reasoner();
   const ask = new AskService({
-    reasoner: new Reasoner(),
+    reasoner,
     koService,
     gaps,
     audit,
@@ -47,7 +49,10 @@ async function setup() {
       await validation.rate(koId, `pruefer-${i}`, "up");
     }
   };
-  return { ask, koService, audit, gaps, freigeben };
+  // Die Freigabe mit Vorbehalt lässt Platz für die zwei gemessenen Trust-Schritte.
+  await validation.rate(ventil.id, "pruefer-vorbehalt", "warn");
+  await freigeben(ventil.id);
+  return { ask, koService, audit, gaps, freigeben, ventil, reasoner };
 }
 
 describe("AskService", () => {
@@ -58,11 +63,85 @@ describe("AskService", () => {
   });
 
   it("FR-ASK-01/02: begründete Antwort mit Quelle bei passender Frage", async () => {
-    const { result, gap } = await ctx.ask.ask("Was tun bei Überdruck am Ventil?");
+    const { result, gap } = await ctx.ask.ask("Was tun bei Überdruck am Ventil?", "leser", "de", {
+      validatedOnly: true,
+    });
     expect(result.answered).toBe(true);
     expect(result.sources.length).toBeGreaterThan(0);
     expect(result.steps[0]?.sourceId).toBeTruthy();
     expect(gap).toBeNull();
+  });
+
+  it("eine während der Frage revidierte Quelle liefert dem Modell keinen Volltext der Folgefassung", async () => {
+    const alterStand = await ctx.koService.get(ctx.ventil.id);
+    expect(alterStand?.status).toBe("validiert");
+    const ladeProjektion = ctx.koService.searchProjectionOf.bind(ctx.koService);
+    const neuerText = "Der überarbeitete Entwurf ist noch nicht zur Verwendung freigegeben.";
+    vi.spyOn(ctx.koService, "searchProjectionOf").mockImplementationOnce(async (id) => {
+      await ctx.koService.revise(id, { bodyHtml: `<p>${neuerText}</p>` }, "anna");
+      return ladeProjektion(id);
+    });
+    const antworten = vi.spyOn(ctx.reasoner, "answer");
+    const lauf = await ctx.ask.ask("Was tun bei Überdruck am Ventil?", "leser", "de", {
+      validatedOnly: true,
+    });
+    const kontext = antworten.mock.calls[0]?.[1];
+    expect(kontext).toHaveLength(1);
+    expect(kontext?.[0]).toMatchObject({ id: ctx.ventil.id, statement: ctx.ventil.statement });
+    expect(kontext?.[0]?.bodyText).toBeUndefined();
+    expect(JSON.stringify(lauf)).not.toContain(neuerText);
+    expect(ctx.ask.quellstaendeDerAntwort(lauf).get(ctx.ventil.id)).toBe(ctx.ventil.version);
+    expect((await ladeProjektion(ctx.ventil.id))?.bodyText).toContain(neuerText);
+  });
+
+  it("bei einem Treffer nur im freigegebenen Volltext erhält der Antwortweg den Text der belegten Fassung", async () => {
+    const text = "Den Differenzdruck an der Prüfstation vor der Messung notieren.";
+    const fassung = await ctx.koService.revise(
+      ctx.ventil.id,
+      { bodyHtml: `<p>${text}</p>` },
+      "anna",
+    );
+    await ctx.freigeben(fassung.id);
+    const beantworten = vi.spyOn(ctx.reasoner, "answer");
+    const lauf = await ctx.ask.ask("Differenzdruck Prüfstation", "leser", "de", {
+      validatedOnly: true,
+    });
+    expect(beantworten.mock.calls[0]?.[1][0]?.bodyText).toContain(text);
+    expect(lauf.result.answered).toBe(true);
+    expect(lauf.result.citedSources).toContain(fassung.id);
+    expect(lauf.quellenStand?.[fassung.id]).toBe(fassung.version);
+  });
+
+  it("hält alle vorgelegten Fassungen auch bei einem engeren Quellenverweis für die Nachprüfung fest", async () => {
+    const zweite = await ctx.koService.create({
+      title: "Überdruck am Ventil prüfen",
+      statement: "Den Überdruck am Ventil vor der Freigabe prüfen.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "anna",
+      confidentiality: "intern",
+    });
+    await ctx.freigeben(zweite.id);
+    const antworten = ctx.reasoner.answer.bind(ctx.reasoner);
+    vi.spyOn(ctx.reasoner, "answer").mockImplementation(async (...args) => {
+      expect(args[1].map((quelle) => quelle.id).sort()).toEqual([ctx.ventil.id, zweite.id].sort());
+      const antwort = await antworten(...args);
+      return {
+        ...antwort,
+        demo: false,
+        answer: ctx.ventil.statement,
+        sources: [ctx.ventil.id],
+        citedSources: [ctx.ventil.id],
+      };
+    });
+    const lauf = await ctx.ask.ask("Überdruck Ventil", "leser", "de", { validatedOnly: true });
+    expect(lauf.quellenStand).toEqual({ [ctx.ventil.id]: ctx.ventil.version });
+    expect(ctx.ask.quellstaendeDerAntwort(lauf)).toEqual(
+      new Map([
+        [ctx.ventil.id, ctx.ventil.version],
+        [zweite.id, zweite.version],
+      ]),
+    );
   });
 
   it("FR-ASK-03: ohne Grundlage keine erfundene Antwort, Wissenslücke entsteht", async () => {
@@ -87,7 +166,9 @@ describe("AskService", () => {
   // der GENAU dieses KO diesem Nutzer als Quelle belegt. Ein echter Antwortvorgang liefert ihn.
   const HELPFUL_QUESTION = "Was tun bei Überdruck am Ventil?";
   async function receiptFor(actor: string): Promise<string> {
-    const { result, receipt } = await ctx.ask.ask(HELPFUL_QUESTION, actor);
+    const { result, receipt } = await ctx.ask.ask(HELPFUL_QUESTION, actor, "de", {
+      validatedOnly: true,
+    });
     // Der Beleg bindet die ausgelieferten Quellen — der Test-Store hat GENAU dieses eine KO.
     expect(result.sources.length).toBeGreaterThan(0);
     return receipt;
@@ -221,10 +302,14 @@ describe("AskService", () => {
     }
     const assigned = await ctx.ask.assignGap(gap.id, "experte-1");
     expect(assigned.assignee).toBe("experte-1");
-    const ko = (await ctx.koService.list())[0];
-    if (!ko) {
-      throw new Error("KO fehlt.");
-    }
+    const ko = await ctx.koService.create({
+      title: "Antwort zur offenen Frage",
+      statement: "Die neue Arbeitsanweisung beantwortet die Frage.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "anna",
+      confidentiality: "intern",
+    });
     // R-0846 / L6: geschlossen wird mit dem Wissensobjekt, das die Lücke beantwortet.
     // produkt:20261010:wissenskreislauf-schliessen: und nur, wenn es fachlich freigegeben ist —
     // ein bloss vorhandenes, ungeprüftes Objekt schliesst nicht mehr.
@@ -279,8 +364,6 @@ describe("AskService", () => {
       koId: ko.id,
     };
     await ctx.gaps.insert(basis);
-    // produkt:20261010:wissenskreislauf-schliessen: der stehende Bezug trägt erst nach der Fachfreigabe.
-    await ctx.freigeben(ko.id);
     const geschlossen = await ctx.ask.closeGap(basis.id);
     expect(geschlossen.status).toBe("geschlossen");
     expect(geschlossen.koId).toBe(ko.id);
@@ -360,30 +443,37 @@ describe("AskService", () => {
 // nie ins Modell-Input, nie in die zitierten Quellen, nie in den Antworttext. Ein Upstream-Filter an der
 // Kandidatenauswahl deckt alle drei ab. Nicht-vertrauliche KOs bleiben unverändert nutzbar.
 describe("SCRUM-502: Ask schließt vertrauliche KOs aus", () => {
-  it("vertrauliches KO ist NIE zitierte Quelle / Schritt-Quelle", async () => {
-    const { ask, koService } = await setup();
-    const secret = await koService.create({
-      title: "Xylophon Notfall",
-      statement: "Xylophon-Anlage bei Störung sofort abschalten.",
-      type: "best_practice",
-      category: "Geheim",
-      author: "anna",
-      confidentiality: "vertraulich",
-    });
-    const { result } = await ask.ask("Was tun bei Störung der Xylophon-Anlage?");
-    expect(result.sources).not.toContain(secret.id);
-    expect(result.steps.every((s) => s.sourceId !== secret.id)).toBe(true);
-  });
+  it.each([undefined, "vertraulich"] as const)(
+    "auch fachlich freigegeben bleibt die geschützte Quelle außerhalb der Antwort · %s",
+    async (stufe) => {
+      const { ask, koService, freigeben } = await setup();
+      const secret = await koService.create({
+        title: "Xylophon Notfall",
+        statement: "Xylophon-Anlage bei Störung sofort abschalten.",
+        type: "best_practice",
+        category: "Geheim",
+        author: "anna",
+        ...(stufe ? { confidentiality: stufe } : {}),
+      });
+      await freigeben(secret.id);
+      const { result } = await ask.ask("Was tun bei Störung der Xylophon-Anlage?");
+      expect(result.answered).toBe(false);
+      expect(result.sources).not.toContain(secret.id);
+      expect(result.steps.every((s) => s.sourceId !== secret.id)).toBe(true);
+    },
+  );
 
   it("Kontrast: dasselbe KO NICHT-vertraulich wird zitiert (der Filter ist die Ursache)", async () => {
-    const { ask, koService } = await setup();
+    const { ask, koService, freigeben } = await setup();
     const open = await koService.create({
       title: "Xylophon Notfall",
       statement: "Xylophon-Anlage bei Störung sofort abschalten.",
       type: "best_practice",
       category: "Betrieb",
       author: "anna",
+      confidentiality: "intern",
     });
+    await freigeben(open.id);
     const { result } = await ask.ask("Was tun bei Störung der Xylophon-Anlage?");
     expect(result.sources).toContain(open.id);
   });
@@ -408,17 +498,15 @@ describe("SCRUM-490 R2: Add-on Retrieval-only + Quellenpflicht", () => {
   async function askWith(reasoner: Reasoner) {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
     await koService.activateSearchProjectionV2();
-    await koService.create({
+    const created = await koService.create({
       title: "Ventil bei Überdruck",
       statement: "Bei Überdruck Ventil X schließen.",
       type: "best_practice",
       category: "Anlage 1",
       author: "anna",
+      confidentiality: "intern",
     });
-    const created = (await koService.list())[0];
-    if (created) {
-      await koService.setValidationState(created.id, { trust: 80, status: "validiert" });
-    }
+    await koService.setValidationState(created.id, { trust: 80, status: "validiert" });
     return new AskService({ reasoner, koService, gaps: new InMemoryGapRepo() });
   }
 

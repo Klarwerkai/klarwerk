@@ -89,6 +89,7 @@ describe("G27 · Klara: der Suchraum umfasst den vollen Dokumenttext", () => {
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
       bodyHtml: langerBody(ZIELWORT),
     });
     // Kalibrierung: das Zielwort steht wirklich erst weit hinter der alten Kurzfeldgrenze …
@@ -121,6 +122,7 @@ describe("G27 · Klara: der Suchraum umfasst den vollen Dokumenttext", () => {
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
       bodyHtml: langerBody("Altfassungsbegriff"),
     });
     const alteFrage = "Was bedeutet Altfassungsbegriff?";
@@ -188,6 +190,7 @@ describe("G27 · die benannte Grenze dieser Scheibe", () => {
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
       bodyHtml: langerBody(ZIELWORT),
     });
     // R-0278 (Nacharbeit 3): die Web-Ansicht zieht nur noch Geprüftes heran. Gemessen wird hier

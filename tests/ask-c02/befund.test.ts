@@ -390,6 +390,7 @@ async function aufbauen(
   const koService = new KoService({ repo: new InMemoryKoRepo() });
   await koService.activateSearchProjectionV2();
   const paket = await koService.create({
+    confidentiality: "intern",
     title: "[Beispiel] Standard invoice due date",
     statement: ABSAETZE.join("\n\n"),
     bodyHtml: ABSAETZE.map((a) => `<p>${a}</p>`).join(""),
@@ -406,6 +407,7 @@ async function aufbauen(
   }
   const kopieAbsaetze = opts.kopieAbsaetze ?? ABSAETZE;
   const kopie = await koService.create({
+    confidentiality: "intern",
     title: "[DEMO C02] Standard invoice due date",
     statement: ADVISOR_FICTION_NOTICE,
     bodyHtml: kopieAbsaetze.map((a) => `<p>${a}</p>`).join(""),
@@ -528,6 +530,7 @@ describe("JOB 3353 A · dieselbe Regel, gleich wie gefragt wird", () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
     await koService.activateSearchProjectionV2();
     const paket = await koService.create({
+      confidentiality: "intern",
       title: "[Beispiel] Standard invoice due date",
       statement: ABSAETZE.join("\n\n"),
       bodyHtml: ABSAETZE.map((a) => `<p>${a}</p>`).join(""),
@@ -537,6 +540,7 @@ describe("JOB 3353 A · dieselbe Regel, gleich wie gefragt wird", () => {
     });
     await koService.setValidationState(paket.id, { trust: 90, status: "validiert" });
     await koService.create({
+      confidentiality: "intern",
       title: "[DEMO C02] Standard invoice due date",
       statement: ADVISOR_FICTION_NOTICE,
       bodyHtml: ABSAETZE.map((a) => `<p>${a}</p>`).join(""),
@@ -545,6 +549,7 @@ describe("JOB 3353 A · dieselbe Regel, gleich wie gefragt wird", () => {
       author: "bea",
     });
     const nl = await koService.create({
+      confidentiality: "intern",
       title: "[NL] Standard invoice due date",
       statement: "Standard invoices are due 60 calendar days after the invoice date.",
       type: "best_practice",
@@ -595,6 +600,7 @@ describe("JOB 3353 A · dieselbe Regel, gleich wie gefragt wird", () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
     await koService.activateSearchProjectionV2();
     await koService.create({
+      confidentiality: "intern",
       title: "Standard invoice due date",
       statement: "DEMO notice: content imported for the demonstration.",
       type: "best_practice",

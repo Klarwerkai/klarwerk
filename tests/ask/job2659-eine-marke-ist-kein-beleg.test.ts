@@ -567,6 +567,7 @@ async function kette(modell: ModelClient) {
     type: "best_practice",
     category: "Anlage 1",
     author: "anna",
+    confidentiality: "intern",
   });
   await koService.setValidationState(ventil.id, { trust: 92, status: "validiert" });
   const reasoner = new Reasoner(new ModelProvider(modell));

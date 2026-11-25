@@ -98,7 +98,15 @@ function ko(
   status: "validiert" | "offen",
   trust: number,
 ): KnowledgeObject {
-  return { id, title, statement, status, trust } as unknown as KnowledgeObject;
+  return {
+    id,
+    title,
+    statement,
+    status,
+    trust,
+    version: 1,
+    confidentiality: "intern",
+  } as KnowledgeObject;
 }
 
 function bestandMitEinemPassendenTreffer(): {

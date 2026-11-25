@@ -86,7 +86,7 @@ async function aufbauen(
     category: "Vertrag",
     author: "anna",
     bodyHtml: C02_HTML,
-    ...(opts.vertraulich ? { confidentiality: "vertraulich" as const } : {}),
+    confidentiality: opts.vertraulich ? "vertraulich" : "intern",
   });
   // Ein zweites, unbedenkliches Objekt (validiert, nicht vertraulich, ohne den Regelsatz). Es sorgt
   // dafür, dass in den Rechte-Fällen WIRKLICH ein Modellaufruf stattfindet: „der Satz steht nicht im
@@ -104,6 +104,7 @@ async function aufbauen(
     type: "best_practice",
     category: "Vertrag",
     author: "bea",
+    confidentiality: "intern",
   });
   await koService.setValidationState(harmlos.id, { trust: 90, status: "validiert" });
   if (opts.status === "validiert") {

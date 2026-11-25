@@ -10,23 +10,25 @@
 //   absaetze: Array<{ text: string; quellen: string[] }>
 //
 // `quellen` sind Kennungen aus `result.citedSources` (die TRAGENDEN Quellen). Ein Absatz trägt eine
-// Quelle NUR aus einem dieser beiden ausdrücklichen Gründen — nie aus Lage oder Nachbarschaft:
+// Quelle NUR aus einer ausdrücklichen Bindung:
 //   1. MARKE: der Absatz selbst trägt die Fußnotenmarke `[n]` (n = Stelle in `result.sources`,
 //      dieselbe Lesart wie `citedSourceIds` im Reasoner) und die Quelle ist tragend.
 //   2. WÖRTLICH: der Absatz steht wörtlich in der Aussage einer tragenden Quelle
 //      (`steps[].snippet`, Leerraum zusammengefasst). So trägt der deterministische Weg — die
 //      Antwort IST dort die Aussage der einen tragenden Quelle (provider.ts `answer`).
-// Ein Absatz ohne beides hat `quellen: []` — unbelegt. Die Fläche gibt ihn NICHT aus.
+//   3. ERZEUGTER QUELLWORTLAUT: beim Zusammenstellen eines Rückfalls bindet der Server jeden
+//      Abschnitt an die Quellen, aus denen er den Vergleich oder das Zitat gebildet hat.
+// Ein Absatz ohne Bindung hat `quellen: []` — unbelegt. Die Fläche gibt ihn NICHT aus.
 //
 // Das Feld fehlt nur, wenn es nichts zuzuordnen gibt (keine beantwortete Frage). Der Antworttext in
 // `result.answer` bleibt unverändert: die Zuordnung ist eine zusätzliche Aussage, keine Umschrift.
 
-export interface AbsatzBeleg {
-  text: string;
-  quellen: string[];
-}
+import { QUELLWORTLAUTE, type Quellabsatz } from "../../reasoner";
+
+export type AbsatzBeleg = Quellabsatz;
 
 export interface AbsatzQuelle {
+  [QUELLWORTLAUTE]?: readonly Quellabsatz[];
   answered: boolean;
   answer: string | null;
   sources: readonly string[];
@@ -80,7 +82,24 @@ export function absatzBelege(result: AbsatzQuelle): AbsatzBeleg[] | undefined {
         s.snippet.trim() !== "",
     )
     .map((s) => ({ id: s.sourceId, text: normal(s.snippet) }));
-  return absaetzeVon(result.answer).map((absatz) => {
+  const absaetze = absaetzeVon(result.answer);
+  const erzeugt = (result[QUELLWORTLAUTE] ?? []).flatMap((a) =>
+    absaetzeVon(a.text).map((text) => ({ text, quellen: a.quellen })),
+  );
+  // Die Zuordnung gilt nur am exakt erzeugten Wortlaut. Nachfolgende Absätze können z. B.
+  // aus dem Firmenwörterbuch stammen. Ein [n] im Originalzitat ist Teil des Quelltexts.
+  const wortlauteStimmen = erzeugt.every((a, i) => a.text === absaetze[i]);
+  return absaetze.map((absatz, i) => {
+    const gebunden = erzeugt[i];
+    if (gebunden) {
+      return {
+        text: absatz,
+        quellen:
+          wortlauteStimmen && gebunden.quellen.every((id) => tragend.has(id))
+            ? gebunden.quellen
+            : [],
+      };
+    }
     const ausMarken = markenQuellen(absatz, result.sources, tragend);
     if (ausMarken.length > 0) {
       return { text: absatz, quellen: ausMarken };

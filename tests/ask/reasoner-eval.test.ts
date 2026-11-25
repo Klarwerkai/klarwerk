@@ -193,6 +193,7 @@ describe("SCRUM-368: Ask-Vollkette (deterministischer Reasoner, echte Services)"
       type: "best_practice",
       category: "Anlage 1",
       author: "anna",
+      confidentiality: "intern",
     });
     // Validieren (Status + Trust) — nur dieses KO ist gesichert.
     await koService.setValidationState(ventil.id, { trust: 92, status: "validiert" });
@@ -202,6 +203,7 @@ describe("SCRUM-368: Ask-Vollkette (deterministischer Reasoner, echte Services)"
       type: "best_practice",
       category: "Anlage 2",
       author: "erik",
+      confidentiality: "intern",
     });
     const ask = new AskService({
       reasoner: new Reasoner(),

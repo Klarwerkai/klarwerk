@@ -607,6 +607,14 @@ interface NichtHilfreichErledigt {
   entwurfId: string | null;
 }
 
+function quellenwechsel(fehler: unknown): boolean {
+  return (
+    fehler instanceof ApiError &&
+    fehler.status === 409 &&
+    (fehler.code === "QUELLRECHTE_GEAENDERT" || fehler.code === "QUELLSTAND_GEAENDERT")
+  );
+}
+
 function ausstehendeAntwortpruefung() {
   return {
     epoche: anfrageEpoche(),
@@ -1141,6 +1149,29 @@ export function Ask(): JSX.Element {
       void qc.resetQueries({ queryKey: ["conflicts"], exact: true });
     }
   }, [qc, konto, standFuer]);
+  function verwerfeAntwort(): void {
+    antwortFrage.current = "";
+    setResult(null);
+    setReceipt("");
+    setAnswerId(null);
+    setGapId(null);
+    setGeloesteLuecke(null);
+    setThankedSources(new Set());
+    // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
+    // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
+    setVerschlossen([]);
+    setPruefrahmen(null);
+    setReferenzpruefung(null);
+    setAussageTexte(new Map());
+    setFundstellenAuszuege(new Map());
+    setAntwortFingerabdruck(null);
+    setBestaetigtFuer(null);
+    setReferenzAbgelaufen(false);
+    // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
+    setGeltungsAuskunft(null);
+    // R-0305/R-1099: ebenso der Kontext, an den die Zweitmeinung gebunden ist.
+    setAntwortKontext(null);
+  }
   const ask = useMutation({
     mutationFn: (anfrage: AskAnfrage) => {
       const { lauf } = anfrage;
@@ -1163,6 +1194,17 @@ export function Ask(): JSX.Element {
     onError: (fehler: unknown, anfrage) => {
       if (askLauf.current !== anfrage.lauf || anfrage.generation !== kontoGeneration.current)
         return;
+      if (quellenwechsel(fehler)) {
+        verwerfeAntwort();
+        setRueckmeldungsBezug(null);
+        setNichtHilfreich(null);
+        setAussagen([]);
+        vorlesenStoppen();
+        // Auch ein unmittelbarer Rückweg oder ein Neuladen darf die alte Antwort nicht wiederherstellen.
+        merkeAntwortRechtewechsel(fragenSpeicher(), konto);
+        void qc.invalidateQueries({ queryKey: ["kos"] });
+        void qc.invalidateQueries({ queryKey: ["conflicts"] });
+      }
       if (fehler instanceof ApiError && fehler.code === "KI_ABGESCHALTET") {
         void qc.invalidateQueries({ queryKey: ["reasoner", "status"] });
       }
@@ -1195,27 +1237,7 @@ export function Ask(): JSX.Element {
       if (question === antwortFrage.current) {
         return;
       }
-      antwortFrage.current = "";
-      setResult(null);
-      setReceipt("");
-      setAnswerId(null);
-      setGapId(null);
-      setGeloesteLuecke(null);
-      setThankedSources(new Set());
-      // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
-      // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
-      setVerschlossen([]);
-      setPruefrahmen(null);
-      setReferenzpruefung(null);
-      setAussageTexte(new Map());
-      setFundstellenAuszuege(new Map());
-      setAntwortFingerabdruck(null);
-      setBestaetigtFuer(null);
-      setReferenzAbgelaufen(false);
-      // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
-      setGeltungsAuskunft(null);
-      // R-0305/R-1099: ebenso der Kontext, an den die Zweitmeinung gebunden ist.
-      setAntwortKontext(null);
+      verwerfeAntwort();
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
     onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand, kontext, lauf }) => {
@@ -2018,11 +2040,11 @@ export function Ask(): JSX.Element {
   const quellenHref = (id: string): string => {
     const quelle = quellenAuskunft.find((q) => q.id === id);
     const ko = kosById.get(id);
-    const zitiert = result?.steps.find((st) => st.sourceId === id)?.snippet ?? ko?.statement ?? "";
-    const stelle =
-      quelle?.carrying && zitiert.trim() !== ""
-        ? { passage: zitiert, fassung: ko?.version ?? null }
-        : null;
+    const fassung = quellenStand?.[id] ?? ko?.version ?? null;
+    const zitiert =
+      result?.steps.find((st) => st.sourceId === id)?.snippet ??
+      (ko?.version === fassung ? ko.statement : "");
+    const stelle = quelle?.carrying && zitiert.trim() !== "" ? { passage: zitiert, fassung } : null;
     // Arbeitswege am selben Artikel (Quellrückweg, Nacharbeit 8): bleibt von der Belegstelle KEIN
     // Anker übrig — keine tragende Passage ODER eine zu lange, die `belegstelleHref` samt Fassung
     // verwirft —, führt die Quelle, die zugleich der gefragte Beitrag ist, mit DERSELBEN Kennung und
@@ -2754,10 +2776,10 @@ export function Ask(): JSX.Element {
             ) : (
               <>
                 <p className="text-[13px] font-semibold text-trust-crit-text">
-                  {t("ask.error.title")}
+                  {t(quellenwechsel(ask.error) ? "ask.quellenwechsel.titel" : "ask.error.title")}
                 </p>
                 <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
-                  {t("ask.error.body")}
+                  {t(quellenwechsel(ask.error) ? "ask.quellenwechsel.hinweis" : "ask.error.body")}
                 </p>
                 <Button className="mt-3" variant="ghost" onClick={() => submitAsk(asked || q)}>
                   {t("ask.error.retry")}

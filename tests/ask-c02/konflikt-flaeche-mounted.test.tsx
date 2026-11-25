@@ -79,6 +79,8 @@ const LLM = "http://127.0.0.1:65530/v1";
 let drahtApp: FastifyInstance | null = null;
 let cookie: string | null = null;
 let modellAufrufe = 0;
+let absatzZuordnung: { text: string; quellen: string[] }[] = [];
+let antwortKlasse: string | undefined;
 let vorherigerFetch: typeof globalThis.fetch;
 
 function drahtAufbauen(): void {
@@ -118,6 +120,11 @@ function drahtAufbauen(): void {
       ...(init?.body !== undefined && init.body !== null ? { payload: String(init.body) } : {}),
     });
     const gesetzt = antwort.headers["set-cookie"];
+    if (url === "/api/ask" && antwort.statusCode === 200) {
+      const daten = antwort.json();
+      absatzZuordnung = daten.absaetze;
+      antwortKlasse = daten.result.knowledgeClass;
+    }
     const roh = Array.isArray(gesetzt) ? gesetzt[0] : gesetzt;
     if (typeof roh === "string") {
       cookie = roh.split(";")[0] ?? cookie;
@@ -159,6 +166,8 @@ afterEach(() => {
   drahtApp = null;
   cookie = null;
   modellAufrufe = 0;
+  absatzZuordnung = [];
+  antwortKlasse = undefined;
 });
 
 async function seiteOeffnen(): Promise<void> {
@@ -221,7 +230,7 @@ async function absenden(text: string): Promise<void> {
  * KEIN Konfliktdatensatz wird angelegt — der Widerspruch muss ohne ihn sichtbar bleiben
  * (Akzeptanzkriterium 1).
  */
-async function vorrichtung(kopieAbsaetze: readonly string[]): Promise<void> {
+async function vorrichtung(kopieAbsaetze: readonly string[]) {
   const services = buildServices();
   const app = buildApp(services);
   await app.ready();
@@ -261,6 +270,7 @@ async function vorrichtung(kopieAbsaetze: readonly string[]): Promise<void> {
   await endpoints.ko.act(kopie.id, { action: "admin-validate", duplicateAcknowledged: true });
   await services.aiCheckWorker?.idle();
   await seiteOeffnen();
+  return { standard: freigegeben.id, kopie: kopie.id };
 }
 
 const antwortkoerper = (): string => {
@@ -275,7 +285,7 @@ describe("JOB 3365 F · der Widerspruch steht auf der Fläche", () => {
     ["kurz", FRAGE_KURZ],
   ] as const) {
     it(`F1/${name} · zwei abweichende Fristen: der Antwortkörper zeigt BEIDE mit ihrer Quelle`, async () => {
-      await vorrichtung(ABSAETZE_45);
+      const quellen = await vorrichtung(ABSAETZE_45);
       await absenden(frage);
 
       // 0. Das Modell wurde WIRKLICH befragt — sonst misst der Fall den deterministischen Ersatz.
@@ -295,6 +305,17 @@ describe("JOB 3365 F · der Widerspruch steht auf der Fläche", () => {
       // 3. Jede Auskunft trägt ihre Quelle — im Antwortkörper selbst, nicht nur in einem Chip.
       expect(koerper).toContain(TITEL_FREIGEGEBEN);
       expect(koerper).toContain(TITEL_KOPIE);
+      expect(absatzZuordnung).toHaveLength(3);
+      expect(new Set(absatzZuordnung[0]?.quellen)).toEqual(
+        new Set([quellen.standard, quellen.kopie]),
+      );
+      expect(antwortKlasse).toBe("ungeprueft");
+      expect(absatzZuordnung.find((a) => a.text.includes("30 calendar days"))?.quellen).toEqual([
+        quellen.standard,
+      ]);
+      expect(absatzZuordnung.find((a) => a.text.includes("45 calendar days"))?.quellen).toEqual([
+        quellen.kopie,
+      ]);
       // 4. Der freie Modellsatz geht weiterhin NICHT hinaus.
       expect(koerper).not.toContain("The sources disagree about the payment period");
       // 5. Kein Fehlerpfad: das ist eine Antwort, keine Störungsmeldung.

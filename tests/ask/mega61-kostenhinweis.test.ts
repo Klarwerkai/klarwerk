@@ -68,7 +68,9 @@ describe("mega61 H / mega69 B1 · der Beispielklick sagt vorher, was er tut — 
     const ask = readFileSync(join(WURZEL, "apps", "web", "src", "pages", "Ask.tsx"), "utf8");
     const vorkommen = ask.split('t("ask.examplesSendHint")').length - 1;
     expect(vorkommen, "der Hinweis steht nicht an beiden Stellen").toBeGreaterThanOrEqual(2);
-    expect(ask).toContain('title={t("ask.examplesSendHint")}');
+    expect(ask.replace(/\s+/g, " ")).toContain(
+      'title={ fiktiv ? `${t(FRAGEN_EINSTIEG_KEYS.fiktivTitel)} ${t("ask.examplesSendHint")}` : t("ask.examplesSendHint") }',
+    );
   });
 
   it("und der Chip löst WIRKLICH sofort aus — sonst wäre der Hinweis überflüssig", () => {

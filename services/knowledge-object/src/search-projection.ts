@@ -1056,7 +1056,7 @@ export interface SuchZuordnung {
 }
 
 /**
- * Die deklarierten Zuordnungen. **Nur belegte Faelle** — die beiden aus OFFEN.md.
+ * Die deklarierten Zuordnungen. **Nur belegte Faelle** mit benannter Fundstelle.
  *
  * Bewusst KEINE automatische Uebersetzung und keine Ableitung: `klep`/`ventil` steht hier, weil
  * OFFEN.md es als den Fall benennt, an dem S2 haengt — nicht, weil eine Regel Niederlaendisch nach
@@ -1084,6 +1084,11 @@ export const SUCH_ZUORDNUNGEN: readonly SuchZuordnung[] = [
     begriffe: ["payment period", "due date"],
     quelle:
       "PRIORITAETEN.md ASK-C02 (Codex-Livebefund d1710126, JOB 3353) — ‚Frage nach Zahlungsfrist' findet C02 ‚Standard invoice due date'",
+  },
+  {
+    begriffe: ["nachgezogen", "nachziehen"],
+    quelle:
+      "tests/app/ask-caption-retrieval.test.ts (WP-RETEST7 R5) — Frage und Bildfußnote zur Verschraubung der Grundplatte",
   },
 ];
 

@@ -814,7 +814,26 @@ function schutzartNachpruefung(
     const option = f.parameters[3];
     const rep = f.parameters[2];
     if (!option || !rep || geschrieben(option, true) || geschrieben(rep, true)) return false;
-    const saetze = f.body.statements;
+    const rumpf = f.body.statements;
+    // Der Frageweg fängt die KI-Abschaltung während der letzten Quellenlesung ab. Nur ein
+    // unmittelbar ausgeführtes try mit abbrechendem catch kann seine Prüfung hier belegen.
+    const saetze = rumpf.flatMap((satz) => {
+      if (!ts.isTryStatement(satz) || satz.finallyBlock || !satz.catchClause) return [satz];
+      const fehlerweg = satz.catchClause.block.statements;
+      const ende = fehlerweg.at(-1);
+      if (!ende || !ts.isThrowStatement(ende)) return [satz];
+      const nurAbbrueche = fehlerweg
+        .slice(0, -1)
+        .every(
+          (zweig) =>
+            ts.isIfStatement(zweig) &&
+            !zweig.elseStatement &&
+            ts.isCallExpression(zweig.expression) &&
+            ts.isIdentifier(zweig.expression.expression) &&
+            rueckkehr(zweig.thenStatement),
+        );
+      return nurAbbrueche ? [...satz.tryBlock.statements] : [satz];
+    });
     for (let i = 0; i < saetze.length; i++) {
       const s = saetze[i];
       if (
@@ -846,7 +865,7 @@ function schutzartNachpruefung(
         rueckkehr(b.thenStatement) &&
         !geschrieben(frisch, true) &&
         saetze.slice(0, i).some(awaitVorhanden) &&
-        saetze.slice(i + 1).some((n) => sendet(n, rep))
+        rumpf.some((n) => n.pos >= s.end && sendet(n, rep))
       )
         return true;
     }

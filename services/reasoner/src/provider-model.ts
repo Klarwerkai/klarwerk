@@ -22,6 +22,7 @@ import {
   selectCandidates,
   sourceLabel,
 } from "./provider";
+import { QUELLWORTLAUTE, type Quellabsatz, formatiereQuellwortlaute } from "./quellwortlaute";
 import {
   type AbbruchBefund,
   type AnswerResult,
@@ -1086,6 +1087,7 @@ export function rueckfallStand(
 ): {
   refs: KnowledgeRef[];
   text: string;
+  abschnitte: Quellabsatz[];
   // R-1643: je ausgegebenem Wortlaut seine Quelle — die Argumentationskette des Rückfalls.
   stimmen: { ref: KnowledgeRef; text: string }[];
 } | null {
@@ -1111,16 +1113,11 @@ export function rueckfallStand(
     gesehen.add(schluessel);
     weitere.push({ ref, text });
   }
-  if (weitere.length === 0) {
-    return { refs: [gewaehlt.ref], text: gewaehlt.text, stimmen: [gewaehlt] };
-  }
   const stimmen = [gewaehlt, ...weitere];
   return {
     refs: stimmen.map((s) => s.ref),
     stimmen,
-    // Absatzweise (Leerzeile), weil die Fläche den Antworttext als Markdown rendert: so steht jede
-    // Quelle für sich, statt dass zwei Auskünfte zu einem Fließtext verschmelzen.
-    text: [UNGEKLAERT[locale], ...stimmen.map((s) => `${s.ref.title}: ${s.text}`)].join("\n\n"),
+    ...formatiereQuellwortlaute(stimmen, UNGEKLAERT[locale]),
   };
 }
 
@@ -2953,10 +2950,13 @@ export class ModelProvider implements ReasonerProvider {
       return {
         answered: true,
         answer: rueckfall.text,
+        [QUELLWORTLAUTE]: rueckfall.abschnitte,
         // JOB 3365: über ALLE genannten Quellen. Steht eine offene Kopie in der Herleitung, ist die
         // Antwort ungeprüft — die alte Form rechnete auf der einen gewählten Quelle und hätte hier
         // „gesichert" ausgewiesen, obwohl die andere Hälfte der Auskunft ungeprüft ist.
         ...answerStanding(rueckfall.refs),
+        // Jede einzelne Quelle kann freigegeben sein, während die gemeinsame Frage offen ist.
+        ...(rueckfall.stimmen.length > 1 ? { knowledgeClass: "ungeprueft" as const } : {}),
         sources: relevant.map((r) => r.id),
         citedSources: rueckfall.refs.map((r) => r.id),
         steps: relevant.map((r) => ({

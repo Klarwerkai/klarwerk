@@ -1,4 +1,5 @@
 // Öffentliche API des Moduls reasoner.
+export { QUELLWORTLAUTE, formatiereQuellwortlaute, type Quellabsatz } from "./src/quellwortlaute";
 export {
   Reasoner,
   DEFAULT_REASONER_POLICY,

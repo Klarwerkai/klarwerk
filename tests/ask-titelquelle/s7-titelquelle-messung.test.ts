@@ -139,6 +139,7 @@ async function bestandReihe2E(): Promise<{ services: Dienste; zielId: string }> 
     type: "best_practice",
     category: "Wartung",
     author: "anna",
+    confidentiality: "intern",
   });
   // `setValidationState` ist der Schreibweg, den auch die Validierung nimmt (FR-VAL-01/02) — kein
   // Sonderweg am Bestand vorbei. Er setzt Status und Trust, sonst nichts; die Suchprojektion und
@@ -152,6 +153,7 @@ async function bestandReihe2E(): Promise<{ services: Dienste; zielId: string }> 
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
       bodyHtml: koerperMitAllenFragewoertern(i),
     });
     await services.ko.setValidationState(stoerer.id, {
@@ -351,6 +353,7 @@ describe("JOB 3425 · S7 — die Zusage: die passende Titelquelle bleibt in der 
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
     });
     await services.ko.setValidationState(ziel.id, { trust: ZIEL_TRUST, status: "validiert" });
     const { result } = await services.ask.ask(FRAGE);
@@ -386,6 +389,7 @@ describe("R-1548 · A/B/E/F — dieselbe Zielquelle, dieselbe Frage, vier Zustä
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
     });
     await services.ko.setValidationState(ziel.id, { trust: AB_TRUST, status: "validiert" });
 
@@ -459,6 +463,7 @@ describe("R-1548 · A/B/E/F — dieselbe Zielquelle, dieselbe Frage, vier Zustä
           type: "best_practice",
           category: "Wartung",
           author: "anna",
+          confidentiality: "intern",
           bodyHtml: koerperMitAllenFragewoertern(i),
         });
         await services.ko.setValidationState(neu.id, { trust: AB_TRUST, status: "validiert" });
@@ -508,6 +513,7 @@ describe("JOB 3425 · S7 — eine Antwort, die im Körper steht, wird weiterhin 
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
       bodyHtml: `<p>${"Allgemeine Vorbemerkung zum Blatt. ".repeat(20)}</p><p>${KOERPERTERME.join(" ")}: 42 Nm.</p>`,
     });
     await services.ko.setValidationState(koerperquelle.id, {
@@ -523,6 +529,7 @@ describe("JOB 3425 · S7 — eine Antwort, die im Körper steht, wird weiterhin 
         type: "best_practice",
         category: "Wartung",
         author: "anna",
+        confidentiality: "intern",
       });
       await services.ko.setValidationState(nachbar.id, {
         trust: KOERPER_TRUST,

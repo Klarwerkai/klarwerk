@@ -24,20 +24,29 @@ describe("WP-RETEST7 R5: Fragen matcht Bild-Fußnoten", () => {
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
       bodyHtml: FIGURE("Verschraubung der Grundplatte quartalsweise nachziehen"),
     });
-    // mega53 A1: die Frage lautete „Wie oft die Verschraubung nachziehen?". Im UNMARKIERT-Fall
-    // unten teilt sie mit dem KO nur „Verschraubung" — „nachziehen" trifft „nachgezogen" literal
-    // nicht. Seit der absoluten Mindestsubstanz wäre das eine Wissenslücke, und dieser Test misst
-    // die Fundstellen-Kennzeichnung, nicht das Relevanzmaß.
+    // Die Frage verwendet das Partizip „nachgezogen“, der freigegebene Text den Infinitiv.
+    await services.validation.adminValidate(ko.id, "pruefer");
     const { result } = await services.ask.ask(
       "Wie oft wird die Verschraubung der Grundplatte nachgezogen?",
       "pedi",
+      "de",
+      { validatedOnly: true },
     );
     expect(result.answered).toBe(true);
     expect(result.sources).toEqual([ko.id]);
     // Fundstellen-Kennzeichnung: der Treffer kam AUSSCHLIESSLICH über die Bild-Fußnote.
     expect(result.captionSources).toEqual([ko.id]);
+    const andereAnlage = await services.ask.ask(
+      "Wie oft wird die Verschraubung der Deckplatte nachgezogen?",
+      "pedi",
+      "de",
+      { validatedOnly: true },
+    );
+    expect(andereAnlage.result.answered).toBe(false);
+    expect(andereAnlage.result.sources).toEqual([]);
   });
 
   it("Treffer in Titel/Aussage bleibt UNMARKIERT (captionSources nur für reine Fußnoten-Funde)", async () => {
@@ -53,15 +62,16 @@ describe("WP-RETEST7 R5: Fragen matcht Bild-Fußnoten", () => {
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
       bodyHtml: FIGURE("Verschraubung im Detail"),
     });
-    // mega53 A1: die Frage lautete „Wie oft die Verschraubung nachziehen?". Im UNMARKIERT-Fall
-    // unten teilt sie mit dem KO nur „Verschraubung" — „nachziehen" trifft „nachgezogen" literal
-    // nicht. Seit der absoluten Mindestsubstanz wäre das eine Wissenslücke, und dieser Test misst
-    // die Fundstellen-Kennzeichnung, nicht das Relevanzmaß.
+    // Derselbe Fragetext findet die Regel hier bereits in Titel und Aussage.
+    await services.validation.adminValidate(ko.id, "pruefer");
     const { result } = await services.ask.ask(
       "Wie oft wird die Verschraubung der Grundplatte nachgezogen?",
       "pedi",
+      "de",
+      { validatedOnly: true },
     );
     expect(result.sources).toEqual([ko.id]);
     expect(result.captionSources).toEqual([]);

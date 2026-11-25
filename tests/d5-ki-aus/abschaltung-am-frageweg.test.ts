@@ -90,6 +90,7 @@ interface Lage {
   koId: string;
   objectId: string;
   grenzen: Grenzen;
+  letzteQuellenlesung: number;
 }
 
 /**
@@ -186,17 +187,18 @@ async function vorrichtung(): Promise<Lage> {
   // Der Konfliktabruf der Route liest danach beide Konfliktseiten für die Versionsprüfung — und,
   // weil der Konflikt an die aktuellen Fassungen gebunden und damit offen ist, die Gegenseite des
   // tragenden Eintrags über denselben Leseweg (R-0321, `konfliktGegenseiten` in ask-routes.ts).
-  // produkt:20261011:peter-p14 · Nacharbeit 3: am Kandidaten 1fa5b19 gezählt — nach `konflikte.all`
-  // stehen drei `ko.findById`; die Tafel der Haltefälle unten trägt den fünften Zugriff mit.
-  const nachKonflikten = d0.folge.slice(d0.folge.indexOf("konflikte.all") + 1);
-  expect(
-    d0.folge.includes("konflikte.all") ? nachKonflikten : d0.folge,
-    `Kalibrierung: die Versionsprüfung des Konfliktabrufs las die beiden Seiten und die Gegenseite nicht — ${d0.folge.join(" → ")}`,
-  ).toEqual(["ko.findById", "ko.findById", "ko.findById"]);
-  expect(
-    d0.folge.filter((p) => p === "ko.findById").length,
-    `Kalibrierung: die Haltefälle zählen ko.findById 1 (Dokumenttext), 2 (Quelle der Route), 3–4 (Konfliktseiten), 5 (Gegenseite) — ${d0.folge.join(" → ")}`,
-  ).toBe(5);
+  // Anschließend lesen Referenz- und Auslieferungsprüfung ihre eigenen Quellen. Für den
+  // Schluss-Halt zählen wir den tatsächlichen letzten Lesezugriff derselben Frage.
+  const konfliktStart = d0.folge.indexOf("konflikte.all");
+  expect(konfliktStart).toBeGreaterThanOrEqual(0);
+  expect(d0.folge.slice(konfliktStart + 1, konfliktStart + 4)).toEqual([
+    "ko.findById",
+    "ko.findById",
+    "ko.findById",
+  ]);
+  const letzteQuellenlesung = d0.folge.filter((p) => p === "ko.findById").length;
+  expect(letzteQuellenlesung).toBeGreaterThan(5);
+  expect(d0.folge.at(-1)).toBe("ko.findById");
   expect(d0.antwortweg, "Kalibrierung: der Antwortweg wurde nicht gezählt").toBeGreaterThan(0);
   expect(d0.modell, "Kalibrierung: der Modelldraht hat nicht generiert").toBeGreaterThan(0);
   return {
@@ -206,6 +208,7 @@ async function vorrichtung(): Promise<Lage> {
     koId: eintrag.koId,
     objectId: eintrag.objectId,
     grenzen: g,
+    letzteQuellenlesung,
   };
 }
 
@@ -440,7 +443,7 @@ const UNBEANTWORTET = "XQ42";
 interface Haltefall {
   punkt: string;
   /** Das wievielte Auftreten des Punktes in dieser Frage (Vorgabe: das erste). */
-  mal?: number;
+  mal?: number | "letzteQuellenlesung";
   /** Die Frage — Vorgabe `FRAGE` (getragen); `UNBEANTWORTET` für den Weg über Torlage und Lücke. */
   frage?: string;
   wo: string;
@@ -557,7 +560,15 @@ const HALTEFAELLE: readonly Haltefall[] = [
     punkt: "ko.findById",
     mal: 5,
     nurRoute: true,
-    wo: "nach dem Lesen der Konflikt-Gegenseite, vor der Auslieferung",
+    wo: "nach dem Lesen der Konflikt-Gegenseite, vor der Referenzprüfung",
+    sperre: ["auslieferung"],
+    naechster: { lesen: /^ko\.findById$/ },
+  },
+  {
+    punkt: "ko.findById",
+    mal: "letzteQuellenlesung",
+    nurRoute: true,
+    wo: "nach der abschließenden Quellenlesung, vor der Auslieferung",
     sperre: ["auslieferung"],
     naechster: { ausgeliefert: true },
   },
@@ -575,9 +586,9 @@ const HALTEFAELLE: readonly Haltefall[] = [
   {
     punkt: "belege.listSnapshots",
     frage: UNBEANTWORTET,
-    wo: "nach dem Beleg einer unbeantworteten Frage, vor der Lücke",
+    wo: "nach dem Beleg einer unbeantworteten Frage, vor der Prüfung der Quellenhinweise",
     sperre: ["ergebnis"],
-    naechster: { lesen: /^luecken\./ },
+    naechster: { lesen: /^ko\.findById$/ },
   },
 ];
 
@@ -619,7 +630,10 @@ async function kiAn(l: Lage): Promise<void> {
  * einschalten), freigeben — und was danach geschah.
  */
 async function angehalten(l: Lage, fall: Haltefall, zyklus = false, eingang: Eingang = "ask") {
-  const halt = l.grenzen.anhalten(fall.punkt, fall.mal);
+  const halt = l.grenzen.anhalten(
+    fall.punkt,
+    fall.mal === "letzteQuellenlesung" ? l.letzteQuellenlesung : fall.mal,
+  );
   const laufend =
     eingang === "ask"
       ? fragen(l.aufbau.app, l.leser, fall.frage ?? FRAGE)
@@ -740,8 +754,8 @@ describe("D5 · KI aus — K3 · angehaltene Ausführungen und keine Hintergrund
   it("C3 · es gibt keinen D5-Hintergrund- oder Wiederholungsweg: alle Aufrufer von AskService.ask sind synchron", async () => {
     // Aus der ECHTEN Aufrufstruktur, nicht aus einer Behauptung: jede Produktdatei unter
     // `services/` wird gelesen und jeder Aufruf `<…ask…>.ask(` gezählt — auch über Zeilenumbrüche
-    // hinweg. Drei Stellen gibt es: zwei HTTP-Routen, die im Anfragekontext antworten, und das
-    // Beispielpaket, das ein Administrator ausdrücklich auslöst. Keine Queue, kein Timer, kein
+    // hinweg. Die HTTP-Routen und der Teamassistent antworten im Anfragekontext. Das
+    // Beispielpaket löst ein Administrator ausdrücklich aus. Keine Queue, kein Timer, kein
     // Wiederholungsspeicher. Taucht ein weiterer Aufrufer auf, wird dieser Fall rot und verlangt,
     // ihn einzeln nachzuweisen.
     const { execFileSync } = await import("node:child_process");
@@ -762,6 +776,7 @@ describe("D5 · KI aus — K3 · angehaltene Ausführungen und keine Hintergrund
       "services/app/src/routes/reasoner-routes.ts",
       "services/app/src/routes/reasoner-routes.ts",
       "services/app/src/seed-demo.ts",
+      "services/app/src/teamassistenten-wissen.ts",
     ]);
     // Und die Fläche wiederholt eine Frage nie selbst: Mutationen laufen ohne `retry`
     // (`apps/web/src/main.tsx` setzt `retry` nur für Abfragen).
@@ -1052,6 +1067,10 @@ function sqlErsatz(): SqlErsatz {
       const data = JSON.parse(p[1] as string) as { answerId: string };
       snapshots.set(p[0] as string, { answerId: data.answerId, data });
       return { rows: [{ snapshot_key: p[0] }], rowCount: 1 };
+    }
+    if (t === "SELECT data FROM gaps") {
+      const rows = [...gaps.values()].map((data) => ({ data }));
+      return { rows, rowCount: rows.length };
     }
     if (t.startsWith("INSERT INTO gaps")) {
       const gap = JSON.parse(p[1] as string) as Record<string, unknown>;

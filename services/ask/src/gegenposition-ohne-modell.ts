@@ -32,7 +32,13 @@
 //    `ungeprueft`); eine einzelne bestätigte Quelle antwortet unverändert.
 //  · NUR DER MODELLFREIE WEG (`demo`) DES KONSOLENWEGS. Der wörtliche Add-in-Weg (`retrievalOnly`)
 //    und der Modellweg (dort `rueckfallStand`) bleiben unberührt.
-import type { AnswerResult, KnowledgeRef, ReasonerLocale } from "../../reasoner";
+import {
+  type AnswerResult,
+  type KnowledgeRef,
+  QUELLWORTLAUTE,
+  type ReasonerLocale,
+  formatiereQuellwortlaute,
+} from "../../reasoner";
 
 const OHNE_PRUEFUNG: Record<ReasonerLocale, string> = {
   de: "Mehrere bestätigte Quellen sagen dazu Verschiedenes. Ohne KI-Modell fand keine Widerspruchsprüfung statt, und eine fachliche Bestätigung ersetzt sie nicht — die Frage ist damit nicht geklärt. Hier steht, was jede Quelle im Wortlaut sagt:",
@@ -106,14 +112,15 @@ export function gegenpositionOhneModell(
     return null;
   }
   const ids = stimmen.map((s) => s.id);
+  const vergleich = formatiereQuellwortlaute(
+    stimmen.map((ref) => ({ ref, text: ref.statement })),
+    OHNE_PRUEFUNG[locale],
+    RUECKFRAGE[locale],
+  );
   return {
     ...antwort,
-    // Absatzweise, wie `rueckfallStand`: die Fläche rendert Markdown, jede Quelle steht für sich.
-    answer: [
-      OHNE_PRUEFUNG[locale],
-      ...stimmen.map((s) => `${s.title}: ${s.statement}`),
-      RUECKFRAGE[locale],
-    ].join("\n\n"),
+    answer: vergleich.text,
+    [QUELLWORTLAUTE]: vergleich.abschnitte,
     // Nicht „gesichert": welche Quelle gilt, ist ungeprüft. Der Vertrauenswert ist der der
     // schwächsten genannten Quelle — dieselbe Minimumregel wie `answerStanding`.
     knowledgeClass: "ungeprueft",

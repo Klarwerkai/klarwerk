@@ -90,6 +90,7 @@ async function verdrahten(modell: ModelClient, statement: string = QUELLENWORTLA
     type: "best_practice",
     category: "Anlage 1",
     author: "anna",
+    confidentiality: "intern",
   });
   await koService.setValidationState(ventil.id, { trust: 92, status: "validiert" });
   // JOB 3550: diese Datei misst die ECHTE Kette bis zum Modell — sie braucht deshalb dieselbe

@@ -953,6 +953,16 @@ function mitAntwortRolle<T extends object>(ergebnis: T, rolle: ReferenzRolle | u
 }
 
 export class AskService {
+  private readonly vorgelegteQuellstaende = new WeakMap<
+    AnswerResult,
+    ReadonlyMap<string, number>
+  >();
+
+  /** Tatsächlich an den Antwortweg übergebene Fassungen, auch bei einer nicht zitierten Quelle. */
+  quellstaendeDerAntwort(ergebnis: AskResult): ReadonlyMap<string, number> {
+    return this.vorgelegteQuellstaende.get(ergebnis.result) ?? new Map();
+  }
+
   /**
    * REF-02: das Modell, das die Antwort dieses Ergebnisses geschrieben hat — `undefined`, wenn es
    * nicht festgehalten ist (Rückgabe ohne Antwortlauf, Test-Doppelgänger). Nie geraten.
@@ -1396,7 +1406,7 @@ export class AskService {
     // REF-01: der Volltext JE FASSUNG, wie ihn genau diese Lesung gesehen hat. Die Fundstellen
     // binden ihn nur, wenn die Projektion zur Fassung des Objekts aus der Vorauswahl gehört — sonst
     // käme ein Auszug aus Fassung N+1 an Fassung N (Revision zwischen beiden Lesungen).
-    const volltexte = new Map<string, { fassung: number; text: string }>();
+    const volltexte = new Map<string, string>();
     const refs: KnowledgeRef[] = await Promise.all(
       prefiltered.map(async (ko) => {
         // JOB 2614 D3 (G27-Anschluss, JOB 1565 Weg A): der DOKUMENTTEXT reist in die Refs — aus der
@@ -1409,9 +1419,13 @@ export class AskService {
         // bereits davor, und die Projektion einer hier noch enthaltenen Quelle ist dieselbe
         // Wahrheit, die auch der Kandidatenweg (`findCandidates`) gelesen hat.
         const projektion = await this.suchprojektion(ko.id, "suchprojektion", kiBeginn);
-        if (projektion && typeof projektion.koVersion === "number") {
-          volltexte.set(ko.id, { fassung: projektion.koVersion, text: projektion.bodyText });
-        }
+        const text =
+          projektion &&
+          volltextDerFassung(
+            { fassung: projektion.koVersion, text: projektion.bodyText },
+            ko.version,
+          );
+        if (text?.trim()) volltexte.set(ko.id, text);
         return {
           id: ko.id,
           title: ko.title,
@@ -1421,7 +1435,7 @@ export class AskService {
           // WP-RETEST7 R5 (Pedis Befund): die persistierten Bild-Fußnoten reisen in den Match-/
           // Kontextpfad mit (captionTexts-Suchfeld — kein bodyHtml-Vollload, kein neuer Scanner).
           ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
-          ...(projektion?.bodyText.trim() ? { bodyText: projektion.bodyText } : {}),
+          ...(text?.trim() ? { bodyText: text } : {}),
           // R-1633: nur mit Fragekontext — dann ordnet der Rang an BEIDEN Toren (dieselben Refs).
           ...(fragekontext
             ? { geltungsrang: geltungFuerFrage(ko.geltung, fragekontext).rang }
@@ -1652,9 +1666,14 @@ export class AskService {
     // R-0338: die gelesene Fassung jeder herangezogenen Quelle — aus `prefiltered`, den Objekten,
     // aus denen die Antwort entstand. Eine Quelle ohne Objekt dort (nicht erwartbar) fehlt im Stand;
     // die Fläche behandelt eine Antwort mit unvollständigem Stand dann wie eine ohne Stand.
+    const vorgelegt = new Set(candidates.map((ko) => ko.id));
+    const staende = new Map(
+      prefiltered.filter((ko) => vorgelegt.has(ko.id)).map((ko) => [ko.id, ko.version]),
+    );
+    this.vorgelegteQuellstaende.set(result, staende);
     const quellenStand: Record<string, number> = {};
     for (const id of result.sources) {
-      const fassung = prefiltered.find((ko) => ko.id === id)?.version;
+      const fassung = staende.get(id);
       if (fassung !== undefined) {
         quellenStand[id] = fassung;
       }
@@ -1744,7 +1763,7 @@ export class AskService {
     const bindungsQuellen = new Map(
       prefiltered.map((ko): [string, BindungsQuelle] => [
         ko.id,
-        bindungsQuelleAus(ko, volltextDerFassung(volltexte.get(ko.id), ko.version)),
+        bindungsQuelleAus(ko, volltexte.get(ko.id)),
       ]),
     );
     const hauptBeleg = bindeAntworttext(result, bindungsQuellen);

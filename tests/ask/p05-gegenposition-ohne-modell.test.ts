@@ -61,6 +61,7 @@ async function aufbau() {
         type: "technik",
         category: "Instandhaltung",
         author: "experte",
+        confidentiality: "intern",
       })
     ).id;
   /** Fachliche Bestätigung über den echten Bewertungsweg (controller-Stimmen). */

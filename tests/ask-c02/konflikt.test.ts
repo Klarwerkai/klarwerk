@@ -110,6 +110,7 @@ async function aufbauen(antwort: string, kopieAbsaetze: readonly string[]) {
   const koService = new KoService({ repo: new InMemoryKoRepo() });
   await koService.activateSearchProjectionV2();
   const paket = await koService.create({
+    confidentiality: "intern",
     title: "[Beispiel] Standard invoice due date",
     statement: ABSAETZE.join("\n\n"),
     bodyHtml: ABSAETZE.map((a) => `<p>${a}</p>`).join(""),
@@ -119,6 +120,7 @@ async function aufbauen(antwort: string, kopieAbsaetze: readonly string[]) {
   });
   await koService.setValidationState(paket.id, { trust: 90, status: "validiert" });
   const kopie = await koService.create({
+    confidentiality: "intern",
     title: "[DEMO C02] Standard invoice due date",
     statement: ADVISOR_FICTION_NOTICE,
     bodyHtml: kopieAbsaetze.map((a) => `<p>${a}</p>`).join(""),

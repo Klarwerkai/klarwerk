@@ -87,6 +87,7 @@ async function legeKoAn(koService: KoService, zusatz: string) {
     type: "best_practice",
     category: "Anlage 1",
     author: "anna",
+    confidentiality: "intern",
   });
 }
 

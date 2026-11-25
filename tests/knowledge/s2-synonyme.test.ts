@@ -34,8 +34,9 @@ describe("S2 · Z — jede Zuordnung ist belegt", () => {
       // steht hier bewusst NICHT: die Datei liegt nicht in diesem Arbeitsbaum, und eine erfundene
       // Zahl waere genau die unbelegte Setzung, gegen die dieser Fall steht. Die Alternation bleibt
       // eng: sie zaehlt benannte Dokumente auf, sie laesst nicht „irgendeinen Text" durch.
+      // WP-RETEST7 R5 dokumentiert die Frage und die tatsächliche Bildfußnote im Regressionstest.
       expect(zuordnung.quelle, `${zuordnung.begriffe}: Quelle nennt keine Kennung`).toMatch(
-        /OFFEN\.md|PRIORITAETEN\.md|\.md:\d+|BEN-PRUEFUNG/,
+        /OFFEN\.md|PRIORITAETEN\.md|\.md:\d+|BEN-PRUEFUNG|tests\/app\/ask-caption-retrieval\.test\.ts/,
       );
     }
   });

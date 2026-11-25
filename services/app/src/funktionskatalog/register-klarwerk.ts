@@ -2021,12 +2021,14 @@ export const klarwerk: Redaktionseintrag[] = [
       nl: "Een antwoord naar bronpassages herleiden",
     },
     description: {
-      de: "Antworten mit konkreten Quellenstellen und sichtbarem Prüfstatus verbinden.",
-      en: "Show the supporting passages and their review status alongside the answer.",
-      nl: "Toon de passages waarop het antwoord steunt met de bijbehorende beoordelingsstatus.",
+      de: "Öffne die belegte Passage und sieh den Prüfstatus ihrer Quelle. Bei widersprüchlichen Angaben siehst du, welche Quelle welchen Wert nennt. Ändert sich eine Quelle während der Antwort, kannst du die Frage erneut stellen.",
+      en: "Open the supporting passage and see the source’s review status. When sources disagree, see which one gives each value. If a source changes while the answer is being prepared, you can ask again.",
+      nl: "Open de onderbouwende passage en bekijk de beoordelingsstatus van de bron. Bij tegenstrijdige waarden zie je welke bron welke waarde vermeldt. Verandert een bron tijdens het beantwoorden, dan kun je de vraag opnieuw stellen.",
     },
     ablauf: "a85",
     belege: [
+      ["delivery", "25.11.2026 · .1150 · R-0310 / R-0326 / R-0700"],
+      ["planning", "produkt:20261125:allgemeiner-frageweg-quellenstand"],
       ["register", "#090 · 19.10.2026"],
       ["appendix", "19.10.2026 · 9"],
       ["historic", "12.09.2026 · A-herkunft"],

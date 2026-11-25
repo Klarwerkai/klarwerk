@@ -85,7 +85,11 @@ async function eintrag(app: App, konto: Konto, titel: string, satz: string): Pro
         method: "PUT",
         url: `/api/kos/${id}`,
         headers: konto.kopf,
-        payload: { action: "admin-validate" },
+        payload: {
+          action: "admin-validate",
+          // W2 legt ausdrücklich eine zweite, gleichlautende Quelle an.
+          duplicateAcknowledged: titel === TITEL_B && satz === SATZ_30,
+        },
       })
     ).statusCode,
   ).toBe(200);
@@ -132,6 +136,7 @@ describe("JOB 4224 · D5 · W — zwei abweichende Quellen bleiben zwei", () => 
     expect(antwort.answered, antwort.roh).toBe(true);
     const text = antwort.answer ?? "";
     expect(text).toContain("30 Kalendertage");
+    expect(text.match(/30 Kalendertage/g)).toHaveLength(1);
     expect(text, "eine Frist, die in keiner Quelle steht").not.toContain("45 Kalendertage");
     expect(text).not.toContain(FREIER_SATZ);
   });

@@ -38,6 +38,7 @@ async function createKo(
     type: "best_practice",
     category: "Anlage 1",
     author: "anna",
+    confidentiality: "intern",
   });
   if (validated) {
     return koService.setValidationState(ko.id, { trust: 90, status: "validiert" });

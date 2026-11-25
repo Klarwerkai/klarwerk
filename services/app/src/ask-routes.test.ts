@@ -1,6 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
-import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { ModelCapacityError } from "../../reasoner";
 import { buildApp, buildServices } from "./build-app";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
@@ -1034,23 +1033,19 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
 // das Feld dort, fiele das Panel still auf den Stand „älterer Server" zurück. Beide Zugänge laufen
 // durch `antwortLauf`; dieselbe Antwort ergibt dieselbe Zuordnung.
 describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Frageweg", () => {
-  // P05 (Ben, Nacharbeit 6): die Auslieferung prüft die herangezogene Wissenskopie gegen den
-  // AKTUELLEN Bestand — eine verschwundene oder gelöschte Kopie wird nicht mehr ausgeliefert. Die
-  // Attrappe lieferte bis hierher KEINEN Objektbestand (`ko.get` → undefined) zu einer Antwort, die
-  // eine Quelle nennt; sie trägt deshalb jetzt einen echten Bestand mit genau dieser Quelle. Der
-  // Vertrag des Falls (200, dieselbe Absatzzuordnung an beiden Zugängen) bleibt unverändert.
-  let quelleId = "";
   async function aufbau() {
-    const koService = new KoService({ repo: new InMemoryKoRepo() });
-    quelleId = (
-      await koService.create({
-        title: "Ventil schließen",
-        statement: "Ventil schließen.",
-        type: "best_practice",
-        category: "Anlage 1",
-        author: "autor-1",
-      })
-    ).id;
+    const { ko, validation } = buildServices();
+    const quelle = await ko.create({
+      title: "Ventil schließen",
+      statement: "Ventil schließen.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "autor-1",
+      confidentiality: "intern",
+      neededValidations: 1,
+    });
+    const quelleId = quelle.id;
+    await validation.rate(quelleId, "pruefer-1", "up");
     const ask = {
       kiStand: () => undefined,
       kiSperreVorFrage: () => undefined,
@@ -1058,7 +1053,7 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
       ask: async () => ({
         result: {
           answered: true,
-          knowledgeClass: "validiert",
+          knowledgeClass: "gesichert",
           answer: "Ventil schließen [1].\n\nFrei erfunden.",
           sources: [quelleId],
           citedSources: [quelleId],
@@ -1066,6 +1061,7 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
           trust: 1,
         },
         gap: null,
+        quellenStand: { [quelleId]: quelle.version },
       }),
     };
     const guards = {
@@ -1074,7 +1070,7 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
     } as never;
     const basis = {
       ask: ask as never,
-      ko: koService as never,
+      ko,
       conflicts: { unresolved: async () => [] } as never,
     };
     const app = Fastify();
@@ -1092,16 +1088,16 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
       ),
     );
     await app.ready();
-    return app;
+    return { app, quelleId };
   }
 
-  const erwartet = () => [
+  const erwartet = (quelleId: string) => [
     { text: "Ventil schließen [1].", quellen: [quelleId] },
     { text: "Frei erfunden.", quellen: [] },
   ];
 
   it("A1: Klaras Zugang liefert die Zuordnung", async () => {
-    const app = await aufbau();
+    const { app, quelleId } = await aufbau();
     const res = await app.inject({
       method: "POST",
       url: "/api/klara/sessions/sess-1/execute",
@@ -1113,19 +1109,19 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
       payload: { question: "Wie schließe ich das Ventil?", questionSource: "manual" },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().absaetze).toEqual(erwartet());
+    expect(res.json().absaetze).toEqual(erwartet(quelleId));
     await app.close();
   });
 
   it("A2: der allgemeine Frageweg liefert dieselbe Zuordnung (Gegenprobe)", async () => {
-    const app = await aufbau();
+    const { app, quelleId } = await aufbau();
     const res = await app.inject({
       method: "POST",
       url: "/api/ask",
       payload: { question: "Wie schließe ich das Ventil?" },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().absaetze).toEqual(erwartet());
+    expect(res.json().absaetze).toEqual(erwartet(quelleId));
     await app.close();
   });
 });

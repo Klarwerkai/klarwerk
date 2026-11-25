@@ -214,14 +214,19 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
     unmount();
   });
 
-  it("A4 · gedeckelte Quelle: NIRGENDS mehr „Gesichert“ — weder sichtbar noch exportiert", async () => {
+  it("A4 · gedeckelter Prüflauf: Antwortbewertung und Export weisen den Vorbehalt aus", async () => {
     await i18n.changeLanguage("de");
     bestand.kos = [ko({ status: "done", coverage: CAPPED })];
     const { container, unmount } = await mountAsk();
     const text = document.body.textContent ?? "";
 
     // 1 Vertragskasten · 2 Statusplakette — alles, was der Leser SIEHT.
-    expect(text).not.toContain(GESICHERT);
+    const ohneQuellenliste = document.body.cloneNode(true) as HTMLElement;
+    ohneQuellenliste.querySelector('[data-testid="ask-quellen-liste"]')?.remove();
+    expect(ohneQuellenliste.textContent).not.toContain(GESICHERT);
+    expect(document.querySelector('[data-testid="ask-source-pruefstand"]')?.textContent).toContain(
+      GESICHERT,
+    );
     expect(text).toContain(i18n.t("ask.status.unverified"));
     // R-0287 (Ben R1, F6): die Evidenzplakette sagte hier dasselbe wie die Statusplakette
     // („Evidenz: Ungeprüft" neben „Noch ungeprüft") und steht deshalb nicht mehr ein zweites Mal.
@@ -233,7 +238,10 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
 
     // 5 Kopieren / Markdown-Download — die Form, die das Haus verlässt.
     const markdown = await copyToClipboard(container);
-    expect(markdown).not.toContain(GESICHERT);
+    const antwortstatus = markdown.split("\n").find((zeile) => zeile.startsWith("**Antwort**"));
+    expect(antwortstatus).toContain(i18n.t("ask.status.unverified"));
+    expect(antwortstatus).not.toContain(GESICHERT);
+    expect(markdown).toContain(`Ventilprüfung — verwendet · ${GESICHERT}`);
     expect(markdown).toContain(i18n.t("ask.status.unverified"));
     expect(markdown).toContain(
       `${i18n.t("ask.evidence")}: ${i18n.t("ask.knowledgeClass.ungeprueft")}`,
@@ -245,12 +253,16 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
     await i18n.changeLanguage("de");
     bestand.kos = [ko({ status: "done", coverage: PROVEN })];
     const { container, unmount } = await mountAsk();
-    const text = document.body.textContent ?? "";
 
     // Ohne diese Gegenprobe wäre die Zusage oben auch von einer Seite erfüllt, die das Wort
     // überhaupt nie zeigt — die Prüfung muss in beide Richtungen kalibriert sein.
-    expect(text).toContain(GESICHERT);
-    expect(await copyToClipboard(container)).toContain(GESICHERT);
+    const ohneQuellenliste = document.body.cloneNode(true) as HTMLElement;
+    ohneQuellenliste.querySelector('[data-testid="ask-quellen-liste"]')?.remove();
+    expect(ohneQuellenliste.textContent).toContain(GESICHERT);
+    const markdown = await copyToClipboard(container);
+    expect(markdown.split("\n").find((zeile) => zeile.startsWith("**Antwort**"))).toContain(
+      GESICHERT,
+    );
     unmount();
   });
 

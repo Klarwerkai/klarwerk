@@ -45,6 +45,27 @@ describe("Route-Guard-Scanner · gebundene gleiche Nachpruefung", () => {
     }
   });
 
+  it("erkennt die Nachprüfung im zwingenden try nur bei abbrechendem Fehlerweg vor der regulären Antwort", () => {
+    const text = quelle("block");
+    const anfang = text.indexOf("await erzeuge();");
+    const ende = text.indexOf("ausgang.code(200)");
+    const pruefung = text.slice(anfang, ende);
+    const variante = (rumpf: string) => schutz(text.slice(0, anfang) + rumpf + text.slice(ende));
+    const neuPruefen = `try { ${pruefung} }`;
+    const abbruch = "catch (fehler) { if (abgeschaltet(fehler)) return; throw fehler; }";
+    expect(variante(`${neuPruefen} ${abbruch}`)).toEqual(["ko.read"]);
+    for (const weg of [
+      `${neuPruefen} catch (fehler) { protokolliere(fehler); }`,
+      `${neuPruefen} catch (fehler) { if (abgeschaltet(fehler)) throw fehler; }`,
+      `${neuPruefen} ${abbruch} finally { ausgang.code(200).send({}); }`,
+      `if (gelegentlich) { ${neuPruefen} ${abbruch} }`,
+      `try { erzeuge(); } catch (fehler) { ${pruefung} }`,
+      `${neuPruefen.replace("if (!neu) { return; }", "if (!neu) protokolliere();")} ${abbruch}`,
+    ]) {
+      expect(variante(weg)).toEqual(["action-dispatched"]);
+    }
+  });
+
   it("glaubt weder einem gleichnamigen Fakeverbraucher noch einem ungenutzten oder vorgezogenen Callback", () => {
     const text = quelle("kurz");
     for (const variante of [
