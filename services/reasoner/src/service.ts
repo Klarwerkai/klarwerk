@@ -1174,6 +1174,7 @@ export class Reasoner {
     }
     const provider = this.cloudProvider(gewaehlt);
     if (!provider || typeof provider.probe !== "function") {
+      this.recordReachability(false, gewaehlt);
       return {
         ok: false,
         provider: this.fallback.name,
@@ -1189,6 +1190,7 @@ export class Reasoner {
     const probe = provider.probe.bind(provider);
     try {
       await lb.versuch(provider, probe);
+      this.recordReachability(true, gewaehlt);
       await this.protokolliereLaufbuch("probe", undefined, at, lb, { status: "success" });
       return {
         ok: true,
@@ -1199,6 +1201,7 @@ export class Reasoner {
         anbieter: gewaehlt,
       };
     } catch (error) {
+      this.recordReachability(false, gewaehlt);
       await this.protokolliereLaufbuch("probe", undefined, at, lb, { status: "error" });
       return {
         ok: false,
@@ -1212,12 +1215,29 @@ export class Reasoner {
     }
   }
 
+  /** Prüft genau das erste erlaubte Modell des Antwortwegs. Eine zwischenzeitliche Abschaltung
+   * führt zu keiner Übertragung, auch wenn die Kopfzeile vorher noch einen Anbieter zeigte. */
+  async probeAntwortzugang(): Promise<ReasonerProbeResult> {
+    const { zugang } = this.antwortAufloesung();
+    if (zugang === null) {
+      return {
+        ok: false,
+        mode: "deterministic",
+        provider: this.fallback.name,
+        detail: "Für Antworten ist kein Modellzugang aktiv.",
+        at: new Date().toISOString(),
+      };
+    }
+    return zugang === "local" ? this.probeLocal() : this.probe(zugang);
+  }
+
   // SCRUM-428: Key-Test für den EIGENEN lokalen LLM (secondary) — echter Mini-Aufruf über den
   // Tunnel/OpenAI-kompatiblen Endpoint. Ehrlich: nicht verdrahtet → klarer Befund; erreichbar
   // → „geantwortet"; Tunnel/Server aus → der echte Fehler (nie geraten).
   async probeLocal(): Promise<ReasonerProbeResult> {
     const at = new Date().toISOString();
     if (!this.usingSecondary() || typeof this.secondary.probe !== "function") {
+      this.recordReachability(false, "local");
       return {
         ok: false,
         provider: this.secondary.name,
@@ -1230,6 +1250,7 @@ export class Reasoner {
     const probe = this.secondary.probe.bind(this.secondary);
     try {
       await lb.versuch(this.secondary, probe);
+      this.recordReachability(true, "local");
       await this.protokolliereLaufbuch("probe", undefined, at, lb, { status: "success" });
       return {
         ok: true,
@@ -1239,6 +1260,7 @@ export class Reasoner {
         at,
       };
     } catch (error) {
+      this.recordReachability(false, "local");
       await this.protokolliereLaufbuch("probe", undefined, at, lb, { status: "error" });
       return {
         ok: false,
@@ -1321,14 +1343,14 @@ export class Reasoner {
         continue;
       }
       try {
-        this.recordReachability((await this.probe(anbieter)).ok, anbieter);
+        await this.probe(anbieter);
       } catch {
         this.recordReachability(false, anbieter);
       }
     }
     if (this.usingSecondary()) {
       try {
-        this.recordReachability((await this.probeLocal()).ok, "local");
+        await this.probeLocal();
       } catch {
         this.recordReachability(false, "local");
       }
@@ -2466,8 +2488,19 @@ export class Reasoner {
       };
     }
     const herkunft = zugangHerkunft()[zugang];
+    const befund = this.reachabilityCache[zugang];
+    const nachweis = befund?.reachable
+      ? { zuletztBestaetigtAm: new Date(befund.at).toISOString() }
+      : {};
     if (zugang === "local") {
-      return { modus: "intern", anbieter: "local", anbieterName: null, herkunft, verfuegbarkeit };
+      return {
+        modus: "intern",
+        anbieter: "local",
+        anbieterName: null,
+        herkunft,
+        verfuegbarkeit,
+        ...nachweis,
+      };
     }
     return {
       modus: "extern",
@@ -2475,6 +2508,7 @@ export class Reasoner {
       anbieterName: REASONER_CLOUD_ANBIETER_NAME[zugang],
       herkunft,
       verfuegbarkeit,
+      ...nachweis,
     };
   }
 

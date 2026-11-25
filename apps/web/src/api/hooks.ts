@@ -552,6 +552,7 @@ export const useKiLage = () =>
   useQuery({
     queryKey: ["reasoner", "status", "kiLage"],
     queryFn: () => endpoints.reasoner.kiLage(),
+    refetchInterval: 60_000,
   });
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.
 // WP-VIP2-GATE-2 (bens Fix 3): serverseitig jetzt ECHTE Admin-Sicht (users.manage). Nicht-Admin-

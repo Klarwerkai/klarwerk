@@ -470,9 +470,21 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
   }, 45000);
 
   it.each([
-    ["de-DE", "de", "Stimmt das?", "Korrektur übernehmen", "Stimmt mit der Quelle überein"],
-    ["en-GB", "en", "Is this correct?", "Apply correction", "Matches the source"],
-    ["nl-NL", "nl", "Klopt dit?", "Correctie overnemen", "Komt overeen met de bron"],
+    [
+      "de-DE",
+      "de",
+      "Stimmt das?",
+      "Korrektur übernehmen",
+      "Erneut geprüft · stimmt mit der Quelle überein",
+    ],
+    ["en-GB", "en", "Is this correct?", "Apply correction", "Rechecked · matches the source"],
+    [
+      "nl-NL",
+      "nl",
+      "Klopt dit?",
+      "Correctie overnemen",
+      "Opnieuw gecontroleerd · komt overeen met de bron",
+    ],
   ])(
     "Word-Korrektur in %s: Originalstelle bearbeiten und echte Nachprüfung",
     async (display, locale, frage, aktion, urteil) => {
@@ -506,6 +518,7 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
             this.text=this.text.slice(0,pos)+text+this.text.slice(pos); window.__wordWrites.push([query,text,ort]); }
           }]};}
         };
+        window.__editRange=range;
         d.getSelection=()=>range;
       })()`);
         // WebKit hosts cannot rely on automatic browser scroll anchoring for a late feed redraw.
@@ -534,12 +547,14 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
             },
           }),
         );
-        await page.route("**/execute", (route) => {
+        let vorNachpruefAntwort: (() => void | Promise<void>) | undefined;
+        await page.route("**/execute", async (route) => {
           const payload = route.request().postDataJSON();
           expect(payload.locale).toBe(locale);
           expect(payload.question).toBe(frage);
           kontrollen.push(payload.selection);
           const correct = payload.selection === firmenregel.replace(/\.$/, "");
+          if (correct) await vorNachpruefAntwort?.();
           const kopf = correct ? "Result B." : "Result A.";
           return route.fulfill({
             json: {
@@ -618,9 +633,32 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
           await verlaufFreigegeben;
           return route.fulfill({ json: data });
         });
+        const nachgeprueft = page.getByRole("heading", { name: urteil, exact: true });
+        let pruefungAngekommen = () => {};
+        const wartetAufNeuesUrteil = new Promise<void>((resolve) => {
+          pruefungAngekommen = resolve;
+        });
+        let antworte = () => {};
+        const antwortFreigegeben = new Promise<void>((resolve) => {
+          antworte = resolve;
+        });
+        vorNachpruefAntwort = () => {
+          pruefungAngekommen();
+          return antwortFreigegeben;
+        };
         await page.getByRole("button", { name: aktion, exact: true }).click();
         try {
-          await page.getByRole("heading", { name: urteil, exact: true }).waitFor();
+          await wartetAufNeuesUrteil;
+          expect(await nachgeprueft.count()).toBe(0);
+          antworte();
+          await nachgeprueft.waitFor();
+          const quittung = page.locator("#ask-vergleich .kw-wortaenderung");
+          expect(await quittung.locator("p > span").allTextContents()).toEqual([
+            "must provide",
+            "must not provide",
+          ]);
+          expect((await quittung.locator("ins").textContent())?.trim()).toBe("not");
+          expect(await quittung.getByRole("button").count()).toBe(0);
           await sichtbaresUrteil();
           await page.screenshot({ path: join(images, `word-vergleich-${locale}-nachher.png`) });
           await entwurf.focus();
@@ -630,6 +668,7 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
             await page.waitForFunction('document.querySelector(".mini-viewport").scrollTop === 0');
           }
         } finally {
+          antworte();
           fortsetzen();
         }
         await page.waitForFunction(
@@ -643,6 +682,33 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         expect(kontrollen).toEqual([gastWlan, gastWlan, firmenregel.replace(/\.$/, "")]);
         expect(await page.evaluate("window.__wordWrites")).toEqual([["provide", "not ", "Before"]]);
         expect(await page.locator(".kw-korrektur").count()).toBe(0);
+        if (locale === "en") {
+          await page.getByRole("button", { name: "Clear", exact: true }).click();
+          expect(await nachgeprueft.count()).toBe(0);
+          await page.evaluate("Office.context.document.getSelection=()=>window.__editRange");
+          await entwurf.fill(frage!);
+          await page.locator("#ask-btn").click();
+          await page.getByRole("heading", { name: "Matches the source", exact: true }).waitFor();
+          expect(await nachgeprueft.count()).toBe(0);
+          expect(await page.locator("#ask-vergleich .kw-wortaenderung").count()).toBe(0);
+          // The user edits the held paragraph after Apply, while the server is still checking it.
+          await page.evaluate(`window.__editRange.text=${JSON.stringify(gastWlan)}`);
+          await fragen();
+          vorNachpruefAntwort = async () => {
+            await page.evaluate("window.__editRange.text='Changed while waiting for the model.'");
+          };
+          await page.getByRole("button", { name: aktion, exact: true }).click();
+          await page
+            .getByText(
+              "The checked passage can no longer be selected reliably. Please check the text again.",
+              { exact: true },
+            )
+            .waitFor();
+          expect(await nachgeprueft.count()).toBe(0);
+          expect(
+            await page.getByRole("heading", { name: "Matches the source", exact: true }).count(),
+          ).toBe(0);
+        }
       } finally {
         await page.close();
         conversation = null;

@@ -9,7 +9,11 @@
 // (`tests/wissenszeiten/zeitangaben-einheitlich.test.tsx`).
 
 // Lokalisiert als „20.07.2026 19:41" (DE) bzw. Locale-Äquivalent — Datum + Uhrzeit, ohne Sekunden.
-export function formatKoTimestamp(iso: string | null | undefined, locale: string): string | null {
+export function formatKoTimestamp(
+  iso: string | null | undefined,
+  locale: string,
+  month: "2-digit" | "short" = "2-digit",
+): string | null {
   if (!iso || iso.trim().length === 0) {
     return null;
   }
@@ -19,7 +23,7 @@ export function formatKoTimestamp(iso: string | null | undefined, locale: string
   }
   const day = date.toLocaleDateString(locale, {
     day: "2-digit",
-    month: "2-digit",
+    month,
     year: "numeric",
   });
   const time = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });

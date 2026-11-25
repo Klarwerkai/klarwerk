@@ -1919,6 +1919,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           id: stand.id,
           fassung,
           titel: stand.title,
+          ...(stand.demoSeed ? { demoSeed: true } : {}),
           freigegebenVon: annahme?.person ?? null,
         });
       }

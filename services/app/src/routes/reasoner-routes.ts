@@ -1874,7 +1874,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       if (!user) {
         return;
       }
-      reply.code(200).send(await reasoner.probe());
+      const ziel = (request.query as { ziel?: string }).ziel;
+      reply
+        .code(200)
+        .send(ziel === "antwort" ? await reasoner.probeAntwortzugang() : await reasoner.probe());
     });
 
     // SCRUM-428: Key-Test für den eigenen lokalen LLM (echter Mini-Aufruf über den Tunnel).

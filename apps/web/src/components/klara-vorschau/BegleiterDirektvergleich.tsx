@@ -1,4 +1,5 @@
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { skipToken, useQueries } from "@tanstack/react-query";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../../api/endpoints";
 import { useSession } from "../../app/AuthContext";
@@ -8,6 +9,7 @@ import { gespeicherteFassungHref } from "../../lib/objektbezug";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { koDetailUrl } from "../../lib/wordAddin";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
+import { Belegtitel } from "../Belegtitel";
 import "./BegleiterDirektvergleich.css";
 
 const URTEIL = {
@@ -39,24 +41,23 @@ function Wortlaut({
   );
 }
 
+type Belegfassung = Awaited<ReturnType<typeof endpoints.ko.belegfassung>>;
+
 function Quellverweis({
   id,
   fassung,
   nummer,
   zitat,
-}: { id: string; fassung: number | undefined; nummer: number; zitat: string }): JSX.Element {
+  quelle,
+}: {
+  id: string;
+  fassung: number | undefined;
+  nummer: number;
+  zitat: string;
+  quelle?: Belegfassung;
+}): JSX.Element {
   const { t } = useTranslation();
-  const { user } = useSession();
   const name = useAuthorName();
-  const beleg = useQuery({
-    queryKey: ["begleiter-belegfassung", user?.id, id, fassung],
-    queryFn:
-      user && fassung !== undefined ? () => endpoints.ko.belegfassung(id, fassung) : skipToken,
-    retry: false,
-    gcTime: 0,
-  });
-  const quelle =
-    beleg.isSuccess && beleg.data?.id === id && beleg.data.fassung === fassung ? beleg.data : null;
   return (
     <div className="begleiter-quellverweis mt-1.5 text-[12px] leading-snug">
       <a
@@ -69,7 +70,11 @@ function Quellverweis({
         rel="noopener noreferrer"
         className="rounded-sm font-semibold text-brand-text underline underline-offset-2 focus-visible:outline focus-visible:outline-2"
       >
-        {quelle?.titel || t("begleiter.vergleich.quelllink", { nummer })}
+        {quelle?.titel ? (
+          <Belegtitel titel={quelle.titel} demoSeed={quelle.demoSeed} />
+        ) : (
+          t("begleiter.vergleich.quelllink", { nummer })
+        )}
       </a>
       {fassung !== undefined && (
         <span className="mt-0.5 block text-muted">
@@ -89,15 +94,49 @@ function Quellverweis({
 export function BegleiterDirektvergleich({
   vergleich,
   anderePassage,
+  praesentiert,
   zeigen,
 }: {
   vergleich: BegleiterVergleich;
   anderePassage?: boolean;
+  praesentiert: boolean;
   zeigen: (() => void) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   const { symbol, farbe } = URTEIL[vergleich.art];
   const quellen = [...new Set(vergleich.belege.flatMap((beleg) => beleg.quellen))];
+  const { user } = useSession();
+  const belege = useQueries({
+    queries: (vergleich.quellfassungen ?? []).map(({ id, fassung }) => ({
+      queryKey: ["begleiter-belegfassung", user?.id, id, fassung],
+      queryFn: user ? () => endpoints.ko.belegfassung(id, fassung) : skipToken,
+      retry: false,
+      gcTime: 0,
+    })),
+  });
+  const fassungen = new Map<string, Belegfassung>();
+  for (const [i, stand] of (vergleich.quellfassungen ?? []).entries()) {
+    const abfrage = belege[i];
+    if (
+      abfrage?.isSuccess &&
+      abfrage.data.id === stand.id &&
+      abfrage.data.fassung === stand.fassung
+    ) {
+      fassungen.set(stand.id, abfrage.data);
+    }
+  }
+  const beleg = vergleich.belege[0];
+  const wortgleich =
+    praesentiert &&
+    vergleich.art === "bestaetigt" &&
+    vergleich.belege.length === 1 &&
+    beleg?.woertlich &&
+    beleg.text === vergleich.dokument &&
+    beleg.quellen.length === 1 &&
+    Boolean(fassungen.get(beleg.quellen[0] ?? "")?.freigegebenVon);
+  const [beideAnzeigen, setBeideAnzeigen] = useState(false);
+  const kurz = wortgleich && !beideAnzeigen;
+  const wortlautId = useId();
   const etikett = "text-[11px] font-semibold text-muted";
   const zitat = "mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-text";
   return (
@@ -110,40 +149,49 @@ export function BegleiterDirektvergleich({
         <span aria-hidden="true" className="text-base">
           {symbol}
         </span>
-        {t(`begleiter.vergleich.${vergleich.art}`)}
+        {wortgleich
+          ? t("begleiter.vergleich.wortgleich")
+          : t(`begleiter.vergleich.${vergleich.art}`)}
       </h3>
       <div className="space-y-2.5 p-3">
-        <dl className="space-y-2.5">
-          <div>
-            <dt className={etikett}>
-              {t(
-                anderePassage
-                  ? "begleiter.vergleich.frueherePassage"
-                  : "begleiter.vergleich.dokument",
-              )}
-            </dt>
-            <dd className={zitat}>
-              <Wortlaut text={vergleich.dokument} marke={vergleich.dokumentMarke} farbe={farbe} />
-            </dd>
-          </div>
+        <dl id={wortlautId} className="space-y-2.5">
+          {!kurz && (
+            <div>
+              <dt className={etikett}>
+                {t(
+                  anderePassage
+                    ? "begleiter.vergleich.frueherePassage"
+                    : "begleiter.vergleich.dokument",
+                )}
+              </dt>
+              <dd className={zitat}>
+                <Wortlaut text={vergleich.dokument} marke={vergleich.dokumentMarke} farbe={farbe} />
+              </dd>
+            </div>
+          )}
           {vergleich.belege.map((beleg) => (
             <div
               key={JSON.stringify([beleg.text, beleg.quellen])}
-              className="border-t border-hairline pt-2"
+              className={kurz ? undefined : "border-t border-hairline pt-2"}
             >
-              <dt className={etikett}>
+              <dt className={kurz ? "sr-only" : etikett}>
                 {t(beleg.woertlich ? "begleiter.vergleich.quelle" : "begleiter.vergleich.beleg")}
               </dt>
               <dd className={zitat}>
-                <Wortlaut
-                  text={beleg.text}
-                  marke={vergleich.belegMarke}
-                  farbe="bg-trust-pos-bg text-trust-pos-text"
-                />
+                {kurz ? (
+                  beleg.text
+                ) : (
+                  <Wortlaut
+                    text={beleg.text}
+                    marke={vergleich.belegMarke}
+                    farbe="bg-trust-pos-bg text-trust-pos-text"
+                  />
+                )}
                 {beleg.quellen.map((id) => (
                   <Quellverweis
                     key={id}
                     id={id}
+                    quelle={fassungen.get(id)}
                     nummer={quellen.indexOf(id) + 1}
                     zitat={beleg.woertlich && beleg.quellen.length === 1 ? beleg.text : ""}
                     fassung={vergleich.quellfassungen?.find((stand) => stand.id === id)?.fassung}
@@ -153,6 +201,18 @@ export function BegleiterDirektvergleich({
             </div>
           ))}
         </dl>
+        {wortgleich && (
+          <button
+            type="button"
+            aria-controls={wortlautId}
+            aria-expanded={beideAnzeigen}
+            onClick={() => setBeideAnzeigen(!beideAnzeigen)}
+            data-testid="begleiter-beide-fassungen"
+            className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:border-ink/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+          >
+            {t(beideAnzeigen ? "begleiter.vergleich.einklappen" : "begleiter.vergleich.beide")}
+          </button>
+        )}
         {vergleich.art === "offen" ? (
           <p className="text-[12px] text-muted">{t("begleiter.vergleich.fehlt")}</p>
         ) : null}

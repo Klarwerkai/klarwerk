@@ -63,6 +63,7 @@ export default {
     "quellen.fassungOeffnen": "Fassung {{version}} öffnen",
     "quellen.originalOeffnen": "Original in der Quelle öffnen (heutiger Stand)",
     "quellen.fokus.stelle": "Zitierte Textstelle",
+    "quellen.fokus.beispiel": "Beispiel",
     "quellen.fokus.keineStelle":
       "In dieser Fassung lässt sich die zitierte Stelle nicht eindeutig zuordnen.",
     "quellen.fokus.volltext": "Vollständige Fassung und Quellen",
@@ -138,6 +139,7 @@ export default {
     "quellen.fassungOeffnen": "Open version {{version}}",
     "quellen.originalOeffnen": "Open original in the source (its state today)",
     "quellen.fokus.stelle": "Cited passage",
+    "quellen.fokus.beispiel": "Example",
     "quellen.fokus.keineStelle":
       "The cited passage could not be uniquely identified in this version.",
     "quellen.fokus.volltext": "Full version and sources",
@@ -214,6 +216,7 @@ export default {
     "quellen.fassungOeffnen": "Versie {{version}} openen",
     "quellen.originalOeffnen": "Origineel in de bron openen (stand van vandaag)",
     "quellen.fokus.stelle": "Geciteerde passage",
+    "quellen.fokus.beispiel": "Voorbeeld",
     "quellen.fokus.keineStelle":
       "De geciteerde passage is in deze versie niet eenduidig terug te vinden.",
     "quellen.fokus.volltext": "Volledige versie en bronnen",

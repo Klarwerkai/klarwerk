@@ -772,9 +772,13 @@ export const endpoints = {
     list: (f?: KoFilter) => api.get<KnowledgeObject[]>(`/kos${qs(f)}`),
     get: (id: string) => api.get<KnowledgeObject>(`/kos/${id}`),
     belegfassung: (id: string, fassung: number) =>
-      api.get<{ id: string; fassung: number; titel: string; freigegebenVon: string | null }>(
-        `/kos/${encodeURIComponent(id)}?belegfassung=${fassung}`,
-      ),
+      api.get<{
+        id: string;
+        fassung: number;
+        titel: string;
+        freigegebenVon: string | null;
+        demoSeed?: true;
+      }>(`/kos/${encodeURIComponent(id)}?belegfassung=${fassung}`),
     versions: (id: string) => api.get<KoVersionSnapshot[]>(`/kos/${id}/versions`),
     // AW03-K02: der Quellinhalt einer vom Objekt verwendeten Quellrevision.
     quellrevision: (id: string, sourceRecordId: string) =>
@@ -1362,7 +1366,10 @@ export const endpoints = {
     referenzFunktionscheck: (wahl: ReferenzWahl) =>
       api.post<ReferenzFunktionscheck>("/reasoner/referenzpruefung/funktionscheck", { wahl }),
     // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf (nur Admin, ehrliches Ergebnis).
-    test: () => api.post<ReasonerProbeResult>("/reasoner/test"),
+    test: (ziel?: "antwort") =>
+      api.post<ReasonerProbeResult>(
+        ziel === "antwort" ? "/reasoner/test?ziel=antwort" : "/reasoner/test",
+      ),
     // SCRUM-428: Key-Test für den eigenen lokalen LLM (echter Mini-Aufruf über den Tunnel).
     testLocal: () => api.post<ReasonerProbeResult>("/reasoner/test-local"),
     // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung (echter judgeConflict + kollision).

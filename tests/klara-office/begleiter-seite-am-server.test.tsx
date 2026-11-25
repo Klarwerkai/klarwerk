@@ -669,6 +669,97 @@ describe("Direktvergleich in der Klara-App", () => {
     expect(q<HTMLInputElement>(flaeche, "begleiter-eingabe")?.value).toBe("Meine nächste Frage");
   });
 
+  it("fasst nur die aktuelle, wörtlich belegte Passage der freigegebenen Fassung in der Vorführansicht zusammen", async () => {
+    await vorrichtung();
+    if (!aufbau) throw new Error("Vorrichtung fehlt");
+    const quelle = await eintragMitOriginal(aufbau.app, aufbau.admin, {
+      titel: "Liefertermin",
+      kernaussage: MARKIERUNG,
+    });
+    await fensterMitMarkierung(FENSTER, DOKUMENT);
+    let seq = 1;
+    const antwort = async (belegtext: string, woertlich = true) => {
+      const id = await auftragAn(FENSTER, "Wann erfolgt die Lieferung?");
+      const meldung = (erledigt?: Record<string, unknown>) =>
+        wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+          seq: ++seq,
+          auswahl: MIT_MARKIERUNG,
+          passage: { text: MARKIERUNG, stand: 1 },
+          ...(erledigt && { erledigt: [erledigt] }),
+        });
+      expect((await meldung()).json().aktionen[0].id).toBe(id);
+      const res = await meldung({
+        id,
+        stand: "erledigt",
+        ergebnis: "Antwort",
+        vergleich: {
+          art: "bestaetigt",
+          dokument: MARKIERUNG,
+          belege: [{ text: belegtext, quellen: [quelle.koId], woertlich }],
+          quellfassungen: [{ id: quelle.koId, fassung: 1 }],
+          dokumentMarke: null,
+          belegMarke: null,
+          zeigbar: false,
+        },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+    };
+    await antwort(MARKIERUNG);
+    await montiere();
+    await gespraechOffen();
+    const karte = () => q(document, "begleiter-direktvergleich");
+    const schalter = () => q(document, "begleiter-beide-fassungen");
+    const satzanzahl = () =>
+      (karte()?.querySelector("dl")?.textContent ?? "").split(MARKIERUNG).length - 1;
+    await bis(() => karte()?.textContent?.includes("Freigegeben von admin") === true, 160);
+    expect(schalter()).toBeNull();
+    expect(satzanzahl()).toBe(2);
+    await klick(q(document, "begleiter-vorfuehransicht"));
+    expect(karte()?.querySelector("h3")?.textContent).toContain(
+      "Wortgleich mit der freigegebenen Quelle",
+    );
+    expect(satzanzahl()).toBe(1);
+    expect(schalter()?.getAttribute("aria-expanded")).toBe("false");
+    expect(schalter()?.getAttribute("aria-controls")).toBe(karte()?.querySelector("dl")?.id);
+    expect(schalter()?.textContent).toBe("Beide Fassungen anzeigen");
+    expect(karte()?.querySelector("a")?.textContent).toBe(quelle.titel);
+    expect(karte()?.textContent).toContain("Version 1 · Freigegeben von admin");
+    await klick(schalter());
+    expect(satzanzahl()).toBe(2);
+    expect(schalter()?.getAttribute("aria-expanded")).toBe("true");
+    await klick(schalter());
+    expect(satzanzahl()).toBe(1);
+    for (const [belegtext, woertlich] of [
+      [MARKIERUNG.slice(0, -1), true],
+      [MARKIERUNG, false],
+    ] as const) {
+      const vorher = karte();
+      await antwort(belegtext, woertlich);
+      await bis(
+        () =>
+          Boolean(
+            karte() &&
+              vorher !== karte() &&
+              karte()?.textContent?.includes("Freigegeben von admin"),
+          ),
+        160,
+      );
+      expect(schalter()).toBeNull();
+      expect(karte()?.querySelectorAll("dt")).toHaveLength(2);
+    }
+    await antwort(MARKIERUNG);
+    await bis(() => Boolean(schalter()), 160);
+    const anders = "Heute steht hier ein anderer Satz.";
+    await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+      seq: ++seq,
+      auswahl: { text: anders, laenge: anders.length, stand: 2 },
+      passage: { text: anders, stand: 2 },
+    });
+    await bis(() => schalter() === null, 160);
+    expect(karte()?.textContent).toContain(i18n.t("begleiter.vergleich.frueherePassage"));
+    expect(satzanzahl()).toBe(2);
+  });
+
   it("prüft den Cursorabsatz auf Englisch, zeigt Quellen und Fundstelle und beginnt nach Clear einen neuen Vergleich", async () => {
     await vorrichtung();
     if (!aufbau) throw new Error("Vorrichtung fehlt");

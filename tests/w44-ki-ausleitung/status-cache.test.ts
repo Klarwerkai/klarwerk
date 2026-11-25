@@ -57,6 +57,31 @@ it("öffentliche Statusabfragen lesen nur Cache; ausschließlich der geschützte
     });
     expect(probe.statusCode, probe.body).toBe(200);
     expect(calls).toBe(1);
+    const ziel = "/api/reasoner/test?ziel=antwort";
+    const leser = await s.auth.register({
+      name: "Leser",
+      email: "leser@example.test",
+      password: "Fiktiv-geheim-456",
+    });
+    await s.auth.approveUser(leser.id, u.id);
+    await s.auth.changeRole(leser.id, "viewer", u.id);
+    const leserLogin = await s.auth.login({ email: leser.email, password: "Fiktiv-geheim-456" });
+    const leserHeader = { authorization: `Bearer ${leserLogin.token}` };
+    expect((await app.inject({ method: "POST", url: ziel })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: ziel, headers: leserHeader })).statusCode).toBe(
+      403,
+    );
+    const lage = await app.inject({ method: "GET", url: "/api/ki-lage", headers: leserHeader });
+    expect(lage.statusCode).toBe(200);
+    expect(lage.json().zuletztBestaetigtAm).toMatch(/^\d{4}-/);
+    expect(calls).toBe(1);
+    const kopftest = await app.inject({
+      method: "POST",
+      url: ziel,
+      headers: { authorization: `Bearer ${login.token}` },
+    });
+    expect(kopftest.json().ok).toBe(true);
+    expect(calls).toBe(2);
   } finally {
     await app.close();
   }

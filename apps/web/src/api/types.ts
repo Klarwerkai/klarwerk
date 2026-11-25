@@ -4059,6 +4059,7 @@ export interface ReasonerKiLage {
   anbieterName: string | null;
   herkunft: ReasonerZugangHerkunft | null;
   verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+  zuletztBestaetigtAm?: string;
 }
 
 // Welcher abgelöste Wert wohin überführt wurde — nachvollziehbar, nicht still.

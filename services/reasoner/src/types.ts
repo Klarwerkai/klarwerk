@@ -585,6 +585,7 @@ export interface ReasonerKiLage {
   anbieterName: string | null;
   herkunft: ReasonerZugangHerkunft | null;
   verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+  zuletztBestaetigtAm?: string;
 }
 
 // SCRUM-525 P.5 (WP-C): Herkunft der AKTIVEN Policy — "env" (Deploy-ENV KLARWERK_REASONER_POLICY,

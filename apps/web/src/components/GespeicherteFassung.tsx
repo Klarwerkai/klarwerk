@@ -28,6 +28,7 @@ import type { KoVersionSnapshot, QuellrevisionInhalt } from "../api/types";
 import { eindeutigeZitatstelle, markiereFundstelle } from "../lib/belegstelle";
 import { formatKoTimestamp } from "../lib/koDates";
 import { quellabschnitteAus } from "../lib/quellabschnitt";
+import { Belegtitel } from "./Belegtitel";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { Card } from "./ui";
 
@@ -169,7 +170,13 @@ function Fassungskarte({
     (ko.sources ?? []).map((s): [string, string | null] => [s.id, s.excerpt]),
   );
   const Volltext = zitat ? "details" : Fragment;
-  const zeit = formatKoTimestamp(satz.at, i18n.language) ?? satz.at;
+  const englisch = i18n.language.split("-")[0]?.toLowerCase() === "en";
+  const zeit =
+    formatKoTimestamp(
+      satz.at,
+      englisch ? "en-GB" : i18n.language,
+      englisch ? "short" : "2-digit",
+    ) ?? satz.at;
   const zeitzeile = (
     <p
       className={zitat ? "mt-1 text-sm text-muted" : HINWEIS}
@@ -217,7 +224,7 @@ function Fassungskarte({
         data-testid={`${GESPEICHERT_MARKE}-titel`}
         dir="auto"
       >
-        {ko.title}
+        <Belegtitel titel={ko.title} demoSeed={ko.demoSeed} />
       </h2>
       {zitat && (
         <p data-testid="quellenfokus-freigabe" className="mt-1 text-sm font-medium text-text">

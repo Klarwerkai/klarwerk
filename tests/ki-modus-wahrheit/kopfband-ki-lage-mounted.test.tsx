@@ -6,9 +6,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const kiLage = vi.fn();
+const probe = vi.fn();
+const rolle = vi.fn();
+
+vi.mock("../../apps/web/src/app/RoleContext", () => ({
+  useRoleOptional: () => rolle(),
+}));
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
-  endpoints: { reasoner: { kiLage: () => kiLage() } },
+  endpoints: { reasoner: { kiLage: () => kiLage(), test: (ziel: string) => probe(ziel) } },
 }));
 
 import {
@@ -47,6 +53,8 @@ afterEach(() => {
   container = null;
   root = null;
   kiLage.mockReset();
+  probe.mockReset();
+  rolle.mockReset();
 });
 
 describe("R-0599 · die Kopfzeile zeigt die KI-Lage des Servers", () => {
@@ -113,6 +121,57 @@ describe("R-0599 · die Kopfzeile zeigt die KI-Lage des Servers", () => {
     const hinweis = el.getAttribute("title") ?? "";
     expect(hinweis).toContain("beim letzten Versuch nicht geantwortet");
     expect(hinweis).not.toMatch(/regelbasiert|Ersatz/);
+  });
+
+  it.each([
+    ["de", "Verbindung prüfen", "Zuletzt bestätigt"],
+    ["en", "Test connection", "Last confirmed"],
+    ["nl", "Verbinding testen", "Laatst bevestigd"],
+  ])(
+    "Für echte Administratoren ist der Test explizit und der Beleg lokalisiert (%s)",
+    async (sprache, knopf, nachweis) => {
+      await i18n.changeLanguage(sprache);
+      rolle.mockReturnValue({ role: "admin", isSessionRole: true });
+      const lage = {
+        modus: "extern",
+        anbieter: "openai",
+        anbieterName: "OpenAI",
+        verfuegbarkeit: "ungeprueft",
+      };
+      kiLage.mockResolvedValue(lage);
+      const status = await zeile();
+      const button = container?.querySelector("button");
+      expect(button?.textContent).toBe(knopf);
+      expect(probe).not.toHaveBeenCalled();
+      probe.mockResolvedValue({ ok: true });
+      kiLage.mockResolvedValue({ ...lage, zuletztBestaetigtAm: "2026-11-25T09:45:00Z" });
+      await act(async () => {
+        button?.click();
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      expect(probe).toHaveBeenCalledOnce();
+      expect(probe).toHaveBeenCalledWith("antwort");
+      expect(status.textContent).toContain(nachweis);
+      expect(status.textContent).toMatch(/\d\d:\d\d/);
+    },
+  );
+
+  it.each([
+    ["viewer", true],
+    ["admin", false],
+  ])("Leser und lokale Vorschau starten keine Modellprobe (%s)", async (role, isSessionRole) => {
+    rolle.mockReturnValue({ role, isSessionRole });
+    kiLage.mockResolvedValue({
+      modus: "extern",
+      anbieter: "openai",
+      anbieterName: "OpenAI",
+      verfuegbarkeit: "ungeprueft",
+    });
+    await zeile();
+    expect(container?.querySelector("button")).toBeNull();
+    expect(probe).not.toHaveBeenCalled();
   });
 
   it("M3 · Abruf gescheitert: „unbekannt“, keine erfundene Lage", async () => {

@@ -1929,6 +1929,9 @@ function BegleiterInhalt(): JSX.Element {
                     >
                       <BegleiterDirektvergleich
                         vergleich={a.vergleich}
+                        praesentiert={
+                          vorfuehrErgebnis?.id === a.id && passage?.text === a.vergleich.dokument
+                        }
                         anderePassage={
                           !!passage && a.vergleich.dokument.trim() !== passage.text.trim()
                         }

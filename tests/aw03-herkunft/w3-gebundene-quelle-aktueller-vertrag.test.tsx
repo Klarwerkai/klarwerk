@@ -13,6 +13,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import type { AnweisungLesestand, KoVersionSnapshot } from "../../apps/web/src/api/types";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { Belegtitel } from "../../apps/web/src/components/Belegtitel";
 import {
   GespeicherteFassung,
   GespeicherteFassungAnsicht,
@@ -370,9 +371,11 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
       );
       const gespeichert = (await f.services.ko.versionsOf(f.id)).find((v) => v.version === 3);
       expect(marke(container, "-titel")?.textContent).toBe(gespeichert?.snapshot.title);
-      expect(marke(container, "-titelzeile")?.textContent).toContain(
-        formatKoTimestamp(gespeichert?.at, lang),
-      );
+      const gespeicherteZeit =
+        lang === "en"
+          ? formatKoTimestamp(gespeichert?.at, "en-GB", "short")
+          : formatKoTimestamp(gespeichert?.at, lang);
+      expect(marke(container, "-titelzeile")?.textContent).toContain(gespeicherteZeit);
       expect(marke(container, "-titelzeile")?.textContent).toContain("3");
       const details = container.querySelector("details");
       expect(details?.open).toBe(false);
@@ -386,6 +389,22 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
       expect(link?.getAttribute("href")).toBe(`/wissen/${f.id}`);
     },
   );
+
+  it.each([
+    ["de", "Beispiel"],
+    ["en", "Example"],
+    ["nl", "Voorbeeld"],
+  ])("zeigt in %s nur die nachgewiesene Paketkennzeichnung übersetzt", async (lang, zusatz) => {
+    await i18n.changeLanguage(lang);
+    const titel = "[Beispiel] Guest Wi-Fi separation";
+    const paket = await zeichne(createElement(Belegtitel, { titel, demoSeed: true }));
+    expect(paket.textContent).toBe(`${zusatz} Guest Wi-Fi separation`);
+    expect(paket.querySelector("[title]")?.getAttribute("title")).toBe(titel);
+    const eigenerTitel = await zeichne(createElement(Belegtitel, { titel }));
+    expect(eigenerTitel.textContent).toBe(titel);
+    expect(eigenerTitel.querySelector("[title]")).toBeNull();
+    expect(formatKoTimestamp("2026-11-24T12:30:00Z", "en-GB", "short")).toMatch(/^24 Nov 2026 /);
+  });
 
   it("alte Anker bleiben ungeprüft und eine fehlende gebundene Fassung bleibt ohne Ersatz", async () => {
     const f = await bestand();

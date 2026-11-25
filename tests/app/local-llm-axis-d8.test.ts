@@ -29,9 +29,14 @@ describe("Block D8: lokaler LLM-Test bleibt auf der lokalen Achse", () => {
   });
 
   it("recordReachability wird pro Provider getrennt geführt (je Cloud-Anbieter/local isoliert)", () => {
-    // JOB 3134: die Cloud-Kante ist je ANBIETER geführt (`probe(anbieter)`), nicht mehr als eine
-    // gemeinsame „cloud"-Kante — die lokale Achse bleibt davon getrennt.
-    expect(svc).toContain("this.recordReachability((await this.probe(anbieter)).ok, anbieter)");
-    expect(svc).toContain('this.recordReachability((await this.probeLocal()).ok, "local")');
+    const cloud = svc.slice(svc.indexOf("async probe("), svc.indexOf("async probeAntwortzugang("));
+    const local = svc.slice(
+      svc.indexOf("async probeLocal("),
+      svc.indexOf("private providerReachability("),
+    );
+    for (const ergebnis of [true, false]) {
+      expect(cloud).toContain(`this.recordReachability(${ergebnis}, gewaehlt)`);
+      expect(local).toContain(`this.recordReachability(${ergebnis}, "local")`);
+    }
   });
 });

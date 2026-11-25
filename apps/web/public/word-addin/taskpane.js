@@ -1799,6 +1799,7 @@
         askVergleichBeleg: "Quellengestützte Antwort",
         askVergleichZeigen: "In Word zeigen",
         askKorrekturAnwenden: "Korrektur übernehmen",
+        askKorrekturBestaetigt: "Erneut geprüft · stimmt mit der Quelle überein",
         askKorrekturVorher: "Vorher",
         askKorrekturNachher: "Nachher",
         askKorrekturQuelleVeraltet: "Die Quelle hat sich geändert oder ist nicht verfügbar. Prüfe die Passage erneut.",
@@ -1850,6 +1851,7 @@
         // ueber einen GELAUFENEN Pruefvorgang („geprüft 14:32"), nie als Zusage ueber die Antwort
         // (tests/i18n/mega35-word-wortliste.test.ts, OBJEKTAUSSAGEN).
         askHerkunftQuelle: "Quelle:",
+        askBeispiel: "Beispiel",
         askHerkunftVersion: "Version {n}",
         askHerkunftVersionUnbekannt: "Version unbekannt",
         askHerkunftNichtGeladen: "konnte nicht geladen werden",
@@ -2214,6 +2216,7 @@
         askVergleichBeleg: "Source-based answer",
         askVergleichZeigen: "Show in Word",
         askKorrekturAnwenden: "Apply correction",
+        askKorrekturBestaetigt: "Rechecked · matches the source",
         askKorrekturVorher: "Before",
         askKorrekturNachher: "After",
         askKorrekturQuelleVeraltet: "The source has changed or is unavailable. Check the passage again.",
@@ -2250,6 +2253,7 @@
         askHerkunft: "From approved company knowledge",
         askChipStand: "as of {date}",
         askHerkunftQuelle: "Source:",
+        askBeispiel: "Example",
         askHerkunftVersion: "Version {n}",
         askHerkunftVersionUnbekannt: "version unknown",
         askHerkunftNichtGeladen: "could not be loaded",
@@ -2592,6 +2596,7 @@
         askVergleichBeleg: "Antwoord op basis van de bron",
         askVergleichZeigen: "Tonen in Word",
         askKorrekturAnwenden: "Correctie overnemen",
+        askKorrekturBestaetigt: "Opnieuw gecontroleerd · komt overeen met de bron",
         askKorrekturVorher: "Voor",
         askKorrekturNachher: "Na",
         askKorrekturQuelleVeraltet: "De bron is gewijzigd of niet beschikbaar. Controleer de passage opnieuw.",
@@ -2628,6 +2633,7 @@
         askHerkunft: "Uit vrijgegeven bedrijfskennis",
         askChipStand: "per {date}",
         askHerkunftQuelle: "Bron:",
+        askBeispiel: "Voorbeeld",
         askHerkunftVersion: "Versie {n}",
         askHerkunftVersionUnbekannt: "versie onbekend",
         askHerkunftNichtGeladen: "kon niet worden geladen",
@@ -5944,6 +5950,7 @@
               return {
                 id: id,
                 title: ko && ko.title ? String(ko.title) : id,
+                demoSeed: !!(ko && ko.demoSeed === true),
                 trust: ko && typeof ko.trust === "number" ? ko.trust : null,
                 standDate: standDate,
                 // K3: Bearbeitungsstatus aus dem KO ableiten (Bibliotheks-Logik) — nie raten.
@@ -6025,8 +6032,16 @@
     // JOB 3056 K1 (Main.dc.html Z.31-38): der Chip traegt Dokumentsymbol und „n · Titel" — sonst
     // nichts. Status, Rolle, Vertrauen und Stand bleiben WAHR und erreichbar: sie stehen je Quelle
     // in der Detailliste unter „Mehr" (#ask-quellen-detail, askQuellenDetailZeile).
+    function askQuellenAnzeigetitel(quelle) {
+      var praefix = "[Beispiel] ";
+      if (quelle.demoSeed && quelle.title.indexOf(praefix) === 0 && quelle.title.length > praefix.length) {
+        return "[" + t("askBeispiel") + "] " + quelle.title.slice(praefix.length);
+      }
+      return quelle.title;
+    }
+
     function askQuellenDetailZeile(nummer, quelle) {
-      var teile = [String(nummer) + " · " + quelle.title];
+      var teile = [String(nummer) + " · " + askQuellenAnzeigetitel(quelle)];
       teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
       // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ROLLE dieser Quelle IN DER ANTWORT — tragend
       // oder nur herangezogen. Ohne verwertbare Zuordnung (R-0325) wird keine Rolle behauptet.
@@ -6095,7 +6110,7 @@
         link.href = askStelleHref(tragend[i]); // R-0326: mit Belegstelle für die Web-Ansicht
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = tragend[i].title;
+        link.textContent = askQuellenAnzeigetitel(tragend[i]);
         askEinschubAusloeser(link, tragend[i].id);
         titel.appendChild(link);
         item.appendChild(titel);
@@ -6155,7 +6170,7 @@
       }
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      link.textContent = geladen ? quelle.title : id;
+      link.textContent = geladen ? askQuellenAnzeigetitel(quelle) : id;
       zeile.appendChild(link);
       var teile = geladen ? askQuelleStandTeile(quelle) : [t("askHerkunftNichtGeladen")];
       zeile.appendChild(document.createTextNode(" · " + teile.join(" · ")));
@@ -6206,10 +6221,10 @@
       var box = document.createElement("section");
       box.id = "ask-einschub";
       box.setAttribute("data-quelle", id);
-      box.setAttribute("aria-label", q.title);
+      box.setAttribute("aria-label", askQuellenAnzeigetitel(q));
       box.tabIndex = -1;
       var kopf = document.createElement("h3");
-      kopf.textContent = q.title;
+      kopf.textContent = askQuellenAnzeigetitel(q);
       var stand = document.createElement("p");
       stand.className = "einschub-stand";
       stand.textContent = q.geladen ? askQuelleStandTeile(q).join(" · ") : t("askHerkunftNichtGeladen");
@@ -6588,33 +6603,43 @@
     var askKorrekturInArbeit = null;
     var askKorrekturAuftrag = null;
 
+    function askKorrekturAusschnitt(aenderung) {
+      var ausschnitt = document.createElement("section");
+      ausschnitt.className = "kw-wortaenderung";
+      function zeile(label, text, tag) {
+        var p = document.createElement("p");
+        var titel = document.createElement("strong");
+        titel.textContent = t(label);
+        var umfeld = document.createElement("span");
+        umfeld.append(aenderung.links);
+        if (text) {
+          var wort = document.createElement(tag);
+          wort.textContent = text;
+          umfeld.appendChild(wort);
+        }
+        umfeld.append(aenderung.rechts);
+        p.append(titel, " ", umfeld);
+        ausschnitt.appendChild(p);
+      }
+      zeile("askKorrekturVorher", aenderung.vorher, "del");
+      zeile("askKorrekturNachher", aenderung.ersatz, "ins");
+      return ausschnitt;
+    }
+
     function askKorrekturZeichnen(block, outcome, meldung) {
       var officeDokument = window.Office && Office.context && Office.context.document;
       if (String(officeDokument && officeDokument.mode).toLowerCase() === "readonly") return;
       var korrektur = askWortkorrektur(outcome, askQuellenAufgeloest);
       if (!korrektur) return;
       var dokument = outcome.direktvergleich.dokument;
-      var links = dokument.slice(korrektur.kontext.start, korrektur.start);
-      var rechts = dokument.slice(korrektur.start + korrektur.vorher.length, korrektur.kontext.end);
-      var vorschau = document.createElement("section");
-      vorschau.className = "kw-korrektur";
-      function zeile(label, aenderung, tag) {
-        var p = document.createElement("p");
-        var titel = document.createElement("strong");
-        titel.textContent = t(label);
-        var umfeld = document.createElement("span");
-        umfeld.append(links);
-        if (aenderung) {
-          var wort = document.createElement(tag);
-          wort.textContent = aenderung;
-          umfeld.appendChild(wort);
-        }
-        umfeld.append(rechts);
-        p.append(titel, " ", umfeld);
-        vorschau.appendChild(p);
-      }
-      zeile("askKorrekturVorher", korrektur.vorher, "del");
-      zeile("askKorrekturNachher", korrektur.ersatz, "ins");
+      var aenderung = {
+        links: dokument.slice(korrektur.kontext.start, korrektur.start),
+        vorher: korrektur.vorher,
+        ersatz: korrektur.ersatz,
+        rechts: dokument.slice(korrektur.start + korrektur.vorher.length, korrektur.kontext.end)
+      };
+      var vorschau = askKorrekturAusschnitt(aenderung);
+      vorschau.classList.add("kw-korrektur");
       var uebernehmen = document.createElement("button");
       uebernehmen.type = "button";
       uebernehmen.textContent = t("askKorrekturAnwenden");
@@ -6643,7 +6668,8 @@
           }
           if (currentAskOutcome !== outcome || !askVergleichHatWordBereich(korrektur.nachher)) return;
           // Do not read a moved cursor or overwrite a question the user has begun typing.
-          askKorrekturAuftrag = { anker: anker, text: korrektur.nachher, frage: frage };
+          askKorrekturAuftrag = { anker: anker, text: korrektur.nachher, frage: frage,
+            aenderung: aenderung, quellstand: outcome.direktvergleich.quellfassungen[0] };
           try { askKlara(); } finally { askKorrekturAuftrag = null; }
         } finally {
           if (askKorrekturInArbeit === anker) askKorrekturInArbeit = null;
@@ -6676,7 +6702,10 @@
       symbol.className = "kw-vergleich-symbol";
       symbol.setAttribute("aria-hidden", "true");
       symbol.textContent = istOffen ? "?" : bestaetigt ? "✓" : "×";
-      kopf.append(symbol, t(istOffen ? "askVergleichOffen" : bestaetigt ? "askVergleichJa" : "askVergleichNein"));
+      var titel = istOffen ? "askVergleichOffen" : bestaetigt ? "askVergleichJa" : "askVergleichNein";
+      kopf.append(symbol, t(outcome.bestaetigteWortaenderung ? "askKorrekturBestaetigt" : titel));
+      block.appendChild(kopf);
+      if (outcome.bestaetigteWortaenderung) block.appendChild(askKorrekturAusschnitt(outcome.bestaetigteWortaenderung));
       var zeilen = document.createElement("dl");
       zeilen.appendChild(askVergleichZeile("askVergleichDokument", vergleich.dokument, vergleich.dokumentMarke));
       var zugeordnet = askZugeordnet(outcome);
@@ -6700,7 +6729,7 @@
         zeile.classList.add("kw-vergleich-quelle");
         zeilen.appendChild(zeile);
       });
-      block.append(kopf, zeilen);
+      block.appendChild(zeilen);
       if (istOffen) {
         var erklaerung = document.createElement("p");
         erklaerung.textContent = t("askVergleichFehlt");
@@ -6885,6 +6914,24 @@
       return ["x-klara-session", "x-klara-document", "x-klara-instance"].every(function (key) {
         return Boolean(jetzt[key]) && jetzt[key] === anker.bindung[key];
       });
+    }
+
+    // Word can change while the server is checking. Re-read the tracked range, never the current selection.
+    async function askNachpruefungBereichAktuell(auftrag) {
+      var anker = auftrag.anker;
+      if (anker !== askVergleichWordAnker || !askVergleichHatWordBereich(auftrag.text)) return false;
+      var uhr;
+      try {
+        return await Promise.race([
+          Word.run(anker.bereich, async function (context) {
+            anker.bereich.load("text");
+            await context.sync();
+            return anker.bereich.text === anker.original;
+          }),
+          new Promise(function (resolve) { uhr = setTimeout(function () { resolve(false); }, WORD_ADDIN_AUSWAHL_FRIST_MS); })
+        ]) && anker === askVergleichWordAnker && askVergleichHatWordBereich(auftrag.text);
+      } catch (err) { return false; }
+      finally { clearTimeout(uhr); }
     }
 
     async function askVergleichInWordZeigen(text, stelle, nochAktuell) {
@@ -7115,9 +7162,28 @@
           // `readAskSelection`, kein zweiter Zustand — sonst koennte die Zeile ueber dem Feld eine
           // andere Markierung meinen als die, die wirklich abgeht.
           prep.selection, prep.from === "selection" ? "selection" : "manual", minimalController // R-0639: Herkunft; UI-MIN: echter Abbruch
-        ).then(function (outcome) {
+        ).then(async function (outcome) {
           if (minimalEpoch !== askMinimalEpoch) return;
           if (prep.selectionTruncated || prep.truncated) delete outcome.direktvergleich;
+          if (nachpruefung && outcome.direktvergleich) {
+            var aktuell = await askNachpruefungBereichAktuell(nachpruefung);
+            if (minimalEpoch !== askMinimalEpoch) return;
+            if (!aktuell || outcome.direktvergleich.dokument !== nachpruefung.text) {
+              askMinimalAbbrechen();
+              showAskStatus("warn", t("askVergleichVeraltet"));
+              return;
+            }
+            var staende = outcome.direktvergleich.quellfassungen || [];
+            var belege = outcome.direktvergleich.belege;
+            if (outcome.kind === "answered" && outcome.direktvergleich.art === "bestaetigt" &&
+                !outcome.abgeschnitten && outcome.lage !== "belegt_mit_konflikt" && !outcome.konflikte?.length &&
+                belege.length === 1 && belege[0].woertlich && belege[0].quellen.length === 1 &&
+                belege[0].quellen[0] === nachpruefung.quellstand.id &&
+                staende.length === 1 && staende[0].id === nachpruefung.quellstand.id &&
+                staende[0].fassung === nachpruefung.quellstand.fassung) {
+              outcome.bestaetigteWortaenderung = nachpruefung.aenderung;
+            }
+          }
           if (absatzbezug) {
             if (!askMitlesen || klaraS4FragenGesperrt()) {
               askMinimalAbbrechen();

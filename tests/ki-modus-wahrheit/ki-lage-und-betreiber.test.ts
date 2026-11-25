@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   ReasonerBetreiberKarte,
   ReasonerKiLage as WebKiLage,
@@ -254,6 +254,42 @@ function attrappenReasoner(cloudAntwort: () => string) {
 }
 
 describe("Ben nacharbeit-9 · die Lage nennt das Glied, an das der nächste Lauf zuerst sendet", () => {
+  it("Der Verbindungstest folgt der Aufgabenauswahl und datiert nur den letzten bestätigten Zugang", async () => {
+    let fehler = false;
+    const { reasoner, cloud, lokal } = attrappenReasoner(() => {
+      if (fehler) throw new Error("Testfehler");
+      return "OK";
+    });
+    await erteileKiFreigabe(reasoner);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-25T09:45:00Z"));
+    try {
+      await reasoner.setTaskConfig({ global: "local", perTask: { answer: "openai" } });
+      expect((await reasoner.probeAntwortzugang()).ok).toBe(true);
+      expect(cloud.rufe()).toBe(1);
+      expect(lokal.rufe()).toBe(0);
+      clock.mockReturnValue(Date.parse("2026-11-25T09:47:00Z"));
+      expect(reasoner.kiLage()).toMatchObject({
+        verfuegbarkeit: "ungeprueft",
+        zuletztBestaetigtAm: "2026-11-25T09:45:00.000Z",
+      });
+      await reasoner.setTaskConfig({ global: "local", perTask: {} });
+      expect(reasoner.kiLage().zuletztBestaetigtAm).toBeUndefined();
+      expect((await reasoner.probeAntwortzugang()).ok).toBe(true);
+      expect(lokal.rufe()).toBe(1);
+      await reasoner.setTaskConfig({ global: "openai", perTask: {} });
+      fehler = true;
+      expect((await reasoner.probeAntwortzugang()).ok).toBe(false);
+      expect(reasoner.kiLage().verfuegbarkeit).toBe("unerreichbar");
+      expect(reasoner.kiLage().zuletztBestaetigtAm).toBeUndefined();
+      await reasoner.setTaskConfig({ global: "deterministic", perTask: {} });
+      expect((await reasoner.probeAntwortzugang()).mode).toBe("deterministic");
+      expect(cloud.rufe()).toBe(2);
+      expect(lokal.rufe()).toBe(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("L7 · Cloud zuletzt gescheitert: die Lage nennt die Cloud, und der nächste Lauf ruft sie zuerst", async () => {
     const { reasoner, cloud, reihenfolge } = attrappenReasoner(() => "Pumpe P2: alle 200 h.");
     await erteileKiFreigabe(reasoner);

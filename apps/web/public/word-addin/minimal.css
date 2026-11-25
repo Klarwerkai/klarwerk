@@ -447,24 +447,32 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-.kw-korrektur {
+.kw-wortaenderung {
   display: grid;
   gap: 5px;
   padding: 10px 12px;
   border-inline-start: 3px solid var(--pos-text);
   background: var(--surface);
 }
-.kw-korrektur strong {
+.kw-wortaenderung strong {
   display: inline-block;
   min-width: 5ch;
   margin-inline-end: 6px;
   font-size: 12px;
 }
-.kw-korrektur del,
-.kw-korrektur ins {
-  color: var(--text);
+.kw-wortaenderung del,
+.kw-wortaenderung ins {
+  font-weight: 650;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+.kw-wortaenderung del {
+  color: var(--vergleich-rot, #922c3c);
+  background: var(--vergleich-rot-hell, #fbe7e9);
+}
+.kw-wortaenderung ins {
+  color: var(--pos-text);
+  background: var(--pos-bg);
 }
 .kw-korrektur button {
   justify-self: start;

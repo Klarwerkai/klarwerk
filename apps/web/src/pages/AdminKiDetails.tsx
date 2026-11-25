@@ -750,7 +750,10 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
   const gesperrt = aiConfig.data?.policySource === "env";
   // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf; Ergebnis bleibt sichtbar stehen — bis die
   // Zuordnung gespeichert wird (JOB 3134): danach gälte es für einen anderen Anbieter.
-  const aiTest = useMutation({ mutationFn: () => endpoints.reasoner.test() });
+  const aiTest = useMutation({
+    mutationFn: () => endpoints.reasoner.test(),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["reasoner", "status", "kiLage"] }),
+  });
   const aiSave = useMutation({
     // JOB 3134: der Entwurf wird als PAYLOAD mitgegeben, nicht aus dem Zustand gelesen — nur so
     // weiss der Erfolgsfall unten, WAS gesendet wurde.
@@ -947,7 +950,10 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
     return wahl;
   };
   // SCRUM-428: separater Key-Test für den eigenen lokalen LLM.
-  const aiTestLocal = useMutation({ mutationFn: () => endpoints.reasoner.testLocal() });
+  const aiTestLocal = useMutation({
+    mutationFn: () => endpoints.reasoner.testLocal(),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["reasoner", "status", "kiLage"] }),
+  });
   // SCRUM-493/494: End-to-End-Selbsttests der Konflikt- und Duplikat-Erkennung.
   const conflictSelfTest = useMutation({ mutationFn: () => endpoints.reasoner.conflictSelfTest() });
   const dupSelfTest = useMutation({ mutationFn: () => endpoints.reasoner.duplicateSelfTest() });
