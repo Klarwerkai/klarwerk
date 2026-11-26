@@ -672,6 +672,11 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
             "must not provide",
           ]);
           expect((await quittung.locator("ins").textContent())?.trim()).toBe("not");
+          expect(await page.locator("#ask-vergleich dl mark").count()).toBe(0);
+          expect(await page.locator("#ask-vergleich dd").allTextContents()).toEqual([
+            firmenregel.replace(/\.$/, ""),
+            firmenregel,
+          ]);
           expect(await quittung.getByRole("button").count()).toBe(0);
           await sichtbaresUrteil();
           await page.screenshot({ path: join(images, `word-vergleich-${locale}-nachher.png`) });

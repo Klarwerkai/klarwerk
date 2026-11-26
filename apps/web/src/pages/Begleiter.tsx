@@ -423,6 +423,8 @@ function BegleiterInhalt(): JSX.Element {
   useEffect(() => {
     if (gemeldetesKonto.current !== kontoId) {
       gemeldetesKonto.current = kontoId;
+      setMenueSeite(null);
+      setBesucht({ kontoId, notizen: false, kalender: false });
       anNative({ art: "anmeldung" });
     }
   }, [kontoId]);

@@ -6780,7 +6780,7 @@
       block.appendChild(kopf);
       if (outcome.bestaetigteWortaenderung) block.appendChild(askKorrekturAusschnitt(outcome.bestaetigteWortaenderung));
       var zeilen = document.createElement("dl");
-      var dokZeile = askVergleichZeile("askVergleichDokument", vergleich.dokument, vergleich.dokumentMarke);
+      var dokZeile = askVergleichZeile("askVergleichDokument", vergleich.dokument, bestaetigt ? null : vergleich.dokumentMarke);
       var beleg = vergleich.belege.length === 1 && vergleich.belege[0];
       var fassung = vergleich.quellfassungen && vergleich.quellfassungen.length === 1 && vergleich.quellfassungen[0];
       var kurz = bestaetigt && !outcome.abgeschnitten && outcome.lage !== "belegt_mit_konflikt" && !(outcome.konflikte && outcome.konflikte.length)
@@ -6794,7 +6794,7 @@
       var ids = (outcome.sources || []).filter(function (id) { return zugeordnet.indexOf(id) !== -1; });
       vergleich.belege.forEach(function (beleg) {
         var zeile = askVergleichZeile(beleg.woertlich ? "askVergleichQuelle" : "askVergleichBeleg",
-          beleg.text, kurz ? null : vergleich.belegMarke);
+          beleg.text, bestaetigt ? null : vergleich.belegMarke);
         if (ids.length > 1) {
           beleg.quellen.forEach(function (id) {
             var nummer = ids.indexOf(id) + 1;

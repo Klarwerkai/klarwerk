@@ -912,10 +912,10 @@ describe("Direktvergleich in der Klara-App", () => {
       if (!neu) throw new Error("Word hat den neuen Vergleich nicht erhalten");
       const karte = await zeige(7 + index * 2, neu.id, {
         art,
-        dokument: original,
+        dokument: original.slice(0, -1),
         belege: art === "offen" ? [] : [beleg],
-        belegMarke: null,
-        dokumentMarke: null,
+        belegMarke: art === "bestaetigt" ? { start: 0, end: original.length - 1 } : null,
+        dokumentMarke: art === "bestaetigt" ? { start: 0, end: original.length - 1 } : null,
         zeigbar: false,
       });
       expect(document.querySelectorAll('[data-testid="begleiter-direktvergleich"]')).toHaveLength(
@@ -924,6 +924,7 @@ describe("Direktvergleich in der Klara-App", () => {
       expect(karte.querySelector("h3")?.textContent).toContain(
         art === "offen" ? "Insufficient evidence" : "Matches the source",
       );
+      expect(karte.querySelector("mark")).toBeNull();
       expect(karte.querySelectorAll("a")).toHaveLength(art === "offen" ? 0 : 1);
       expect(q(karte, "begleiter-vergleich-zeigen")).toBeNull();
       expect(q(karte, "ai-generated-notice")).toBeNull();

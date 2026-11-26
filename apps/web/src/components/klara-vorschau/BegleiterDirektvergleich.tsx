@@ -110,6 +110,7 @@ export function BegleiterDirektvergleich({
 }): JSX.Element {
   const { t } = useTranslation();
   const { symbol, farbe } = URTEIL[vergleich.art];
+  const widerspruch = vergleich.art === "widersprochen";
   const quellen = [...new Set(vergleich.belege.flatMap((beleg) => beleg.quellen))];
   const { user } = useSession();
   const belege = useQueries({
@@ -171,7 +172,11 @@ export function BegleiterDirektvergleich({
                 )}
               </dt>
               <dd className={zitat}>
-                <Wortlaut text={vergleich.dokument} marke={vergleich.dokumentMarke} farbe={farbe} />
+                <Wortlaut
+                  text={vergleich.dokument}
+                  marke={widerspruch ? vergleich.dokumentMarke : null}
+                  farbe={farbe}
+                />
               </dd>
             </div>
           )}
@@ -189,7 +194,7 @@ export function BegleiterDirektvergleich({
                 ) : (
                   <Wortlaut
                     text={beleg.text}
-                    marke={vergleich.belegMarke}
+                    marke={widerspruch ? vergleich.belegMarke : null}
                     farbe="bg-trust-pos-bg text-trust-pos-text"
                   />
                 )}
