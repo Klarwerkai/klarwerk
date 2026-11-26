@@ -493,7 +493,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     personenbezug: "ja",
     personenbezugGrund:
       "Gehört genau einem Konto; Notiztext und Fragen sind Freitext und können sensible Angaben enthalten.",
-    ablage: { ort: DATENBANK, tabellen: ["klara_notizen"] },
+    ablage: { ort: DATENBANK, tabellen: ["klara_notizen", "klara_notiz_pruefstaende"] },
     taetigkeit: "fragen",
     loeschung:
       "Das Konto löscht eine Notiz selbst (DELETE /api/me/klara/notizen/:id); auch Administratoren lesen fremde Notizen nicht, und keine Suche des Wissensbestands führt sie.",

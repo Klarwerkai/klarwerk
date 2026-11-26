@@ -16,12 +16,14 @@ import {
 // JOB 3015 D5: das Suchfeld der Konsole navigiert wie die Topbar-Suche — durch den Eingabe-Wächter.
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
+import { routePathAllows } from "../app/navigation";
 import { HelpTip } from "../components/HelpTip";
 import { RoleLink } from "../components/RoleLink";
 import { OverflowMenu } from "../components/start/OverflowMenu";
 import { Seitenblatt } from "../components/start/Seitenblatt";
 import { FuerDichKarte, ZuletztKarte } from "../components/start/StartKarten";
 import { StartPanelInhalt } from "../components/start/StartPanel";
+import { Weiterarbeiten } from "../components/start/Weiterarbeiten";
 import {
   type ForYouQuelle,
   type ForYouZeile,
@@ -98,7 +100,7 @@ type Arbeitsquelle = ForYouQuelle & { readonly refetch: () => unknown };
 
 export function Start(): JSX.Element {
   const { t } = useTranslation();
-  const { role, stufe2 } = useRole();
+  const { role, stufe2, kontoId } = useRole();
   const navigate = useGuardedNavigate();
 
   const [frage, setFrage] = useState("");
@@ -441,31 +443,15 @@ export function Start(): JSX.Element {
             </button>
           ) : null}
         </form>
-        {/* ==========================================================================================
-            JOB 3266 (D1) — „MEINE ENTWÜRFE" STEHT AUF DER STARTSEITE.
-            ==========================================================================================
-            PEDIS BEFUND (Vorführung 07.09.): Er hatte ein Dokument importiert und als Entwurf
-            gesichert. Beim nächsten Besuch — neue Anmeldung, kein `?draft=`-Link in der Hand —
-            fand er ihn NICHT wieder. Die Startseite nannte den Weg nicht, und in der Erfassung lag
-            er hinter einem Symbolknopf ohne Wort.
-
-            DIE STARTSEITE IST DER ORT, an dem der Besuch beginnt; also steht der Weg hier, mit dem
-            Wort, das der Mensch sucht. Er ist ein echter Link: Tab erreicht ihn, Enter geht ihn,
-            den sichtbaren Fokusring bringt die globale `*:focus-visible`-Regel mit (index.css).
-
-            ER FÜHRT ZUR EINEN LISTE UND BAUT KEINE ZWEITE: `/erfassen?entwuerfe=1` öffnet die
-            vorhandene Entwurfsfläche des Blattes (`components/erfassen/Blatt.tsx`, dort steht die
-            Begründung). Eine zweite Titelliste auf der Startseite wäre ein zweiter Abruf, ein
-            zweiter Leerzustand und ein zweiter Öffnungsweg für dieselbe Zusage.
-
-            `RoleLink` UND NICHT `Link`: `/erfassen` verlangt die Rolle „Experte"
-            (`app/navigation.ts:123`). Wer sie nicht hat, hat auch keine eigenen Entwürfe — die
-            Angabe verschwindet trotzdem nicht, sie hört auf, ein Weg zu sein. Das ist die Regel,
-            die auf dieser Seite schon für jede andere Zeile gilt (mega51 Block A).
-
-            DAS WORT IST DASSELBE WIE AM BLATT (`fd.saved.toDrafts`, DE „Meine Entwürfe", EN „My
-            drafts"): ein zweiter Schlüssel mit gleichem Wortlaut wäre die Bauform, in der die zwei
-            Türen zu einer Liste eines Tages verschieden heissen. */}
+        {kontoId && routePathAllows("/erfassen", role) ? (
+          <Weiterarbeiten
+            key={kontoId}
+            kontoId={kontoId}
+            role={role}
+            board={board.isError ? [] : (board.data ?? [])}
+            meldungen={meldungen.isError ? [] : (meldungen.data ?? [])}
+          />
+        ) : null}
         <RoleLink
           to="/erfassen?entwuerfe=1"
           testId="h5-start-entwuerfe"

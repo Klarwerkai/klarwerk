@@ -23,7 +23,7 @@ import { LesestandAnsicht } from "../../apps/web/src/components/gesamtanweisung/
 import i18n from "../../apps/web/src/i18n";
 import { zitatAusFragment, zitatFragment } from "../../apps/web/src/lib/belegstelle";
 import { formatKoTimestamp } from "../../apps/web/src/lib/koDates";
-import { leseGespeicherteFassung } from "../../apps/web/src/lib/objektbezug";
+import { leseGespeicherteFassung, notizPruefbezug } from "../../apps/web/src/lib/objektbezug";
 import { quellabschnitteAus as webAbschnitte } from "../../apps/web/src/lib/quellabschnitt";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { sichtbarkeitsfilterFuer } from "../../services/app/src/sichtbarkeit";
@@ -287,7 +287,8 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
         snapshot: {
           ...alt.snapshot,
           statement: zitat,
-          bodyHtml: "<p>Guest <b>Wi-Fi</b> must<br>not provide access.</p><p>Other sentence.</p>",
+          bodyHtml:
+            "<p>Scope: visitors.</p><p>Guest <b>Wi-Fi</b> must<br>not provide access.</p><p>Other sentence.</p>",
         },
       },
       ...versionen.slice(1),
@@ -316,11 +317,18 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
       " must",
       "not provide access.",
     ]);
+    expect(richtig.querySelector('[data-testid="quellenfokus-davor"]')?.textContent).toBe(
+      "Scope: visitors.",
+    );
+    expect(richtig.querySelector('[data-testid="quellenfokus-danach"]')?.textContent).toBe(
+      "Other sentence.",
+    );
     expect(marke(richtig, "-aussage")?.querySelector("mark")).toBeNull();
     expect(treffer(await anzeigen(1, zitat, "<p>Other sentence.</p>"))[0]?.textContent).toBe(zitat);
     const doppelt = await anzeigen(1, zitat, `<p>${zitat}</p><p>${zitat}</p>`);
     expect(treffer(doppelt)).toHaveLength(0);
     expect(doppelt.querySelector('[data-testid="quellenfokus-zitat"]')).toBeNull();
+    expect(doppelt.querySelector('[data-testid="quellenfokus-danach"]')).toBeNull();
     expect(doppelt.querySelector('[data-testid="quellenfokus-ohne-zitat"]')?.textContent).toContain(
       "nicht eindeutig",
     );
@@ -349,6 +357,14 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
         payload: { action: "admin-validate" },
       });
       expect(freigabe.statusCode, freigabe.body).toBe(200);
+      const gebucht = await f.app.inject({
+        method: "GET",
+        url: `/api/kos/${f.id}?belegfassung=3`,
+        headers: f.viewer,
+      });
+      const metadaten = gebucht.json();
+      expect(metadaten.freigegebenAm).toEqual(expect.any(String));
+      expect(metadaten.aktuellBestaetigteFassung).toBe(3);
       await i18n.changeLanguage(lang);
       const { container } = await gespeicherteAnsicht(
         f,
@@ -377,6 +393,7 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
           : formatKoTimestamp(gespeichert?.at, lang);
       expect(marke(container, "-titelzeile")?.textContent).toContain(gespeicherteZeit);
       expect(marke(container, "-titelzeile")?.textContent).toContain("3");
+      expect(container.textContent).toContain(formatKoTimestamp(metadaten.freigegebenAm, lang));
       const details = container.querySelector("details");
       expect(details?.open).toBe(false);
       const summary = details?.querySelector("summary");
@@ -518,4 +535,58 @@ describe("W3 · gebundene Quelle am heutigen Öffnungsweg", () => {
     );
     expect(marke(unbekannt, "-quellen-unbekannt")).not.toBeNull();
   });
+});
+
+it("bindet den Rückweg an dieselbe private Notiz, ihre Aussage und ihre konkrete Prüfung", () => {
+  const notiz = randomUUID();
+  const aussage = "aus_0123456789abcdef_2";
+  const pruefstand = `ref_${randomUUID()}`;
+  const params = new URLSearchParams({ vonNotiz: notiz, aussage, pruefstand });
+  const bezug = notizPruefbezug(params);
+  expect(bezug?.zurAussage).toBe(`/start?${new URLSearchParams({ notiz, aussage, pruefstand })}`);
+  expect(bezug?.anQuelle).toBe(params.toString());
+  params.delete("aussage");
+  expect(notizPruefbezug(params)).toBeNull();
+});
+
+it("öffnet eine jüngere freigegebene Fassung und behält den Rückweg in dieselbe Notiz", async () => {
+  const f = await bestand();
+  await f.app.inject({
+    method: "PUT",
+    url: `/api/kos/${f.id}`,
+    headers: f.admin,
+    payload: { action: "admin-validate" },
+  });
+  const params = new URLSearchParams({
+    vonNotiz: randomUUID(),
+    aussage: "aus_0123456789abcdef",
+    pruefstand: `ref_${randomUUID()}`,
+  });
+  const notizbezug = notizPruefbezug(params);
+  const { container } = await gespeicherteAnsicht(
+    f,
+    f.viewer,
+    createElement(AuthProvider, {
+      children: createElement(
+        MemoryRouter,
+        {},
+        createElement(ZitierteQuellansicht, {
+          koId: f.id,
+          fassung: 1,
+          ankerId: null,
+          zitat: "W3 Quelltext 7.",
+          notizbezug,
+        }),
+      ),
+    }),
+  );
+  await bis(() =>
+    expect(container.querySelector('[data-testid="quellenfokus-aktuell"]')?.textContent).toBe(
+      "Was gilt heute? · Fassung 3",
+    ),
+  );
+  expect(
+    container.querySelector('[data-testid="quellenfokus-aktuell"]')?.getAttribute("href"),
+  ).toBe(`/wissen/${f.id}?${params}`);
+  expect(container.querySelector("a")?.getAttribute("href")).toBe(notizbezug?.zurAussage);
 });

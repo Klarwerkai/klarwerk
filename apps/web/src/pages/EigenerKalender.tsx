@@ -850,21 +850,37 @@ function Formular({
   );
 }
 
-export function EigenerKalender(): JSX.Element {
+function Optionen({
+  kompakt,
+  titel,
+  children,
+}: { kompakt: boolean; titel: string; children: React.ReactNode }): JSX.Element {
+  if (!kompakt) return <>{children}</>;
+  return (
+    <details className="mb-3">
+      <summary className="cursor-pointer py-1 text-sm font-medium text-muted">{titel}</summary>
+      {children}
+    </details>
+  );
+}
+
+export function EigenerKalender({ kompakt = false }: { kompakt?: boolean } = {}): JSX.Element {
   const { t, i18n } = useTranslation();
   const { user } = useSession();
   const qc = useQueryClient();
   const zone = usePersoenlicheZeitzone();
   const heute = tagVon(new Date(), zone);
   const [bereich, setBereich] = useState<KalenderBereich>("persoenlich");
-  const [ansicht, setAnsicht] = useState<Ansicht>("woche");
+  const [ansicht, setAnsicht] = useState<Ansicht>(kompakt ? "agenda" : "woche");
   const [tag, setTag] = useState(heute);
   const [mitAusgeblendeten, setMitAusgeblendeten] = useState(false);
   const [offen, setOffen] = useState<string | null>(null);
   const [formular, setFormular] = useState<{ vorlage: KalenderSicht | null } | null>(null);
 
   const daten = useQuery({
-    queryKey: ["kalender", bereich, mitAusgeblendeten],
+    queryKey: ["kalender", user?.id, bereich, mitAusgeblendeten],
+    enabled: Boolean(user),
+    gcTime: 0,
     queryFn: () => eigenerKalenderApi.ansicht(bereich, mitAusgeblendeten),
   });
   const sichtWaehlen = useMutation({
@@ -931,7 +947,7 @@ export function EigenerKalender(): JSX.Element {
       <PageHeader
         pageKey="kalender"
         title={t("kalender.titel")}
-        lead={t("kalender.lead")}
+        lead={kompakt ? undefined : t("kalender.lead")}
         actions={
           <Button
             variant="primary"
@@ -946,85 +962,91 @@ export function EigenerKalender(): JSX.Element {
           </Button>
         }
       />
-      <p className="mb-1 text-[12.5px] text-muted" data-testid="kalender-ohne-konto">
-        {t("kalender.ohneKonto")}
-      </p>
-      <p className="mb-4 text-[12.5px] text-muted" data-testid="kalender-zone">
-        {t("kalender.zone", { zone: zoneLesbar(zone, i18n.language, new Date()) })}
-      </p>
+      {kompakt && (
+        <p className="mb-2 text-sm text-muted">
+          {t("kalender.zone", { zone: zoneLesbar(zone, i18n.language, new Date()) })}
+        </p>
+      )}
+      <Optionen kompakt={kompakt} titel={t("begleiter.kalender.optionen")}>
+        <p className="mb-1 text-[12.5px] text-muted" data-testid="kalender-ohne-konto">
+          {t("kalender.ohneKonto")}
+        </p>
+        <p className="mb-4 text-[12.5px] text-muted" data-testid="kalender-zone">
+          {t("kalender.zone", { zone: zoneLesbar(zone, i18n.language, new Date()) })}
+        </p>
 
-      {user ? <KlaraFristen kontoId={user.id} /> : null}
-      <div className="mb-4 flex flex-wrap gap-6">
-        <fieldset className="m-0 border-0 p-0" data-testid="kalender-sicht">
-          <legend className="mb-1 text-[12.5px] font-medium text-muted">
-            {t("kalender.sicht.legende")}
-          </legend>
-          <div className="flex gap-3">
-            {SICHTMODI.map((m) => (
-              <label key={m} className="flex items-center gap-1.5 text-[13px]">
-                <input
-                  type="radio"
-                  name="kalender-sicht"
-                  data-testid={`kalender-sicht-${m}`}
-                  checked={sichtmodus === m}
-                  disabled={sichtWaehlen.isPending || !daten.isSuccess}
-                  onChange={() => sichtWaehlen.mutate(m)}
-                />
-                {t(`kalender.sicht.${m}`)}
-              </label>
-            ))}
-          </div>
-          <p className="mt-1 text-[12px] text-muted-2">{t("kalender.sicht.hinweis")}</p>
-        </fieldset>
-        <fieldset className="m-0 border-0 p-0" data-testid="kalender-bereich">
-          <legend className="mb-1 text-[12.5px] font-medium text-muted">
-            {t("kalender.bereich.legende")}
-          </legend>
-          <div className="flex gap-2">
-            {(["persoenlich", "team"] as const).map((b) => (
-              <Button
-                key={b}
-                variant={bereich === b ? "primary" : "outline"}
-                aria-pressed={bereich === b}
-                data-testid={`kalender-bereich-${b}`}
-                onClick={() => {
-                  setBereich(b);
-                  setOffen(null);
-                  setFormular(null);
-                }}
-              >
-                {t(`kalender.bereich.${b}`)}
-              </Button>
-            ))}
-          </div>
-          <p className="mt-1 text-[12px] text-muted-2">
-            {bereich === "persoenlich"
-              ? t("kalender.bereich.privat")
-              : (daten.data?.teams.length ?? 0) === 0
-                ? t("kalender.bereich.keinTeam")
-                : t("kalender.bereich.teamHinweis")}
-          </p>
-        </fieldset>
-      </div>
-
-      {sichtmodus !== "eigen" ? (
-        <Card interactive={false} data-testid="kalender-vorhanden">
-          <h2 className="text-[14px] font-semibold text-ink">{t("kalender.vorhanden.titel")}</h2>
-          <p className="text-[12.5px] text-muted" data-testid="kalender-vorhanden-stand">
-            {t(
-              daten.data?.vorhandenerKalender.verbunden
-                ? "kalender.vorhanden.verbunden"
-                : "kalender.vorhanden.nichtVerbunden",
-            )}
-          </p>
-          {sichtmodus === "vorhanden" ? (
-            <p className="mt-1 text-[12.5px] text-muted" data-testid="kalender-intern-bleibt">
-              {t("kalender.vorhanden.internBleibt")}
+        {user ? <KlaraFristen kontoId={user.id} /> : null}
+        <div className="mb-4 flex flex-wrap gap-6">
+          <fieldset className="m-0 border-0 p-0" data-testid="kalender-sicht">
+            <legend className="mb-1 text-[12.5px] font-medium text-muted">
+              {t("kalender.sicht.legende")}
+            </legend>
+            <div className="flex gap-3">
+              {SICHTMODI.map((m) => (
+                <label key={m} className="flex items-center gap-1.5 text-[13px]">
+                  <input
+                    type="radio"
+                    name="kalender-sicht"
+                    data-testid={`kalender-sicht-${m}`}
+                    checked={sichtmodus === m}
+                    disabled={sichtWaehlen.isPending || !daten.isSuccess}
+                    onChange={() => sichtWaehlen.mutate(m)}
+                  />
+                  {t(`kalender.sicht.${m}`)}
+                </label>
+              ))}
+            </div>
+            <p className="mt-1 text-[12px] text-muted-2">{t("kalender.sicht.hinweis")}</p>
+          </fieldset>
+          <fieldset className="m-0 border-0 p-0" data-testid="kalender-bereich">
+            <legend className="mb-1 text-[12.5px] font-medium text-muted">
+              {t("kalender.bereich.legende")}
+            </legend>
+            <div className="flex gap-2">
+              {(["persoenlich", "team"] as const).map((b) => (
+                <Button
+                  key={b}
+                  variant={bereich === b ? "primary" : "outline"}
+                  aria-pressed={bereich === b}
+                  data-testid={`kalender-bereich-${b}`}
+                  onClick={() => {
+                    setBereich(b);
+                    setOffen(null);
+                    setFormular(null);
+                  }}
+                >
+                  {t(`kalender.bereich.${b}`)}
+                </Button>
+              ))}
+            </div>
+            <p className="mt-1 text-[12px] text-muted-2">
+              {bereich === "persoenlich"
+                ? t("kalender.bereich.privat")
+                : (daten.data?.teams.length ?? 0) === 0
+                  ? t("kalender.bereich.keinTeam")
+                  : t("kalender.bereich.teamHinweis")}
             </p>
-          ) : null}
-        </Card>
-      ) : null}
+          </fieldset>
+        </div>
 
+        {sichtmodus !== "eigen" ? (
+          <Card interactive={false} data-testid="kalender-vorhanden">
+            <h2 className="text-[14px] font-semibold text-ink">{t("kalender.vorhanden.titel")}</h2>
+            <p className="text-[12.5px] text-muted" data-testid="kalender-vorhanden-stand">
+              {t(
+                daten.data?.vorhandenerKalender.verbunden
+                  ? "kalender.vorhanden.verbunden"
+                  : "kalender.vorhanden.nichtVerbunden",
+              )}
+            </p>
+            {sichtmodus === "vorhanden" ? (
+              <p className="mt-1 text-[12.5px] text-muted" data-testid="kalender-intern-bleibt">
+                {t("kalender.vorhanden.internBleibt")}
+              </p>
+            ) : null}
+          </Card>
+        ) : null}
+      </Optionen>
       {daten.isPending ? <p className="text-sm text-muted">{t("kalender.laedt")}</p> : null}
       {daten.isError ? (
         <p role="alert" className="text-sm text-trust-crit-text">

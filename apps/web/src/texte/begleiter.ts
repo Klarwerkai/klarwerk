@@ -12,6 +12,11 @@ export default {
   praefix: "begleiter.",
   legacySchluessel: [],
   de: {
+    "begleiter.navigation": "Arbeitsbereiche",
+    "begleiter.nav.gespraech": "Gespräch",
+    "begleiter.nav.notizen": "Notizen",
+    "begleiter.nav.kalender": "Kalender",
+    "begleiter.kalender.optionen": "Kalenderansicht und Einstellungen",
     "begleiter.figur.label":
       "{{name}} – Gespräch öffnen oder schließen. Pfeiltasten verschieben die Figur, mit Umschalt weiter.",
     "begleiter.figur.zustand.ruhe": "bereit",
@@ -54,8 +59,8 @@ export default {
     "begleiter.vergleich.einklappen": "Vergleich einklappen",
     "begleiter.vergleich.widersprochen": "Widerspricht der Quelle",
     "begleiter.vergleich.offen": "Nicht ausreichend belegt",
-    "begleiter.vergleich.dokument": "Dein Dokument",
-    "begleiter.vergleich.quelle": "Freigegebene Quelle",
+    "begleiter.vergleich.dokument": "Dein Satz",
+    "begleiter.vergleich.quelle": "Freigegebener Wortlaut",
     "begleiter.vergleich.beleg": "Quellengestützte Antwort",
     "begleiter.vergleich.fehlt":
       "Die freigegebenen Firmenquellen reichen für dieses Urteil nicht aus.",
@@ -193,6 +198,11 @@ export default {
       "Markierst du in Word etwas, erscheint es hier mit „Erklären“ und „Verbessern“. Weitere Möglichkeiten stehen darunter.",
   },
   en: {
+    "begleiter.navigation": "Work areas",
+    "begleiter.nav.gespraech": "Conversation",
+    "begleiter.nav.notizen": "Notes",
+    "begleiter.nav.kalender": "Calendar",
+    "begleiter.kalender.optionen": "Calendar view and settings",
     "begleiter.figur.label":
       "{{name}} – open or close the conversation. Arrow keys move the figure, with Shift further.",
     "begleiter.figur.zustand.ruhe": "ready",
@@ -235,8 +245,8 @@ export default {
     "begleiter.vergleich.einklappen": "Collapse comparison",
     "begleiter.vergleich.widersprochen": "Contradicts the source",
     "begleiter.vergleich.offen": "Insufficient evidence",
-    "begleiter.vergleich.dokument": "Your document",
-    "begleiter.vergleich.quelle": "Approved source",
+    "begleiter.vergleich.dokument": "Your sentence",
+    "begleiter.vergleich.quelle": "Approved wording",
     "begleiter.vergleich.beleg": "Source-based answer",
     "begleiter.vergleich.fehlt":
       "The approved company sources do not establish whether this statement is correct.",
@@ -360,6 +370,11 @@ export default {
       "When you select something in Word, it appears here with “Explain” and “Improve”. More options are below it.",
   },
   nl: {
+    "begleiter.navigation": "Werkgebieden",
+    "begleiter.nav.gespraech": "Gesprek",
+    "begleiter.nav.notizen": "Notities",
+    "begleiter.nav.kalender": "Agenda",
+    "begleiter.kalender.optionen": "Agendaweergave en instellingen",
     "begleiter.figur.label":
       "{{name}} – gesprek openen of sluiten. Pijltoetsen verplaatsen de figuur, met Shift verder.",
     "begleiter.figur.zustand.ruhe": "gereed",
@@ -402,8 +417,8 @@ export default {
     "begleiter.vergleich.einklappen": "Vergelijking inklappen",
     "begleiter.vergleich.widersprochen": "In strijd met de bron",
     "begleiter.vergleich.offen": "Onvoldoende bewijs",
-    "begleiter.vergleich.dokument": "Je document",
-    "begleiter.vergleich.quelle": "Goedgekeurde bron",
+    "begleiter.vergleich.dokument": "Jouw zin",
+    "begleiter.vergleich.quelle": "Goedgekeurde tekst",
     "begleiter.vergleich.beleg": "Antwoord op basis van de bron",
     "begleiter.vergleich.fehlt":
       "De goedgekeurde bedrijfsbronnen geven onvoldoende houvast om deze uitspraak te beoordelen.",

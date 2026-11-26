@@ -24,7 +24,7 @@
 //   · zu jedem „nicht prüfbar" eine konkrete Ursache UND ein sinnvoller nächster Schritt (K8).
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import type {
   AussagenBelegKurz,
   ReferenzAussageErgebnis,
@@ -231,18 +231,23 @@ function NaechsterSchritt({
 
 function FundstellenLink({
   f,
+  aussageId,
   titelVon,
   wissenHref,
 }: {
   f: ReferenzFundstelle;
+  aussageId: string;
   titelVon: (id: string) => string | undefined;
-  wissenHref: (koId: string, fassung: number) => string;
+  wissenHref: (f: ReferenzFundstelle, aussageId: string) => string;
 }): JSX.Element {
   const { t } = useTranslation();
+  const imBegleiter = useLocation().pathname === "/begleiter";
   const titel = titelVon(f.koId) ?? t("referenzpruefung.quelleOhneTitel");
   return (
     <Link
-      to={wissenHref(f.koId, f.koVersion)}
+      to={wissenHref(f, aussageId)}
+      target={imBegleiter ? "_blank" : undefined}
+      rel={imBegleiter ? "noopener noreferrer" : undefined}
       data-testid="referenzpruefung-fundstelle"
       className="break-words text-accent underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
     >
@@ -265,7 +270,7 @@ function FundstellenDetail({
 }: {
   a: ReferenzAussageErgebnis;
   titelVon: (id: string) => string | undefined;
-  wissenHref: (koId: string, fassung: number) => string;
+  wissenHref: (f: ReferenzFundstelle, aussageId: string) => string;
   auszugVon: ((fundstelleId: string) => string | undefined) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
@@ -328,7 +333,12 @@ function FundstellenDetail({
                     ) : (
                       <p className="text-muted-2">{t("referenzpruefung.detail.passageOhne")}</p>
                     )}
-                    <FundstellenLink f={f} titelVon={titelVon} wissenHref={wissenHref} />
+                    <FundstellenLink
+                      f={f}
+                      aussageId={a.aussageId}
+                      titelVon={titelVon}
+                      wissenHref={wissenHref}
+                    />
                   </li>
                 );
               })}
@@ -369,7 +379,7 @@ function Aussage({
   a: ReferenzAussageErgebnis;
   text: string | undefined;
   titelVon: (id: string) => string | undefined;
-  wissenHref: (koId: string, fassung: number) => string;
+  wissenHref: (f: ReferenzFundstelle, aussageId: string) => string;
   auszugVon: ((fundstelleId: string) => string | undefined) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
@@ -377,6 +387,8 @@ function Aussage({
     <li
       data-testid="referenzpruefung-aussage"
       data-zustand={a.zustand}
+      data-aussage-id={a.aussageId}
+      tabIndex={-1}
       className="min-w-0 rounded-[10px] border border-hairline p-3"
     >
       <div className="flex flex-wrap items-start gap-2">
@@ -404,7 +416,12 @@ function Aussage({
         <ul className="mt-1.5 space-y-0.5 text-[12px]">
           {a.fundstellen.map((f) => (
             <li key={f.fundstelleId}>
-              <FundstellenLink f={f} titelVon={titelVon} wissenHref={wissenHref} />
+              <FundstellenLink
+                f={f}
+                aussageId={a.aussageId}
+                titelVon={titelVon}
+                wissenHref={wissenHref}
+              />
             </li>
           ))}
         </ul>
@@ -450,6 +467,7 @@ export function Referenzpruefung({
   aussageTexte,
   titelVon,
   wissenHref,
+  hrefFuerFundstelle,
   onErneut,
   erneutLaeuft = false,
   testId = "referenzpruefung",
@@ -465,6 +483,7 @@ export function Referenzpruefung({
   titelVon: (id: string) => string | undefined;
   /** Rückweg zur Quelle in genau der geprüften Fassung. */
   wissenHref: (koId: string, fassung: number) => string;
+  hrefFuerFundstelle?: (f: ReferenzFundstelle, aussageId: string) => string;
   /** Die ausdrücklich angestoßene erneute Prüfung; fehlt sie, gibt es keinen Knopf. */
   onErneut?: (() => void) | undefined;
   erneutLaeuft?: boolean;
@@ -559,7 +578,7 @@ export function Referenzpruefung({
               a={a}
               text={aussageTexte?.get(a.aussageId)}
               titelVon={titelVon}
-              wissenHref={wissenHref}
+              wissenHref={hrefFuerFundstelle ?? ((f) => wissenHref(f.koId, f.koVersion))}
               auszugVon={auszugVon}
             />
           ))}

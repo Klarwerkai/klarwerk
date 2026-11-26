@@ -18,8 +18,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
 import { KlaraGespraechDienst, PgKlaraGespraechRepo } from "../../services/app/src/klara-gespraech";
 import { KlaraNotizDienst, PgKlaraNotizRepo } from "../../services/app/src/klara-notiz";
+import { bindeAussagen } from "../../services/ask";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { poolAbschluss } from "../audit-gesamt/pool-abschluss";
+import { bestand, dienstMit } from "../referenzki-antwortstatus/hilfen";
 
 const ANNA = "u-pg-notiz-anna";
 const BERT = "u-pg-notiz-bert";
@@ -116,6 +118,57 @@ describe("Klara 06 · Notizen gegen echtes PostgreSQL", () => {
       await schliessen();
     }
     await container?.stop();
+  });
+
+  it("speichert den privaten Prüfstand über einen Neustart und löscht ihn mit der Notiz", async () => {
+    const { notiz } = await neuerDienst().lege(ANNA, {
+      vorgang: vorgang(),
+      weg: "geschrieben",
+      inhalt: "Prüfstand der Testnotiz.",
+      objektbezug: BEZUG,
+    });
+    const repo = new PgKlaraNotizRepo(neuePool());
+    const beleg = bindeAussagen({
+      antwort: notiz.inhalt,
+      sources: [],
+      citedSources: [],
+      quellen: new Map(),
+    });
+    const { dienst } = dienstMit({ jetzt: { grund: "antwortmodell_unbekannt" } });
+    const ergebnis = await dienst.pruefe({
+      beleg,
+      leser: bestand([]).leser,
+      antwortRolle: undefined,
+      darfSehen: () => true,
+      akteur: ANNA,
+      antwortweg: "klara_notiz",
+    });
+    const stand = {
+      fassung: notiz.fassung,
+      geprueftAm: new Date(jetzt()).toISOString(),
+      beleg,
+      ergebnis,
+      quelltitel: {},
+      modellherkunft: null,
+      herkunftUnveraendert: true,
+      quellen: [],
+    };
+    expect(await repo.speicherePruefstand(BERT, notiz.id, stand)).toBe(false);
+    expect(await repo.speicherePruefstand(ANNA, notiz.id, { ...stand, fassung: 2 })).toBe(false);
+    expect(await repo.speicherePruefstand(ANNA, notiz.id, stand)).toBe(true);
+    const leser = new PgKlaraNotizRepo(neuePool());
+    expect(await leser.pruefstand(ANNA, notiz.id)).toEqual({
+      stand,
+      vorheriger: null,
+      naechster: null,
+    });
+    expect(await leser.pruefstand(BERT, notiz.id, ergebnis.pruefId)).toBeNull();
+    expect(await repo.entferne(ANNA, notiz.id)).toBe(true);
+    const rest = await neuePool().query(
+      "SELECT count(*)::int AS n FROM klara_notiz_pruefstaende WHERE notiz_id=$1",
+      [notiz.id],
+    );
+    expect(rest.rows[0].n).toBe(0);
   });
 
   it("K1/K2 · Inhalt, Rücklink, offene Fragen und Fassung überstehen den Neustart", async () => {

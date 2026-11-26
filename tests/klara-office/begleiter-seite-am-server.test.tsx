@@ -669,7 +669,7 @@ describe("Direktvergleich in der Klara-App", () => {
     expect(q<HTMLInputElement>(flaeche, "begleiter-eingabe")?.value).toBe("Meine nächste Frage");
   });
 
-  it("fasst nur die aktuelle, wörtlich belegte Passage der freigegebenen Fassung in der Vorführansicht zusammen", async () => {
+  it("fasst nur die aktuelle, wörtlich belegte Passage der freigegebenen Fassung im Alltag und in der Vorführansicht zusammen", async () => {
     await vorrichtung();
     if (!aufbau) throw new Error("Vorrichtung fehlt");
     const quelle = await eintragMitOriginal(aufbau.app, aufbau.admin, {
@@ -712,8 +712,10 @@ describe("Direktvergleich in der Klara-App", () => {
     const satzanzahl = () =>
       (karte()?.querySelector("dl")?.textContent ?? "").split(MARKIERUNG).length - 1;
     await bis(() => karte()?.textContent?.includes("Freigegeben von admin") === true, 160);
-    expect(schalter()).toBeNull();
+    expect(satzanzahl()).toBe(1);
+    await klick(schalter());
     expect(satzanzahl()).toBe(2);
+    await klick(schalter());
     await klick(q(document, "begleiter-vorfuehransicht"));
     expect(karte()?.querySelector("h3")?.textContent).toContain(
       "Wortgleich mit der freigegebenen Quelle",
@@ -835,7 +837,11 @@ describe("Direktvergleich in der Klara-App", () => {
       belege: [beleg],
       quellfassungen: [{ id: quelle.koId, fassung: 1 }],
       zeigbar: true,
-      dokumentMarke: { start: dokument.indexOf("must"), end: dokument.indexOf("provide") + 7 },
+      dokumentMarke: {
+        start: dokument.indexOf("must"),
+        end: dokument.indexOf("provide") + 7,
+        nurKontext: true,
+      },
       belegMarke: { start: original.indexOf("not"), end: original.indexOf("not") + 3 },
     });
     expect(q(document, "klara-echt-leer")).toBeNull();
@@ -860,10 +866,7 @@ describe("Direktvergleich in der Klara-App", () => {
       anzahlVorUmschalten,
     );
     await klick(schalter);
-    expect(Array.from(widerspruch.querySelectorAll("mark"), (m) => m.textContent)).toEqual([
-      "must provide",
-      "not",
-    ]);
+    expect(Array.from(widerspruch.querySelectorAll("mark"), (m) => m.textContent)).toEqual(["not"]);
     await bis(() => widerspruch.textContent?.includes("Approved by admin") === true);
     const quelllink = widerspruch.querySelector("a");
     expect(quelllink?.textContent).toBe(quelle.titel);
@@ -964,7 +967,7 @@ function sichtbarImBaum(el: Element): boolean {
     kind = d;
     d = d.parentElement?.closest("details") ?? null;
   }
-  return !el.closest(".sr-only");
+  return !el.closest(".sr-only, [hidden]");
 }
 
 function sichtbareBedienelemente(wurzel: Element): string[] {
@@ -986,6 +989,22 @@ async function gespraechOffen(): Promise<HTMLElement> {
 }
 
 describe("S5 · UI-MIN-01/11 — Gespräch der Begleitapp: vier Bereiche, Rest im Menü", () => {
+  it("öffnet Notizen und Kalender direkt und erhält die ungesendete Frage samt Eingabefokus", async () => {
+    await vorrichtung();
+    await montiere();
+    const g = await gespraechOffen();
+    const frage = "Welche Regel gilt für den Einkauf?";
+    await tippe(q<HTMLInputElement>(g, "begleiter-eingabe") as HTMLInputElement, frage);
+    for (const ziel of ["notizen", "kalender"]) {
+      await klick(q(g, `begleiter-nav-${ziel}`));
+      await bis(() => g.dataset.seite === ziel);
+      expect(q(g, `begleiter-nav-${ziel}`)?.getAttribute("aria-current")).toBe("page");
+    }
+    await klick(q(g, "begleiter-nav-gespraech"));
+    await bis(() => document.activeElement === q(g, "begleiter-eingabe"));
+    expect(q<HTMLInputElement>(g, "begleiter-eingabe")?.value).toBe(frage);
+  });
+
   it("Kopf, Kontextzeile, Gespräch, Eingabe; Fenster, Sprache, Figur, Fassung und Rechtsfuss nicht dauerhaft", async () => {
     await vorrichtung();
     await montiere();
@@ -1013,6 +1032,9 @@ describe("S5 · UI-MIN-01/11 — Gespräch der Begleitapp: vier Bereiche, Rest i
       "begleiter-figur",
       "begleiter-menue-knopf",
       "begleiter-schliessen",
+      "begleiter-nav-gespraech",
+      "begleiter-nav-notizen",
+      "begleiter-nav-kalender",
       "begleiter-kontext-zeile",
       "begleiter-word-verbinden-knopf",
       "begleiter-eingabe",

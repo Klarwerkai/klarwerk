@@ -17,12 +17,14 @@ export function KlaraWissen({
   id,
   fassung,
   geaendert,
+  sichtbar,
   notiztext,
   auftragskarte = false,
 }: {
   id: string;
   fassung: number;
   geaendert: boolean;
+  sichtbar: boolean;
   notiztext: string;
   auftragskarte?: boolean;
 }) {
@@ -109,8 +111,13 @@ export function KlaraWissen({
       <button className={knopf} type="button" disabled={geaendert} onClick={() => setOffen(!offen)}>
         {t("klarawissen.start")}
       </button>
-      {user && !geaendert && (
-        <KlaraNotizPruefung key={`${user.id}:${id}:${fassung}`} id={id} fassung={fassung} />
+      {user && sichtbar && !geaendert && (
+        <KlaraNotizPruefung
+          key={`${user.id}:${id}:${fassung}`}
+          id={id}
+          fassung={fassung}
+          konto={user.id}
+        />
       )}
       {user && (
         <KlaraWissensbeitragStand

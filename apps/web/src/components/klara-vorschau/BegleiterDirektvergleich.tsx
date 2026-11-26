@@ -27,13 +27,19 @@ function Wortlaut({
   marke: BegleiterVergleich["dokumentMarke"];
   farbe: string;
 }): JSX.Element {
-  if (!marke || marke.start < 0 || marke.end > text.length || marke.end <= marke.start) {
+  if (
+    !marke ||
+    marke.nurKontext ||
+    marke.start < 0 ||
+    marke.end > text.length ||
+    marke.end <= marke.start
+  ) {
     return <>{text}</>;
   }
   return (
     <>
       {text.slice(0, marke.start)}
-      <mark className={`rounded-sm px-0.5 font-semibold ${farbe}`}>
+      <mark className={`rounded-sm px-0.5 font-semibold underline underline-offset-2 ${farbe}`}>
         {text.slice(marke.start, marke.end)}
       </mark>
       {text.slice(marke.end)}
@@ -94,12 +100,12 @@ function Quellverweis({
 export function BegleiterDirektvergleich({
   vergleich,
   anderePassage,
-  praesentiert,
+  aktuellePassage,
   zeigen,
 }: {
   vergleich: BegleiterVergleich;
   anderePassage?: boolean;
-  praesentiert: boolean;
+  aktuellePassage: boolean;
   zeigen: (() => void) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
@@ -127,7 +133,7 @@ export function BegleiterDirektvergleich({
   }
   const beleg = vergleich.belege[0];
   const wortgleich =
-    praesentiert &&
+    aktuellePassage &&
     vergleich.art === "bestaetigt" &&
     vergleich.belege.length === 1 &&
     beleg?.woertlich &&

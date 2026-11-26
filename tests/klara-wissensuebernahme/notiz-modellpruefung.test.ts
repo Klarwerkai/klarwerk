@@ -134,6 +134,66 @@ describe("Klara prüft die unveränderte Modellantwort an den gebundenen Quellen
     expect(admin.modellherkunft).toEqual(ANTWORT_ROLLE);
     expect(admin.ergebnis.rollen.pruefer).toEqual(PRUEF_ROLLE);
   });
+  it("öffnet den ursprünglichen Prüfstand mit Notiz und Quellfassung ohne neuen Modelllauf", async () => {
+    const { s, n, notizen, quelle, dienst, zaehler } = await aufbau();
+    expect(await dienst.pruefstand(nutzer, n.id)).toBeNull();
+    const erster = await dienst.pruefe({ ...nutzer, role: "admin" }, n.id);
+    const ersterId = erster.ergebnis.pruefId;
+    expect(await dienst.pruefstand(nutzer, n.id, ersterId)).toMatchObject({
+      fassung: 1,
+      geprueftAm: erster.geprueftAm,
+      modellherkunft: { stufe: "cloud" },
+      vorheriger: null,
+      naechster: null,
+    });
+    expect(JSON.stringify(await dienst.pruefstand(nutzer, n.id))).not.toContain("pruef-modell-b");
+    await expect(
+      dienst.pruefstand({ ...nutzer, id: "anderes-konto" }, n.id, ersterId),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(zaehler.aufrufe).toBe(1);
+    const zweiter = await dienst.pruefe(nutzer, n.id, "de", 1);
+    expect(zweiter.vorheriger).toBe(ersterId);
+    expect((await dienst.pruefstand(nutzer, n.id))?.ergebnis.pruefId).toBe(
+      zweiter.ergebnis.pruefId,
+    );
+    expect(zaehler.aufrufe).toBe(2);
+    await notizen.ersetze({ ...n, inhalt: "Heute anders formuliert.", fassung: 2 });
+    await s.ko.revise(quelle.id, { statement: "Eine spätere Regel." }, nutzer.id);
+    await expect(dienst.pruefe(nutzer, n.id, "de", 1)).rejects.toMatchObject({ status: 409 });
+    const alt = await dienst.pruefstand(nutzer, n.id, ersterId);
+    expect(alt).toMatchObject({
+      fassung: 1,
+      geprueftAm: erster.geprueftAm,
+      naechster: zweiter.ergebnis.pruefId,
+      ergebnis: {
+        aussagen: [
+          { zustand: "belegt", fundstellen: [{ koId: quelle.id, koVersion: quelle.version }] },
+        ],
+      },
+    });
+    expect(alt?.beleg.aussagen[0]?.teile[0]?.fundstellen[0]?.auszug).toContain(satz);
+    expect(zaehler.aufrufe).toBe(2);
+    await notizen.entferne(nutzer.id, n.id);
+    expect(await notizen.pruefstand(nutzer.id, n.id, ersterId)).toBeNull();
+  });
+
+  it.each(["zitierte", "mitgelesene"])(
+    "sperrt auch Zitat und Modellbegründung nach Rechteentzug für die %s Quelle",
+    async (fall) => {
+      const { s, n, quelle, andere, dienst, zaehler } = await aufbau();
+      const { ergebnis } = await dienst.pruefe(nutzer, n.id);
+      await s.ko.setQuellrechte(
+        fall === "zitierte" ? quelle.id : andere.id,
+        { stufe: "intern", leser: [] },
+        nutzer.id,
+      );
+      await expect(dienst.pruefstand(nutzer, n.id)).rejects.toMatchObject({ status: 404 });
+      await expect(dienst.pruefstand(nutzer, n.id, ergebnis.pruefId)).rejects.toMatchObject({
+        status: 404,
+      });
+      expect(zaehler.aufrufe).toBe(1);
+    },
+  );
   it.each([
     [ANTWORT_ROLLE.modell ?? "", "pruefer_nicht_unabhaengig"],
     ["", "pruefer_modell_unbekannt"],

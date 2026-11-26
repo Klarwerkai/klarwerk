@@ -517,7 +517,8 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         const range={...basis.paragraphs.items[0].getRange(),text:${JSON.stringify(gastWlan)},
           search(query){const pos=this.text.indexOf(query);return {load(){},items:pos < 0 ? [] : [{
             text:query, insertText:(text,ort)=>{ if(ort!=="Before") throw Error("unexpected range");
-            this.text=this.text.slice(0,pos)+text+this.text.slice(pos); window.__wordWrites.push([query,text,ort]); }
+            this.text=this.text.slice(0,pos)+text+this.text.slice(pos); window.__wordWrites.push([query,text,ort]); },
+            delete:()=>{ this.text=this.text.slice(0,pos)+this.text.slice(pos+query.length); window.__wordWrites.push([query,"","Delete"]); }
           }]};}
         };
         window.__editRange=range;
@@ -596,7 +597,18 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         );
         expect(await page.evaluate("window.__wordWrites")).toEqual([]);
         version = 1;
-        await fragen();
+        await page
+          .getByRole("button", {
+            name:
+              locale === "de"
+                ? "Aktuelle Passage erneut prüfen"
+                : locale === "nl"
+                  ? "Huidige passage opnieuw controleren"
+                  : "Recheck current passage",
+            exact: true,
+          })
+          .click();
+        await page.getByRole("button", { name: aktion, exact: true }).waitFor();
         const href = await page.locator("#ask-herkunft a").getAttribute("href");
         expect(href).toContain("/wissen/wifi?fassung=1&ansicht=gespeichert#zitat=");
         // Move the cursor to another, identical paragraph after the check. The check and recheck
@@ -684,6 +696,27 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         expect(kontrollen).toEqual([gastWlan, gastWlan, firmenregel.replace(/\.$/, "")]);
         expect(await page.evaluate("window.__wordWrites")).toEqual([["provide", "not ", "Before"]]);
         expect(await page.locator(".kw-korrektur").count()).toBe(0);
+        const zurueck = page.getByRole("button", {
+          name:
+            locale === "de"
+              ? "Korrektur rückgängig"
+              : locale === "nl"
+                ? "Correctie ongedaan maken"
+                : "Undo correction",
+          exact: true,
+        });
+        await zurueck.waitFor();
+        if (locale !== "en") {
+          await zurueck.click();
+          await page.getByRole("button", { name: aktion, exact: true }).waitFor();
+          expect(await page.evaluate("window.__editRange.text")).toBe(gastWlan);
+          expect(kontrollen.at(-1)).toBe(gastWlan);
+          expect(await page.evaluate("window.__wordWrites")).toEqual([
+            ["provide", "not ", "Before"],
+            ["not ", "", "Delete"],
+          ]);
+          expect(await entwurf.inputValue()).toBe("My next question about this rule");
+        }
         if (locale === "en") {
           await page.getByRole("button", { name: "Clear", exact: true }).click();
           expect(await nachgeprueft.count()).toBe(0);
@@ -703,13 +736,23 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
           await page
             .getByText(
               "The checked passage can no longer be selected reliably. Please check the text again.",
-              { exact: true },
+              { exact: false },
             )
             .waitFor();
           expect(await nachgeprueft.count()).toBe(0);
           expect(
             await page.getByRole("heading", { name: "Matches the source", exact: true }).count(),
           ).toBe(0);
+          const erfasst = page.waitForRequest(
+            (r) =>
+              r.url().endsWith("/execute") &&
+              r.postDataJSON().selection === "Changed while waiting for the model.",
+          );
+          await page.getByRole("button", { name: "Recheck current passage" }).click();
+          expect((await erfasst).postDataJSON().question).toBe(frage);
+          expect(await page.evaluate("window.__editRange.text")).toBe(
+            "Changed while waiting for the model.",
+          );
         }
       } finally {
         await page.close();
@@ -777,11 +820,11 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
       expect(JSON.stringify(payload)).not.toMatch(/unrelated paragraph/i);
       const vergleich = page.locator("#ask-vergleich");
       await vergleich.getByRole("heading", { name: "Contradicts the source" }).waitFor();
-      expect(await vergleich.locator("mark").allTextContents()).toEqual(["must provide", "not"]);
+      expect(await vergleich.locator("mark").allTextContents()).toEqual(["not"]);
       expect(await vergleich.locator("dd").allTextContents()).toEqual([gastWlan, firmenregel]);
       expect(await vergleich.locator("dt").allTextContents()).toEqual([
-        "Your document",
-        "Approved source",
+        "Your sentence",
+        "Approved wording",
       ]);
       await page.locator("#ask-herkunft a").filter({ hasText: "Guest Wi-Fi separation" }).waitFor();
       if (frage === "is this correct" && absatz === 1) {
@@ -817,6 +860,17 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         const kopf =
           "AI comparison: the selected statement agrees with the company sources consulted.";
         const quellen = ["wifi"];
+        await page.route("**/api/kos/wifi", (route) =>
+          route.fulfill({
+            json: {
+              id: "wifi",
+              title: "Guest Wi-Fi separation",
+              statement: firmenregel,
+              status: "validiert",
+              version: 1,
+            },
+          }),
+        );
         await page.route("**/execute", (route) =>
           route.fulfill({
             json:
@@ -831,6 +885,7 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
                       steps: [{ sourceId: "wifi", snippet: firmenregel }],
                       dokumentUrteil: { art, texte: { en: kopf } },
                     },
+                    quellenStand: { wifi: 1 },
                     absaetze: [
                       { text: kopf, quellen },
                       { text: firmenregel, quellen },
@@ -852,13 +907,18 @@ describe("Word UI-MIN · kontrollierter Browser, fiktiver Office- und API-Rand",
         }
         expect(await page.evaluate("document.documentElement.scrollWidth <= 320")).toBe(true);
         if (art === "bestaetigt") {
+          const beide = vergleich.locator("summary", { hasText: "Show both versions" });
+          await beide.waitFor();
+          expect(await vergleich.locator("dd:visible").count()).toBe(1);
+          await beide.click();
+          expect(await vergleich.locator("dd:visible").count()).toBe(2);
           await choose(page, "settings");
           await page.getByRole("button", { name: "Nederlands", exact: true }).first().click();
           await page.keyboard.press("Escape");
           await vergleich.getByRole("heading", { name: "Komt overeen met de bron" }).waitFor();
           expect(await vergleich.locator("dt").allTextContents()).toEqual([
-            "Je document",
-            "Goedgekeurde bron",
+            "Goedgekeurde tekst",
+            "Jouw zin",
           ]);
           await choose(page, "settings");
           await page.getByRole("button", { name: "English", exact: true }).first().click();

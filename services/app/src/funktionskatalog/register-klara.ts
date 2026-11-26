@@ -692,9 +692,9 @@ export const klara: Redaktionseintrag[] = [
       nl: "Privénotities bijhouden",
     },
     description: {
-      de: "Speichere eine Klara-Antwort als persönliche Notiz. Ist das Erstellermodell nachgewiesen, kannst du die Aussagen durch ein anderes Modell gegen die zugehörigen Quellenfassungen prüfen lassen.",
-      en: "Save a Klara answer as a private note. When its originating model is verified, a different model can check each claim against the cited source versions.",
-      nl: "Bewaar een Klara-antwoord als privénotitie. Als het oorspronkelijke model is vastgesteld, kun je de uitspraken door een ander model laten toetsen aan de aangehaalde bronversies.",
+      de: "Speichere eine Klara-Antwort als persönliche Notiz. Ist das Erstellermodell nachgewiesen, kannst du die Aussagen durch ein anderes Modell gegen die zugehörigen Quellenfassungen prüfen lassen. Gespeicherte Prüfungen öffnen sich mit dem damaligen Ergebnis und den heute lesbaren Belegen.",
+      en: "Save a Klara answer as a private note. When its originating model is verified, a different model can check each claim against the cited source versions. Reopen a saved check to see its verdict and the sources you can still read.",
+      nl: "Bewaar een Klara-antwoord als privénotitie. Als het oorspronkelijke model is vastgesteld, kun je de uitspraken door een ander model laten toetsen aan de aangehaalde bronversies. Open een opgeslagen toets om het toenmalige oordeel en de nu toegankelijke bronnen te bekijken.",
     },
     ablauf: "a279",
     belege: [
@@ -803,7 +803,7 @@ export const klara: Redaktionseintrag[] = [
     id: "284",
     group: "personliche-arbeit",
     platforms: ["klarwerk", "app"],
-    status: "commissioned",
+    status: "partial",
     title: {
       de: "Persönlicher Arbeitsüberblick",
       en: "See a personal work overview",
@@ -813,6 +813,11 @@ export const klara: Redaktionseintrag[] = [
       de: "Eigene Aufgaben, offene Arbeit und nächste Schritte aus tatsächlichen Daten zusammenstellen.",
       en: "Bring together your actual tasks, open work and next actions.",
       nl: "Breng je eigen taken, openstaand werk en vervolgstappen samen.",
+    },
+    scope: {
+      de: "Klarwerks Startseite öffnet bis zu drei eigene Entwürfe und zugewiesene Prüfungen direkt am Arbeitsschritt.",
+      en: "The Klarwerk home page links to up to three of your drafts and assigned reviews, opening the relevant work step.",
+      nl: "Op de startpagina van Klarwerk ga je rechtstreeks naar maximaal drie eigen concepten en toegewezen beoordelingen.",
     },
     ablauf: "a279",
     belege: [
@@ -1182,9 +1187,9 @@ export const klara: Redaktionseintrag[] = [
       ["contract", "produkt:20261010:klara-eigener-kalender · .994 · 11.11.2026"],
     ],
     scope: {
-      de: "Der Kalender ist in Klarwerk unter „Mein Kalender“ erreichbar. Das Word-Menü führt zu den Funktionen. Die native Mac-App hat keinen eigenen Kalendereinstieg.",
-      en: "Open My calendar in Klarwerk. Word has a Functions menu. The native Mac app has no separate calendar entry point.",
-      nl: "Open Mijn agenda in Klarwerk. In Word is er een functiemenu. De native Mac-app heeft geen eigen ingang naar de agenda.",
+      de: "In Klara öffnet „Kalender“ die persönliche Agenda. Über „Gespräch“ kommst du zu deiner ungesendeten Frage zurück. In Klarwerk öffnet „Mein Kalender“ die vollständige Ansicht.",
+      en: "In Klara, Calendar opens your personal agenda. Choose Conversation to return to your unsent question. My calendar in Klarwerk opens the full view.",
+      nl: "In Klara opent Agenda je persoonlijke agenda. Via Gesprek ga je terug naar je nog niet verstuurde vraag. Mijn agenda in Klarwerk opent de volledige weergave.",
     },
     oktober: "commissioned",
   },

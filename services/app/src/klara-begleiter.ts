@@ -96,7 +96,7 @@ export const BEGLEITER_AKTION_ARTEN = ["einfuegen", "frage", "zeigen"] as const;
 export type BegleiterAktionArt = (typeof BEGLEITER_AKTION_ARTEN)[number];
 
 const VERGLEICHSARTEN = ["bestaetigt", "widersprochen", "offen"] as const;
-type Textmarke = { start: number; end: number };
+type Textmarke = { start: number; end: number; nurKontext?: true };
 export interface BegleiterVergleich {
   art: (typeof VERGLEICHSARTEN)[number];
   dokument: string;
@@ -341,7 +341,8 @@ function textmarke(roh: unknown, laenge: number): Textmarke | null {
   const start = ganzzahl(marke.start, "start", 0);
   const end = ganzzahl(marke.end, "end", start + 1);
   if (end > laenge) throw ungueltig("vergleich.marke", "liegt außerhalb des Texts");
-  return { start, end };
+  // Fehlt auf dieser Seite ein Wort, hält Word dessen reale Nachbarn für die Navigation fest.
+  return { start, end, ...(marke.nurKontext === true && { nurKontext: true as const }) };
 }
 
 /** Die strukturierte Anzeige ist optional. Eine fehlerhafte Karte darf die Textantwort und

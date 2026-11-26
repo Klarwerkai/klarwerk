@@ -120,6 +120,7 @@ import {
 } from "../lib/begleiterEntwurf";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { APP_VERSION } from "../version";
+import { EigenerKalender } from "./EigenerKalender";
 
 /** Der zentrale Klara-Bereich in Klarwerk — der vorhandene Direktweg (`pages/Profile.tsx`). */
 const KLARA_SETUP_PFAD = "/profil?bereich=klara";
@@ -388,7 +389,9 @@ function BegleiterInhalt(): JSX.Element {
   const [jetzt, setJetzt] = useState(() => Date.now());
   // Grundansicht (UI-MIN): Menü, Unterseite, Rückfragen genau dann, wenn sie nötig sind.
   const [menueOffen, setMenueOffen] = useState(false);
-  const [menueSeite, setMenueSeite] = useState<MenueSeite | null>(null);
+  const [menueSeite, setMenueSeite] = useState<MenueSeite | "notizen" | "kalender" | null>(null);
+  const [besucht, setBesucht] = useState({ kontoId, notizen: false, kalender: false });
+  const tagesbereich = menueSeite === "notizen" || menueSeite === "kalender";
   const [einwilligungFuer, setEinwilligungFuer] = useState<Ausstehend | null>(null);
   const [nachEinwilligung, setNachEinwilligung] = useState<Ausstehend | null>(null);
   /** UI-MIN-04: die Frage, die das Dokument braucht, solange Word nicht verbunden ist. */
@@ -831,10 +834,10 @@ function BegleiterInhalt(): JSX.Element {
     }
   }, [menueOffen]);
   useEffect(() => {
-    if (menueSeite) {
+    if (menueSeite && !tagesbereich) {
       zurueckRef.current?.focus({ preventScroll: true });
     }
-  }, [menueSeite]);
+  }, [menueSeite, tagesbereich]);
 
   // Gesprächsbezug: die Begleitapp, mit dem Namen des gebundenen Word-Dokuments als Objekt.
   const objekt = adapter
@@ -1474,6 +1477,16 @@ function BegleiterInhalt(): JSX.Element {
     window.setTimeout(() => eingabeRef.current?.focus({ preventScroll: true }), 0);
   };
 
+  const tagesbereichOeffnen = (ziel: "notizen" | "kalender") => {
+    if (!kontoId) return;
+    setMenueOffen(false);
+    setBesucht((alt) => ({
+      kontoId,
+      notizen: ziel === "notizen" || (alt.kontoId === kontoId && alt.notizen),
+      kalender: ziel === "kalender" || (alt.kontoId === kontoId && alt.kalender),
+    }));
+    setMenueSeite(ziel);
+  };
   return (
     <div
       data-testid="begleiter-gespraech"
@@ -1489,11 +1502,13 @@ function BegleiterInhalt(): JSX.Element {
           return;
         }
         // Escape geht genau eine Stufe zurück: Unterseite → Gespräch, Menü → zu, sonst einklappen.
-        if (menueSeite) {
-          setMenueSeite(null);
-          menueKnopfRef.current?.focus({ preventScroll: true });
-        } else if (menueOffen) {
+        if (menueOffen) {
           setMenueOffen(false);
+          menueKnopfRef.current?.focus({ preventScroll: true });
+        } else if (tagesbereich) {
+          zurueck();
+        } else if (menueSeite) {
+          setMenueSeite(null);
           menueKnopfRef.current?.focus({ preventScroll: true });
         } else if (vorfuehrung) {
           setzeVorfuehrung(false);
@@ -1567,13 +1582,60 @@ function BegleiterInhalt(): JSX.Element {
           }}
         />
       ) : null}
+      {kontoId && sitzungBeantwortet && echt.kontoId === kontoId && (
+        <nav
+          aria-label={t("begleiter.navigation")}
+          className="grid shrink-0 grid-cols-3 gap-1 border-b border-hairline bg-surface px-2 py-1.5"
+        >
+          {(["gespraech", "notizen", "kalender"] as const).map((ziel) => {
+            const aktiv = ziel === (menueSeite ?? "gespraech");
+            return (
+              <button
+                key={ziel}
+                type="button"
+                data-testid={`begleiter-nav-${ziel}`}
+                aria-current={aktiv ? "page" : undefined}
+                className={`min-w-0 rounded-btn px-1 py-1.5 text-[13px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand ${aktiv ? "bg-brand/10 font-semibold text-brand-text" : "text-text hover:bg-ink/5"}`}
+                onClick={() => {
+                  setMenueOffen(false);
+                  if (ziel === "gespraech") {
+                    zurueck();
+                    return;
+                  }
+                  tagesbereichOeffnen(ziel);
+                }}
+              >
+                {t(`begleiter.nav.${ziel}`)}
+              </button>
+            );
+          })}
+        </nav>
+      )}
       <VorgangsLeiste
         vorgaenge={vorgaenge}
         testId="begleiter-vorgaenge"
         label={t("assistenzminimal.vorgang.label")}
       />
 
-      {menueSeite ? (
+      {kontoId && sitzungBeantwortet && echt.kontoId === kontoId && besucht.kontoId === kontoId && (
+        <div
+          key={kontoId}
+          hidden={!tagesbereich}
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+        >
+          {besucht.notizen && (
+            <section hidden={menueSeite !== "notizen"} aria-label={t("begleiter.nav.notizen")}>
+              <KlaraNotizen sichtbar={menueSeite === "notizen"} />
+            </section>
+          )}
+          {besucht.kalender && (
+            <section hidden={menueSeite !== "kalender"} aria-label={t("begleiter.nav.kalender")}>
+              <EigenerKalender kompakt />
+            </section>
+          )}
+        </div>
+      )}
+      {tagesbereich ? null : menueSeite ? (
         <Unterseite seite={menueSeite} zurueckRef={zurueckRef} onZurueck={zurueck}>
           {menueSeite === "neu" ? (
             <NeuSeite kontext={bezug} onFertig={() => zurueck()} />
@@ -1613,9 +1675,14 @@ function BegleiterInhalt(): JSX.Element {
                   >
                     <TeamassistentenNutzen />
                   </Funktionsbereich>
-                  <Funktionsbereich testId="begleiter-notizen" titel={t("begleiter.notizenWissen")}>
-                    <KlaraNotizen />
-                  </Funktionsbereich>
+                  <button
+                    type="button"
+                    className={KNOPF}
+                    data-testid="begleiter-notizen"
+                    onClick={() => tagesbereichOeffnen("notizen")}
+                  >
+                    {t("begleiter.notizenWissen")}
+                  </button>
                 </div>
               )}
               <VormachenFlaeche />
@@ -1972,8 +2039,8 @@ function BegleiterInhalt(): JSX.Element {
                     >
                       <BegleiterDirektvergleich
                         vergleich={a.vergleich}
-                        praesentiert={
-                          vorfuehrErgebnis?.id === a.id && passage?.text === a.vergleich.dokument
+                        aktuellePassage={
+                          letzteWordFrage?.id === a.id && passage?.text === a.vergleich.dokument
                         }
                         anderePassage={
                           !!passage && a.vergleich.dokument.trim() !== passage.text.trim()

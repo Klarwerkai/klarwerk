@@ -24,6 +24,7 @@ import {
   fassungsLage,
   leseFassung,
   leseGespeicherteFassung,
+  notizPruefbezug,
 } from "../lib/objektbezug";
 import { useGelesenerStand } from "../lib/useGelesenerStand";
 
@@ -74,6 +75,7 @@ export function KnowledgeDetail(): JSX.Element {
         fassung={gespeichert.fassung}
         ankerId={gespeichert.ankerId}
         zitat={zitat}
+        notizbezug={notizPruefbezug(params)}
       />
     );
   return <Wissenseintrag />;
@@ -102,6 +104,9 @@ function Wissenseintrag(): JSX.Element {
     p.delete(ANKER_PARAM);
     p.delete("abschnitt");
     p.delete("vorschlag");
+    p.delete("vonNotiz");
+    p.delete("aussage");
+    p.delete("pruefstand");
     return p.toString();
   })();
 
@@ -151,6 +156,7 @@ function Wissenseintrag(): JSX.Element {
   const eintrag = useKo(id);
   const gezeigterTitel = variante && !zeigtOriginal ? variante.title : eintrag.data?.title;
   const tabTitel = (gezeigterTitel ?? "").trim();
+  const notizbezug = notizPruefbezug(params);
   useEffect(() => {
     if (tabTitel.length === 0) {
       return;
@@ -164,6 +170,14 @@ function Wissenseintrag(): JSX.Element {
 
   return (
     <div data-testid="page-wissen">
+      {notizbezug && (
+        <Link
+          className="mb-3 inline-flex rounded-btn text-sm font-semibold text-brand-text underline"
+          to={notizbezug.zurAussage}
+        >
+          {t("quellen.fokus.zurAussage")}
+        </Link>
+      )}
       {/* ==========================================================================================
           JOB 3669 — DIE SEITENHILFE DIESER SEITE (Zahnrad → „Seitenhilfe").
           ==========================================================================================

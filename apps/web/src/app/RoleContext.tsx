@@ -15,6 +15,7 @@ interface RoleState {
   setStufe2: (on: boolean) => void;
   /** true, wenn die Rolle aus einer echten Session stammt (kein Preview-Schalter). */
   isSessionRole: boolean;
+  kontoId: string | null;
   /** Bug (Pedi 04.07.): Ein Admin darf die ANSICHT als andere Rolle prüfen (Beta-Test). */
   canPreview: boolean;
   /** true, wenn ein Admin gerade eine FREMDE Rolle (nicht Admin) ansieht. */
@@ -51,6 +52,7 @@ export function RoleProvider({ children }: { children: ReactNode }): JSX.Element
       stufe2: effectiveStufe2(role, stufe2Toggle),
       setStufe2: setStufe2Toggle,
       isSessionRole: Boolean(user),
+      kontoId: user?.id ?? null,
       canPreview: isAdminSession || !user,
       previewActive: isAdminSession && role !== "admin",
     }),

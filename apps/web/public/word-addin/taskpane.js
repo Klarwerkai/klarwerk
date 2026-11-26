@@ -1794,11 +1794,14 @@
         askVergleichNein: "Widerspricht der Quelle",
         askVergleichOffen: "Nicht ausreichend belegt",
         askVergleichFehlt: "Die freigegebenen Firmenquellen reichen für dieses Urteil nicht aus.",
-        askVergleichDokument: "Dein Dokument",
-        askVergleichQuelle: "Freigegebene Quelle",
+        askVergleichDokument: "Dein Satz",
+        askVergleichQuelle: "Freigegebener Wortlaut",
         askVergleichBeleg: "Quellengestützte Antwort",
         askVergleichZeigen: "In Word zeigen",
         askKorrekturAnwenden: "Korrektur übernehmen",
+        askKorrekturZurueck: "Korrektur rückgängig",
+        askVergleichErneut: "Aktuelle Passage erneut prüfen",
+        askVergleichBeide: "Beide Fassungen anzeigen",
         askKorrekturBestaetigt: "Erneut geprüft · stimmt mit der Quelle überein",
         askKorrekturVorher: "Vorher",
         askKorrekturNachher: "Nachher",
@@ -2211,11 +2214,14 @@
         askVergleichNein: "Contradicts the source",
         askVergleichOffen: "Insufficient evidence",
         askVergleichFehlt: "The approved company sources do not establish whether this statement is correct.",
-        askVergleichDokument: "Your document",
-        askVergleichQuelle: "Approved source",
+        askVergleichDokument: "Your sentence",
+        askVergleichQuelle: "Approved wording",
         askVergleichBeleg: "Source-based answer",
         askVergleichZeigen: "Show in Word",
         askKorrekturAnwenden: "Apply correction",
+        askKorrekturZurueck: "Undo correction",
+        askVergleichErneut: "Recheck current passage",
+        askVergleichBeide: "Show both versions",
         askKorrekturBestaetigt: "Rechecked · matches the source",
         askKorrekturVorher: "Before",
         askKorrekturNachher: "After",
@@ -2591,11 +2597,14 @@
         askVergleichNein: "In strijd met de bron",
         askVergleichOffen: "Onvoldoende bewijs",
         askVergleichFehlt: "De goedgekeurde bedrijfsbronnen geven onvoldoende houvast om deze uitspraak te beoordelen.",
-        askVergleichDokument: "Je document",
-        askVergleichQuelle: "Goedgekeurde bron",
+        askVergleichDokument: "Jouw zin",
+        askVergleichQuelle: "Goedgekeurde tekst",
         askVergleichBeleg: "Antwoord op basis van de bron",
         askVergleichZeigen: "Tonen in Word",
         askKorrekturAnwenden: "Correctie overnemen",
+        askKorrekturZurueck: "Correctie ongedaan maken",
+        askVergleichErneut: "Huidige passage opnieuw controleren",
+        askVergleichBeide: "Beide versies tonen",
         askKorrekturBestaetigt: "Opnieuw gecontroleerd · komt overeen met de bron",
         askKorrekturVorher: "Voor",
         askKorrekturNachher: "Na",
@@ -5569,8 +5578,9 @@
     // Fail-open: der Ausgang gibt das Feld IMMER frei, auch nach Frist, Fehler oder ohne Anmeldung.
     var askLaeuft = false;
     var askMinimalEpoch = 0, askMinimalController = null, askMinimalTurn = null, askMinimalAuswahl = null;
-    function askMinimalAbbrechen() {
-      if (typeof askVergleichBereichFreigeben === "function") askVergleichBereichFreigeben();
+    function askMinimalAbbrechen(ankerBehalten) {
+      if (typeof askVergleichBereichFreigeben === "function" &&
+          (!ankerBehalten || ankerBehalten !== askVergleichWordAnker)) askVergleichBereichFreigeben();
       if (!askLaeuft) return;
       askMinimalEpoch++;
       if (askMinimalAuswahl) {
@@ -6588,7 +6598,7 @@
       var titel = document.createElement("dt");
       titel.textContent = t(label);
       var wert = document.createElement("dd");
-      if (marke && Number.isInteger(marke.start) && Number.isInteger(marke.end) &&
+      if (marke && !marke.nurKontext && Number.isInteger(marke.start) && Number.isInteger(marke.end) &&
           marke.start >= 0 && marke.start < marke.end && marke.end <= text.length) {
         var markierung = document.createElement("mark");
         markierung.textContent = text.slice(marke.start, marke.end);
@@ -6626,6 +6636,70 @@
       return ausschnitt;
     }
 
+    function askGebundenePassagePruefen(anker, frage, aenderung, quellstand) {
+      askKorrekturAuftrag = { anker: anker, text: anker.text, frage: frage, aenderung: aenderung, quellstand: quellstand };
+      try { askKlara(); } finally { askKorrekturAuftrag = null; }
+    }
+
+    function askGeaendertePassage(meldung, schluessel, anker, frage) {
+      meldung.textContent = t(schluessel) + " ";
+      if (!anker || !askVergleichHatWordBereich(anker.text)) return;
+      var erneut = document.createElement("button");
+      erneut.type = "button";
+      erneut.textContent = t("askVergleichErneut");
+      erneut.addEventListener("click", async function () {
+        if (askLaeuft || askKorrekturInArbeit || anker !== askVergleichWordAnker || !askVergleichHatWordBereich(anker.text)) return;
+        erneut.disabled = true;
+        try {
+          var original = await Word.run(anker.bereich, async function (context) {
+            anker.bereich.load("text");
+            await context.sync();
+            return anker.bereich.text;
+          });
+          var text = original.replace(/\r\n?/g, "\n").trim();
+          if (anker !== askVergleichWordAnker || !askVergleichHatWordBereich(anker.text) || !text || text.length > WORD_ADDIN_ASK_MAX_CHARS) {
+            meldung.textContent = t(text.length > WORD_ADDIN_ASK_MAX_CHARS ? "askAbsatzZuLang" : "askVergleichVeraltet");
+            return;
+          }
+          if (anker.original !== original) anker.ruecknahme = null;
+          anker.original = original;
+          anker.text = text;
+          askGebundenePassagePruefen(anker, frage, null, null);
+        } catch (e) { meldung.textContent = t("askVergleichVeraltet"); }
+        finally { erneut.disabled = false; }
+      });
+      meldung.appendChild(erneut);
+    }
+
+    function askRuecknahmeZeichnen(aktionen, meldung, anker, frage) {
+      var ruecknahme = anker && anker.ruecknahme;
+      if (!ruecknahme) return;
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.textContent = t("askKorrekturZurueck");
+      function gilt() {
+        return !askLaeuft && !klaraS4FragenGesperrt() && askVergleichWordAnker === anker && anker.ruecknahme === ruecknahme && askVergleichHatWordBereich(anker.text);
+      }
+      knopf.addEventListener("click", async function () {
+        if (!gilt() || askKorrekturInArbeit) return;
+        askKorrekturInArbeit = anker;
+        knopf.disabled = true;
+        try {
+          var stand = await wordKorrekturAnwenden(Word, anker, ruecknahme, gilt);
+          if (stand !== "geschrieben") {
+            if (stand === "ungewiss") anker.ruecknahme = null;
+            askGeaendertePassage(meldung, stand === "ungewiss" ? "askKorrekturErneut" : "askVergleichVeraltet", anker, frage);
+            return;
+          }
+          anker.ruecknahme = null;
+          askGebundenePassagePruefen(anker, frage, null, null);
+        } finally {
+          if (askKorrekturInArbeit === anker) askKorrekturInArbeit = null;
+        }
+      });
+      aktionen.appendChild(knopf);
+    }
+
     function askKorrekturZeichnen(block, outcome, meldung) {
       var officeDokument = window.Office && Office.context && Office.context.document;
       if (String(officeDokument && officeDokument.mode).toLowerCase() === "readonly") return;
@@ -6657,20 +6731,19 @@
           var quellen = await resolveAskSources([outcome.direktvergleich.quellfassungen[0].id], true);
           if (!gilt()) return;
           if (!askWortkorrektur(outcome, quellen)) {
-            meldung.textContent = t("askKorrekturQuelleVeraltet");
+            askGeaendertePassage(meldung, "askKorrekturQuelleVeraltet", anker, frage);
             return;
           }
           var stand = await wordKorrekturAnwenden(Word, anker, korrektur, gilt);
           if (stand !== "geschrieben") {
             if (stand === "ungewiss") anker.korrekturVerbraucht = true;
-            meldung.textContent = t(stand === "veraltet" ? "askVergleichVeraltet" : "askKorrekturErneut");
+            askGeaendertePassage(meldung, stand === "veraltet" ? "askVergleichVeraltet" : "askKorrekturErneut", anker, frage);
             return;
           }
           if (currentAskOutcome !== outcome || !askVergleichHatWordBereich(korrektur.nachher)) return;
           // Do not read a moved cursor or overwrite a question the user has begun typing.
-          askKorrekturAuftrag = { anker: anker, text: korrektur.nachher, frage: frage,
-            aenderung: aenderung, quellstand: outcome.direktvergleich.quellfassungen[0] };
-          try { askKlara(); } finally { askKorrekturAuftrag = null; }
+          anker.ruecknahme = askWortaenderung(korrektur.nachher, dokument);
+          askGebundenePassagePruefen(anker, frage, aenderung, outcome.direktvergleich.quellfassungen[0]);
         } finally {
           if (askKorrekturInArbeit === anker) askKorrekturInArbeit = null;
         }
@@ -6707,12 +6780,21 @@
       block.appendChild(kopf);
       if (outcome.bestaetigteWortaenderung) block.appendChild(askKorrekturAusschnitt(outcome.bestaetigteWortaenderung));
       var zeilen = document.createElement("dl");
-      zeilen.appendChild(askVergleichZeile("askVergleichDokument", vergleich.dokument, vergleich.dokumentMarke));
+      var dokZeile = askVergleichZeile("askVergleichDokument", vergleich.dokument, vergleich.dokumentMarke);
+      var beleg = vergleich.belege.length === 1 && vergleich.belege[0];
+      var fassung = vergleich.quellfassungen && vergleich.quellfassungen.length === 1 && vergleich.quellfassungen[0];
+      var kurz = bestaetigt && !outcome.abgeschnitten && outcome.lage !== "belegt_mit_konflikt" && !(outcome.konflikte && outcome.konflikte.length)
+        && beleg && beleg.woertlich && beleg.text === vergleich.dokument && fassung
+        && beleg.quellen.length === 1 && beleg.quellen[0] === fassung.id
+        && currentAskSourcesResolved && askQuellenAufgeloest.some(function (q) {
+          return q.id === fassung.id && q.geladen && q.status === "validiert" && q.version === fassung.fassung;
+        });
+      if (!kurz) zeilen.appendChild(dokZeile);
       var zugeordnet = askZugeordnet(outcome);
       var ids = (outcome.sources || []).filter(function (id) { return zugeordnet.indexOf(id) !== -1; });
       vergleich.belege.forEach(function (beleg) {
         var zeile = askVergleichZeile(beleg.woertlich ? "askVergleichQuelle" : "askVergleichBeleg",
-          beleg.text, vergleich.belegMarke);
+          beleg.text, kurz ? null : vergleich.belegMarke);
         if (ids.length > 1) {
           beleg.quellen.forEach(function (id) {
             var nummer = ids.indexOf(id) + 1;
@@ -6730,6 +6812,15 @@
         zeilen.appendChild(zeile);
       });
       block.appendChild(zeilen);
+      if (kurz) {
+        var details = document.createElement("details");
+        var kopfBeide = document.createElement("summary");
+        kopfBeide.textContent = t("askVergleichBeide");
+        var dokumentText = document.createElement("dl");
+        dokumentText.appendChild(dokZeile);
+        details.append(kopfBeide, dokumentText);
+        block.appendChild(details);
+      }
       if (istOffen) {
         var erklaerung = document.createElement("p");
         erklaerung.textContent = t("askVergleichFehlt");
@@ -6748,11 +6839,12 @@
           zeigen.disabled = true;
           try {
             if (!await askVergleichInWordZeigen(vergleich.dokument, vergleich.dokumentMarke)) {
-              meldung.textContent = t("askVergleichVeraltet");
+              askGeaendertePassage(meldung, "askVergleichVeraltet", askVergleichWordAnker, currentAskQuestion);
             } else { meldung.textContent = ""; }
           } catch (err) { meldung.textContent = t("askVergleichVeraltet"); }
           finally { zeigen.disabled = false; }
         });
+        askRuecknahmeZeichnen(aktionen, meldung, askVergleichWordAnker, currentAskQuestion);
         aktionen.appendChild(zeigen);
         if (currentAskSourcesResolved && vergleich.art === "widersprochen") askKorrekturZeichnen(block, outcome, meldung);
         block.appendChild(meldung);
@@ -6822,7 +6914,7 @@
           currentAskSourceTitles = tragend.map(function (r) { return r.title; });
           currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
           renderAskSources(resolved, tragend);
-          if (outcome.direktvergleich && outcome.direktvergleich.art === "widersprochen") renderAskDirektvergleich(outcome);
+          if (outcome.direktvergleich) renderAskDirektvergleich(outcome);
           renderAskHerkunft(); // JOB 3092 S6: die Ladezeile weicht den Herkunftszeilen
           updateInsertState(); // das Feld wird NICHT angefasst — laufende Bearbeitung bleibt
         });
@@ -7169,13 +7261,18 @@
             var aktuell = await askNachpruefungBereichAktuell(nachpruefung);
             if (minimalEpoch !== askMinimalEpoch) return;
             if (!aktuell || outcome.direktvergleich.dokument !== nachpruefung.text) {
-              askMinimalAbbrechen();
+              askMinimalAbbrechen(nachpruefung.anker);
               showAskStatus("warn", t("askVergleichVeraltet"));
+              if (askVergleichHatWordBereich(nachpruefung.text)) {
+                askGeaendertePassage(document.getElementById("ask-status"), "askVergleichVeraltet",
+                  nachpruefung.anker, nachpruefung.frage);
+              }
               return;
             }
             var staende = outcome.direktvergleich.quellfassungen || [];
             var belege = outcome.direktvergleich.belege;
-            if (outcome.kind === "answered" && outcome.direktvergleich.art === "bestaetigt" &&
+            if (nachpruefung.aenderung && nachpruefung.quellstand &&
+                outcome.kind === "answered" && outcome.direktvergleich.art === "bestaetigt" &&
                 !outcome.abgeschnitten && outcome.lage !== "belegt_mit_konflikt" && !outcome.konflikte?.length &&
                 belege.length === 1 && belege[0].woertlich && belege[0].quellen.length === 1 &&
                 belege[0].quellen[0] === nachpruefung.quellstand.id &&

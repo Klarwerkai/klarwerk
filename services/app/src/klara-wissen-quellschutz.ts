@@ -2,6 +2,7 @@ import {
   type KlaraNotiz,
   type KlaraNotizFilter,
   type KlaraNotizRepo,
+  type NotizPruefstand,
   type NotizSchreibbedingung,
   notizIstQuellengebunden,
 } from "./klara-notiz";
@@ -19,6 +20,14 @@ export class QuellgeschuetzteKlaraNotizen implements KlaraNotizRepo {
   }
   async hole(kontoId: string, id: string) {
     return this.lesbar(await this.basis.hole(kontoId, id));
+  }
+  async pruefstand(kontoId: string, id: string, lauf?: string) {
+    if (!(await this.hole(kontoId, id))) return null;
+    return this.basis.pruefstand(kontoId, id, lauf);
+  }
+  async speicherePruefstand(kontoId: string, id: string, stand: NotizPruefstand) {
+    if (!(await this.hole(kontoId, id))) return false;
+    return this.basis.speicherePruefstand(kontoId, id, stand);
   }
   async zuVorgang(kontoId: string, vorgang: string) {
     return this.lesbar(await this.basis.zuVorgang(kontoId, vorgang));

@@ -27,6 +27,7 @@ vi.mock("../../apps/web/src/app/RoleContext", () => ({
   RoleProvider: ({ children }: { children: unknown }) => children,
   useRole: () => ({
     role: rolle.current,
+    kontoId: "u1",
     stufe2: false,
     setRole: () => {},
     setStufe2: () => {},
@@ -60,6 +61,14 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
       // Attrappe davon.
       drafts: {
         list: vi.fn(async () => svc.listDrafts()),
+        letzteEigene: vi.fn(async () => ({
+          kontoId: "u1",
+          entwuerfe: (await svc.recentOwnDrafts("u1")).map((d) => ({
+            id: d.id,
+            titel: d.payload.title || "",
+            mitAblauf: Boolean(d.payload.ablauf),
+          })),
+        })),
         get: vi.fn(async (id: string) => svc.getDraft(id)),
         create: vi.fn(async (p: P) => svc.createDraft(p, "u1")),
         update: vi.fn(async (id: string, p: P) => svc.continueDraft(id, p, "u1")),
@@ -103,6 +112,7 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
+import { endpoints } from "../../apps/web/src/api/endpoints";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
@@ -261,5 +271,64 @@ describe('JOB 3266 D1 · „Meine Entwürfe" steht auf der Startseite', () => {
     await mount("/start", "experte");
     expect(zugang().tagName).toBe("A");
     expect(zugang().getAttribute("href")).toBe("/erfassen?entwuerfe=1");
+  });
+});
+
+describe("Weiterarbeiten am persönlichen Start", () => {
+  it.each([
+    ["de", "Weiterarbeiten", "Entwurf weiterbearbeiten"],
+    ["en", "Continue working", "Continue draft"],
+    ["nl", "Verder werken", "Concept verder bewerken"],
+  ])("%s öffnet den konkreten Entwurf", async (sprache, titel, aktion) => {
+    const id = await box.seed(NIT);
+    await i18n.changeLanguage(sprache);
+    await mount("/start");
+    const feld = container.querySelector('[data-testid="start-weiterarbeiten"]');
+    expect(feld?.querySelector("h2")?.textContent).toBe(titel);
+    const link = feld?.querySelector("li a");
+    expect(link?.textContent).toContain(NIT.title);
+    expect(link?.textContent).toContain(aktion);
+    expect(link?.getAttribute("href")).toBe(`/erfassen?draft=${id}`);
+  });
+
+  it("hat höchstens drei direkte Schritte und zeigt keine abgelaufene oder fremde Zuweisung", async () => {
+    vi.mocked(endpoints.drafts.letzteEigene).mockResolvedValueOnce({
+      kontoId: "u1",
+      entwuerfe: ["d1", "d2", "d3"].map((id) => ({ id, titel: id, mitAblauf: true })),
+    });
+    type Board = Awaited<ReturnType<typeof endpoints.validation.board>>;
+    vi.mocked(endpoints.validation.board).mockResolvedValueOnce([
+      { id: "k1", title: "Freigabe", version: 4, assignments: ["u1"] },
+      { id: "k2", title: "Nacharbeit", version: 1, assignments: ["u1"] },
+      { id: "k3", title: "Fremde Aufgabe", version: 1, assignments: ["u2"] },
+    ] as Board);
+    vi.mocked(endpoints.notifications.list).mockResolvedValueOnce(
+      ["k3", "erledigt", "k1", "k2"].map((koId) => ({
+        id: koId,
+        koId,
+        title: koId,
+        at: "2026-11-26",
+        kind: koId === "k2" ? "return" : "assignment",
+      })),
+    );
+    await mount("/start");
+    const wege = [...container.querySelectorAll('[data-testid="start-weiterarbeiten"] li a')];
+    expect(wege.map((a) => a.getAttribute("href"))).toEqual([
+      "/validierung?ko=k1&fassung=4",
+      "/erfassen/ablauf?entwurf=d1",
+      "/wissen/k2?rework=review",
+    ]);
+  });
+
+  it("lässt einen leeren Bestand ruhig und blendet Titel aus einer vorherigen Sitzung aus", async () => {
+    await mount("/start");
+    expect(container.querySelector('[data-testid="start-weiterarbeiten"] li')).toBeNull();
+    unmount();
+    vi.mocked(endpoints.drafts.letzteEigene).mockResolvedValueOnce({
+      kontoId: "u2",
+      entwuerfe: [{ id: "fremd", titel: "Fremder Entwurf", mitAblauf: false }],
+    });
+    await mount("/start");
+    expect(container.textContent).not.toContain("Fremder Entwurf");
   });
 });

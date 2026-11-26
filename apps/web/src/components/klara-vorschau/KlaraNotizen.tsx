@@ -56,7 +56,11 @@ function ortZeile(n: KlaraNotiz, t: ReturnType<typeof useAssistenzT>["t"]): stri
   return teile.join(" · ");
 }
 
-function NotizOffen({ n, auftragskarte }: { n: KlaraNotiz; auftragskarte: boolean }): JSX.Element {
+function NotizOffen({
+  n,
+  auftragskarte,
+  sichtbar,
+}: { n: KlaraNotiz; auftragskarte: boolean; sichtbar: boolean }): JSX.Element {
   const { t, i18n } = useAssistenzT();
   const id = useId();
   const s = useNotizen();
@@ -123,6 +127,7 @@ function NotizOffen({ n, auftragskarte }: { n: KlaraNotiz; auftragskarte: boolea
           id={n.id}
           fassung={n.fassung}
           geaendert={geaendert}
+          sichtbar={sichtbar}
           notiztext={n.inhalt}
           auftragskarte={auftragskarte}
         />
@@ -287,7 +292,8 @@ function NotizOffen({ n, auftragskarte }: { n: KlaraNotiz; auftragskarte: boolea
 
 export function KlaraNotizen({
   auftragskarte = false,
-}: { auftragskarte?: boolean } = {}): JSX.Element {
+  sichtbar = true,
+}: { auftragskarte?: boolean; sichtbar?: boolean } = {}): JSX.Element {
   const { t, i18n } = useAssistenzT();
   const id = useId();
   const s = useNotizen();
@@ -368,7 +374,9 @@ export function KlaraNotizen({
 
       <KlaraWissensImport />
       <KlaraBesprechungsImport />
-      {s.offen ? <NotizOffen n={s.offen} auftragskarte={auftragskarte} /> : null}
+      {s.offen ? (
+        <NotizOffen n={s.offen} auftragskarte={auftragskarte} sichtbar={sichtbar} />
+      ) : null}
 
       <form
         data-testid="klara-notizen-suchform"

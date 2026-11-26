@@ -89,6 +89,45 @@ async function inListe(app: App, headers: Record<string, string>, url: string, i
 }
 
 describe("debbb8e8 · ein Entwurf ist privat — nur seine Autorin sieht ihn, auf allen ihren Geräten", () => {
+  it("Weiterarbeiten zeigt nur die drei jüngsten eigenen aktiven Entwürfe mit den Feldern für den Direkteinstieg", async () => {
+    const b = await buehne();
+    const url = "/api/drafts?ansicht=weiterarbeiten";
+    const ids: string[] = [];
+    for (const title of ["Alt", "Prüfliste", "Übergabe", "Plan", "Verworfen"]) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const angelegt = await b.app.inject({
+        method: "POST",
+        url: "/api/drafts",
+        headers: b.annaTelefon,
+        payload: { title, statement: "Vertraulicher Entwurfstext" },
+      });
+      expect(angelegt.statusCode).toBeLessThan(300);
+      ids.push(angelegt.json().id);
+    }
+    const geloescht = await b.app.inject({
+      method: "DELETE",
+      url: `/api/drafts/${ids[4]}`,
+      headers: b.annaTelefon,
+    });
+    expect(geloescht.statusCode).toBeLessThan(300);
+    const res = await b.app.inject({ method: "GET", url, headers: b.annaRechner });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      kontoId: expect.any(String),
+      entwuerfe: [
+        { id: ids[3], titel: "Plan", mitAblauf: false },
+        { id: ids[2], titel: "Übergabe", mitAblauf: false },
+        { id: ids[1], titel: "Prüfliste", mitAblauf: false },
+      ],
+    });
+    for (const headers of [b.ada, b.otto]) {
+      const fremd = await b.app.inject({ method: "GET", url, headers });
+      expect(fremd.statusCode).toBe(200);
+      expect(fremd.json().entwuerfe).toEqual([]);
+      expect(fremd.json().kontoId).not.toBe(res.json().kontoId);
+    }
+  });
+
   it("Liste: die Autorin sieht ihn auf beiden Geräten, Administratorin und Kollege nicht", async () => {
     const b = await buehne();
     expect({

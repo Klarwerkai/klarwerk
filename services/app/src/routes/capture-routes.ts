@@ -1227,10 +1227,22 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
     app.addHook("onRequestAbort", async (request) => {
       await docxFreigeben(request);
     });
-    app.get("/api/drafts", async (request, reply) => {
+    app.get<{ Querystring: { ansicht?: string } }>("/api/drafts", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
+      }
+      if (request.query.ansicht === "weiterarbeiten") {
+        const eigene = visibleDraftsFor(user, await capture.recentOwnDrafts(user.id));
+        const lesbar = await entwuerfeAusgabe(eigene, user);
+        return reply.send({
+          kontoId: user.id,
+          entwuerfe: lesbar.map(({ id, payload }) => ({
+            id,
+            titel: payload.title?.trim() || payload.statement?.trim().slice(0, 60) || "",
+            mitAblauf: Boolean(payload.ablauf),
+          })),
+        });
       }
       // AUFTRAG-mega20 Block D: die LISTE ist der echte Fortsetzen-Weg (CaptureDraftList →
       // onResume arbeitet mit dem Objekt aus dieser Antwort, nicht mit einem zweiten GET). Sie

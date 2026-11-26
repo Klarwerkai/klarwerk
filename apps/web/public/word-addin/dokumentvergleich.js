@@ -136,7 +136,10 @@ function askVergleichMarken(vergleich) {
   function spanne(tokens, ende) {
     if (ende > vorn) return askVergleichSpanne(tokens, vorn, ende);
     // Ein Wort fehlt hier. Seine vorhandenen Nachbarn bilden die reale Fundstelle.
-    return askVergleichSpanne(tokens, Math.max(0, vorn - 1), Math.min(tokens.length, vorn + 1));
+    return {
+      ...askVergleichSpanne(tokens, Math.max(0, vorn - 1), Math.min(tokens.length, vorn + 1)),
+      nurKontext: true,
+    };
   }
   vergleich.dokumentMarke = spanne(dokument, dEnde);
   vergleich.belegMarke = spanne(beleg, bEnde);
@@ -175,8 +178,13 @@ function askWortkorrektur(outcome, quellen) {
   )
     return null;
 
-  const alt = askVergleichToken(v.dokument);
-  const neu = askVergleichToken(beleg.text);
+  return askWortaenderung(v.dokument, beleg.text);
+}
+
+// Both directions use the exact text already presented to the user.
+function askWortaenderung(dokument, wortlaut) {
+  const alt = askVergleichToken(dokument);
+  const neu = askVergleichToken(wortlaut);
   if (!alt.length || !neu.length) return null;
   const { vorn, dEnde, bEnde } = askVergleichTokenGrenzen(alt, neu);
   if (dEnde === vorn && bEnde === vorn) return null;
@@ -185,8 +193,8 @@ function askWortkorrektur(outcome, quellen) {
     ende < tokens.length ? tokens[ende].index : tokens.at(-1).index + tokens.at(-1)[0].length;
   let start = ab(alt);
   let ende = bis(alt, dEnde);
-  const altTeil = v.dokument.slice(start, ende);
-  let ersatz = beleg.text.slice(ab(neu), bis(neu, bEnde));
+  const altTeil = dokument.slice(start, ende);
+  let ersatz = wortlaut.slice(ab(neu), bis(neu, bEnde));
   // Prefer retaining the separator before the changed word, then the one after it.
   let i = 0;
   while (i < altTeil.length && /\s/u.test(altTeil[i]) && altTeil[i] === ersatz[i]) i++;
@@ -195,13 +203,13 @@ function askWortkorrektur(outcome, quellen) {
   while (
     ende > start &&
     ersatz &&
-    /\s/u.test(v.dokument[ende - 1]) &&
-    v.dokument[ende - 1] === ersatz.at(-1)
+    /\s/u.test(dokument[ende - 1]) &&
+    dokument[ende - 1] === ersatz.at(-1)
   ) {
     ende--;
     ersatz = ersatz.slice(0, -1);
   }
-  const vorher = v.dokument.slice(start, ende);
+  const vorher = dokument.slice(start, ende);
   let suche = vorher;
   let ort = "Replace";
   if (!suche) {
@@ -211,7 +219,7 @@ function askWortkorrektur(outcome, quellen) {
     suche = (rechts || davor)[0];
     ort = rechts ? "Before" : "After";
   }
-  if (suche.replace(/\^/g, "^^").length > 255 || v.dokument.split(suche).length !== 2) return null;
+  if (suche.replace(/\^/g, "^^").length > 255 || dokument.split(suche).length !== 2) return null;
   return {
     vorher,
     ersatz,
@@ -219,7 +227,7 @@ function askWortkorrektur(outcome, quellen) {
     ort,
     start,
     kontext: askVergleichSpanne(alt, Math.max(0, vorn - 1), Math.min(alt.length, dEnde + 1)),
-    nachher: v.dokument.slice(0, start) + ersatz + v.dokument.slice(ende),
+    nachher: dokument.slice(0, start) + ersatz + dokument.slice(ende),
   };
 }
 

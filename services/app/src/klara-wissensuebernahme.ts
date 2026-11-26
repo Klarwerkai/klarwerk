@@ -3,6 +3,7 @@ import {
   type BindungsQuelle,
   bindeAussagen,
   bindungsQuelleAus,
+  loeseFundstelleAuf,
   referenzSichtFuerFragende,
 } from "../../ask";
 import type { ReferenzPruefdienst } from "../../ask";
@@ -19,7 +20,13 @@ import { can } from "../../rbac";
 import { kernaussageAusKlartext } from "../../structure";
 import type { SessionUser } from "./http";
 import type { KlaraNotizModellBeleg } from "./klara-gespraech-ausgabe";
-import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
+import {
+  type KlaraNotiz,
+  KlaraNotizDienst,
+  type KlaraNotizRepo,
+  type NotizPruefstand,
+  type NotizPruefstandMitVerlauf,
+} from "./klara-notiz";
 import type { KlaraWissensHerkunft } from "./klara-wissensherkunft-typen";
 import {
   WissensFehler,
@@ -178,8 +185,10 @@ export class KlaraWissensDienst {
     }
     return alle;
   }
-  async pruefe(user: SessionUser, id: string, locale = "de") {
+  async pruefe(user: SessionUser, id: string, locale = "de", erwartet?: unknown) {
     const n = await this.original(user, id);
+    if (erwartet !== undefined && erwartet !== n.fassung)
+      throw new WissensFehler(409, "Notizfassung geändert; neu öffnen.");
     const teil = n.wissensHerkunft?.besprechung?.verarbeitung;
     if (teil && teil.stand !== "abgeschlossen")
       throw new WissensFehler(
@@ -265,18 +274,75 @@ export class KlaraWissensDienst {
       darfSehen: (ko) => darfSehen(user, ko),
     });
     await pruefeStand();
-    const admin = can(user.role, "users.manage");
-    return {
+    const stand: NotizPruefstand = {
       fassung: n.fassung,
+      geprueftAm: new Date().toISOString(),
       beleg,
       quelltitel: Object.fromEntries(quelltitel),
-      modellherkunft: modellbeleg
-        ? admin
-          ? modellbeleg.rolle
-          : { stufe: modellbeleg.rolle.stufe }
-        : null,
-      ergebnis: admin ? ergebnis : referenzSichtFuerFragende(ergebnis),
+      modellherkunft: modellbeleg?.rolle ?? null,
+      ergebnis,
       herkunftUnveraendert: herkunftGueltig,
+      quellen: bezuege.map(({ id, fassung }) => ({ id, fassung })),
+    };
+    if (!(await this.d.notizen.speicherePruefstand(user.id, id, stand)))
+      throw new WissensFehler(409, "Notizfassung geändert; erneut prüfen.");
+    const gespeichert = await this.pruefstand(user, id, ergebnis.pruefId);
+    if (!gespeichert) throw new WissensFehler(404, "Prüfstand nicht verfügbar.");
+    return gespeichert;
+  }
+
+  /** Der Leseweg ruft kein Modell. Historische Zitate unterliegen auch heute den Quellrechten. */
+  async pruefstand(user: SessionUser, id: string, lauf?: string) {
+    await this.original(user, id);
+    const eintrag = await this.d.notizen.pruefstand(user.id, id, lauf);
+    if (!eintrag) {
+      if (lauf) throw new WissensFehler(404, "Prüfstand nicht verfügbar.");
+      return null;
+    }
+    const { stand } = eintrag;
+    const rechtefehler = () => new WissensFehler(404, "Notizquelle nicht verfügbar.");
+    const aktuelle = new Map<string, KnowledgeObject>();
+    const fassungen = new Map<string, BindungsQuelle>();
+    for (const q of stand.quellen) {
+      const ko = await this.d.ko.get(q.id);
+      if (!ko || !darfSehen(user, ko) || ko.schutzdatenQuarantaene) throw rechtefehler();
+      aktuelle.set(q.id, ko);
+      if (q.fassung > 0 && q.fassung !== ko.version) {
+        const alt = (await this.d.ko.versionsOf(q.id)).find(
+          (v) => v.koId === q.id && v.version === q.fassung,
+        )?.snapshot;
+        if (!alt || !darfSehen(user, alt) || alt.schutzdatenQuarantaene) throw rechtefehler();
+        fassungen.set(`${q.id}:${q.fassung}`, quelleFuerPruefung(alt, !!stand.modellherkunft));
+      }
+      fassungen.set(`${q.id}:${ko.version}`, quelleFuerPruefung(ko, !!stand.modellherkunft));
+    }
+    const leser = {
+      aktuell: async (id: string) => aktuelle.get(id),
+      imPapierkorb: async () => undefined,
+      fassung: async (id: string, version: number) => fassungen.get(`${id}:${version}`),
+    };
+    for (const a of stand.beleg.aussagen)
+      for (const teil of a.teile)
+        for (const f of teil.fundstellen) {
+          const aufgeloest = await loeseFundstelleAuf(f, leser, (ko) => darfSehen(user, ko));
+          if (aufgeloest.zustand !== "aktuell" && aufgeloest.zustand !== "geaendert")
+            throw rechtefehler();
+        }
+    return this.sichtAufPruefstand(user, eintrag);
+  }
+
+  private sichtAufPruefstand(
+    user: SessionUser,
+    { stand, vorheriger, naechster }: NotizPruefstandMitVerlauf,
+  ) {
+    const { quellen: _quellen, modellherkunft, ergebnis, ...sicht } = stand;
+    const admin = can(user.role, "users.manage");
+    return {
+      ...sicht,
+      vorheriger,
+      naechster,
+      modellherkunft: admin || !modellherkunft ? modellherkunft : { stufe: modellherkunft.stufe },
+      ergebnis: admin ? ergebnis : referenzSichtFuerFragende(ergebnis),
     };
   }
 

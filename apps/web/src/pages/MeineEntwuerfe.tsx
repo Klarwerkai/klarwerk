@@ -9,6 +9,7 @@ import { useToast } from "../app/ToastContext";
 import { CaptureDraftList } from "../components/CaptureDraftList";
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
+import { draftResumeHref } from "../lib/draftForm";
 import { formatKoTimestamp } from "../lib/koDates";
 
 // ==================================================================================================
@@ -125,11 +126,7 @@ export function MeineEntwuerfe(): JSX.Element {
   // BILDSCHIRMABLÄUFE: ein Entwurf mit übernommenem Ablauf öffnet in seiner Schrittbearbeitung —
   // dort stehen Reihenfolge, Bilder und Herkunft, die das Blatt nicht kennt.
   const entwurfOeffnen = (id: string, mitAblauf = false): void => {
-    navigate(
-      mitAblauf
-        ? `/erfassen/ablauf?entwurf=${encodeURIComponent(id)}`
-        : `/erfassen?draft=${encodeURIComponent(id)}`,
-    );
+    navigate(draftResumeHref(id, mitAblauf));
   };
 
   // ================================================================================================

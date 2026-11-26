@@ -1045,6 +1045,20 @@ export class CaptureService {
     });
   }
 
+  async recentOwnDrafts(authorId: string): Promise<Draft[]> {
+    const limit = 3;
+    if (this.repo.recentActiveByAuthor) return this.repo.recentActiveByAuthor(authorId, limit);
+    const drafts = await this.repo.listByAuthor(authorId);
+    return drafts
+      .filter((draft) => !("deletedAt" in draft))
+      .sort(
+        (a, b) =>
+          (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt) ||
+          a.id.localeCompare(b.id),
+      )
+      .slice(0, limit);
+  }
+
   // FR-CAP-06: jeder Schreibberechtigte sieht und nutzt den gemeinsamen Pool.
   listDrafts(): Promise<Draft[]> {
     return this.repo.list();

@@ -15,9 +15,7 @@ const dist = resolve("apps/web/dist");
 async function notizImBegleiterOeffnen(page: Page, id: string) {
   await page.goto(`${origin}/begleiter`);
   await page.getByTestId("begleiter-figur").click();
-  await page.getByTestId("begleiter-menue-knopf").click();
-  await page.getByTestId("klara-menue-funktionen").click();
-  await page.getByTestId("begleiter-notizen").locator("summary").click();
+  await page.getByTestId("begleiter-nav-notizen").click();
   await page.locator(`[data-testid="klara-notiz-eintrag"][data-notiz="${id}"]`).click();
   const stand = page.getByTestId("wissen-ergebnis");
   await stand.waitFor();
@@ -167,7 +165,16 @@ it("F08 · echter Browser: gewählter Chat → privates Original → Vorschau �
   await page.close();
 
   const begleiter = await browser.newPage({ locale: "de-DE" });
+  let neuePruefungen = 0;
+  begleiter.on("request", (req) => {
+    if (req.method() === "POST" && req.url().endsWith("/wissen/pruefen")) neuePruefungen++;
+  });
   const offen = await notizImBegleiterOeffnen(begleiter, notizId);
+  await begleiter.getByTestId("notiz-pruefstand").waitFor();
+  expect(await begleiter.getByTestId("notiz-quellenpruefung").getAttribute("data-status")).toBe(
+    "nicht_pruefbar",
+  );
+  expect(neuePruefungen).toBe(0);
   expect(await offen.getByRole("link").getAttribute("href")).toBe(href);
   expect(await offen.innerText()).toContain("Zur Prüfung eingereicht");
   const pruefung = await app.inject({

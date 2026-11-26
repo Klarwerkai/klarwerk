@@ -256,6 +256,12 @@ export function isDraftFormFillable(form: DraftFormState): boolean {
   );
 }
 
+export function draftResumeHref(id: string, mitAblauf = false): string {
+  return mitAblauf
+    ? `/erfassen/ablauf?entwurf=${encodeURIComponent(id)}`
+    : `/erfassen?draft=${encodeURIComponent(id)}`;
+}
+
 // Kurzer, sicherer Anzeigetitel für die Entwurfsliste.
 export function draftTitle(draft: Pick<Draft, "payload">, fallback: string): string {
   const t = draft.payload.title?.trim();

@@ -7,6 +7,9 @@ export interface NotizModell {
   modell?: string | null;
 }
 export interface NotizQuellenpruefung {
+  geprueftAm: string;
+  vorheriger: string | null;
+  naechster: string | null;
   fassung: number;
   modellherkunft: NotizModell | null;
   beleg: AussagenBelegKurz & { antwortFingerabdruck: string };
@@ -95,7 +98,12 @@ export const klaraWissenApi = {
     api.get<{ spaces: { id: string; name: string; zugang: string }[] }>("/me/klara/wissen/ziele"),
   vorschau: (id: string, fassung: number, ziel: WissensZiel) =>
     api.post<WissensVorschau>(`${pfad(id)}/vorschau`, { fassung, ziel }),
-  pruefen: (id: string) => api.post<NotizQuellenpruefung>(`${pfad(id)}/pruefen`, {}),
+  pruefstand: (id: string, lauf?: string) =>
+    api.get<{ pruefung: NotizQuellenpruefung | null }>(
+      `${pfad(id)}/stand?pruefstand=${encodeURIComponent(lauf ?? "letzter")}`,
+    ),
+  pruefen: (id: string, fassung: number) =>
+    api.post<NotizQuellenpruefung>(`${pfad(id)}/pruefen`, { fassung }),
   uebernehmen: (v: WissensVorschau, ziel: WissensZiel) =>
     api.post<WissensErgebnis>(`${pfad(v.notizId)}/uebernehmen`, {
       fassung: v.fassung,

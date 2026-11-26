@@ -375,6 +375,15 @@ export class PgDraftRepo implements DraftRepo {
   // ob 5 MiB fremder Entwuerfe ueber die Leitung gehen oder nicht. Die Sortierung bleibt wortgleich,
   // damit die Liste in derselben Reihenfolge steht wie bisher; der Ausdruck
   // `data->>'originalAuthor'` ist derselbe, auf dem `drafts_original_author_idx` liegt.
+  async recentActiveByAuthor(authorId: string, limit: number): Promise<Draft[]> {
+    const result = await this.pool.query<DraftRow>(
+      `SELECT data FROM drafts WHERE data->>'originalAuthor' = $1 AND ${AKTIV}
+       ORDER BY COALESCE(NULLIF(data->>'updatedAt', ''), data->>'createdAt') DESC NULLS LAST, id LIMIT $2`,
+      [authorId, limit],
+    );
+    return result.rows.map((row) => row.data);
+  }
+
   async listByAuthor(authorId: string): Promise<Draft[]> {
     const res = await this.pool.query<DraftRow>(
       "SELECT data FROM drafts WHERE data->>'originalAuthor' = $1 ORDER BY data->>'createdAt'",

@@ -212,6 +212,8 @@ export interface DraftRepo {
    * Vorfilterung eine zweite Sichtbarkeitsregel — und davon ist eine schon eine zu viel.
    */
   listByAuthor(authorId: string): Promise<Draft[]>;
+  /** Nur aktive eigene Entwürfe, nach letzter Bearbeitung geordnet und an der Datenbank begrenzt. */
+  recentActiveByAuthor?(authorId: string, limit: number): Promise<Draft[]>;
   /**
    * AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099): die Entwürfe, die ihr Autor bewusst in den
    * gemeinsamen Pool gegeben hat (`imPool`), aus der Ablage gefiltert — dieselbe Ersparnis wie

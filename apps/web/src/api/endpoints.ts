@@ -777,6 +777,8 @@ export const endpoints = {
         fassung: number;
         titel: string;
         freigegebenVon: string | null;
+        freigegebenAm?: string | null;
+        aktuellBestaetigteFassung?: number | null;
         demoSeed?: true;
       }>(`/kos/${encodeURIComponent(id)}?belegfassung=${fassung}`),
     versions: (id: string) => api.get<KoVersionSnapshot[]>(`/kos/${id}/versions`),
@@ -1033,6 +1035,10 @@ export const endpoints = {
   },
   drafts: {
     list: () => api.get<Draft[]>("/drafts"),
+    letzteEigene: () =>
+      api.get<{ kontoId: string; entwuerfe: { id: string; titel: string; mitAblauf: boolean }[] }>(
+        "/drafts?ansicht=weiterarbeiten",
+      ),
     // JOB 3782: DER EINE ABRUF MIT FRIST. Er ist der Weg, auf dem `/erfassen?draft=<id>` das Blatt
     // füllt — und der einzige, der hier eine Frist bekommt: `list` und die übrigen Lesewege bleiben
     // unverändert, weil dieser Auftrag nur DIESEN Hänger gemessen hat. Die Zahl steht begründet

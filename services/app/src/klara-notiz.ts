@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import type { AussagenBeleg, ReferenzPruefErgebnis } from "../../ask";
+import type { ReferenzRolle } from "../../reasoner";
 import {
   KlaraGespraechFehler,
   type KlaraGespraechRepo,
@@ -123,7 +125,27 @@ export interface KlaraNotizFilter {
 
 export type { NotizSchreibbedingung };
 
+/** Separate private Ablage: Listen, Suche und Aufgaben kopieren keine früheren Quellzitate. */
+export interface NotizPruefstand {
+  fassung: number;
+  geprueftAm: string;
+  beleg: AussagenBeleg;
+  ergebnis: ReferenzPruefErgebnis;
+  quelltitel: Record<string, string>;
+  modellherkunft: ReferenzRolle | null;
+  herkunftUnveraendert: boolean;
+  quellen: readonly { id: string; fassung: number }[];
+}
+
+export interface NotizPruefstandMitVerlauf {
+  stand: NotizPruefstand;
+  vorheriger: string | null;
+  naechster: string | null;
+}
 export interface KlaraNotizRepo {
+  speicherePruefstand(kontoId: string, id: string, stand: NotizPruefstand): Promise<boolean>;
+  pruefstand(kontoId: string, id: string, lauf?: string): Promise<NotizPruefstandMitVerlauf | null>;
+
   hole(kontoId: string, id: string): Promise<KlaraNotiz | null>;
   zuVorgang(kontoId: string, vorgang: string): Promise<KlaraNotiz | null>;
   /** Die eigenen Notizen, zuletzt geänderte zuerst. */
@@ -141,6 +163,30 @@ export interface KlaraNotizRepo {
 
 export class InMemoryKlaraNotizRepo implements KlaraNotizRepo {
   private readonly notizen = new Map<string, KlaraNotiz>();
+  private readonly pruefstaende = new Map<string, NotizPruefstand[]>();
+  async speicherePruefstand(kontoId: string, id: string, stand: NotizPruefstand) {
+    const notiz = this.notizen.get(id);
+    if (notiz?.kontoId !== kontoId || notiz.fassung !== stand.fassung) return false;
+    const liste = this.pruefstaende.get(id) ?? [];
+    liste.push(stand);
+    this.pruefstaende.set(id, liste);
+    return true;
+  }
+  async pruefstand(kontoId: string, id: string, lauf?: string) {
+    if (this.notizen.get(id)?.kontoId !== kontoId) return null;
+    const liste = this.pruefstaende.get(id) ?? [];
+    const index = lauf
+      ? liste.findIndex((stand) => stand.ergebnis.pruefId === lauf)
+      : liste.length - 1;
+    const stand = liste[index];
+    return stand
+      ? {
+          stand,
+          vorheriger: liste[index - 1]?.ergebnis.pruefId ?? null,
+          naechster: liste[index + 1]?.ergebnis.pruefId ?? null,
+        }
+      : null;
+  }
   private readonly geschrieben = new Map<string, number>();
   private takt = 0;
 
@@ -209,6 +255,7 @@ export class InMemoryKlaraNotizRepo implements KlaraNotizRepo {
     if (!n || n.kontoId !== kontoId) {
       return Promise.resolve(false);
     }
+    this.pruefstaende.delete(id);
     this.geschrieben.delete(id);
     return Promise.resolve(this.notizen.delete(id));
   }
@@ -234,6 +281,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_klara_notizen_vorgang
   ON klara_notizen (konto_id, vorgang);
 CREATE INDEX IF NOT EXISTS idx_klara_notizen_konto
   ON klara_notizen (konto_id, geaendert_am DESC);
+CREATE TABLE IF NOT EXISTS klara_notiz_pruefstaende (
+  folge bigserial PRIMARY KEY,
+  notiz_id text NOT NULL REFERENCES klara_notizen(id) ON DELETE CASCADE,
+  pruef_id text NOT NULL,
+  data jsonb NOT NULL,
+  UNIQUE (notiz_id, pruef_id)
+);
+CREATE INDEX IF NOT EXISTS idx_klara_notiz_pruefstaende_folge
+  ON klara_notiz_pruefstaende (notiz_id, folge DESC);
 `;
 
 /** Ein Suchwort als LIKE-Muster — `%`, `_` und `\` stehen wörtlich. */
@@ -243,6 +299,27 @@ function likeMuster(wort: string): string {
 
 export class PgKlaraNotizRepo implements KlaraNotizRepo {
   constructor(private readonly pool: Pool) {}
+  async speicherePruefstand(kontoId: string, id: string, stand: NotizPruefstand) {
+    const res = await this.pool.query(
+      `INSERT INTO klara_notiz_pruefstaende (notiz_id, pruef_id, data)
+       SELECT id, $4::text, $5::jsonb FROM klara_notizen
+       WHERE id=$1 AND konto_id=$2 AND fassung=$3 FOR SHARE`,
+      [id, kontoId, stand.fassung, stand.ergebnis.pruefId, JSON.stringify(stand)],
+    );
+    return res.rowCount === 1;
+  }
+  async pruefstand(kontoId: string, id: string, lauf?: string) {
+    const res = await this.pool.query<NotizPruefstandMitVerlauf>(
+      `SELECT p.data AS stand,
+        (SELECT x.pruef_id FROM klara_notiz_pruefstaende x WHERE x.notiz_id=p.notiz_id AND x.folge<p.folge ORDER BY x.folge DESC LIMIT 1) AS vorheriger,
+        (SELECT x.pruef_id FROM klara_notiz_pruefstaende x WHERE x.notiz_id=p.notiz_id AND x.folge>p.folge ORDER BY x.folge LIMIT 1) AS naechster
+       FROM klara_notiz_pruefstaende p JOIN klara_notizen n ON n.id=p.notiz_id
+       WHERE p.notiz_id=$1 AND n.konto_id=$2 AND ($3::text IS NULL OR p.pruef_id=$3)
+       ORDER BY p.folge DESC LIMIT 1`,
+      [id, kontoId, lauf ?? null],
+    );
+    return res.rows[0] ?? null;
+  }
 
   async hole(kontoId: string, id: string): Promise<KlaraNotiz | null> {
     const res = await this.pool.query<{ data: KlaraNotiz }>(

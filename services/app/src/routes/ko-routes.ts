@@ -1915,12 +1915,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             .send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
         }
         const annahme = await annahmeVon(stand);
+        const heutigeAnnahme = item.version === fassung ? annahme : await annahmeVon(item);
         return reply.send({
           id: stand.id,
           fassung,
           titel: stand.title,
           ...(stand.demoSeed ? { demoSeed: true } : {}),
           freigegebenVon: annahme?.person ?? null,
+          freigegebenAm: annahme?.zeitpunkt ?? null,
+          aktuellBestaetigteFassung: heutigeAnnahme?.fassung ?? null,
         });
       }
       // ==========================================================================================

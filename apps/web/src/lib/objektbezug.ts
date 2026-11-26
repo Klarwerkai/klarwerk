@@ -170,6 +170,25 @@ export function leseGespeicherteFassung(
   return { fassung, ankerId: kennung(params.get(ANKER_PARAM)) };
 }
 
+/** Rückwege enthalten ausschließlich die drei lokalen Kennungen aus einer Notizprüfung. */
+export function notizPruefbezug(params: URLSearchParams) {
+  const notiz = params.get("vonNotiz") ?? "";
+  const aussage = params.get("aussage") ?? "";
+  const pruefstand = params.get("pruefstand") ?? "";
+  const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+  if (
+    !uuid.test(notiz) ||
+    !/^aus_[0-9a-f]{16}(?:_[0-9]+)?$/.test(aussage) ||
+    !pruefstand.startsWith("ref_") ||
+    !uuid.test(pruefstand.slice(4))
+  )
+    return null;
+  return {
+    zurAussage: `/start?${new URLSearchParams({ notiz, aussage, pruefstand })}`,
+    anQuelle: new URLSearchParams({ vonNotiz: notiz, aussage, pruefstand }).toString(),
+  };
+}
+
 /**
  * Der Weg aus einer Antwortquelle zurück in die Lesefläche (Quellrückweg, K3).
  *

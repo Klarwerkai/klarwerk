@@ -51,6 +51,27 @@ function sichererVerweis(url: string | null): string | null {
   return url && /^https?:\/\//i.test(url) ? url : null;
 }
 
+type Zitatumfeld = { davor: string; danach: string };
+function satzumfeld(knoten: Text, versatz: number, davor: boolean, wurzel: HTMLElement): string {
+  const block = knoten.parentElement?.closest("p,li,blockquote,h1,h2,h3,h4") ?? wurzel;
+  const bereich = knoten.ownerDocument.createRange();
+  bereich.selectNodeContents(block);
+  if (davor) bereich.setEnd(knoten, versatz);
+  else bereich.setStart(knoten, versatz);
+  const nachbar = davor ? block.previousElementSibling : block.nextElementSibling;
+  const wortlaut = (
+    bereich.toString().trim() ||
+    (nachbar && wurzel.contains(nachbar) ? nachbar.textContent : "") ||
+    ""
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (wortlaut.length <= 140) return wortlaut;
+  return davor
+    ? `…${wortlaut.slice(-140).replace(/^\S*\s/, "")}`
+    : `${wortlaut.slice(0, 140).replace(/\s\S*$/, "")}…`;
+}
+
 function Fassungswortlaut({
   aussage,
   html,
@@ -60,7 +81,7 @@ function Fassungswortlaut({
   aussage: string;
   html: string | null;
   zitat: string;
-  meldeTreffer: (gefunden: boolean) => void;
+  meldeTreffer: (gefunden: Zitatumfeld | null) => void;
 }): JSX.Element {
   const aussageRef = useRef<HTMLParagraphElement>(null);
   const koerperRef = useRef<HTMLDivElement>(null);
@@ -69,9 +90,16 @@ function Fassungswortlaut({
     const text = aussageRef.current;
     if (!koerper || !text || !zitat) return;
     const fund = eindeutigeZitatstelle(koerper, text, zitat);
-    meldeTreffer(Boolean(fund));
-    if (!fund) return;
-    const marken = markiereFundstelle(koerper.contains(fund.start.knoten) ? koerper : text, fund);
+    if (!fund) {
+      meldeTreffer(null);
+      return;
+    }
+    const wurzel = koerper.contains(fund.start.knoten) ? koerper : text;
+    meldeTreffer({
+      davor: satzumfeld(fund.start.knoten, fund.start.versatz, true, wurzel),
+      danach: satzumfeld(fund.ende.knoten, fund.ende.versatz, false, wurzel),
+    });
+    const marken = markiereFundstelle(wurzel, fund);
     for (const marke of marken) {
       marke.className =
         "rounded-sm bg-amber-200 text-slate-950 underline decoration-amber-700 decoration-2 underline-offset-2";
@@ -107,11 +135,13 @@ export function GespeicherteFassungAnsicht({
   lage,
   quellinhalt,
   freigabeperson = null,
+  freigabezeit = null,
 }: {
   fassung: number;
   ankerId: string | null;
   zitat?: string;
   freigabeperson?: string | null;
+  freigabezeit?: string | null;
   lage: GespeicherteFassungLage;
   /** Fehlt er (reine Anzeige), steht bei einer Revision nur ihr Stand, kein Öffnungsweg. */
   quellinhalt?: QuellinhaltPlatz;
@@ -146,6 +176,7 @@ export function GespeicherteFassungAnsicht({
       ankerId={ankerId}
       zitat={zitat}
       freigabeperson={freigabeperson}
+      freigabezeit={freigabezeit}
       quellinhalt={quellinhalt}
     />
   );
@@ -168,16 +199,18 @@ function Fassungskarte({
   ankerId,
   zitat,
   freigabeperson,
+  freigabezeit,
   quellinhalt,
 }: {
   satz: KoVersionSnapshot;
   ankerId: string | null;
   zitat: string;
   freigabeperson: string | null;
+  freigabezeit: string | null;
   quellinhalt: QuellinhaltPlatz | undefined;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
-  const [gefunden, meldeTreffer] = useState(false);
+  const [gefunden, meldeTreffer] = useState<Zitatumfeld | null>(null);
   const ko = satz.snapshot;
   const beschluss = ko.proposals?.find(
     (v) => v.status === "uebernommen" && v.resultVersion === satz.version && v.notizbeleg,
@@ -212,17 +245,29 @@ function Fassungskarte({
         <div className="mb-5">
           <p className="mb-3 text-sm font-semibold text-brand-text">{t("quellen.fokus.stelle")}</p>
           {gefunden ? (
-            <blockquote
-              data-testid="quellenfokus-zitat"
-              className="border-l-4 border-amber-500 pl-4 text-2xl font-semibold leading-snug text-text sm:text-3xl"
-            >
-              <mark
-                dir="auto"
-                className="box-decoration-clone rounded-sm bg-amber-100 px-0.5 text-slate-950"
+            <div className="space-y-2" dir="auto">
+              {gefunden.davor && (
+                <p data-testid="quellenfokus-davor" className="text-sm text-muted">
+                  {gefunden.davor}
+                </p>
+              )}
+              <blockquote
+                data-testid="quellenfokus-zitat"
+                className="border-l-4 border-amber-500 pl-4 text-2xl font-semibold leading-snug text-text sm:text-3xl"
               >
-                {zitat}
-              </mark>
-            </blockquote>
+                <mark
+                  dir="auto"
+                  className="box-decoration-clone rounded-sm bg-amber-100 px-0.5 text-slate-950"
+                >
+                  {zitat}
+                </mark>
+              </blockquote>
+              {gefunden.danach && (
+                <p data-testid="quellenfokus-danach" className="text-sm text-muted">
+                  {gefunden.danach}
+                </p>
+              )}
+            </div>
           ) : (
             <p data-testid="quellenfokus-ohne-zitat" className="text-base text-muted">
               {t("quellen.fokus.keineStelle")}
@@ -248,6 +293,9 @@ function Fassungskarte({
             ? t("begleiter.vergleich.freigegebenVon", { person: freigabeperson })
             : t("begleiter.vergleich.freigabeUnbekannt")}
         </p>
+      )}
+      {zitat && freigabezeit && (
+        <p className={HINWEIS}>{t("quellen.fokus.freigabeAm", { zeit: freigabezeit })}</p>
       )}
       {zitat && zeitzeile}
       <Volltext>
@@ -459,12 +507,14 @@ export function GespeicherteFassung({
   ankerId,
   zitat = "",
   freigabeperson = null,
+  freigabezeit = null,
 }: {
   koId: string;
   fassung: number;
   ankerId: string | null;
   zitat?: string;
   freigabeperson?: string | null;
+  freigabezeit?: string | null;
 }): JSX.Element {
   const abfrage = useKoVersions(koId);
   const lage: GespeicherteFassungLage = abfrage.isError
@@ -478,6 +528,7 @@ export function GespeicherteFassung({
       ankerId={ankerId}
       zitat={zitat}
       freigabeperson={freigabeperson}
+      freigabezeit={freigabezeit}
       lage={lage}
       quellinhalt={(sourceRecordId, gewaehlt) => (
         <DamaligerQuellinhalt koId={koId} sourceRecordId={sourceRecordId} anfangsOffen={gewaehlt} />

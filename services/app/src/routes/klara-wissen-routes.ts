@@ -30,12 +30,28 @@ export function klaraWissenRoutes(
         fehler(reply, e);
       }
     });
-    app.get<{ Params: { id: string } }>(
+    app.get<{ Params: { id: string }; Querystring: { pruefstand?: string } }>(
       "/api/me/klara/notizen/:id/wissen/stand",
       async (req, reply) => {
         const u = await guards.requirePermission("ko.read", req, reply);
         if (!u) return;
         try {
+          if (req.query.pruefstand !== undefined) {
+            const lauf = req.query.pruefstand;
+            if (
+              lauf !== "letzter" &&
+              (typeof lauf !== "string" || !/^ref_[0-9a-f-]{36}$/.test(lauf))
+            )
+              throw new WissensFehler(400, "Ungültiger Prüfstand.");
+            reply.header("Cache-Control", "private, no-store");
+            return {
+              pruefung: await dienst.pruefstand(
+                u,
+                req.params.id,
+                lauf === "letzter" ? undefined : lauf,
+              ),
+            };
+          }
           return await dienst.beitragsstand(u, req.params.id);
         } catch (e) {
           fehler(reply, e);
@@ -64,6 +80,7 @@ export function klaraWissenRoutes(
               u,
               req.params.id,
               sprache === "en" || sprache === "nl" ? sprache : "de",
+              x.fassung,
             );
           }
           return await dienst.uebernehmen(u, req.params.id, x);

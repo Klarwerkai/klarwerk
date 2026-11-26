@@ -445,6 +445,14 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+.kw-vergleich details > summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  padding-block: 5px;
+}
 .kw-vergleich-aktionen {
   display: flex;
   flex-wrap: wrap;
