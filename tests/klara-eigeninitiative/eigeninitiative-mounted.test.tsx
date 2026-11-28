@@ -465,8 +465,8 @@ describe("M4 · K2/K4 — übertragene Aufgaben sichtbar geführt, auch nach Neu
 
     await klaraOeffnen();
     await bisModusGelesen();
-    expect(q(document, "klara-aufgaben")).not.toBeNull();
-    expect(q(document, "klara-aufgaben-leer")).not.toBeNull();
+    expect(q(document, "klara-uebertragene-aufgaben")).not.toBeNull();
+    expect(q(document, "klara-uebertragene-aufgaben-leer")).not.toBeNull();
 
     const feld = q<HTMLInputElement>(document, "klara-eingabe");
     if (!feld) {
@@ -495,10 +495,11 @@ describe("M4 · K2/K4 — übertragene Aufgaben sichtbar geführt, auch nach Neu
     expect(modus()).toBe("auftraege");
     await bis(() => alle(document, "klara-aufgabe").length === 1, 200);
     expect(alle(document, "klara-aufgabe")[0]?.textContent).toContain("Initiative Probe");
-    expect(text("klara-aufgaben")).toContain("mit deinen Rechten");
+    expect(text("klara-uebertragene-aufgaben")).toContain("mit deinen Rechten");
 
     // Im Modus „Nur auf Nachfrage“ steht die Aufgabenübersicht nicht da.
     await waehle("nachfrage");
-    expect(q(document, "klara-aufgaben")).toBeNull();
+    expect(q(document, "klara-uebertragene-aufgaben")).toBeNull();
+    expect(q(document, "klara-aufgaben-privat")).not.toBeNull();
   });
 });

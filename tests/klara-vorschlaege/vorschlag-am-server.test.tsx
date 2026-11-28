@@ -346,7 +346,7 @@ describe("V1 · K1/K3 — Original und Vorschlag, Quelle und KI-Kennzeichen; nic
     const vorher = await koLesen(a, leser, eintrag.koId);
 
     await artikelOeffnen(eintrag);
-    // Bedienhilfe dieser Fähigkeit — direkt in Klara.
+    // Bedienhilfe dieser Fähigkeit — direkt in der erweiterten Vorschau.
     expect(text("klara-bedienhilfe-vorschlag")).toContain("Umformulieren");
     await einwilligen();
     await markierungUebernehmen(BELEGSTELLE);
@@ -561,11 +561,17 @@ describe("V6 · Produktbetrieb — Markierung → Notizentwurf sichtbar mit Herk
     expect(q(document, "klara-figur")?.dataset.betriebsart).toBe("produkt");
 
     // Die Hinweise im Produktbetrieb beschreiben den gelieferten Umfang.
+    await klick(q(document, "klara-menue-knopf"));
+    await klick(q(document, "klara-menue-funktionen"));
     const offen = text("klara-offen");
-    expect(offen).toContain("noch in Arbeit");
+    expect(offen).toContain("Funktionskatalog");
     expect(offen).not.toContain("Umformulieren");
     expect(offen).not.toContain("Notizen");
+    await klick(q(document, "klara-unterseite-zurueck"));
+    await klick(q(document, "klara-menue-knopf"));
+    await klick(q(document, "klara-menue-hilfe"));
     expect(text("klara-bedienhilfe-vorschlag")).toContain("Umformulieren");
+    await klick(q(document, "klara-unterseite-zurueck"));
 
     await markierungUebernehmen(BELEGSTELLE);
     const hinweis = text("klara-aktion-nur-demo");

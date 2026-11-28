@@ -220,7 +220,7 @@ export function KlaraUebertrageneAufgaben({
   const offen = liste.filter(istOffen).length;
   return (
     <section
-      data-testid="klara-aufgaben"
+      data-testid="klara-uebertragene-aufgaben"
       data-offen={offen}
       aria-label={t("klarainitiative.aufgaben.titel")}
       className="rounded-card border border-ai/40 bg-page px-3 py-2"
@@ -230,7 +230,10 @@ export function KlaraUebertrageneAufgaben({
         {t("klarainitiative.aufgaben.intro")}
       </p>
       {liste.length === 0 ? (
-        <p data-testid="klara-aufgaben-leer" className="mt-1 text-[11.5px] text-muted-2">
+        <p
+          data-testid="klara-uebertragene-aufgaben-leer"
+          className="mt-1 text-[11.5px] text-muted-2"
+        >
           {t("klarainitiative.aufgaben.leer")}
         </p>
       ) : (

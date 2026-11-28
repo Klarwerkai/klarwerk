@@ -256,10 +256,11 @@ describe("K2/K4 · echtes persönliches Gespräch: Öffnen, Seitenwechsel, Minim
     expect(q(document, "klara-echt-hinweis")?.dataset.laden).toBe("bereit");
 
     // Ein persönliches Gespräch entsteht über den echten Frageweg.
-    await klick(q(document, "klara-einwilligung-erteilen"));
-    await bis(() => Boolean(q(document, "klara-einwilligung-erteilt")), 120);
     await tippe(eingabe(), GEDECKTE_FRAGE);
     await klick(q(document, "klara-senden"));
+    await bis(() => Boolean(q(document, "klara-einwilligung-erteilen")), 120);
+    expect(draht.aufrufe.filter((x) => x.url === "/api/ask")).toHaveLength(0);
+    await klick(q(document, "klara-einwilligung-erteilen"));
     await bis(() => {
       const klara = nachrichten().filter((n) => n.dataset.von === "klara");
       const letzte = klara[klara.length - 1];
@@ -280,6 +281,7 @@ describe("K2/K4 · echtes persönliches Gespräch: Öffnen, Seitenwechsel, Minim
     expect(nachrichten()[1]?.textContent).toContain("Deine Assistenz");
 
     // Auswahl des Bezugs und eine angefangene Eingabe.
+    await klick(q(document, "klara-kontext-zeile"));
     await klick(q(document, "klara-bezug-frei"));
     expect(q(document, "klara-bezug")?.dataset.bezug).toBe("frei");
     await tippe(eingabe(), "Angefangene Frage, noch nicht gesendet");
@@ -292,6 +294,8 @@ describe("K2/K4 · echtes persönliches Gespräch: Öffnen, Seitenwechsel, Minim
     expect(eingabe().value).toBe("Angefangene Frage, noch nicht gesendet");
 
     // Minimieren und erneut öffnen.
+    await klick(q(document, "klara-menue-knopf"));
+    await klick(q(document, "klara-menue-einstellungen"));
     await klick(q(document, "klara-minimieren"));
     expect(q(document, "klara-gespraech")).toBeNull();
     expect(q(document, "klara-figur")?.dataset.minimiert).toBe("true");
@@ -400,24 +404,32 @@ describe("K3/K4 · Produktbetrieb ohne Demo; offene Ausbaustufen benannt; Vorsch
     aendere((z) => ({ ...z, betrieb: "demo" }));
     await montiere("/");
     await gespraechOeffnen();
-    expect(q(document, "klara-betrieb")?.dataset.betrieb).toBe("echt");
+    expect(q(document, "klara-figur")?.dataset.betrieb).toBe("echt");
     expect(q(document, "klara-betrieb-demo")).toBeNull();
     expect(q(document, "klara-betrieb-echt")).toBeNull();
     expect(q(document, "klara-demo-hinweis")).toBeNull();
     expect(q(document, "klara-beenden")).toBeNull();
     expect(q(document, "klara-entwurf")).toBeNull();
     expect(q(document, "klara-panel-titel")?.textContent).toBe("Deine Assistenz");
-    expect(eingabe().placeholder).toBe("Frag etwas …");
-    expect(document.querySelector(`label[for="${eingabe().id}"]`)?.textContent).toBe("Deine Frage");
+    expect(eingabe().placeholder).toBe("Frage oder Auftrag …");
+    expect(document.querySelector(`label[for="${eingabe().id}"]`)?.textContent).toBe(
+      "Frage oder Auftrag an Deine Assistenz",
+    );
     expect(q(document, "klara-echt-leer")).not.toBeNull();
     expect(q(document, "klara-echt-leer")?.textContent ?? "").not.toContain("Klara");
-    expect(q(document, "klara-offen")?.textContent).toContain("noch in Arbeit");
+    expect(q(document, "klara-bezug")).not.toBeNull();
+    expect(q(document, "klara-eingabe-form")).not.toBeNull();
+    await klick(q(document, "klara-menue-knopf"));
+    await klick(q(document, "klara-menue-funktionen"));
+    expect(q(document, "klara-funktionen")).not.toBeNull();
+    expect(q(document, "klara-offen")?.textContent).toContain("Funktionskatalog");
     const link = q<HTMLAnchorElement>(document, "klara-zur-vorschau");
     expect(link?.getAttribute("href")).toBe("/klara-vorschau");
     // Gelieferte Funktionen bleiben erreichbar: Bezug, Hilfe zur Seite, Sprache, Bedienhilfe.
-    for (const id of ["klara-bezug", "klara-modi", "klara-bedienhilfe", "klara-eingabe-form"]) {
-      expect(q(document, id), id).not.toBeNull();
-    }
+    await klick(q(document, "klara-unterseite-zurueck"));
+    await klick(q(document, "klara-menue-knopf"));
+    await klick(q(document, "klara-menue-hilfe"));
+    expect(q(document, "klara-bedienhilfe")).not.toBeNull();
     expect(q(document, "klara-bedienhilfe-sprache")).not.toBeNull();
     // Die Bedienhilfe sagt nicht, „Demo“ sei hier ein Betrieb.
     expect(q(document, "klara-bedienhilfe")?.textContent).not.toContain("„Demo“ zeigt");
