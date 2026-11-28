@@ -2770,7 +2770,16 @@ export function KlaraVorschau({
                 notizen={istEcht && kontoId ? <KlaraNotizen auftragskarte /> : null}
                 // Integration main (Klara 07): die eigenen Aufgaben wiederfinden — dieselbe Liste
                 // wie im bisherigen Panel; angelegt wird über den Ausführungsweg im Gespräch.
-                aufgaben={istEcht && kontoId ? <KlaraAufgaben /> : null}
+                aufgaben={
+                  istEcht && kontoId ? (
+                    <>
+                      {unterstuetzung === "auftraege" ? (
+                        <KlaraUebertrageneAufgaben liste={ausfuehrungen} t={t} />
+                      ) : null}
+                      <KlaraAufgaben />
+                    </>
+                  ) : null
+                }
                 arbeitsueberblick={
                   istEcht && kontoId ? (
                     <KlaraArbeitsueberblick key={kontoId} kontoId={kontoId} />
