@@ -65,10 +65,10 @@ const NICHT_BETRETEN = new Set(["node_modules", "dist", ".git", ".local", "cover
  *
  * BEWUSST NICHT „enthält das Wort playwright": `tests/tor-inventar/browser-gruppe.ts:21-23` hat
  * genau diesen Fehlschluss ausgemessen — eine Textsuche nach „playwright" trifft im eigenen Bestand
- * nachweislich daneben (Kommentare, Argumentlisten). `chromium.launch(` steht im Bestand an KEINER
- * anderen Stelle als an einer echten Startstelle; im Baum `tests/design/**` sind es 15 Dateien.
+ * nachweislich daneben (Kommentare, Argumentlisten). Gezählt werden die beiden Chromium-Startaufrufe.
+ * H3 startet einen Browserserver und verbindet sich anschließend mit ihm.
  */
-const START_MERKMAL = "chromium.launch(";
+const START_MERKMAL = /\bchromium\.launch(?:Server)?\s*\(/;
 
 /** Die Zeile, in der eine Bühne ihren Ursprung benennt — `const ORIGIN = "…";`, mit oder ohne `export`. */
 const ORIGIN_ZEILE = /^(?:export )?const ORIGIN = "([^"]+)";$/m;
@@ -124,7 +124,7 @@ function buehnen(): { gefunden: Buehne[]; ohneUrsprung: string[] } {
   const ohneUrsprung: string[] = [];
   for (const pfad of quelldateien()) {
     const quelle = readFileSync(join(WURZEL, pfad), "utf8");
-    if (!quelle.includes(START_MERKMAL)) continue;
+    if (!START_MERKMAL.test(quelle)) continue;
     const treffer = ORIGIN_ZEILE.exec(quelle);
     if (treffer?.[1] === undefined) {
       ohneUrsprung.push(pfad);
