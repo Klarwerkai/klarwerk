@@ -96,6 +96,7 @@ export function mitKanonischerAussage<
     statement?: unknown;
     bodyHtml?: unknown;
     title?: unknown;
+    origin?: unknown;
   },
 >(payload: T): T {
   const bodyHtml =
@@ -104,6 +105,14 @@ export function mitKanonischerAussage<
       : payload.bodyHtml;
   const sauber = bodyHtml === payload.bodyHtml ? payload : { ...payload, bodyHtml };
   if (typeof payload.statement !== "string") return sauber;
+  // Im Erfassungsformular bearbeitet der Mensch die Aussage selbst. Eine geleerte Aussage bleibt
+  // auch dann leer, wenn Titel oder Rumpf noch Text aus einem früheren OCR-Lauf enthalten.
+  if (
+    payload.statement === "" &&
+    (payload.origin === "expert" || payload.origin === "studio" || payload.origin === "tell")
+  ) {
+    return sauber;
+  }
   const statement =
     kernaussageAusKlartext(payload.statement) ||
     (typeof bodyHtml === "string" ? kernaussageAusHtml(bodyHtml) : "") ||

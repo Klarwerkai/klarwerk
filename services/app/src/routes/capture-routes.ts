@@ -1868,12 +1868,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             return;
           const eingang = payload as DraftPayload;
           const bildsicher = await sichereDraftBilder(eingang);
-          const draft = await capture.continueDraft(
-            request.params.id,
-            mitKanonischerAussage(bildsicher),
-            user.id,
-            { expectedUpdatedAt: erwarteterStand(expectedUpdatedAt) },
-          );
+          const draft = await capture.continueDraft(request.params.id, bildsicher, user.id, {
+            expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),
+          });
           reply
             .code(200)
             .send({ ...(await entwurfAusgabe(draft, user)), ...bildNachweis(eingang, bildsicher) });
@@ -2344,17 +2341,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
                 reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
                 return;
               }
-              // JOB 2703 D2: der Einreichen-Weg schreibt den Stand mit — auch hier kanonisch gekuerzt,
-              // sonst kaeme die Rohaussage der Vordertuer beim Einreichen ins Wissensobjekt.
-              await capture.continueDraft(
-                request.params.id,
-                mitKanonischerAussage(gestalt.payload),
-                user.id,
-                {
-                  expectedUpdatedAt,
-                  promotion,
-                },
-              );
+              // Erst nach dem Zusammenführen mit dem gespeicherten Entwurf steht auch bei einem
+              // Teilpatch fest, ob das Aussagefeld vom Menschen oder aus dem Dokument stammt.
+              await capture.continueDraft(request.params.id, gestalt.payload, user.id, {
+                expectedUpdatedAt,
+                promotion,
+              });
             } else if (expectedUpdatedAt !== undefined) {
               await capture.requireFresh(request.params.id, expectedUpdatedAt);
             }
