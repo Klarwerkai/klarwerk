@@ -281,7 +281,7 @@ describe("R-0941 · das konkrete Beispiel in Klaras Elementerklärung", () => {
     vi.stubGlobal("speechSynthesis", {
       speak: (u: { text: string }) => gesprochen.push(u.text),
       cancel: () => {},
-      getVoices: () => [],
+      getVoices: () => [{ name: "Teststimme", lang: "de-DE", localService: true }],
       addEventListener: () => {},
       removeEventListener: () => {},
     });

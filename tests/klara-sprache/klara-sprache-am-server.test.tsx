@@ -112,7 +112,7 @@ function mitSprache(): void {
     cancel: () => {
       ausgabe.abgebrochen += 1;
     },
-    getVoices: () => [],
+    getVoices: () => [{ name: "Teststimme", lang: "de-DE", localService: true }],
     addEventListener: () => {},
     removeEventListener: () => {},
   };
@@ -653,6 +653,8 @@ describe("S3 · K3/K5 — Rückfragen zu Name, Zeit und Bezug; der korrigierte T
 describe("S5 · K2/K5 — Seitenwechsel zwischen Sprechen und Senden: Karte und Gesprächsbezug bleiben beim gesprochenen Ziel", () => {
   it("auf der Klara-Vorschau gesprochen, auf „Fragen“ gesendet: Bezug am Server ist die Klara-Vorschau", async () => {
     const { a, leser } = await bereit();
+    // Ein belegter Antworttext behält den Herkunftsbezug. Bei einer Wissenslücke liefert der Server nur den neutralen Status.
+    await eintragMitOriginal(a.app, a.admin);
     await sprichAuftrag(GESPROCHEN);
     const zielBeimSprechen = zielDerSeite();
     const seiteBeimSprechen = q(document, "klara-ort-seite")?.textContent ?? "";
