@@ -91,12 +91,13 @@
       "historisch_offen": "Bestandsbereinigung als gesonderte Risikoentscheidung; U-4/U-6 ungemessen.",
       "heutiger_stand": {
         "art": "quelleninspektion",
-        "aussage": "Der Speicher begrenzt beim Schreiben und beim Lesen (Snapshot in appendItemRefs und listItemRefs). PostgreSQL gibt in listItemRefs und findById die gespeicherte Zeile roh zurück. Laut bestehendem Wächter ruft heute kein Produktpfad appendItemRefs auf. Ob Altzeilen im Betrieb existieren, ist nicht gemessen.",
+        "aussage": "Der Speicher begrenzt beim Schreiben und beim Lesen (Snapshot in appendItemRefs und listItemRefs). PostgreSQL gibt in listItemRefs und findById die gespeicherte Zeile roh zurück. Am 13.10.2026 hatte der Produktbaum noch keinen Aufrufer von appendItemRefs. Der Nachtrag vom 28.11.2026 belegt den Schreiber aus R-0142: Je entschiedener Laufposition verweist candidateItemId auf den tatsächlichen Importkandidaten. Ob Altzeilen im Betrieb existieren, ist nicht gemessen.",
         "fundstellen": [
           "services/library-analytics/src/repo.ts:1044-1069",
           "services/library-analytics/src/repo-pg.ts:849-855",
           "services/library-analytics/src/repo-pg.ts:958-967",
-          "tests/library/job821-w2-ist-befund.test.ts:51-65"
+          "services/library-analytics/src/service.ts:5059-5085",
+          "tests/library/job821-w2-ist-befund.test.ts:61-139"
         ]
       },
       "stand": "historisch_belegt",
