@@ -162,3 +162,14 @@ describe("Welle1: Pflichtmodus ist unabhängig vom gewählten Reporter", () => {
     expect(`${empty.stdout}\n${empty.stderr}`).toContain("test rot");
   });
 });
+
+it("prüft den PR-Matrixweg mit echtem Git, allen Teilberichten und roten Gegenproben", () => {
+  const probe = spawnSync(process.execPath, ["tests/releaseweg/pr-pflicht-probe.mjs"], {
+    cwd: root,
+    env: environment(),
+    encoding: "utf8",
+    timeout: 45_000,
+  });
+  expect(probe.error, probe.stderr).toBeUndefined();
+  expect(probe.status, probe.stderr).toBe(0);
+}, 50_000);

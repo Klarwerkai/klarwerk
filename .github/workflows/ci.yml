@@ -4,12 +4,46 @@ on:
   pull_request: {}
 
 jobs:
-  pflicht:
+  pflicht-plan:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    outputs:
+      verteilt: ${{ steps.plan.outputs.verteilt }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci --ignore-scripts
+      - id: plan
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node tools/pflicht-pr.mjs plan "$RELEASE_BASE" .local/run/ci-pflicht-plan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pflicht-auswahl-${{ github.sha }}
+          path: .local/run/ci-pflicht-plan/auswahl.json
+          if-no-files-found: error
+          overwrite: true
+
+  pflicht-teil:
+    needs: pflicht-plan
+    if: needs.pflicht-plan.outputs.verteilt == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.pflicht-plan.outputs.matrix || '{"teil":["einzeln"]}') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -17,7 +51,52 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm ci --prefix apps/web
+      - name: Pflichtteil mit denselben Stufen- und Prozessgrenzen
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
+          TEIL: ${{ matrix.teil }}
+        run: node tools/pflicht-pr.mjs teil "$RELEASE_BASE" .local/run/ci-pflicht-teil "$TEIL"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pflicht-pr-${{ github.sha }}-${{ matrix.teil }}
+          path: .local/run/ci-pflicht-teil/
+          if-no-files-found: error
+          overwrite: true
+
+  pflicht:
+    needs: [pflicht-plan, pflicht-teil]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - if: github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false'
+        run: npm ci --prefix apps/web
+      - uses: actions/download-artifact@v4
+        if: github.event_name == 'pull_request' && needs.pflicht-plan.outputs.verteilt == 'true'
+        with:
+          pattern: pflicht-pr-${{ github.sha }}-*
+          path: .local/run/ci-pflicht/teile/
+      - name: PR-Auswahl und gegebenenfalls alle Teilbelege prüfen
+        if: always() && github.event_name == 'pull_request'
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
+          PLAN_ERGEBNIS: ${{ needs.pflicht-plan.result }}
+          PLAN_VERTEILT: ${{ needs.pflicht-plan.outputs.verteilt }}
+          MATRIX_ERGEBNIS: ${{ needs.pflicht-teil.result }}
+          LAUF_ABGEBROCHEN: ${{ cancelled() }}
+        run: node tools/pflicht-pr.mjs abschluss "$RELEASE_BASE" .local/run/ci-pflicht
       - name: gemeinsamer schneller Pflichtvertrag (maximal 600 Sekunden)
+        if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht
@@ -27,6 +106,7 @@ jobs:
           name: pflicht-${{ github.sha }}
           path: .local/run/ci-pflicht/
           if-no-files-found: error
+          overwrite: true
   # I51 (OFFEN.md): DIESER JOB PRÜFTE ZWEI WOCHEN LANG EINE ANDERE PIPELINE ALS DAS SHIP-TOR.
   #
   # Hier standen `npm run build`, `lint`, `arch` und `test` als Viererliste. `./tools/check` ruft

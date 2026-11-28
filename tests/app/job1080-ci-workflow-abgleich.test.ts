@@ -77,8 +77,26 @@ function jobNamen(): string[] {
 type Lage = "VOR" | "IST_DAS_TOR" | "NACH" | "AUSSERHALB";
 
 const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
+  { job: "pflicht-plan", befehl: "npm ci --ignore-scripts", lage: "AUSSERHALB" },
+  {
+    job: "pflicht-plan",
+    befehl: 'node tools/pflicht-pr.mjs plan "$RELEASE_BASE" .local/run/ci-pflicht-plan',
+    lage: "AUSSERHALB",
+  },
+  { job: "pflicht-teil", befehl: "npm ci", lage: "AUSSERHALB" },
+  { job: "pflicht-teil", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  {
+    job: "pflicht-teil",
+    befehl: 'node tools/pflicht-pr.mjs teil "$RELEASE_BASE" .local/run/ci-pflicht-teil "$TEIL"',
+    lage: "AUSSERHALB",
+  },
   { job: "pflicht", befehl: "npm ci", lage: "AUSSERHALB" },
   { job: "pflicht", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  {
+    job: "pflicht",
+    befehl: 'node tools/pflicht-pr.mjs abschluss "$RELEASE_BASE" .local/run/ci-pflicht',
+    lage: "AUSSERHALB",
+  },
   {
     job: "pflicht",
     befehl: 'node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht',
@@ -139,6 +157,8 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
 describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeordnet", () => {
   it("kennt genau die Jobs, die eingeordnet sind — ein neuer Job macht diesen Test rot", () => {
     expect(jobNamen()).toEqual([
+      "pflicht-plan",
+      "pflicht-teil",
       "pflicht",
       "check",
       "integration",
@@ -147,6 +167,8 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
       "abbild",
     ]);
     expect([...new Set(EINORDNUNG.map((e) => e.job))]).toEqual([
+      "pflicht-plan",
+      "pflicht-teil",
       "pflicht",
       "check",
       "integration",
@@ -166,6 +188,32 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
     // Und die Gegenrichtung: keine Einordnung ohne Schritt.
     const alleSchritte = jobNamen().flatMap((j) => runBefehle(jobBlock(j)));
     expect(EINORDNUNG).toHaveLength(alleSchritte.length);
+  });
+
+  it("bindet die PR-Teilberichte an den gleichen GitHub-Commit und den abschließenden Pflichtjob", () => {
+    const plan = jobBlock("pflicht-plan");
+    const teile = jobBlock("pflicht-teil");
+    const ende = jobBlock("pflicht");
+    for (const job of [plan, teile, ende]) {
+      expect(job).toContain("ref: ${{ github.sha }}");
+      expect(job).toContain("fetch-depth: 0");
+    }
+    expect(plan).toContain("if: github.event_name == 'pull_request'");
+    expect(teile).toContain("needs: pflicht-plan");
+    expect(teile).toContain("if: needs.pflicht-plan.outputs.verteilt == 'true'");
+    expect(teile).toContain("fail-fast: false");
+    expect(teile).toContain("fromJSON(needs.pflicht-plan.outputs.matrix");
+    expect(teile).toContain("name: pflicht-pr-${{ github.sha }}-${{ matrix.teil }}");
+    expect(ende).toContain("needs: [pflicht-plan, pflicht-teil]");
+    expect(ende).toMatch(/^ {4}if: always\(\)$/m);
+    expect(ende).toContain("pattern: pflicht-pr-${{ github.sha }}-*");
+    expect(ende).toContain("PLAN_ERGEBNIS: ${{ needs.pflicht-plan.result }}");
+    expect(ende).toContain("MATRIX_ERGEBNIS: ${{ needs.pflicht-teil.result }}");
+    expect(ende).toContain("LAUF_ABGEBROCHEN: ${{ cancelled() }}");
+    expect(ende).toContain(
+      "if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')",
+    );
+    expect(ende).toContain("name: pflicht-${{ github.sha }}");
   });
 
   it("belegt den echten launchd-Weg auf macOS und die eigene Docker-Installationsstrecke", () => {
