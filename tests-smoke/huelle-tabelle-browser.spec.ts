@@ -26,6 +26,7 @@
 // Ende wieder gelöscht.
 import { type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
+import { bildpixel, galeriebilder } from "./support/bildpixel";
 
 test.describe.configure({ mode: "serial" });
 
@@ -100,18 +101,12 @@ async function tabelleStehtVollstaendig(page: Page, wann: string): Promise<void>
     `${wann}: eine Ebene der Tabelle ist beim rekursiven Abräumen verloren gegangen`,
   ).toHaveCount(1);
   await expect(
-    page.locator(`${EDITOR} table td img[src="${GIF}"]`),
+    page.locator(`${EDITOR} table td img`),
     `${wann}: das Bild wurde aus der Zelle herausgerissen, statt an Ort und Stelle verankert zu werden`,
   ).toHaveCount(1);
-}
-
-/** Was die GALERIE zeigt — je Bild ein Thumbnail-Knopf mit der aktuellen Beschreibung als `alt`. */
-async function galerie(page: Page): Promise<{ src: string; caption: string }[]> {
-  return await page.locator('button[title] img[src^="data:image"]').evaluateAll((els) =>
-    els.map((e) => ({
-      src: (e.getAttribute("src") ?? "").slice(0, 24),
-      caption: e.getAttribute("alt") ?? "",
-    })),
+  const zellenbild = await page.locator(`${EDITOR} table td img`).getAttribute("src");
+  expect(await bildpixel(zellenbild), `${wann}: In der Zelle steht das falsche Bild`).toBe(
+    await bildpixel(GIF),
   );
 }
 
@@ -154,13 +149,13 @@ test("huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, S
     // Die Galerie unter dem Editor: findet sie das Bild noch, obwohl es jetzt in einer Tabellenzelle
     // steht statt herausgelöst daneben? (debounced, deshalb `poll`)
     await expect
-      .poll(async () => await galerie(page), {
+      .poll(() => galeriebilder(page), {
         message: "Die Galerie verliert das Bild, das in der Tabellenzelle steht",
         timeout: 10_000,
       })
       .toEqual([
-        { src: PNG.slice(0, 24), caption: ERSTE },
-        { src: GIF.slice(0, 24), caption: ZWEITE },
+        { pixel: await bildpixel(PNG), caption: ERSTE },
+        { pixel: await bildpixel(GIF), caption: ZWEITE },
       ]);
 
     // DER KREIS: speichern und erneut öffnen. Erst wenn die Beschreibungen wirklich im abgelegten

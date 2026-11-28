@@ -24,6 +24,7 @@
 // DIE DATENLAGE BLEIBT UNBERÜHRT: angelegt wird ein ENTWURF (kein Wissensobjekt), am Ende gelöscht.
 import { type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
+import { bildpixel } from "./support/bildpixel";
 
 test.describe.configure({ mode: "serial" });
 
@@ -95,9 +96,13 @@ async function zuordnungStimmt(page: Page, wann: string, zweite: string): Promis
     `${wann}: die attributlose Tabelle wurde aufgelöst — die Struktur des Nutzers ist weg`,
   ).toHaveCount(1);
   await expect(
-    page.locator(`${EDITOR} table td img[src="${GIF}"]`),
+    page.locator(`${EDITOR} table td img`),
     `${wann}: das Bild wurde aus der Zelle herausgerissen, statt die Fußnote zu ihm zu bewegen`,
   ).toHaveCount(1);
+  const zellenbild = await page.locator(`${EDITOR} table td img`).getAttribute("src");
+  expect(await bildpixel(zellenbild), `${wann}: In der Zelle steht das falsche Bild`).toBe(
+    await bildpixel(GIF),
+  );
   await expect(
     page.locator(FUSSNOTE),
     `${wann}: nicht beide Bilder haben eine eigene Bildbeschreibung`,

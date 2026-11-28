@@ -50,6 +50,7 @@
 // Aufruf: npm run smoke:ui:gate (Chromium, hermetisch) oder npm run smoke:ui (drei Engines).
 import { type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
+import { bildpixel } from "./support/bildpixel";
 
 test.describe.configure({ mode: "serial" });
 
@@ -161,7 +162,7 @@ async function entwurfLoeschen(page: Page, id: string): Promise<void> {
  * Rundlauf ein zweites Bild erfindet oder die Reihung dreht.
  */
 async function merkmale(page: Page): Promise<Record<string, unknown>> {
-  return page.evaluate((fussnoteSel) => {
+  const { src, ...rest } = await page.evaluate((fussnoteSel) => {
     const editor = document.querySelector('[contenteditable="true"]');
     const bilder = Array.from(editor?.querySelectorAll("img") ?? []);
     const fussnoten = Array.from(document.querySelectorAll(fussnoteSel));
@@ -180,6 +181,7 @@ async function merkmale(page: Page): Promise<Record<string, unknown>> {
       fussnotenText: (cap?.textContent ?? "").trim(),
     };
   }, FUSSNOTE);
+  return { ...rest, pixel: await bildpixel(src) };
 }
 
 test("mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, erneut lesen", async ({
@@ -314,10 +316,9 @@ test("mega88: Drop — ein fallengelassenes Bild ist sofort beschreibbar", async
   // Erwartung von mir gefangen, bevor sie grün werden konnte.
   expect(vorher.bildzahl, "Das echte Drop hat gar kein Bild in den Editor gebracht").toBe(1);
   expect(vorher.fussnotenzahl, "Das fallengelassene Bild hat keine eigene Fußnote").toBe(1);
-  expect(
-    String(vorher.src ?? ""),
-    "Das eingebettete Bild ist keine data:-URL — dann ist es nicht der Weg über fileToThumbDataUrl",
-  ).toMatch(/^data:image\//);
+  expect(vorher.pixel, "Das eingebettete Drop-Bild muss einen RGBA-Pixel enthalten").toMatch(
+    /^[0-9a-f]{8}$/,
+  );
   expect(vorher.ankerVorhanden, "Das Bild steht in keiner figure").toBe("ja");
   expect(String(vorher.kennungAmBild ?? ""), "Das Bild trägt keine Kennung").toMatch(
     /^kw-img-[a-z0-9]+-\d+$/,
