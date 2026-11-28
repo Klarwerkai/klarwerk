@@ -105,10 +105,10 @@ describe("Kalibrierung · der Mitschnitt sieht jeden zusätzlichen Abruf einer Z
 
   it("K1 · zusätzlicher HTTP-503-Abruf: der Startvergleich wird rot (die 200er-Herkunft allein nicht)", async () => {
     const vorher = await grundstand();
-    antworten["/api/validation/board"] = 503;
-    await seite().fetch("/api/validation/board?x=1");
+    antworten["/api/validation/board/count"] = 503;
+    await seite().fetch("/api/validation/board/count?x=1");
     expect(anfragenJeQuelle(seite().__anfragen)).not.toEqual(vorher.gestartet);
-    expect(anfragenJeQuelle(seite().__anfragen)["/api/validation/board"]).toBe(2);
+    expect(anfragenJeQuelle(seite().__anfragen)["/api/validation/board/count"]).toBe(2);
     // Der Grund für B2: die Herkunft zählt nur Bestätigungen und bliebe gleich.
     expect(herkunft(seite().__abrufe)).toEqual(vorher.bestaetigt);
     expect(seite().__abrufe.at(-1)?.status).toBe(503);

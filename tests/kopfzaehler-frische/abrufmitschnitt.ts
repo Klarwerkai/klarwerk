@@ -17,16 +17,17 @@
 // `tests/tor-inventar/browser-gruppe.ts`, berechnet aus dem Importgraphen).
 
 /**
- * Die sechs Quellen der Kopfband-Zahlen (`app/useNavBadges.ts`). Die sechste (an mich
- * zurückgegebene Entwürfe) kam mit dem Autorenübergabe-Auftrag, K3, hinzu.
+ * Zählquellen des angemeldeten Administrators (`app/useNavBadges.ts`), einschließlich
+ * der wartenden Autorenübergaben und der eigenen Zählroute der Prüfliste.
  */
 export const ZAEHLQUELLEN = [
-  "/api/validation/board",
+  "/api/validation/board/count",
   "/api/conflicts",
   "/api/duplicates",
   "/api/gaps/summary",
   "/api/lifecycle/pending",
   "/api/me/returned-tasks/summary",
+  "/api/me/author-transfers/summary",
 ] as const;
 
 export interface Anfrage {
