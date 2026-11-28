@@ -56,9 +56,9 @@ function ko(
 // `vg` ist validiert, vertraulich und vom angemeldeten Nutzer selbst verfasst — der Experte SIEHT
 // ihn (Autorregel, services/app/src/sichtbarkeit.ts), der Export liefert ihn ihm nicht.
 const KOS: KnowledgeObject[] = [
-  ko("v1", "A Ventil freigegeben", "validiert"),
-  ko("v2", "B Ventil freigegeben", "validiert"),
-  ko("o1", "C Ventil offen", "offen"),
+  ko("v1", "A Ventil freigegeben", "validiert", { confidentiality: "intern" }),
+  ko("v2", "B Ventil freigegeben", "validiert", { confidentiality: "intern" }),
+  ko("o1", "C Ventil offen", "offen", { confidentiality: "intern" }),
   ko("vg", "D Ventil vertraulich eigen", "validiert", {
     author: "u1",
     originalAuthor: "u1",
@@ -279,14 +279,15 @@ describe("R-0681 · Auswahl als reine Logik", () => {
       { id: "b", status: "validiert", confidentiality: "streng_vertraulich" as const },
       { id: "c", status: "validiert", confidentiality: "intern" as const },
       { id: "d", status: "offen", confidentiality: "vertraulich" as const },
+      { id: "e", status: "validiert" },
     ];
     const ohne = exportUmfang("markiert", eintraege, false);
     expect(ohne.ids).toEqual(["c"]);
     expect(ohne.art !== "bestand" && [ohne.nichtValidiert, ohne.vertraulichOhneRecht]).toEqual([
-      1, 2,
+      1, 3,
     ]);
     const mit = exportUmfang("markiert", eintraege, true);
-    expect(mit.ids).toEqual(["a", "b", "c"]);
+    expect(mit.ids).toEqual(["a", "b", "c", "e"]);
     expect(mit.art !== "bestand" && mit.vertraulichOhneRecht).toBe(0);
     expect(exportMoeglich(exportUmfang("markiert", eintraege.slice(0, 2), false))).toBe(false);
     expect(darfVertraulichExportieren("experte")).toBe(false);
@@ -300,6 +301,7 @@ describe("R-0681 · Auswahl als reine Logik", () => {
     const viele = Array.from({ length: EXPORT_AUSWAHL_MAX + 1 }, (_, i) => ({
       id: `k${i}`,
       status: "validiert",
+      confidentiality: "intern" as const,
     }));
     const umfang = exportUmfang("treffer", viele);
     expect(umfang.art === "treffer" && umfang.zuViele).toBe(true);
