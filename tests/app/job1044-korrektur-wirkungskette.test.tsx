@@ -186,7 +186,8 @@ const KORREKTUR_AUSSAGE =
 // Überschneidung mit der Frage bleibt dadurch für beide Quellen gleich, aber die Oberfläche kann
 // die beiden Objekte auseinanderhalten (die Beispiel-Chips schlüsseln nach Titel).
 const BESTAND_TITEL = "Ventilwartung Druck vor der Pruefung Fassung Alt";
-const KORREKTUR_TITEL = "Ventilwartung Druck vor der Pruefung Fassung Neu";
+const KORREKTUR_TITEL = "Ventilwartung Druck vor der Pruefung Fassung Nachjustierung";
+const FRAGE_NACHJUSTIERUNG = "Welcher Druck gilt bei der Nachjustierung?";
 // Fachfremd, aber maximal bewertet — die Gegenprobe zu „Trust macht nicht sachlich passend".
 const FREMDER_TITEL = "Kantinenplan Mittagessen";
 const FREMDE_AUSSAGE = "Der Kantinenplan weist das Mittagessen und die Salatbar aus.";
@@ -400,7 +401,17 @@ async function bewertenMit(
   urteil: "up" | "warn" | "down",
 ): Promise<void> {
   aufbau.anmeldenAls(p);
-  await endpoints.ko.act(koId, { action: "rate", verdict: urteil });
+  const paare = (await endpoints.duplicates.list()).filter(
+    (paar) => paar.status !== "geschlossen" && (paar.koA === koId || paar.koB === koId),
+  );
+  for (const paar of paare) {
+    expect([paar.koA, paar.koB].sort()).toEqual([aufbau.bestandId, aufbau.korrekturId].sort());
+  }
+  await endpoints.ko.act(koId, {
+    action: "rate",
+    verdict: urteil,
+    ...(urteil === "up" && paare.length > 0 ? { duplicateAcknowledged: true } : {}),
+  });
   aufbau.anmeldenAls(aufbau.admin);
 }
 
@@ -609,6 +620,7 @@ describe("JOB 1044 D4: Korrektur → Persistenz → Validation → Status/Trust 
     // WIRE: der Draht trägt die Bestandsquelle, nicht die Korrektur.
     const wire = drahtAntwort(aufbau);
     expect(wire.result.answered).toBe(true);
+    expect(wire.result.knowledgeClass).toBe("gesichert");
     expect(wire.result.sources).toContain(aufbau.bestandId);
     expect(wire.result.sources).not.toContain(aufbau.korrekturId);
 
@@ -635,14 +647,21 @@ describe("JOB 1044 D4: Korrektur → Persistenz → Validation → Status/Trust 
     await seiteOeffnen();
     await fragen(FRAGE);
 
-    // WIRE: dieselbe Frage, derselbe Bestand, dieselbe Relevanz — jetzt trägt die Korrektur.
-    const wire = drahtAntwort(aufbau);
-    expect(wire.result.sources).toContain(aufbau.korrekturId);
-    expect(wire.result.sources).not.toContain(aufbau.bestandId);
-    expect(wire.result.knowledgeClass).toBe("gesichert");
+    // Zwei bestätigte Fassungen widersprechen sich. Ohne Modell werden beide Wortlaute gezeigt.
+    const vergleich = drahtAntwort(aufbau).result;
+    expect(vergleich.citedSources?.slice().sort()).toEqual(
+      [aufbau.korrekturId, aufbau.bestandId].sort(),
+    );
+    expect(vergleich.knowledgeClass).toBe("ungeprueft");
+    expect(vergleich.trust).toBe(67);
+    expect(sichtbareAntwort()?.textContent).toContain("drei bar");
+    expect(sichtbareAntwort()?.textContent).toContain("null bar");
 
-    // DIE EINE ZAHL AN DREI STATIONEN: persistiert = auf dem Draht = am Bildschirm.
-    expect(wire.result.trust).toBe(nachFreigabe.trust);
+    // Erst der genannte Einsatzbereich stellt den Bezug allein zur Nachjustierung her.
+    await fragen(FRAGE_NACHJUSTIERUNG);
+    const einzeln = drahtAntwort(aufbau).result;
+    expect(einzeln.citedSources).toEqual([aufbau.korrekturId]);
+    expect(einzeln.trust).toBe(nachFreigabe.trust);
     expect(await sichtbarerVertrauenswert()).toBe(nachFreigabe.trust);
 
     // SICHTBAR: der korrigierte Satz ist angekommen.
@@ -670,9 +689,14 @@ describe("JOB 1044 D4: Korrektur → Persistenz → Validation → Status/Trust 
     await fragen(FRAGE);
 
     const wire = drahtAntwort(aufbau);
-    // Die Freigabe wirkt weiter: die Quelle trägt die Antwort.
-    expect(wire.result.sources).toContain(aufbau.korrekturId);
-    expect(wire.result.trust).toBe(83);
+    expect(wire.result.citedSources?.slice().sort()).toEqual(
+      [aufbau.korrekturId, aufbau.bestandId].sort(),
+    );
+    expect(wire.result.trust).toBe(67);
+    await fragen(FRAGE_NACHJUSTIERUNG);
+    const einzeln = drahtAntwort(aufbau).result;
+    expect(einzeln.citedSources).toEqual([aufbau.korrekturId]);
+    expect(einzeln.trust).toBe(nachWarnung.trust);
 
     // Und die gesenkte Zahl steht wirklich am Bildschirm.
     expect(await sichtbarerVertrauenswert()).toBe(83);
@@ -730,8 +754,14 @@ describe("JOB 1044 D4: Korrektur → Persistenz → Validation → Status/Trust 
 
     // Und die Gegenprobe auf der anderen Seite: eine Frage NUR zur fachfremden Quelle findet sie
     // sehr wohl — die Auswahl ist scharf, nicht blind.
+    const neuesThema = container.querySelector<HTMLButtonElement>(
+      '[data-testid="ask-gespraechsfaden-neu"]',
+    );
+    expect(neuesThema).not.toBeNull();
+    await act(async () => neuesThema?.click());
     await fragen("Was steht im Kantinenplan zum Mittagessen?");
     const zweiterDraht = drahtAntwort(aufbau);
-    expect(zweiterDraht.result.sources).toContain(fremd?.id);
+    expect(zweiterDraht.result.citedSources).toEqual([fremd?.id]);
+    expect(sichtbareAntwort()?.textContent).toContain("Salatbar");
   });
 });
