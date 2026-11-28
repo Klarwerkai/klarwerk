@@ -259,13 +259,17 @@ describe("JOB 3131 T2 · A — kein Lastflag von aussen erreicht Vitest, in kein
       browserOhne.args.some((a) => a.startsWith("--outputFile.json=")),
       browserOhne.args.join(" "),
     ).toBe(true);
-    // Der Rest-Aufruf bekommt es NICHT: gemessen wird die Browsergruppe.
-    expect((ohne[1] as Aufruf).args).not.toContain("--reporter=json");
+    const restOhne = ohne[1] as Aufruf;
+    expect(restOhne.args).toContain("--reporter=default");
+    expect(restOhne.args).not.toContain("--reporter=json");
 
     // Mit Reporter-Wunsch tritt das Protokoll zurueck, statt den Wunsch zu ueberschreiben.
     const mit = fahre(["--reporter=verbose"]);
-    expect((mit[0] as Aufruf).args).not.toContain("--reporter=json");
-    expect((mit[0] as Aufruf).args).toContain("--reporter=verbose");
+    for (const aufruf of mit) {
+      expect(aufruf.args).not.toContain("--reporter=json");
+      expect(aufruf.args).not.toContain("--reporter=default");
+      expect(aufruf.args).toContain("--reporter=verbose");
+    }
   });
 
   it("A · ohne Dateifilter ist eine leere Gruppe ein Fehler, kein Durchwinken", () => {
