@@ -8,7 +8,6 @@
 // Sprache da. Die Abhängigkeit ist real und gehört an die Wurzel der Anwendung, nicht an eine Seite.
 import "./i18n";
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-const Kiosk = lazy(() => import("./kiosk/Kiosk"));
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { AuthProvider, useSession } from "./app/AuthContext";
@@ -41,12 +40,12 @@ import { VersionsHinweis } from "./components/VersionsHinweis";
 import { LegalScreen, legalPageForPath, useRechtsseitenTor } from "./legal/LegalPages";
 // AUFTRAG-mega62 Block C: die Sperrfläche nach einem gescheiterten strengen Abmelden.
 import { SignOutBlocked } from "./legal/SignOutBlocked";
+import { mitFachtexten } from "./lib/fachtexte";
 // JOB 4333: die Zahl der noch nicht übertragenen Vorgänge auf DIESEM Gerät — kontounabhängig,
 // nur lesend. Sie entscheidet, ob es überhaupt einen Grund gibt, die Erfassung ohne beantwortete
 // Sitzungsfrage zu zeigen.
 import { offeneVorgaengeAmGeraet } from "./lib/sessionState";
 import { AppRoutes } from "./routes";
-import { AppShell } from "./shell/AppShell";
 // R-0570: die anonyme Vorführung mit erfundenen Inhalten, vor dem Anmeldetor.
 import {
   VORFUEHRUNG_PFAD,
@@ -58,6 +57,12 @@ import {
 // `shell/AppShell.tsx` („/mobile OHNE Shell") und in `routes.tsx` über die Route; sie steht hier
 // als benannte Konstante, damit der Zweck an der Torentscheidung lesbar ist.
 const MOBILE_ROUTE = "/mobile";
+
+// Erst nach der Sitzungsentscheidung lädt der geschützte Arbeitsbereich seine Hülle und Fachtexte.
+const AppShell = lazy(() =>
+  mitFachtexten(import("./shell/AppShell").then((m) => ({ default: m.AppShell }))),
+);
+const Kiosk = lazy(() => mitFachtexten(import("./kiosk/Kiosk")));
 
 // ================================================================================================
 // JOB 4333 — DIE ADRESSE MUSS AUS DEM ROUTER KOMMEN, UND DESHALB STEHT SIE IN EINEM EIGENEN BAUTEIL.
@@ -128,9 +133,11 @@ function Gate(): JSX.Element {
     <>
       <GeteilterStandNachlader />
       <RechtekontextWache kontoId={s.user?.id ?? null} />
-      <AppShell key={s.user?.id ?? kontoVorher.current ?? "ohne-konto"}>
-        <AppRoutes />
-      </AppShell>
+      <Suspense fallback={<Splash />}>
+        <AppShell key={s.user?.id ?? kontoVorher.current ?? "ohne-konto"}>
+          <AppRoutes />
+        </AppShell>
+      </Suspense>
     </>
   );
 

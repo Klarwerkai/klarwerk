@@ -22,15 +22,32 @@
 //
 // NICHT GEPRÜFT, ehrlich benannt: das Nachladen in einem echten Browser über das Netz (Chromium,
 // Netzwerk-Mitschnitt, Paket-404 nach einem Deploy). Das bleibt der offene Rest aus R-1530.
-import { readFileSync } from "node:fs";
+//
+//   T · DIE TEXTMODULE (R-0801, Gesamtcheck R-1329 Nacharbeit 49): ihre Blöcke en und nl verlassen
+//       die Module und kommen im Paket `i18n.textmodule.<sprache>.js` zurück — vollständig, in
+//       Glob-Reihenfolge, ohne verrutschte Zeile; direkt importierte Module bleiben ganz, und die
+//       Startprüfung nimmt nur LEERE Blöcke der nachgeladenen Sprachen hin.
+import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createInstance } from "../../apps/web/node_modules/i18next";
+import { fachtexteLader } from "../../apps/web/src/lib/fachtexte";
 import { sprachNachlader } from "../../apps/web/src/lib/sprachNachlader";
-import { basisSchluesselAusQuelltext } from "../../apps/web/src/texte/intern/pruefung";
 import {
+  type Textmodul,
+  basisSchluesselAusQuelltext,
+  pruefeTextmodule,
+} from "../../apps/web/src/texte/intern/pruefung";
+import {
+  direktGenutzteTextmodule,
+  fachtexteLaderAus,
+  fachtexteMitSeite,
+  nenntPraefix,
   sprachpaketAus,
   sprachpaketeNachladen,
+  statischeHuelle,
+  textmodulBlock,
+  textmodulOhneNachgeladene,
 } from "../../apps/web/src/texte/intern/sprachpakete";
 
 const WEB = resolve(__dirname, "..", "..", "apps", "web");
@@ -232,6 +249,271 @@ describe("N · der Nachlader an einem echten i18next", () => {
     });
     await i18n.changeLanguage("fr");
     expect(i18n.t("gruss")).toBe("Hallo");
+  });
+});
+
+const TEXTE = join(WEB, "src", "texte");
+const TEXTPAKET_ID = {
+  en: join(WEB, "src", "i18n.textmodule.en.js"),
+  nl: join(WEB, "src", "i18n.textmodule.nl.js"),
+} as const;
+/** Die Textmodule in Glob-Reihenfolge, wie `import.meta.glob("./texte/*.ts")` sie liefert. */
+const TEXTMODUL_DATEIEN = readdirSync(TEXTE).filter((n) => n.endsWith(".ts"));
+TEXTMODUL_DATEIEN.sort();
+
+async function echteTextmodule(): Promise<Record<string, Textmodul>> {
+  const module: Record<string, Textmodul> = {};
+  for (const datei of TEXTMODUL_DATEIEN) {
+    const m = (await import(join(TEXTE, datei))) as { default: Textmodul };
+    module[`./texte/${datei}`] = m.default;
+  }
+  return module;
+}
+
+describe("T · die Textmodule verlassen den Eintritt — ohne Textverlust", () => {
+  it("T1 ein Modul verliert en und nl, behält de, keine Zeile verrutscht", () => {
+    // Gesamtcheck R-1329 (Nacharbeit 58): bis hierher stand hier `hilfefaq`. Seit der Hilfeknopf
+    // nachgeladen wird, nennt die Eintritts-Hülle dessen Texte nicht mehr; das Modul gibt damit auch
+    // seinen deutschen Block ab (Block F). T1 nimmt deshalb das Modul, das die Hülle sicher trägt:
+    // die Navigation des Kopfbands — und prüft dasselbe wie vorher, wörtlich.
+    const fachtexte = fachtexteMitSeite(join(WEB, "src"));
+    expect(fachtexte, "die Navigation bleibt im Eintritt").not.toContain("navigation");
+    const pfad = join(TEXTE, "navigation.ts");
+    const quelle = readFileSync(pfad, "utf8");
+    const p = plugin();
+    const ergebnis = p.transform(quelle, pfad);
+    expect(ergebnis, "das Plugin hat das Textmodul nicht angefasst").not.toBeNull();
+    const code = ergebnis?.code ?? "";
+    expect(code.split("\n").length).toBe(quelle.split("\n").length);
+    const de = textmodulBlock("de", quelle, "navigation.ts").rumpf;
+    expect(de.length, "Vorbedingung: das Modul trägt deutsche Texte").toBeGreaterThan(0);
+    expect(code, "der deutsche Block steht Zeichen für Zeichen da").toContain(de);
+    expect(code).not.toContain(textmodulBlock("en", quelle, "navigation.ts").rumpf);
+    expect(code).toContain("  en: {},\n");
+    expect(code).toContain("  nl: {},\n");
+  });
+
+  it("T2 das Paket je Sprache trägt GENAU die Blöcke aller beschnittenen Module", async () => {
+    const module = await echteTextmodule();
+    const ganz = direktGenutzteTextmodule(join(WEB, "src"));
+    expect([...ganz], "auth/maskenfehler.ts liest anmeldefehler in allen Sprachen").toContain(
+      "anmeldefehler",
+    );
+    for (const sprache of ["en", "nl"] as const) {
+      const code = plugin().load(TEXTPAKET_ID[sprache]);
+      expect(code, `kein Textmodulpaket für ${sprache}`).not.toBeNull();
+      const ausdruck = (code ?? "").replace(/^export default /, "");
+      const wert = new Function(`return ${ausdruck}`)() as Record<string, string>;
+      const erwartet = Object.assign(
+        {},
+        ...Object.keys(module)
+          .sort()
+          .filter((pfad) => !ganz.has(pfad.slice("./texte/".length, -".ts".length)))
+          .map((pfad) => module[pfad]?.[sprache] ?? {}),
+      ) as Record<string, string>;
+      expect(Object.keys(erwartet).length, sprache).toBeGreaterThan(1000);
+      expect(wert, `${sprache}: Paket weicht von den Quellen ab`).toEqual(erwartet);
+      // Das ganz gebliebene Modul steht nicht doppelt im Paket.
+      for (const schluessel of Object.keys(module["./texte/anmeldefehler.ts"]?.[sprache] ?? {})) {
+        expect(wert).not.toHaveProperty([schluessel]);
+      }
+    }
+  });
+
+  it("T3 direkt importierte Module bleiben ganz; i18n.ts lädt beide Pakete gemeinsam", () => {
+    const pfad = join(TEXTE, "anmeldefehler.ts");
+    expect(plugin().transform(readFileSync(pfad, "utf8"), pfad)).toBeNull();
+    const eintritt = geschnitten();
+    expect(eintritt).toContain('const TEXTMODULE_NACHGELADEN: readonly string[] = ["en", "nl"];');
+    expect(eintritt).toContain(
+      'Promise.all([import("./i18n.sprachpaket.en.js"), import("./i18n.textmodule.en.js")])',
+    );
+    expect(eintritt).toContain(
+      'Promise.all([import("./i18n.sprachpaket.nl.js"), import("./i18n.textmodule.nl.js")])',
+    );
+    const p = plugin();
+    expect(p.resolveId("./i18n.textmodule.en.js", I18N)).toBe(TEXTPAKET_ID.en);
+    expect(p.resolveId("./i18n.textmodule.en.js", join(WEB, "src", "main.tsx"))).toBeNull();
+  });
+
+  it("T4 die Startprüfung nimmt nur LEERE nachgeladene Blöcke hin — alles andere bleibt Befund", async () => {
+    const module = await echteTextmodule();
+    const ganz = direktGenutzteTextmodule(join(WEB, "src"));
+    const beschnitten: Record<string, unknown> = {};
+    for (const [pfad, m] of Object.entries(module)) {
+      const name = pfad.slice("./texte/".length, -".ts".length);
+      beschnitten[pfad] = ganz.has(name) ? m : { ...m, en: {}, nl: {} };
+    }
+    const sprachen = ["de", "en", "nl"];
+    const leer = new Set<string>();
+    expect(pruefeTextmodule(beschnitten, leer, sprachen, ["en", "nl"])).toEqual([]);
+    // Ohne die Angabe wäre jeder leere Block ein Befund — die Angabe ist, was hier trägt.
+    expect(pruefeTextmodule(beschnitten, leer, sprachen).length).toBeGreaterThan(100);
+    // Ein NICHT leerer, unvollständiger Block bleibt Befund, auch wenn die Sprache nachgeladen wird.
+    const halb = {
+      "./texte/probe.ts": {
+        praefix: "probe.",
+        legacySchluessel: [],
+        de: { "probe.a": "A", "probe.b": "B" },
+        en: { "probe.a": "A" },
+        nl: {},
+      },
+    };
+    expect(pruefeTextmodule(halb, leer, sprachen, ["en", "nl"]).join("\n")).toContain(
+      'Schlüssel "probe.b" fehlt in der Sprache "en"',
+    );
+  });
+
+  it("T5 FAIL-CLOSED: ohne Blockkopf oder -schluss bricht der Bau ab", () => {
+    const quelle = readFileSync(join(TEXTE, "hilfefaq.ts"), "utf8");
+    const ohneKopf = quelle.replace("\n  nl: {\n", "\n  nl:{\n");
+    expect(ohneKopf).not.toBe(quelle);
+    expect(() => textmodulOhneNachgeladene(ohneKopf, "probe.ts")).toThrow(
+      /Anker[\s\S]*Bau abgebrochen/,
+    );
+    const ohneSchluss = 'export default {\n  en: {\n    "a": "b",\n} satisfies X;\n';
+    expect(() => textmodulBlock("en", ohneSchluss, "probe.ts")).toThrow(/Bau abgebrochen/);
+    expect(textmodulBlock("en", "x\n  en: {\n  },\n", "probe.ts").rumpf).toBe("");
+  });
+});
+
+// ================================================================================================
+// F · DIE DEUTSCHEN FACHTEXTE (R-0801, Gesamtcheck R-1329 Nacharbeit 58)
+// ================================================================================================
+// Module, deren Texte die statische Eintritts-Hülle nicht nennt, geben im Bau auch ihren deutschen
+// Block ab; er kommt im Paket `i18n.fachtexte.de.js`, und Seiten wie nachgeladene Flächen warten
+// darauf (`lib/fachtexte.ts`). Am gebauten Bündel misst der Block DECKEL in
+// `eintritt-ohne-seiten.test.ts` dieselbe Zusage noch einmal.
+const SRC = join(WEB, "src");
+const LADER = join(SRC, "lib", "fachtexte.ts");
+const FACHPAKET_ID = join(SRC, "i18n.fachtexte.de.js");
+
+describe("F · die deutschen Fachtexte kommen mit ihrer Fläche", () => {
+  it("F1 die Erhebung der Hülle folgt statischen Importen und keinem import()", () => {
+    const huelle = statischeHuelle(SRC);
+    // Kalibrierung in beide Richtungen: was die Hülle sicher trägt, und was sicher nachgeladen wird.
+    for (const drin of ["main.tsx", "App.tsx", "routes.tsx", "auth/AuthScreens.tsx", "i18n.ts"]) {
+      expect(huelle.has(join(SRC, drin)), `${drin} gehört zur Hülle`).toBe(true);
+    }
+    for (const draussen of [
+      "shell/AppShell.tsx",
+      "kiosk/Kiosk.tsx",
+      "pages/Spaces.tsx",
+      "pages/Admin.tsx",
+      "components/KlaraAssistant.tsx",
+      "components/klara-vorschau/KlaraVorschau.tsx",
+      "tutorial/TutorialBereich.tsx",
+    ]) {
+      expect(huelle.has(join(SRC, draussen)), `${draussen} wird nachgeladen`).toBe(false);
+    }
+  });
+
+  it("F2 ausgewählt wird nur, was die Hülle nicht nennt — Altnamen und Direktimporte bleiben", () => {
+    const fachtexte = fachtexteMitSeite(SRC);
+    // Kalibrierung: die Wissenskennzahlen nennt allein die Admin-Seite `pages/Analytics.tsx` (über
+    // `components/Wissenskennzahlen.tsx` und `lib/wissenskennzahlen.ts`) — nachgeladen, also Fachtext.
+    // Wie viel die Auswahl in Bytes ausmacht, misst der Block DECKEL am gebauten Bündel.
+    expect(fachtexte, "die Wissenskennzahlen kommen mit ihrer Seite").toContain("wkz");
+    expect(fachtexte).toEqual([...fachtexte].sort());
+    const genannt = [...statischeHuelle(SRC)]
+      .filter(([datei]) => !datei.startsWith(join(SRC, "texte")))
+      .filter(([datei]) => !datei.startsWith(join(SRC, "woerterbuch")))
+      .filter(([datei]) => datei !== join(SRC, "lib", "lesevariante.ts"))
+      .map(([, text]) => text)
+      .join("\n");
+    for (const name of fachtexte) {
+      expect(nenntPraefix(genannt, `${name}.`), `die Hülle nennt ${name}.`).toBe(false);
+      const quelle = readFileSync(join(TEXTE, `${name}.ts`), "utf8");
+      expect(quelle, `${name} trägt Altnamen`).toMatch(/\blegacySchluessel:\s*\[\s*\]/);
+    }
+    expect(fachtexte, "direkt importiert, bleibt ganz").not.toContain("anmeldefehler");
+    expect(fachtexte, "trägt Altnamen, bleibt im Eintritt").not.toContain("vorlagen");
+    // Die Gegenrichtung: die Nennung wird erkannt — in jeder der drei Schreibweisen.
+    expect(nenntPraefix('t("wkz.titel")', "wkz.")).toBe(true);
+    expect(nenntPraefix("t('wkz.titel')", "wkz.")).toBe(true);
+    expect(nenntPraefix("t(`wkz.${x}`)", "wkz.")).toBe(true);
+    expect(nenntPraefix("const wkz = x.wkz.titel;", "wkz.")).toBe(false);
+  });
+
+  it("F3 ein ausgewähltes Modul verliert auch de; das Paket trägt genau diese Blöcke", async () => {
+    const fachtexte = fachtexteMitSeite(SRC);
+    const name = fachtexte[0] as string;
+    const pfad = join(TEXTE, `${name}.ts`);
+    const quelle = readFileSync(pfad, "utf8");
+    const code = plugin().transform(quelle, pfad)?.code ?? "";
+    expect(code.split("\n").length, "keine Zeile verrutscht").toBe(quelle.split("\n").length);
+    for (const sprache of ["de", "en", "nl"]) {
+      expect(code).toContain(`  ${sprache}: {},\n`);
+    }
+    const module = await echteTextmodule();
+    const paket = plugin().load(FACHPAKET_ID);
+    expect(paket, "kein Fachtextpaket").not.toBeNull();
+    const ausdruck = (paket ?? "").replace(/^export default /, "");
+    const wert = new Function(`return ${ausdruck}`)() as Record<string, string>;
+    const erwartet = Object.assign(
+      {},
+      ...fachtexte.map((n) => module[`./texte/${n}.ts`]?.de ?? {}),
+    ) as Record<string, string>;
+    expect(Object.keys(erwartet), "Vorbedingung: das Paket trägt die Wissenskennzahlen").toContain(
+      "wkz.titel",
+    );
+    expect(wert, "das Paket weicht von den deutschen Blöcken der Quellen ab").toEqual(erwartet);
+    // Ein Modul, das im Eintritt bleibt, steht nicht im Paket.
+    for (const schluessel of Object.keys(module["./texte/navigation.ts"]?.de ?? {})) {
+      expect(wert).not.toHaveProperty([schluessel]);
+    }
+  });
+
+  it("F4 der Lader: Anker fail-closed, Paket nur von lib/fachtexte.ts aus erreichbar", () => {
+    const quelle = readFileSync(LADER, "utf8");
+    const code = plugin().transform(quelle, LADER)?.code ?? "";
+    expect(code).toContain(
+      'const FACHTEXTE_DE: { laden?: () => Promise<Fachtextpaket> } = { laden: () => import("../i18n.fachtexte.de.js") };',
+    );
+    expect(code.split("\n").length).toBe(quelle.split("\n").length);
+    expect(fachtexteLaderAus(quelle)).toBe(code);
+    expect(() => fachtexteLaderAus(quelle.replace("= {};", "= { };"))).toThrow(
+      /Anker[\s\S]*Bau abgebrochen/,
+    );
+    const p = plugin();
+    expect(p.resolveId("../i18n.fachtexte.de.js", LADER)).toBe(FACHPAKET_ID);
+    expect(p.resolveId("../i18n.fachtexte.de.js", I18N)).toBeNull();
+    expect(p.resolveId("./i18n.fachtexte.de.js", join(SRC, "main.tsx"))).toBeNull();
+  });
+
+  it("F5 Warten: Seiten scheitern mit dem Paket, Flächen nicht; ein Fehlschlag wird wiederholt", async () => {
+    const gelegt: Record<string, string>[] = [];
+    const ziel = {
+      addResourceBundle: (
+        _sprache: string,
+        _ns: string,
+        texte: Record<string, string>,
+        _tief: boolean,
+        ueberschreiben: boolean,
+      ) => {
+        expect(ueberschreiben, "gepflegte Texte bleiben stehen").toBe(false);
+        gelegt.push(texte);
+      },
+    };
+    // Ohne Lader (Quelltext): das Stück kommt unverändert, ohne jedes Warten.
+    const ohne = fachtexteLader(undefined, ziel);
+    const stueck = Promise.resolve("seite");
+    expect(ohne(stueck)).toBe(stueck);
+
+    let versuche = 0;
+    const lader = fachtexteLader(() => {
+      versuche += 1;
+      return versuche === 1
+        ? Promise.reject(new Error("Paket fehlt"))
+        : Promise.resolve({ default: { "probe.a": "A" } });
+    }, ziel);
+    await expect(lader(Promise.resolve("seite"))).rejects.toThrow("Paket fehlt");
+    await expect(lader(Promise.resolve("flaeche"), "flaeche")).resolves.toBe("flaeche");
+    expect(gelegt).toEqual([{ "probe.a": "A" }]);
+    expect(versuche).toBe(2);
+    // Danach ist das Paket da: kein weiterer Abruf, das Stück kommt durch.
+    await expect(lader(Promise.resolve("seite"))).resolves.toBe("seite");
+    expect(versuche).toBe(2);
   });
 });
 
