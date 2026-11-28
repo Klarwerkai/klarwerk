@@ -61,6 +61,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { SanitizedHtml } from "../../apps/web/src/components/SanitizedHtml";
 import { MAX_INLINE_BODY_HTML_BYTES, extractDocxRich } from "../../apps/web/src/lib/docx";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { pruefeBildpixel } from "../m5-docx-bildunterschriften/bildpixel";
 import { type KlaraPanel, createKlaraPanel } from "./klara-panel-fixture";
 
 // DIE ZWEI ECHTEN WORD-DOKUMENTE. Beide lassen sich von Hand in Word öffnen — sie sind keine
@@ -366,48 +367,30 @@ describe("JOB 2923 · D1 · Station 1: Ist-Stand-Beweislauf an zwei echten Word-
       "image/png",
       "image/png",
     ]);
-    expect(amBildschirm, "Der Grundweg ist kaputt — dann misst der ganze Lauf nichts").toEqual([
-      "image/png",
-      "image/png",
-    ]);
+    expect(amBildschirm).toEqual(["image/webp", "image/webp"]);
     expect(antwort.imagesTotal).toBe(2);
-    expect(antwort.imagesEmbedded, "Die Bilanz meldet einen Verlust, den es nicht gibt").toBe(2);
+    expect(antwort.imagesEmbedded).toBe(2);
+    expect(antwort.imagesShrunk).toBe(2);
+    expect(antwort.imagesKeptOriginal).toBe(0);
 
-    // ── JOB 4364 · K1 — „VOLLSTÄNDIG ANGEKOMMEN" HEISST BYTEGLEICH, nicht „MIME-Typ stimmt". ────
-    // Gegengehalten wird gegen die QUELLE selbst: die zwei Bildteile im ZIP der `.docx`. Ein
-    // Import, der ein Bild abschneidet, neu kodiert oder zweimal dasselbe einsetzt, wird hier rot.
     const imQuelldokument = [
       await bildteil(NUR_PNG, "word/media/bild1.png"),
       await bildteil(NUR_PNG, "word/media/bild2.png"),
     ];
     const imEntwurf = bilderIm(gespeichert.bodyHtml as string);
-    expect(
-      imEntwurf.map((b) => b.typ),
-      "Im GESPEICHERTEN Entwurf stehen nicht zwei PNG — der Bildschirm allein belegt nichts",
-    ).toEqual(["image/png", "image/png"]);
-    expect(
-      imEntwurf.map((b) => b.bytes.toString("base64")),
-      "Die gespeicherten Bildbytes sind nicht die des Word-Dokuments — es ging etwas verloren, kam doppelt oder wurde neu kodiert",
-    ).toEqual(imQuelldokument.map((b) => b.toString("base64")));
-    // WARUM Bytegleichheit hier überhaupt gelten DARF, und warum das hier steht statt im Kommentar:
-    // die Bildableitung (JOB 3400) hat an diesem Dokument nichts verkleinert, sondern beide Quellen
-    // behalten. Verkleinerte sie morgen, wäre Bytegleichheit die falsche Zusage — dann wird DIESE
-    // Zeile rot und nennt den Grund, statt den Vergleich oben still zur Lüge werden zu lassen.
-    expect(
-      { verkleinert: antwort.imagesShrunk, quelle_behalten: antwort.imagesKeptOriginal },
-      "Die Bildableitung greift jetzt ein — dann prüft der Bytevergleich oben etwas anderes als vorher",
-    ).toEqual({ verkleinert: 0, quelle_behalten: 2 });
-    // ── JOB 4364 RUNDE 2 · DIE ZWEITE HÄLFTE DERSELBEN ZUSAGE — BEN-KORREKTURPFLICHT 1. ─────────
-    // Der Vergleich oben endet im gespeicherten Entwurf. Danach liegt noch eine Stufe: `SanitizedHtml`
-    // sanitisiert ein zweites Mal (`apps/web/src/lib/richText`) und fährt
-    // `blankLegacyCaptionPlaceholders` darüber. BEN hat genau dort beschädigt und alle zehn Fälle
-    // blieben grün. Deshalb werden JETZT auch die gerenderten Bildquellen gegen DIESELBEN
-    // Quellbilder gehalten — was der Mensch sieht, ist das, was in der Word-Datei stand.
     const amBildschirmInhalt = bilderAmBildschirm(container);
-    expect(
-      amBildschirmInhalt.map((b) => b.bytes.toString("base64")),
-      "Die GERENDERTEN Bildbytes sind nicht die des Word-Dokuments — auf dem Weg zum Bildschirm wurde beschädigt, verdoppelt oder neu kodiert",
-    ).toEqual(imQuelldokument.map((b) => b.toString("base64")));
+    expect(imEntwurf.map((bild) => bild.typ)).toEqual(amBildschirm);
+    // Jede Ableitung hat die vollständigen Pixel ihres eigenen PNG aus der Word-Datei.
+    for (const [index, quelle] of imQuelldokument.entries()) {
+      const gespeichert = imEntwurf[index];
+      const gerendert = amBildschirmInhalt[index];
+      if (!gespeichert || !gerendert) throw new Error(`Bild ${index + 1} fehlt.`);
+      await pruefeBildpixel(
+        `data:${gespeichert.typ};base64,${gespeichert.bytes.toString("base64")}`,
+        quelle.toString("base64"),
+      );
+      expect(gerendert.bytes).toEqual(gespeichert.bytes);
+    }
     // Und die zwei Bilder stehen nicht bloss im DOM, sie sind dort auch nicht ausgeblendet.
     // `domSichtbar` misst display/visibility/opacity bis zur Wurzel — kalibriert in `Z2`.
     const bildknoten = [...container.querySelectorAll("img")];

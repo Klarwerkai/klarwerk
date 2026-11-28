@@ -916,10 +916,11 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
     expect(html).toContain('link.target = "_blank"');
     expect(html).toContain('link.rel = "noopener noreferrer"');
     // Aufbau ueber DOM-APIs (textContent) — kein HTML-Sink fuer KO-Titel.
-    expect(html).toContain("link.textContent = geladen ? quelle.title : id");
+    expect(html).toContain("link.textContent = geladen ? askQuellenAnzeigetitel(quelle) : id");
+    expect(html).toContain("return quelle.title;");
     // Status aus der Bibliotheks-Ableitung; unbekannt wird NIE geraten.
     expect(html).toContain("function askQuellenDetailZeile(nummer, quelle)");
-    expect(html).toContain('var teile = [t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown")]');
+    expect(html).toContain('teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"))');
     for (const key of [
       'askStatusValidiert: "',
       'askStatusPruefung: "',

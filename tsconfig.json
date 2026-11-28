@@ -41,6 +41,7 @@
     "dist",
     "tests/**/*.tsx",
     "tests/types",
+    "tests/app/mega70-rohlink-sammler.test.ts",
     "tests/klara-vorschlaege/uebernahme-logik.test.ts",
     "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
     "tests/capture/mega85-suchtext-formatierung.test.ts",

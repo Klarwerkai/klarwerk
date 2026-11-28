@@ -46,6 +46,7 @@ function wissen(teil: Partial<KnowledgeObject> & { id: string; title: string }):
     statement: `${teil.title}.`,
     conditions: [],
     measures: [],
+    sources: [],
     status: "validiert",
     version: 1,
     trust: 90,

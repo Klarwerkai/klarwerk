@@ -475,6 +475,7 @@ function statusAufrufe(): Aufruf[] {
 }
 
 beforeEach(() => {
+  window.localStorage.removeItem("kw.sprache");
   vi.useFakeTimers({ shouldAdvanceTime: true });
   aufrufe = [];
   zuhoerer.length = 0;
