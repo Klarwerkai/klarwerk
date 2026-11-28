@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { isIPv4 } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -94,6 +95,7 @@ if (!PFLICHT) {
 
 const KENNUNG = `${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}-${randomBytes(3).toString("hex")}`;
 const PROJEKT = `kn-kundeninst-${KENNUNG}`;
+const PROXY_NETZ = `${PROJEKT}-proxy`;
 
 const GEHEIMNISSE: string[] = [];
 function geheim(): string {
@@ -172,6 +174,7 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
   let platz: Platzbefund | undefined;
   let commit = "";
   let abbildId = "";
+  let proxyNetzErstellt = false;
   let profilaufbau: B.Profilaufbau | undefined;
   let dokumentId = "";
   let kontrollId = "";
@@ -296,6 +299,12 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
       // samt eigenem Volume und eigenem Abbild. Fremde Abbilder (postgres, caddy, node) bleiben.
       await fuehreAus([...i.docker, "rm", "-f", `${PROJEKT}-tls`, `${PROJEKT}-mailfalle`]);
       await compose(i, ["down", "-v", "--remove-orphans", "--rmi", "local"], 300_000);
+      if (proxyNetzErstellt) {
+        await mussGelingen(
+          [...i.docker, "network", "rm", PROXY_NETZ],
+          "Eigenes Proxy-Netz entfernen",
+        );
+      }
       rest = await projektbestand(i);
       let ordner = "entfernt";
       try {
@@ -331,17 +340,22 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
     const faelle: { fall: string; env: string; erwartet: string }[] = [
       {
         fall: "ohne APP_BASE_URL",
-        env: `POSTGRES_PASSWORD=${PG_PASSWORT}\n`,
+        env: `POSTGRES_PASSWORD=${PG_PASSWORT}\nKLARWERK_TRUST_PROXY=127.0.0.1/32\n`,
         erwartet: "APP_BASE_URL",
       },
       {
         fall: "ohne POSTGRES_PASSWORD",
-        env: `APP_BASE_URL=${BASIS}\n`,
+        env: `APP_BASE_URL=${BASIS}\nKLARWERK_TRUST_PROXY=127.0.0.1/32\n`,
         erwartet: "POSTGRES_PASSWORD",
       },
       {
-        fall: ".env unveraendert aus .env.example (plus Kennwort)",
-        env: `${beispiel}\nPOSTGRES_PASSWORD=${PG_PASSWORT}\n`,
+        fall: "ohne KLARWERK_TRUST_PROXY",
+        env: `APP_BASE_URL=${BASIS}\nPOSTGRES_PASSWORD=${PG_PASSWORT}\n`,
+        erwartet: "KLARWERK_TRUST_PROXY",
+      },
+      {
+        fall: ".env.example mit Kennwort und lokalem Prüfproxy",
+        env: `${beispiel}\nPOSTGRES_PASSWORD=${PG_PASSWORT}\nKLARWERK_TRUST_PROXY=127.0.0.1/32\n`,
         erwartet: "APP_BASE_URL",
       },
     ];
@@ -377,9 +391,57 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
   // ------------------------------------------------------------------------------------------------
   it("K1 · die dokumentierte Installation: `up -d --build`, gesund, eigenes Volume, TLS-Proxy davor", async () => {
     const i = I();
+    // TLS: eigene Test-CA, Serverzertifikat fuer den Instanznamen, Caddy als Proxy vor `app:3001`.
+    // Die Caddy-Konfiguration kommt WOERTLICH aus der Anleitung (§5.2) — nicht aus einer Kopie hier.
+    await mussGelingen([...i.docker, "network", "create", PROXY_NETZ], "Eigenes Proxy-Netz");
+    proxyNetzErstellt = true;
+    tls = await tlsErzeugen(join(arbeit, "tls"), INSTANZNAME, KENNUNG);
+    const caddyfile = join(arbeit, "Caddyfile");
+    const anleitung = readFileSync(
+      join(i.ordner, "docs/operations/kundeninstanz-neuinstallation.md"),
+      "utf8",
+    );
+    writeFileSync(caddyfile, dokumentierterBlock(anleitung, "caddyfile-eigenes-zertifikat"));
+    await mussGelingen(
+      [
+        ...i.docker,
+        "run",
+        "-d",
+        "--name",
+        `${PROJEKT}-tls`,
+        "--restart",
+        "unless-stopped",
+        "--network",
+        PROXY_NETZ,
+        "-p",
+        "127.0.0.1:443:443",
+        "-v",
+        `${tls.zertifikatsordner}:/certs:ro`,
+        "-v",
+        `${caddyfile}:/etc/caddy/Caddyfile:ro`,
+        PROXY_ABBILD,
+      ],
+      "TLS-Proxy",
+    );
+    const proxyAdresse = (
+      await mussGelingen(
+        [
+          ...i.docker,
+          "inspect",
+          "--format",
+          `{{(index .NetworkSettings.Networks "${PROXY_NETZ}").IPAddress}}`,
+          `${PROJEKT}-tls`,
+        ],
+        "Tatsächliche IP des eigenen TLS-Proxys",
+      )
+    ).trim();
+    expect(isIPv4(proxyAdresse), "Der gestartete Prüfproxy braucht eine eigene IPv4-Adresse").toBe(
+      true,
+    );
     schreibeEnv(i.ordner, {
       POSTGRES_PASSWORD: PG_PASSWORT,
       APP_BASE_URL: BASIS,
+      KLARWERK_TRUST_PROXY: `${proxyAdresse}/32`,
       SMTP_HOST: "mailfalle",
       SMTP_PORT: "2525",
       SMTP_FROM: `klarwerk@${INSTANZNAME}`,
@@ -446,36 +508,12 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
     expect(env.get("COOKIE_SECURE")).toBe("true");
     expect(env.get("NODE_ENV")).toBe("production");
     expect(env.get("APP_BASE_URL")).toBe(BASIS);
+    expect(env.get("KLARWERK_TRUST_PROXY")).toBe(`${proxyAdresse}/32`);
 
-    // TLS: eigene Test-CA, Serverzertifikat fuer den Instanznamen, Caddy als Proxy vor `app:3001`.
-    // Die Caddy-Konfiguration kommt WOERTLICH aus der Anleitung (§5.2) — nicht aus einer Kopie hier.
-    tls = await tlsErzeugen(join(arbeit, "tls"), INSTANZNAME, KENNUNG);
-    const caddyfile = join(arbeit, "Caddyfile");
-    const anleitung = readFileSync(
-      join(i.ordner, "docs/operations/kundeninstanz-neuinstallation.md"),
-      "utf8",
-    );
-    writeFileSync(caddyfile, dokumentierterBlock(anleitung, "caddyfile-eigenes-zertifikat"));
+    // Caddy erreicht in diesem eigenen Netz genau die geprüfte Anwendung unter ihrem DNS-Namen.
     await mussGelingen(
-      [
-        ...i.docker,
-        "run",
-        "-d",
-        "--name",
-        `${PROJEKT}-tls`,
-        "--restart",
-        "unless-stopped",
-        "--network",
-        `${PROJEKT}_default`,
-        "-p",
-        "127.0.0.1:443:443",
-        "-v",
-        `${tls.zertifikatsordner}:/certs:ro`,
-        "-v",
-        `${caddyfile}:/etc/caddy/Caddyfile:ro`,
-        PROXY_ABBILD,
-      ],
-      "TLS-Proxy",
+      [...i.docker, "network", "connect", "--alias", "app", PROXY_NETZ, app],
+      "Anwendung mit dem Prüfproxy verbinden",
     );
     await warteAufHttps();
 
@@ -520,6 +558,7 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
         NODE_ENV: env.get("NODE_ENV"),
         COOKIE_SECURE: env.get("COOKIE_SECURE"),
         APP_BASE_URL: env.get("APP_BASE_URL"),
+        KLARWERK_TRUST_PROXY: env.get("KLARWERK_TRUST_PROXY"),
         CANONICAL_HOST: env.get("CANONICAL_HOST"),
         KI_SCHLUESSEL_GESETZT: Boolean(env.get("ANTHROPIC_API_KEY") || env.get("OPENAI_API_KEY")),
       },
@@ -564,19 +603,38 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
       expect(r.code, `Das Abbild startete ohne Pflichtwerte (${name}).`).not.toBe(0);
       return `${r.stdout}${r.stderr}`;
     };
-    const ohneBeide = await lauf("leer", []);
+    const leer = await lauf("leer", []);
     const nurDb = await lauf("ohne-basis", [
       "-e",
       "DATABASE_URL=postgresql://nirgends.invalid:5432/klarwerk_prod",
     ]);
+    const ohneProxy = await lauf("ohne-proxy", [
+      "-e",
+      "DATABASE_URL=postgresql://nirgends.invalid:5432/klarwerk_prod",
+      "-e",
+      `APP_BASE_URL=${BASIS}`,
+    ]);
+    const ohneBasis = await lauf("ohne-basis-mit-proxy", [
+      "-e",
+      "DATABASE_URL=postgresql://nirgends.invalid:5432/klarwerk_prod",
+      "-e",
+      "KLARWERK_TRUST_PROXY=127.0.0.1/32",
+    ]);
     const liste = (text: string): string =>
       /Pflichtwert\(e\) aus dem Startvertrag fehlen — ([^.]+)\./.exec(text)?.[1] ??
       `(keine Liste) ${text.slice(-400)}`;
-    expect(liste(ohneBeide)).toContain("DATABASE_URL");
-    expect(liste(ohneBeide)).toContain("APP_BASE_URL");
-    expect(liste(nurDb)).toBe("APP_BASE_URL");
+    expect(liste(leer).split(", ").sort()).toEqual([
+      "APP_BASE_URL",
+      "DATABASE_URL",
+      "KLARWERK_TRUST_PROXY",
+    ]);
+    expect(liste(nurDb).split(", ").sort()).toEqual(["APP_BASE_URL", "KLARWERK_TRUST_PROXY"]);
+    expect(liste(ohneBasis)).toBe("APP_BASE_URL");
+    expect(liste(ohneProxy)).toBe("KLARWERK_TRUST_PROXY");
     belege("K6b Startvertrag im gebauten Abbild", {
-      ohneBeide: liste(ohneBeide),
+      ohnePflichtwerte: liste(leer),
+      ohneBasis: liste(ohneBasis),
+      ohneProxy: liste(ohneProxy),
       nurDatenbank: liste(nurDb),
     });
   }, 900_000);
