@@ -339,10 +339,12 @@ async function anmelden(seite: Seite, basis: string, email: string, marke: strin
   await tippeMitTastatur(seite, "#auth-email", email, `E-Mail (${marke})`);
   await tippeMitTastatur(seite, "#auth-password", PASSWORT, `Passwort (${marke})`);
   await seite.keyboard.press("Enter");
+  // Das Formular verschwindet bereits vor dem Laden der geschützten Startseite.
+  // Erst danach kann der Wechsel nach /mobile ihre Modulabrufe nicht mehr abbrechen.
   await warte(
     seite,
-    `() => !document.querySelector("#auth-email")`,
-    `die Anmeldung von ${marke} trägt`,
+    `() => !!document.querySelector('[data-testid="page-start"]')`,
+    `die Startseite von ${marke} nach der Anmeldung`,
     undefined,
     45_000,
   );
