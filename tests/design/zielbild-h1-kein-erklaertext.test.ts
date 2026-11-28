@@ -26,9 +26,11 @@ const INVENTAR = `() => {
   if (!band) return null;
   const zaehler = band.querySelector('.kw-kopfband-zaehler');
   const konto = band.querySelector('[data-testid="kopfband-konto"]');
+  const kiStatus = band.querySelector('output[data-testid="kopfband-ki-lage"]');
   const input = band.querySelector('input[type="search"]');
   return {
     innerText: band.innerText,
+    kiStatus: kiStatus?.innerText.trim() ?? null,
     woerter: band.innerText.split(/\\s+/).filter(Boolean),
     zaehler: zaehler ? zaehler.innerText.trim() : null,
     initialen: konto ? konto.innerText.trim() : null,
@@ -45,6 +47,7 @@ const INVENTAR = `() => {
 
 interface Inventar {
   innerText: string;
+  kiStatus: string | null;
   woerter: string[];
   zaehler: string | null;
   initialen: string | null;
@@ -88,6 +91,11 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
           s.seite,
           `(n) => { const z = document.querySelector('.kw-kopfband-zaehler'); return z !== null && (z.textContent || '').trim() === String(n); }`,
           boardZahl,
+        );
+        await warteBis(
+          s.seite,
+          `(text) => document.querySelector('[data-testid="kopfband-ki-lage"]')?.innerText.trim() === text`,
+          i18n.t("kilage.zeile.keine"),
         );
         jeRoute[pfad] = await s.seite.evaluate<Inventar | null>(fn(INVENTAR));
       }
@@ -160,16 +168,20 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
   });
 
   for (const pfad of ROUTEN) {
-    it(`T · ${pfad}: innerText des Kopfbands = KLARWERK Start Fragen Bibliothek Erfassen Meine Entwürfe Prüfen Arbeitsbereiche Seite finden <Kürzel> (+ Zähler, + Initialen), Platzhalter Wissen suchen`, () => {
+    it(`T · ${pfad}: innerText des Kopfbands = KLARWERK Start Fragen Bibliothek Erfassen Meine Entwürfe Prüfen Arbeitsbereiche Seite finden <Kürzel> mit Zähler, Initialen und KI-Betriebsart, Platzhalter Wissen suchen`, () => {
       expect(fehler).toBeNull();
       const inv = jeRoute[pfad];
       expect(inv, "Kopfband nicht gefunden").toBeTruthy();
       if (!inv) return;
-      // Zähler und Initialen sind die beiden zugelassenen Ausnahmen — und sie stehen wirklich da.
+      // Zähler und Initialen variieren mit dem Konto. Die KI-Betriebsart hat einen festen Wortlaut.
       expect(inv.zaehler).toBe(String(boardZahl));
       expect(inv.initialen).toBe("PK");
+      expect(inv.kiStatus).toBe("Keine KI · regelbasiert");
       const ohneAusnahmen = inv.woerter.filter((w) => w !== inv.zaehler && w !== inv.initialen);
-      expect(ohneAusnahmen.filter((w) => !WAHL_WOERTER.includes(w))).toEqual(WOERTER);
+      expect(ohneAusnahmen.filter((w) => !WAHL_WOERTER.includes(w))).toEqual([
+        ...WOERTER,
+        ...i18n.t("kilage.zeile.keine").split(/\s+/),
+      ]);
       const gewaehlt = ohneAusnahmen.filter((w) => WAHL_WOERTER.includes(w));
       // Höchstens EINE Kürzelform steht da; ohne Knopf gilt die erste nur als Platzhalter.
       const kuerzel = gewaehlt.find((w) => KUERZEL_FORMEN.includes(w)) ?? KUERZEL_FORMEN[0] ?? "";
@@ -181,7 +193,8 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
 
   it("N · nichts von der alten Kopfzeile ist noch zu lesen: Design, DE/EN/NL, Version, Mobil, Hilfe, Reasoning System", () => {
     expect(fehler).toBeNull();
-    const text = jeRoute["/start"]?.innerText ?? "";
+    // Die ausgewiesene Betriebsart ist die einzige vorgesehene KI-Beschriftung im Band.
+    const text = (jeRoute["/start"]?.innerText ?? "").replace(i18n.t("kilage.zeile.keine"), "");
     for (const verboten of [
       "Design",
       "Klassisch",
