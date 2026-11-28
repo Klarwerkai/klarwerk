@@ -423,7 +423,16 @@ describe("JOB 3024 · der Anzeigestatus am Detailabruf, mit ausgewiesener Herkun
       author: "u-jemand-anders",
       confidentiality: "vertraulich",
     });
-    const offen = await anlegen(services, "Internes Alltagswissen");
+    // aufnahme:20260922:gesamt-leserechte (Entscheidung 16): das offene Objekt ausdrücklich „intern"
+    // — ohne Stufe wäre es ungeklärt und dem fremden Prüfer (ohne Niveau) ebenfalls verborgen.
+    const offen = await services.ko.create({
+      title: "Internes Alltagswissen",
+      statement: "Kerntext zu Internes Alltagswissen.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "u-autor",
+      confidentiality: "intern",
+    });
 
     // KALIBRIERUNG: derselbe fremde Pruefer bekommt das offene Objekt samt Anzeigestufe.
     const erlaubt = await detail(app, fremd, offen.id);

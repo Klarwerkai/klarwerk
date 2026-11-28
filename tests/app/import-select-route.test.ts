@@ -8,6 +8,7 @@
 // Fix 3: Route-Schema — Prompt-Länge (max 500) und locale (de/en) mit ehrlichem 400.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
@@ -330,8 +331,20 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
 
   it("Signatur-Pin: deriveImportCriteria hat KEINEN confidential-Default mehr (jeder Aufrufer entscheidet explizit)", () => {
     const src = readFileSync(resolve(process.cwd(), "services/reasoner/src/service.ts"), "utf8");
-    expect(src).not.toContain("confidential = false,\n  ): Promise<ImportCriteriaResult>");
-    expect(src).toContain("confidential: boolean,\n  ): Promise<ImportCriteriaResult>");
+    const file = ts.createSourceFile("service.ts", src, ts.ScriptTarget.Latest, true);
+    const reasoner = file.statements
+      .filter(ts.isClassDeclaration)
+      .find((node) => node.name?.text === "Reasoner");
+    const methods = reasoner?.members
+      .filter(ts.isMethodDeclaration)
+      .filter((node) => node.name.getText(file) === "deriveImportCriteria");
+    expect(methods).toHaveLength(1);
+    const parameter = methods?.[0]?.parameters.find(
+      (node) => node.name.getText(file) === "confidential",
+    );
+    expect(parameter?.type?.kind).toBe(ts.SyntaxKind.BooleanKeyword);
+    expect(parameter?.questionToken).toBeUndefined();
+    expect(parameter?.initializer).toBeUndefined();
   });
 });
 

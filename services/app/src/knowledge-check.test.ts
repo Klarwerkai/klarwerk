@@ -25,6 +25,7 @@ function ko(over: Partial<KnowledgeObject>): KnowledgeObject {
     confidence: 80,
     trust: 80,
     status: "validiert",
+    confidentiality: "intern",
     version: 1,
     originalAuthor: "a",
     author: "a",

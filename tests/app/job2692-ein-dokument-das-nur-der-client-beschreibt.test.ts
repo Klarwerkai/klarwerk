@@ -28,8 +28,8 @@ import { ka4Freigabe } from "../../services/app/src/routes/ask-routes";
 import { reasonerRoutes } from "../../services/app/src/routes/reasoner-routes";
 import type { Confidentiality } from "../../services/knowledge-object";
 
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const PNG_URL = `data:image/png;base64,${Buffer.concat([PNG_MAGIC, Buffer.alloc(8)]).toString("base64")}`;
+const PNG_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 type Dienste = ReturnType<typeof buildServices>;
 type App = ReturnType<typeof buildApp>;
@@ -180,7 +180,7 @@ describe("JOB 2692 A — der Entwurfs-Backstop: die gespeicherte Stufe hebt, sie
     expect(vertraulichBei(s.structure, 2)).toBe(true);
   });
 
-  it("A5 — DIE GRENZE: Entwurf OHNE Stufe, Aufruf ‹intern› → unverändert (was eine fehlende Stufe bedeutet, entscheidet Pedi, nicht dieser Job)", async () => {
+  it("A5 — die fehlende Entwurfseinstufung bleibt trotz der Clientangabe intern vertraulich", async () => {
     const services = buildServices();
     const s = spione(services);
     const app = buildApp(services);
@@ -197,7 +197,7 @@ describe("JOB 2692 A — der Entwurfs-Backstop: die gespeicherte Stufe hebt, sie
       confidentiality: "intern",
       draftId,
     });
-    expect(vertraulichBei(s.structure, 2)).toBe(false);
+    expect(vertraulichBei(s.structure, 2)).toBe(true);
   });
 
   it("A6 — D2: unbekannte draftId löst nicht auf → kein Anker → vertraulich (nichts erfunden, nichts durchgelassen)", async () => {

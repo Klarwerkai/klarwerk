@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
+import { freigaberang } from "../../services/app/src/sichtbarkeit";
 import type { Role } from "../../services/auth";
 import type { CreateKoInput, KoSichtbarkeitstrim } from "../../services/knowledge-object";
-import { ROLE_PERMISSIONS, can } from "../../services/rbac";
+import { ROLE_PERMISSIONS } from "../../services/rbac";
 
 const apps: ReturnType<typeof buildApp>[] = [];
 
@@ -106,9 +107,17 @@ const PROBEAUFRUFE = [
 ] as const;
 
 /**
+ * Die Werte, die der Trim für EINEN Fragenden trägt — aus der einen Regel genommen, nicht
+ * abgeschrieben (aufnahme:20260922:gesamt-leserechte, Entscheidung 15 · Variante B): zuerst der
+ * Freigaberang (`freigaberang`), dann die Kennung, dann die lesbaren Spaces. Dieser Aufbau legt
+ * keinen Space an; die Menge ist deshalb leer, aber vorhanden.
+ */
+const trimWerte = (role: Role, id: string): unknown[] => [freigaberang({ id, role }), id, []];
+
+/**
  * Der GANZE Vertrag `SqlSichtbarkeitstrim`, gemessen am tatsächlich an der Datenquelle
  * angekommenen Argument — eine Stelle, von F10 und F12 gemeinsam benutzt. Die Regel selbst wird
- * hier nicht nachgebaut: befragt werden ihre drei Glieder, die Rollenregel kommt aus `can`.
+ * hier nicht nachgebaut: befragt werden ihre drei Glieder, der Rang kommt aus `freigaberang`.
  * Rückgabe sind die Mängel im Klartext, je Vertragsglied; leere Listen heissen „belegt".
  */
 function trimBefund(
@@ -133,10 +142,12 @@ function trimBefund(
       }
       const einzeilig = geliefert.replace(/\s+/g, " ");
       // Der Papierkorb wird als GANZE Bedingung verlangt, nicht als blosser Spaltenname: ein
-      // Prädikat, das `deleted_at_key IS NOT NULL` fragte, nennt die Spalte ebenfalls.
+      // Prädikat, das `deleted_at_key IS NOT NULL` fragte, nennt die Spalte ebenfalls. Die Stufe
+      // kommt ROH aus `data` (Entscheidung 16: die generierte Spalte `confidentiality_key` legt
+      // eine ungeklärte Stufe als 'intern' aus).
       for (const teil of [
         `${traeger}.deleted_at_key IS NULL`,
-        `${traeger}.confidentiality_key`,
+        `${traeger}.data->>'confidentiality'`,
         `${traeger}.author_key`,
         `$${ab}`,
         `$${ab + 1}`,
@@ -151,7 +162,7 @@ function trimBefund(
   }
   if (JSON.stringify(trim?.params) !== JSON.stringify(erwarteteParams)) {
     befund.params.push(
-      `params sind nicht die genau zwei Werte des Fragenden ${JSON.stringify(erwarteteParams)}, sondern ${JSON.stringify(trim?.params)}`,
+      `params sind nicht genau die Werte des Fragenden ${JSON.stringify(erwarteteParams)}, sondern ${JSON.stringify(trim?.params)}`,
     );
   }
   if (typeof trim?.trifftZu !== "function") {
@@ -280,10 +291,11 @@ describe("K2b · Kategorien am echten Anwendungsdraht", () => {
         { name: "Nur B", count: 1 },
       ],
     });
+    // Entscheidung 15 (Variante B): die Rolle öffnet keine Stufe. Der Admin ohne gesetztes Niveau
+    // hat Rang 1 — „streng vertraulich" bleibt ihm ohne ausdrückliche Freigabe verborgen.
     expect(responseAdmin.json()).toEqual({
       categories: [
         { name: "Gemeinsam", count: 2 },
-        { name: "Nur A", count: 1 },
         { name: "Nur B", count: 1 },
       ],
     });
@@ -412,8 +424,8 @@ describe("K2b · Kategorien am echten Anwendungsdraht", () => {
         `${ANRUFSTELLE} — erwartet: genau ein Abruf der Datenquelle. Gezählt: ${read.mock.calls.length}. Ein nie erfolgter Aufruf belegt nichts.`,
       ).toBe(1);
       const trim: KoSichtbarkeitstrim | undefined = read.mock.calls[0]?.[1];
-      // `can` ist die eine Quelle der Rollenregel — hier wird sie benutzt, nicht abgeschrieben.
-      const erwartet = [can(rolle, "ko.validate"), frager.id];
+      // `freigaberang` ist die eine Quelle der Rangregel — benutzt, nicht abgeschrieben.
+      const erwartet = trimWerte(rolle, frager.id);
       const befund = trimBefund(trim, erwartet);
 
       // (a) das Prädikat selbst: eine Zeichenkette, die den Papierkorb als GANZE Bedingung
@@ -422,7 +434,7 @@ describe("K2b · Kategorien am echten Anwendungsdraht", () => {
       expect(
         befund.sql,
         meldung(
-          "sql() als Prädikat über deleted_at_key IS NULL, confidentiality_key, author_key",
+          "sql() als Prädikat über deleted_at_key IS NULL, data->>'confidentiality', author_key",
           trim,
         ),
       ).toEqual([]);
@@ -430,7 +442,7 @@ describe("K2b · Kategorien am echten Anwendungsdraht", () => {
       // (b) die Werte des FRAGENDEN, nicht irgendeines Betrachters.
       expect(
         befund.params,
-        meldung(`genau zwei Werte des Fragenden: ${JSON.stringify(erwartet)}`, trim),
+        meldung(`genau die Werte des Fragenden: ${JSON.stringify(erwartet)}`, trim),
       ).toEqual([]);
 
       // (c) die Entscheidung für Adapter ohne SQL.
@@ -460,8 +472,8 @@ describe("K2b · Kategorien am echten Anwendungsdraht", () => {
 
     const ersterTrim: KoSichtbarkeitstrim | undefined = read.mock.calls[0]?.[1];
     const zweiterTrim: KoSichtbarkeitstrim | undefined = read.mock.calls[1]?.[1];
-    const ersteErwartung = [can("controller", "ko.validate"), controller.id];
-    const zweiteErwartung = [can("experte", "ko.validate"), experte.id];
+    const ersteErwartung = trimWerte("controller", controller.id);
+    const zweiteErwartung = trimWerte("experte", experte.id);
     expect(
       ersterTrim?.params,
       meldung(`für den ersten Fragenden ${JSON.stringify(ersteErwartung)}`, ersterTrim),
@@ -538,7 +550,7 @@ describe("K2b · Kategorien am echten Anwendungsdraht", () => {
     expect(mitNaht.statusCode, mitNaht.body).toBe(200);
     const abrufeMitNaht = read.mock.calls.length;
     const trim: KoSichtbarkeitstrim | undefined = read.mock.calls[0]?.[1];
-    const befund = trimBefund(trim, [can("experte", "ko.validate"), frager.id]);
+    const befund = trimBefund(trim, trimWerte("experte", frager.id));
     const mitNahtListe = bereiche(mitNaht);
 
     // Zweiter Abruf: die Datenquelle IGNORIERT den Trim — genau der Zustand, den ein späterer

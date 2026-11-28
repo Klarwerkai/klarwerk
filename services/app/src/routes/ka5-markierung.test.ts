@@ -94,13 +94,15 @@ async function aufbauen(): Promise<Aufbau> {
         neededValidations: 1,
       },
     });
+    expect(res.statusCode, res.body).toBe(201);
     const id = res.json().id as string;
-    await app.inject({
+    const rating = await app.inject({
       method: "PUT",
       url: `/api/kos/${id}`,
       headers: kopf,
-      payload: { action: "rate", verdict: "up" },
+      payload: { action: "rate", verdict: "up", duplicateAcknowledged: true },
     });
+    expect(rating.statusCode, rating.body).toBe(200);
     return id;
   };
 
@@ -157,6 +159,14 @@ const fragen = (a: Aufbau, extra: Record<string, unknown> = {}) =>
  */
 function stabil(koerper: Record<string, unknown>): Record<string, unknown> {
   const { answerId: _kennung, receipt: _beleg, ...rest } = koerper;
+  // Gesamtcheck R-1329 (Nacharbeit 69): seit REF-02 trägt die Antwort die Referenzprüfung, und
+  // deren `pruefId` ist ebenso eine frische Kennung je Anfrage (gemessen: `ref_…` verschieden).
+  // Nur sie fällt heraus — Zustand, Gründe, Bindung und Fingerabdrücke werden weiter verglichen.
+  const pruefung = rest.referenzpruefung;
+  if (pruefung !== null && typeof pruefung === "object" && "pruefId" in pruefung) {
+    const { pruefId: _pruefKennung, ...pruefRest } = pruefung as Record<string, unknown>;
+    return { ...rest, referenzpruefung: pruefRest };
+  }
   return rest;
 }
 

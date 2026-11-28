@@ -360,8 +360,15 @@ for (const stufe of ["grund", "beide"] as const) {
       await a.app.close();
     });
 
-    it(`K6 · SPERRE (${stufe}): ohne Zustimmung — null Abrufe auf beiden Wegen`, async () => {
+    it(`K6 · SPERRE (${stufe}): nach Widerruf — null Abrufe auf beiden Wegen`, async () => {
       const a = await aufbauen(stufe);
+      const widerruf = await a.app.inject({
+        method: "DELETE",
+        url: `/api/klara/sessions/${a.gebunden["x-klara-session"]}/consent`,
+        headers: a.gebunden,
+      });
+      expect(widerruf.statusCode, widerruf.body).toBe(200);
+      expect(widerruf.json().resolution.externalConsentGranted).toBe(false);
       await beideWegeGesperrt(a, stufe, a.gebunden, a.intern);
       const entscheidungen = ka4Zeilen(a.zeilen);
       expect(entscheidungen).toHaveLength(2);
