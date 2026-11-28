@@ -31,6 +31,7 @@ const KENNWORT = "Klara-Kuerzel-Kennwort-1";
 const BASIS = "/api/me/assistenz/tastenkuerzel";
 const AKTIONEN = [
   "oeffnen",
+  "suchen",
   "seitenhilfe",
   "diktieren",
   "auftragSprechen",
@@ -85,14 +86,22 @@ function vorbereiten(lage: Lage): void {
   const setze = (name: string, wert: unknown): void => {
     Object.defineProperty(w, name, { value: wert, configurable: true, writable: true });
   };
+  const lokaleStimme = { name: "Teststimme", lang: "de-DE", localService: true };
+  setze(
+    "SpeechSynthesisUtterance",
+    class {
+      constructor(readonly text: string) {}
+    },
+  );
   setze("speechSynthesis", {
-    speak: () => {
+    speak: (u: { voice: unknown }) => {
+      if (u.voice !== lokaleStimme) throw new Error("Keine lokale Teststimme ausgewählt.");
       w.__kuerzel.gesprochen += 1;
     },
     cancel: () => {
       w.__kuerzel.abgebrochen += 1;
     },
-    getVoices: () => [],
+    getVoices: () => [lokaleStimme],
     addEventListener: () => {},
     removeEventListener: () => {},
   });
@@ -160,7 +169,8 @@ async function anmelden(
   await p.locator('input[type="email"]').fill(email);
   await pw.first().fill(KENNWORT);
   await p.locator('button[type="submit"]').click();
-  await expect(p.getByTestId("kopfband")).toBeVisible({ timeout: 15_000 });
+  await expect(p).toHaveURL(/\/start(?:[?#]|$)/);
+  await expect(p.getByTestId("page-start")).toBeVisible({ timeout: 15_000 });
   return { p, schliessen: () => kontext.close() };
 }
 
@@ -287,7 +297,10 @@ test("Klara-Kürzel · Setup › Klara: festlegen, speichern, auslösen, ändern
   await expect(p.getByRole("region", { name: "Tastenkürzel", exact: true })).toBeVisible();
   const geltung = p.getByTestId("klara-kuerzel-geltung");
   await expect(geltung).toContainText("in Klarwerk, solange das Klarwerk-Fenster aktiv ist");
-  await expect(geltung).toContainText("für später vorgemerkt");
+  await expect(geltung).toContainText(
+    "Die zusätzliche Mac-Suche ist bei „Suche öffnen“ beschrieben.",
+  );
+  await expect(zeile(p, "suchen")).toContainText("verbundenen Klara Begleiter");
   await expect(
     p.getByRole("list", { name: "Klara-Aktionen und ihre Tastenkürzel", exact: true }),
   ).toBeVisible();
@@ -528,13 +541,12 @@ test("Klara-Kürzel · Diktat, Aufnahme, Stopp, Vorlesen stoppen und Seitenhilfe
   await expect(p.getByTestId("klara-echt-hinweis")).toHaveAttribute("data-laden", "bereit", {
     timeout: 15_000,
   });
-  await p.getByTestId("klara-einwilligung-erteilen").click();
-  await expect(p.getByTestId("klara-einwilligung-erteilt")).toBeVisible();
   const frageweg = p.waitForResponse(
     (r) => new URL(r.url()).pathname === "/api/ask" && r.request().method() === "POST",
   );
   await eingabe.fill("Was kann ich hier tun?");
   await eingabe.press("Enter");
+  await p.getByTestId("klara-einwilligung-erteilen").click();
   expect((await frageweg).status()).toBe(200);
   const klara = letzteKlara(p);
   await expect(klara).toHaveAttribute("data-gespeichert", "ja", { timeout: 15_000 });
@@ -636,7 +648,9 @@ for (const lage of ["ohne", "verweigert"] as const) {
       await p.keyboard.press(kombi);
       await expect(gespraech(p)).toBeVisible();
       if (lage === "ohne") {
-        await expect(p.getByTestId("klara-sprache-na")).toBeVisible();
+        await expect(p.getByTestId("klara-sprache-hinweis")).toHaveText(
+          "Spracheingabe ist in diesem Browser nicht verfügbar. Tippe deine Frage ins Eingabefeld.",
+        );
         await expect(p.getByTestId("klara-diktieren")).toHaveCount(0);
       } else {
         await expect(p.getByTestId("klara-sprache-hinweis")).toContainText(
