@@ -25,7 +25,6 @@
 // (`BESTANDSRESET_SCHEMA` in `services/app/src/db.ts`); bis dahin musste dieser Test sie von Hand
 // anlegen. P1 misst das mit.
 import type { Pool } from "pg";
-import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   BestandsresetVorschauVeraltetError,
@@ -40,20 +39,15 @@ import {
   SQL_SPERRE_EXKLUSIV,
   fuehreBestandsresetAus,
 } from "../../services/db-tx";
+import { type IsoliertePg, oeffneIsoliertePg } from "../ko/pg-pruefplatz";
 
 describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, Konten bleiben", () => {
-  let container: StartedTestContainer | undefined;
+  let pruefplatz: IsoliertePg | undefined;
   let pool: Pool;
 
   beforeAll(async () => {
-    container = await new GenericContainer("postgres:16-alpine")
-      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
-      .withExposedPorts(5432)
-      .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
-      .start();
-    pool = createPool(
-      `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
-    );
+    pruefplatz = await oeffneIsoliertePg("bestandsreset_e9");
+    pool = createPool(pruefplatz.url);
     pool.options.max = 8;
     await migrate(pool);
   });
@@ -62,7 +56,7 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
     try {
       await pool?.end();
     } finally {
-      await container?.stop();
+      await pruefplatz?.abraeumen();
     }
   });
 
@@ -175,6 +169,7 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
       "Nachweis: Lösch- und Fassungsnachweis des persönlichen Gedächtnisses, kein Wissensobjekt",
     klara_gespraeche: "persönliche Gespräche je Konto, nicht an Wissensobjekte gebunden",
     klara_notizen: "private Notizen je Konto, nicht an Wissensobjekte gebunden",
+    klara_notiz_pruefstaende: "privater Prüfverlauf je Notiz, wird mit der Notiz gelöscht",
     klara_aufgaben: "persönliche Aufgaben je Konto, nicht an Wissensobjekte gebunden",
     persoenliche_routinen: "bestätigte persönliche Arbeitswege je Konto",
     klara_kalender_anbindungen: "Kalenderanbindung je Konto, nicht an Wissensobjekte gebunden",
@@ -297,6 +292,14 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
       `INSERT INTO begriffe_fassungen(begriff_id, version, data, geaendert_von, geaendert_am)
        VALUES ('begriff-p2', 1, '{"begriff":"Ventil"}'::jsonb, 'konto-testerin', now())`,
     );
+    await pool.query(
+      `INSERT INTO klara_notizen(id, konto_id, vorgang, fassung, geaendert_am, suchtext, data)
+       VALUES ('notiz-p2', 'konto-testerin', 'vorgang-p2', 1, now(), 'ventil', '{"inhalt":"Ventil"}')`,
+    );
+    await pool.query(
+      `INSERT INTO klara_notiz_pruefstaende(notiz_id, pruef_id, data)
+       VALUES ('notiz-p2', 'pruefung-p2', '{"fassung":1,"quellen":[{"id":"ko-lebend","fassung":1}]}')`,
+    );
     const standVorher = await schreibstand();
 
     const befund = await fuehreBestandsresetAus(pool, "lauf-e9");
@@ -312,6 +315,19 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
       expect(await anzahl(tabelle), tabelle).toBe(0);
     }
     expect(await anzahl("begriffe_fassungen")).toBe(1);
+    const notizMitPruefstand = await pool.query(
+      `SELECT n.konto_id, n.data AS notiz, p.pruef_id, p.data AS pruefstand
+       FROM klara_notizen n JOIN klara_notiz_pruefstaende p ON p.notiz_id = n.id
+       WHERE n.id = 'notiz-p2'`,
+    );
+    expect(notizMitPruefstand.rows).toEqual([
+      {
+        konto_id: "konto-testerin",
+        notiz: { inhalt: "Ventil" },
+        pruef_id: "pruefung-p2",
+        pruefstand: { fassung: 1, quellen: [{ id: "ko-lebend", fassung: 1 }] },
+      },
+    ]);
     const konten = await pool.query("SELECT id, email, approved FROM users");
     expect(konten.rows).toEqual([
       { id: "konto-testerin", email: "testerin@example.invalid", approved: true },
