@@ -27,7 +27,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DIST, type H4Stand, ORIGIN, fn, h4Stand } from "../design/h4-harness";
-import { VERSCHACHTELT_LANG, zeigerKlick } from "./gliederung-zeiger";
+import { VERSCHACHTELT_LANG, bereiteLeseflaecheVor, zeigerKlick } from "./gliederung-zeiger";
 
 // Der Prüfgegenstand (BENs verschachteltes Gegenbeispiel, auf mehrere Bildschirmhöhen gestreckt)
 // steht seit der Aufnahme „dokument-pointer-bedienung" in `gliederung-zeiger.ts` — dieselbe Vorlage
@@ -198,6 +198,7 @@ describe("JOB 4145 R2 · die Gliederung in Chromium: echte Tastatur, echte Pixel
           updatedAt: "2026-09-15T21:00:00.000Z",
         });
       });
+      await bereiteLeseflaecheVor(stand.seite);
       await warteAufLeiste("erster Aufbau der Vorrichtung");
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 5).join(" | ");
