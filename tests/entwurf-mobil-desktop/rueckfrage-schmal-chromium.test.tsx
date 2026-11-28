@@ -24,7 +24,10 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { mitOfflineLockPort } from "../support/offline-lock-port";
 import { schliesseChromium } from "../tor-bereitschaft/chromium-abbau";
+
+mitOfflineLockPort();
 
 const box = vi.hoisted(() => ({
   reset: (): void => {},
