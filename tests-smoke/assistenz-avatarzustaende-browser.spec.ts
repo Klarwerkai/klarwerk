@@ -350,7 +350,16 @@ test("Avatarzustände · echte Ereignisse: schneller Wechsel, Fehlerarten, Abbre
   await p.getByTestId("klara-andocken").click();
   await expect(figur(p)).toHaveAttribute("data-angedockt", /links|rechts/);
   await expect(figur(p).getByTestId("klara-avatar")).toHaveAttribute("data-avatar", "fuchs");
-  expect(await figur(p).evaluate((el) => getComputedStyle(el).overflow)).toBe("hidden");
+  const bildrahmen = figur(p).getByTestId("klara-avatar").locator("..");
+  const kreis = await bildrahmen.evaluate((el) => {
+    const stil = getComputedStyle(el);
+    const { width, height } = el.getBoundingClientRect();
+    return { width, height, overflow: stil.overflow, radius: Number.parseFloat(stil.borderRadius) };
+  });
+  expect(kreis.overflow).toBe("hidden");
+  expect(kreis.width).toBeGreaterThan(0);
+  expect(kreis.height).toBe(kreis.width);
+  expect(kreis.radius).toBeGreaterThanOrEqual(kreis.width / 2);
   await p.getByTestId("klara-schliessen").click();
   await expect(figur(p)).toBeFocused();
   // Verschieben per Tastatur vom angedockten Rand weg.

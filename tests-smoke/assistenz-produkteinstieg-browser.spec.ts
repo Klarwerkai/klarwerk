@@ -115,7 +115,8 @@ async function einstiegSichtbar(page: Page, wo: string): Promise<Locator> {
   await expect(figur).toHaveAccessibleName(
     `${NEUTRAL} – persönliches Gespräch öffnen oder schließen`,
   );
-  await expect(page.getByTestId("klara-figur-name")).toHaveText(NEUTRAL);
+  const figurName = figur.getByTestId("klara-figur-name");
+  await expect(figurName).toHaveText(NEUTRAL);
   await expect(page.getByTestId("klara-figur-demo")).toHaveCount(0);
   expect(
     await page.evaluate(() => sessionStorage.getItem("klarwerk.klaraVorschau.aktiv")),
@@ -124,7 +125,7 @@ async function einstiegSichtbar(page: Page, wo: string): Promise<Locator> {
   // Die Figur samt Beschriftung verdeckt den Hilfeknopf nicht.
   await expect(hilfeKnopf(page)).toBeVisible();
   const huelle = await box(page.getByTestId("klara-figur-huelle"));
-  const name = await box(page.getByTestId("klara-figur-name"));
+  const name = await box(figurName);
   const hilfe = await box(hilfeKnopf(page));
   const verdeckt = ueberlappen(huelle, hilfe) || ueberlappen(name, hilfe);
   expect(verdeckt, `${wo}: verdeckt Hilfe`).toBe(false);
