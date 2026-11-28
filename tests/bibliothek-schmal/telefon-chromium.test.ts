@@ -11,6 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { type H4Stand, ORIGIN, TITEL_FREI, fn, h4Stand } from "../design/h4-harness";
+import { bereiteLeseflaecheVor } from "../wiki-orientierung/gliederung-zeiger";
 
 // JOB 3121 R2 hatte sich hier ein `interface SeiteMitTastatur extends Seite { keyboard: { press } }`
 // gebaut, ausdrücklich mit der Begründung „`h4-harness.ts` ist nicht Zielpfad". Seit JOB 3564 steht
@@ -93,6 +94,7 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
           } as never);
         }
       });
+      await bereiteLeseflaecheVor(stand.seite);
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 4).join(" | ");
     }
@@ -158,7 +160,7 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
   // Hier wird genau das gemessen: langer Bestand, eine Zeile AUSSERHALB der Bildschirmmitte
   // (deshalb die 100 px Versatz — sonst träfe das rollende `focus()` die alte Stelle zufällig),
   // echte Enter-Taste, Rollposition vorher gegen nachher.
-  it("C5 · 390 px: der Rückweg gibt die Liste an derselben Rollposition zurück", async () => {
+  async function pruefeRueckweg(hoehe: number): Promise<void> {
     expect(fehler).toBeNull();
     const s = stand as H4Stand;
     await s.seite.setViewportSize({ width: 390, height: 844 });
@@ -170,7 +172,7 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
     );
     const vorher = await s.seite.evaluate<{
       scroll: number;
-      hoehe: number;
+      zeilenende: number;
       id: string | null;
       zeilen: number;
     }>(
@@ -182,7 +184,7 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
         main.scrollTop = main.scrollTop - 100;
         return {
           scroll: main.scrollTop,
-          hoehe: main.scrollHeight,
+          zeilenende: zeile.getBoundingClientRect().bottom,
           id: zeile.getAttribute('data-bib-id'),
           zeilen: zeilen.length,
         };
@@ -207,11 +209,10 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
       ),
     ).toBe(true);
     await s.seite.waitForFunction(
-      fn(`() => !!document.querySelector('[data-testid="bib-zurueck"]')`),
+      fn(`() => document.activeElement?.getAttribute('data-testid') === 'bib-zurueck'`),
       undefined,
       { timeout: 30_000 },
     );
-    await s.seite.waitForTimeout(400);
     const imBericht = await s.seite.evaluate<{ scroll: number; fokus: string | null }>(
       fn(`() => ({
         scroll: document.querySelector('main').scrollTop,
@@ -223,19 +224,21 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
     expect(imBericht.scroll).toBe(0);
     expect(imBericht.fokus).toBe("bib-zurueck");
 
+    // Lesen mit kleinerem Ausschnitt, z.B. wenn ein Hinweis eingeblendet wird.
+    await s.seite.setViewportSize({ width: 390, height: hoehe });
     // Der Rückweg mit der ECHTEN Enter-Taste auf dem fokussierten Knopf.
     await s.seite.keyboard.press("Enter");
     await s.seite.waitForFunction(
-      fn(`() => !!document.querySelector('[data-testid="bib-liste"]')`),
+      fn(`() => document.activeElement?.getAttribute('data-testid') === 'bib-zeile'`),
       undefined,
       { timeout: 30_000 },
     );
-    await s.seite.waitForTimeout(400);
     const nachher = await s.seite.evaluate<{
       scroll: number;
       fokusId: string | null;
       zeilen: number;
       imBild: boolean;
+      listenende: number;
     }>(
       fn(`() => {
         const main = document.querySelector('main');
@@ -246,18 +249,36 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
           scroll: main.scrollTop,
           fokusId: a ? a.getAttribute('data-bib-id') : null,
           zeilen: document.querySelectorAll('[data-testid="bib-zeile"]').length,
-          imBild: r ? r.top < m.bottom && r.bottom > m.top : false,
+          imBild: r ? r.top >= m.top - 1 && r.bottom <= m.bottom + 1 : false,
+          listenende: m.bottom,
         };
       }`),
     );
     console.info(`JOB 3121 UX-14 · C5 nach dem Rückweg: ${JSON.stringify(nachher)}`);
     // Die drei Zusagen aus Lieferung 4, in einer Messung: dieselbe Stelle, dieselbe Zeile unter dem
     // Fokus, und der Fokus ist sichtbar (kein Ziel außerhalb des Bildes, N-0001/0035).
-    expect(nachher.scroll).toBe(vorher.scroll);
+    if (hoehe === 844) {
+      expect(nachher.scroll).toBe(vorher.scroll);
+    } else {
+      const noetigerWeg = vorher.zeilenende - nachher.listenende;
+      expect(noetigerWeg).toBeGreaterThan(0);
+      expect(Math.abs(nachher.scroll - vorher.scroll - noetigerWeg)).toBeLessThanOrEqual(1);
+    }
     expect(nachher.fokusId).toBe(vorher.id);
     expect(nachher.imBild).toBe(true);
     expect(nachher.zeilen).toBeGreaterThanOrEqual(vorher.zeilen);
-  }, 90_000);
+  }
+
+  it(
+    "C5 · 390 px: der Rückweg gibt die Liste an derselben Rollposition zurück",
+    () => pruefeRueckweg(844),
+    90_000,
+  );
+  it(
+    "C5a · bei verkleinertem Fenster holt der Rückweg die gelesene Zeile mit dem kleinsten Rollweg in den Fokus",
+    () => pruefeRueckweg(460),
+    90_000,
+  );
 
   // ==============================================================================================
   // C7 · AUFNAHME 20260922 · ANTWORT-QUELLENANZEIGE (N-0037) — DER MOBILE LESEWEG ZU DEN QUELLEN.

@@ -241,12 +241,46 @@ describe("JOB 3063 · H4 · die Bibliothek gegen ihr Mockup — echte Seite, Chr
       kanon(zielProp(zielStil(ziel, Z_PUNKT_GELB), "background")),
     );
   });
-  it("V14 · Zeilentitel 14px, gewählt 600, gekappt — am realen Titel der gewählten Zeile", async () => {
+  it("V14 · Zeilentitel 14px, gewählt 600 und auch bei doppelter Schriftgröße vollständig lesbar", async () => {
     const stil = zielStil(ziel, Z_ZEILE_TITEL);
     expect(await messen("zeileTitel", "font-size")).toBe(zielProp(stil, "font-size"));
     expect(await messen("zeileTitel", "font-weight")).toBe(zielProp(stil, "font-weight"));
-    expect(await messen("zeileTitel", "text-overflow")).toBe(zielProp(stil, "text-overflow"));
-    expect(await messen("zeileTitel", "white-space")).toBe(zielProp(stil, "white-space"));
+    // Die Typografie stammt aus der Originalvorlage. Der jüngere Reflow-Vertrag verlangt,
+    // dass der vollständige Originaltitel auch bei einer Textvergrößerung im Zeilenknopf steht.
+    const befund = await (stand as H4Stand).seite.evaluate<{
+      titel: string;
+      zeilen: number;
+      vollstaendig: boolean;
+    }>(
+      fn(`(selektor) => {
+        const titel = document.querySelector(selektor);
+        const knopf = titel.closest('button');
+        const zuvor = titel.style.fontSize;
+        try {
+          titel.style.fontSize = parseFloat(getComputedStyle(titel).fontSize) * 2 + 'px';
+          const text = document.createRange();
+          text.selectNodeContents(titel);
+          const rechtecke = Array.from(text.getClientRects());
+          const feld = titel.getBoundingClientRect();
+          const zeile = knopf.getBoundingClientRect();
+          return {
+            titel: titel.textContent,
+            zeilen: new Set(rechtecke.map(r => r.top)).size,
+            vollstaendig: rechtecke.every(r =>
+              r.left >= Math.max(feld.left, zeile.left) - 1 &&
+              r.right <= Math.min(feld.right, zeile.right) + 1 &&
+              r.top >= Math.max(feld.top, zeile.top) - 1 &&
+              r.bottom <= Math.min(feld.bottom, zeile.bottom) + 1),
+          };
+        } finally {
+          titel.style.fontSize = zuvor;
+        }
+      }`),
+      sel?.zeileTitel,
+    );
+    expect(befund.titel).toBe(TITEL_FREI);
+    expect(befund.zeilen).toBeGreaterThan(1);
+    expect(befund.vollstaendig).toBe(true);
   });
   it("V15 · Zeilen-Meta 12px #525B6B, Wortlaut „Bereich · Zustand“ — an der realen Meta-Zeile", async () => {
     const stil = zielStil(ziel, Z_ZEILE_META);

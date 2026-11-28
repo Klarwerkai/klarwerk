@@ -1523,9 +1523,13 @@ export function BibliothekFlaeche({
       const r = el.getBoundingClientRect();
       return rr.height > 0 && r.bottom > rr.top && r.top < rr.bottom;
     };
-    if (zeile !== undefined && listenRoll.scrollTop !== stand) {
-      // Geklemmt: die Liste ist kürzer geworden (Auffrischung, Löschung durch andere). Ohne
-      // Layout (jsdom) gibt es kein `scrollIntoView` — und auch nichts ins Bild zu rollen.
+    if (
+      zeile !== undefined &&
+      (listenRoll.scrollTop !== stand || (schmal && rr.height > 0 && !imBild(zeile)))
+    ) {
+      // Auf dem Telefon kehrt der Fokus zum gelesenen Eintrag zurück. Ein eingeblendeter
+      // Hinweis oder ein kleineres Fenster kann ihn trotz identischer Rollposition verdecken.
+      // Auch bei einer gekürzten Liste genügt der kleinste Weg zurück ins Bild.
       zeile.focus({ preventScroll: true });
       zeile.scrollIntoView?.({ block: "nearest" });
       return;
