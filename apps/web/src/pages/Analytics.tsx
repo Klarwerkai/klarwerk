@@ -517,7 +517,9 @@ export function Analytics(): JSX.Element {
                   <div className="space-y-2">
                     {categories.map((c) => (
                       <div key={c.category} className="flex items-center gap-3">
-                        <span className="w-32 truncate text-[13px] text-text">{c.category}</span>
+                        <span className="w-32 text-[13px] text-text [overflow-wrap:anywhere]">
+                          {c.category}
+                        </span>
                         <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
                           <div
                             className="h-full rounded-full bg-brand"

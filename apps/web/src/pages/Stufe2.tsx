@@ -326,7 +326,9 @@ export function Output(): JSX.Element {
                       checked={selected.includes(s.id)}
                       onChange={() => toggle(s.id)}
                     />
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-text">{s.title}</span>
+                    <span className="min-w-0 flex-1 text-[13px] text-text [overflow-wrap:anywhere]">
+                      {s.title}
+                    </span>
                     <span className="shrink-0 font-mono text-klein text-muted-2">
                       {s.type} · {s.category} · T{s.trust} · v{s.version}
                     </span>
@@ -353,7 +355,7 @@ export function Output(): JSX.Element {
                 <span className="w-5 shrink-0 text-center font-mono text-[11px] text-muted-2">
                   {i + 1}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[13px] text-text">
+                <span className="min-w-0 flex-1 text-[13px] text-text [overflow-wrap:anywhere]">
                   {it.title}
                   {it.uncertain ? (
                     <span className="ml-1.5 font-mono text-klein text-trust-warn-text">
