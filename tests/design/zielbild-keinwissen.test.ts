@@ -9,7 +9,7 @@
 // WAS DIESE DATEI TUT:
 //   · Sie laedt das AUSGELIEFERTE Aufgabenfenster (`apps/web/public/word-addin/taskpane.html`, die
 //     buildlose Datei selbst — es gibt keinen zweiten Quelltext) in einem echten Chromium ueber
-//     Playwright, unter `http://klarwerk.test/word-addin/taskpane.html`, im Viewport des Zielbilds
+//     Playwright, unter `http://klarwerk.test/word-addin/taskpane.html`, mit den gebauten Skripten im Viewport des Zielbilds
 //     (360 px breit). Jeder `/api/*`-Abruf wird beantwortet wie in der Panel-Fixture; `POST /api/ask`
 //     antwortet mit einer ECHTEN LUECKE (`answered: false`, keine Quellen — dieselbe Form, die die
 //     echte App ohne Wissen liefert; JOB 3010 Fall K0). Damit steht das Fenster im Lueckenzustand.
@@ -37,7 +37,7 @@
 // `tests/design/` gibt es hier nur die jsdom-Messungen und die Chromium-Laeufe der Validierungsseite
 // `zielbild-validierung.test.ts` / `job2935-validierung-fussband.test.ts`). Gebaut ist deshalb — wie der
 // Auftrag es fuer diesen Fall vorschreibt — dieselbe Strecke, die JOB 3016 aus
-// `zielbild-validierung.test.ts` abgeleitet hat: Playwright-Route statt Server, Panel aus `public/`,
+// `zielbild-validierung.test.ts` abgeleitet hat: Playwright-Route statt Server, Panel aus dem Webbau,
 // Office-Stummel in der Form der Panel-Fixture, Sollwerte ohne Renderer kanonisiert
 // (Hex → `rgb(r, g, b)`), Selektor als Beleg, ein Vergleich je Wert. Keine zweite Strecke: dieselbe
 // Bauform, dieselben Helfer, damit D1/D2/D3/D4 dasselbe Panel auf dieselbe Weise messen.
@@ -60,22 +60,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WERTE_FRAGEWEG_LUECKE } from "../../tools/design-vergleich/werte";
 
 const WURZEL = resolve(process.cwd());
-const PANEL_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.html");
-/** JOB 3667: die zweite Skriptdatei derselben Auslieferung (Block KW-RUECKWEG). */
-const RUECKWEG_DATEI = join(WURZEL, "apps/web/public/word-addin/rueckweg.js");
-/** R-1611: Skript und Stil des Fensters, seit dem Drei-Datei-Schnitt eigene Dateien. */
-const PANEL_JS_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.js");
-const PANEL_CSS_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.css");
-/** Zerlegungsauftrag Bestandsblick: der Block KW-MARKE, geladen unmittelbar nach taskpane.js. */
-const MARKE_DATEI = join(WURZEL, "apps/web/public/word-addin/marke.js");
-/** AUFTRAG firmenwoerterbuch: der Block KW-BEGRIFFE, geladen nach marke.js. */
-const BEGRIFFE_DATEI = join(WURZEL, "apps/web/public/word-addin/begriffe.js");
-/** AUFTRAG gesamt-dokumenterzeugung: der Block KW-ANLEITUNG, geladen hinter begriffe.js. */
-const ANLEITUNG_DATEI = join(WURZEL, "apps/web/public/word-addin/anleitung.js");
-/** AUFTRAG klara-office-mac-maskottchen: der Block KW-BEGLEITER, geladen hinter anleitung.js. */
-const BEGLEITER_DATEI = join(WURZEL, "apps/web/public/word-addin/begleiter.js");
-/** R-0336/R-0708: der Block KW-WORDVERGLEICH, geladen unmittelbar nach taskpane.js. */
-const WV_DATEI = join(WURZEL, "apps/web/public/word-addin/wortvergleich.js");
+const PANEL_ORDNER = join(WURZEL, "apps/web/dist/word-addin");
+const PANEL_DATEI = join(PANEL_ORDNER, "taskpane.html");
 const ZIELBILD = join(WURZEL, "tests/design/vorlagen/20260827/KeinWissen.dc.html");
 const ORIGIN = "http://klarwerk.test";
 const PANEL_URL = `${ORIGIN}/word-addin/taskpane.html`;
@@ -525,6 +511,11 @@ async function warteBis(bedingung: () => boolean, fristMs: number, was: string):
 
 const BLOCK_SICHTBAR = `() => { let e = document.querySelector('#ask-gap-block'); if (!e) return false; while (e && e !== document.body) { if (getComputedStyle(e).display === 'none') return false; e = e.parentElement; } return true; }`;
 
+it("verlangt die versionierte Vorlage für den Vergleich der Word-Wissenslücke", () => {
+  expect(zielbildDa, `Zielbild nicht lesbar: ${ZIELBILD}`).toBe(true);
+  expect(zielLupe(ziel).pfad, "das geladene Zielbild enthält keine Vergleichslupe").toBeTruthy();
+});
+
 describe.runIf(zielbildDa)(
   "JOB 3046 · D2 · KeinWissen — die Auskunftsflaeche am echten Panel in Chromium, ein Vergleich je Wert",
   () => {
@@ -557,38 +548,18 @@ describe.runIf(zielbildDa)(
             });
             return;
           }
-          // JOB 3667: die zweite ausgelieferte Skriptdatei des Fensters — aus der Quelle, damit hier
-          // dasselbe laeuft wie beim Anwender (ohne sie fehlt `rwZeichnen` und `setLang` wirft).
-          if (url.pathname === "/word-addin/rueckweg.js") {
+          // Jede vom ausgelieferten Panel angeforderte lokale Skript- und Stildatei mitladen.
+          const asset = /^\/word-addin\/([a-z0-9-]+\.(js|css))$/.exec(url.pathname);
+          if (asset?.[1]) {
+            const datei = join(PANEL_ORDNER, asset[1]);
+            if (!existsSync(datei)) {
+              await route.fulfill({ status: 404, body: "Paneldatei fehlt" });
+              return;
+            }
             await route.fulfill({
               status: 200,
-              body: req.method() === "HEAD" ? "" : readFileSync(RUECKWEG_DATEI),
-              contentType: "application/javascript; charset=utf-8",
-            });
-            return;
-          }
-          // R-1611 (Drei-Datei-Schnitt): Stil und Skript des Fensters sind eigene Dateien derselben
-          // Auslieferung — aus der Quelle, damit hier die GESCHNITTENE Seite laeuft wie beim Anwender.
-          // Zerlegungsauftrag Bestandsblick: ebenso `marke.js` (Block KW-MARKE).
-          const geschwister: Record<string, [string, string]> = {
-            "/word-addin/taskpane.js": [PANEL_JS_DATEI, "application/javascript; charset=utf-8"],
-            "/word-addin/taskpane.css": [PANEL_CSS_DATEI, "text/css; charset=utf-8"],
-            "/word-addin/marke.js": [MARKE_DATEI, "application/javascript; charset=utf-8"],
-            // AUFTRAG firmenwoerterbuch: ebenso `begriffe.js` (Block KW-BEGRIFFE).
-            "/word-addin/begriffe.js": [BEGRIFFE_DATEI, "application/javascript; charset=utf-8"],
-            // AUFTRAG gesamt-dokumenterzeugung: ebenso `anleitung.js` (Block KW-ANLEITUNG).
-            "/word-addin/anleitung.js": [ANLEITUNG_DATEI, "application/javascript; charset=utf-8"],
-            // AUFTRAG klara-office-mac-maskottchen: ebenso `begleiter.js` (Block KW-BEGLEITER).
-            "/word-addin/begleiter.js": [BEGLEITER_DATEI, "application/javascript; charset=utf-8"],
-            // R-0336/R-0708: ebenso `wortvergleich.js` (Block KW-WORDVERGLEICH).
-            "/word-addin/wortvergleich.js": [WV_DATEI, "application/javascript; charset=utf-8"],
-          };
-          const teil = geschwister[url.pathname];
-          if (teil !== undefined) {
-            await route.fulfill({
-              status: 200,
-              body: req.method() === "HEAD" ? "" : readFileSync(teil[0]),
-              contentType: teil[1],
+              body: req.method() === "HEAD" ? "" : readFileSync(datei),
+              contentType: asset[2] === "js" ? "application/javascript" : "text/css",
             });
             return;
           }
@@ -842,10 +813,11 @@ describe.runIf(zielbildDa)(
       expect(l.regelImBlock, "die Zweitkopie von askRuleNote steht noch im Block").toBe(0);
       // JOB 3056 K1 (Pedi 04.09., Pages-Massstab): die EINE Stelle der Regel (#ask-rule-note) liegt
       // unter „Wie Klara antwortet" hinter dem Zahnrad — in der Luecke steht KEIN Erklaertext.
-      // Der Wortlaut bleibt unveraendert (Leitsatz vor den belegten Halbsaetzen, mega75/mega77).
+      // Die aktuelle Hilfe nennt Beleggrundlage und Abschaltmöglichkeit der externen KI.
       expect(l.regelUnterAntwort, "#ask-rule-note steht im Sichtfeld der Luecke").toBe(false);
-      expect(l.regelText ?? "").toContain("Keine KI-Antwort ohne Beleg");
-      expect(l.regelText ?? "").toContain("nicht an eine externe KI");
+      expect(l.regelText).toBe(
+        "Klara prüft deine Frage und die markierte Passage anhand bestätigten Firmenwissens. Externe KI ist für die Demo standardmäßig an und kann in den Einstellungen ausgeschaltet werden.",
+      );
     });
 
     it("O · Reihenfolge und Lupe (Z.28-31): Lupe, Satz, Hauptaktion, Textlink — Auskunft vor Aktion; die Lupe traegt Kreis und Griff des Zielbilds", () => {
@@ -926,19 +898,19 @@ describe.runIf(zielbildDa)(
       expect(g, "keine Geometrie").not.toBeNull();
       expect(g.fensterBreite).toBe(360);
       expect(g.fensterHoehe).toBe(720);
-      // JOB 3056 K1 (Ruhe.dc.html Z.33): das Frage-Feld steht UNTEN — die Karte schliesst 16px ueber
+      // JOB 3056 K1 (Ruhe.dc.html Z.33): das Frage-Feld steht UNTEN — die Karte schliesst im gemeinsamen Panel 12px ueber
       // dem Fensterrand ab; die Frage bleibt darin stehen (askFrageAendern setzt den Cursor).
-      expect(Math.abs((g.karteUnten ?? 0) - (g.fensterHoehe - 16))).toBeLessThan(1);
+      expect(Math.abs((g.karteUnten ?? 0) - (g.fensterHoehe - 12))).toBeLessThan(1);
       // Der Block ist die Buehne: er nimmt den Raum bis zum Frage-Feld ein, ueber die volle Breite.
       expect(Math.abs((g.blockUnten ?? 0) - (g.feldOben ?? 999))).toBeLessThan(1);
-      expect(Math.abs(g.blockLinks ?? 999)).toBeLessThan(1);
-      expect(Math.abs((g.blockBreite ?? 0) - 360)).toBeLessThan(1);
-      // Die Flaeche spannt die volle Fensterbreite; Z.27 `padding: 0 32px` — der Inhalt beginnt
-      // 32px von der Fensterkante, wie in der Vorlage.
-      expect(Math.abs(g.lueckeLinks ?? 999)).toBeLessThan(1);
-      expect(Math.abs((g.lueckeRechts ?? 0) - 360)).toBeLessThan(1);
-      expect(Math.abs((g.inhaltLinks ?? 0) - 32)).toBeLessThan(1);
-      expect(Math.abs((g.inhaltRechts ?? 0) - 328)).toBeLessThan(1);
+      expect(Math.abs((g.blockLinks ?? 999) - 12)).toBeLessThan(1);
+      expect(Math.abs((g.blockBreite ?? 0) - (g.fensterBreite - 24))).toBeLessThan(1);
+      // Der gemeinsame Ansichtsbereich hat außen je 12 px. Die Auskunft füllt diesen Raum
+      // und hält das innere Polster des Zielbilds von 32 px auf jeder Seite ein.
+      expect(Math.abs((g.lueckeLinks ?? 999) - 12)).toBeLessThan(1);
+      expect(Math.abs((g.lueckeRechts ?? 0) - (g.fensterBreite - 12))).toBeLessThan(1);
+      expect(Math.abs((g.inhaltLinks ?? 0) - 44)).toBeLessThan(1);
+      expect(Math.abs((g.inhaltRechts ?? 0) - (g.fensterBreite - 44))).toBeLessThan(1);
       // `flex-grow: 1` hat einen flexiblen Elternraum: die Flaeche ist hoeher als ihr Inhalt, und
       // `justify-content: center` wirkt — gleich viel freier Raum oben wie unten.
       const freiOben = (g.inhaltOben ?? 0) - (g.lueckeOben ?? 0);
@@ -957,10 +929,18 @@ describe.runIf(zielbildDa)(
       expect(g.satzUnten ?? 999).toBeLessThanOrEqual(g.fensterHoehe);
     });
 
-    it("K · KEIN KASTEN (Runde 2): die Ahnen von #ask-luecke bis zum Panel sind genau #ask-gap-block und #section-ask — ohne Hintergrund, Rand, Schatten, ohne Kartenklasse", () => {
+    it("K · KEIN KASTEN (Runde 2): die Ahnen von #ask-luecke bis zum Panel sind Lückenblock und gemeinsame Panelhülle — ohne Hintergrund, Rand, Schatten, ohne Kartenklasse", () => {
       expect(fehler).toBeNull();
       const g = geometrie as Geometrie;
-      expect(g.ahnen.map((a) => a.kennung)).toEqual(["ask-gap-block", "section-ask"]);
+      expect(g.ahnen.map((a) => a.kennung)).toEqual([
+        "ask-gap-block",
+        "section-ask",
+        "section",
+        "main",
+        "mini-shell",
+      ]);
+      expect(g.ahnen[2]?.klassen.split(/\s+/)).toContain("mini-home");
+      expect(g.ahnen[3]?.klassen.split(/\s+/)).toContain("mini-viewport");
       for (const a of g.ahnen) {
         expect(a.hintergrund, `${a.kennung}: Hintergrund`).toBe("rgba(0, 0, 0, 0)");
         expect(a.randBreite, `${a.kennung}: Rand`).toBe("0px 0px 0px 0px");
@@ -1076,11 +1056,3 @@ describe.runIf(zielbildDa)(
     }
   },
 );
-
-describe.runIf(!zielbildDa)("JOB 3046 · D2 · KeinWissen-Vergleich uebersprungen", () => {
-  it("meldet den fehlenden Kontrollordner statt eine Messung vorzutaeuschen", () => {
-    expect(zielbildDa, `Zielbild nicht lesbar: ${ZIELBILD} — Abgleich hier nicht messbar.`).toBe(
-      false,
-    );
-  });
-});
