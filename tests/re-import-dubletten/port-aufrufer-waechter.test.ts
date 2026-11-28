@@ -236,6 +236,17 @@ const ALTFAELLE: ReadonlyMap<string, string> = new Map([
     "services/app/src/routes/sharepoint-import-routes.ts",
     "Anker-/Re-Sync-Apply (JOB 4086): Items tragen IMMER eine externalId, und die Route existiert nur bei eingeschaltetem Upsert-Strang; die Textfrage wird nicht gestellt. Die eine Dublettenregel liegt dateiintern in library-routes.ts (Zielpfad eines anderen Auftrags), eine zweite wäre die zweite Auslegung",
   ],
+  // R-0170 (Jira-Import) — DER VIERTE ANKER-WEG, mit derselben, am Code belegten Begründung wie
+  // SharePoint: `services/jira/src/mapper.ts` setzt `externalId: key` an JEDEM Item (der
+  // Vorgangsschlüssel ist Pflicht), und `jiraImportRoutes` wird nur bei `schalterAn("jiraImport")`
+  // registriert — demselben Schalter, der `externalImportEnabled` und damit den Upsert-Strang
+  // einschaltet (`build-app.ts`). Die Textfrage ist für diesen Aufrufer strukturell nicht
+  // erreichbar; fällt sie doch, greift die zweite Linie fail-closed. KEINE DAUERKARTE: wird
+  // `pruefeReImportDublette` exportiert, bekommt auch dieser Aufrufer den Port (W4 wird dann rot).
+  [
+    "services/app/src/routes/jira-import-routes.ts",
+    'Anker-/Re-Sync-Übernahme (R-0170): der Jira-Mapper setzt an jedem Item externalId = Vorgangsschlüssel, und die Route existiert nur bei schalterAn("jiraImport"), der auch den Upsert-Strang einschaltet; die Textfrage wird nicht gestellt. Die eine Dublettenregel liegt dateiintern in library-routes.ts, eine zweite wäre die zweite Auslegung',
+  ],
 ]);
 
 describe("JOB 3050 · W — keine Nennung von createImportCandidates ohne Dublettenport", () => {
@@ -249,16 +260,18 @@ describe("JOB 3050 · W — keine Nennung von createImportCandidates ohne Dublet
     // JOB 4086 — NACHGEFÜHRT auf vier: der SharePoint-Apply ist der dritte Anker-Weg (Begründung
     // im Register oben). Die Zahl bleibt hart gepinnt — sie ist der Wächter dagegen, dass ein
     // vierter Aufrufer still dazukommt.
+    // R-0170 — NACHGEFÜHRT auf fünf: die Jira-Übernahme ist der vierte Anker-Weg (Register oben).
     expect(
       nennungen.length,
-      "Vier Produktions-Nennungen: die Bibliotheksroute und die drei Anker-Wege.",
-    ).toBe(4);
+      "Fünf Produktions-Nennungen: die Bibliotheksroute und die vier Anker-Wege.",
+    ).toBe(5);
     expect(new Set(nennungen.map((n) => n.datei))).toEqual(
       new Set([
         "services/app/src/routes/library-routes.ts",
         "services/app/src/confluence-import.ts",
         "services/app/src/routes/confluence-import-routes.ts",
         "services/app/src/routes/sharepoint-import-routes.ts",
+        "services/app/src/routes/jira-import-routes.ts",
       ]),
     );
     expect(

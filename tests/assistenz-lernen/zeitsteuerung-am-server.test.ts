@@ -299,7 +299,8 @@ describe("BPA-06 AC05 · die vorhandene Zeitsteuerung führt fällige Läufe aus
     const fehler = new Error("Ablage kurz nicht erreichbar");
     vi.spyOn(services.capture, "createDraftVorgang").mockRejectedValueOnce(fehler);
     const [erst] = await takt(Date.now());
-    expect(erst).toMatchObject({ stand: "offen", grund: "server" });
+    // Ein HTTP 500 kann auch nach der Speicherung auftreten. Erst der nächste Takt klärt den Vorgang.
+    expect(erst).toMatchObject({ stand: "offen", grund: "ungeklaert" });
     expect(await berichte(EINGABEN.titel)).toBe(0);
 
     const [dann] = await takt(Date.now() + 60_000);
@@ -346,10 +347,15 @@ describe("BPA-06 AC05 · die vorhandene Zeitsteuerung führt fällige Läufe aus
     const routine = await routineVormachen();
     const sofort = { zeitplan: { art: "sofort" }, eingaben: EINGABEN };
     expect((await zeitplan(routine.id, sofort)).statusCode).toBe(200);
-    const fehler = new Error("Ablage kurz nicht erreichbar");
-    vi.spyOn(services.capture, "createDraftVorgang").mockRejectedValueOnce(fehler);
+    const sitzungen = services.sitzungsablage;
+    if (!sitzungen) throw new Error("Sitzungsablage fehlt");
+    const anlegen = sitzungen.create.bind(sitzungen);
+    // Der Produktweg weist die abgelaufene Laufsitzung vor der ersten Schreibwirkung ab.
+    vi.spyOn(sitzungen, "create").mockImplementationOnce((sitzung) =>
+      anlegen({ ...sitzung, expiresAt: Date.now() - 1 }),
+    );
     const [erst] = await takt(Date.now());
-    expect(erst).toMatchObject({ stand: "offen", grund: "server" });
+    expect(erst).toMatchObject({ stand: "offen", grund: "anmeldung" });
     // Der Klick der Person auf denselben Schritt führt nichts erneut aus.
     const gid = erst?.gespraech ?? "";
     const liste = await auf(erik.token, "GET", `/api/me/klara/gespraeche/${gid}/auftraege`);
