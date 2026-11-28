@@ -97,7 +97,7 @@
 //
 // KALIBRIERUNG: die Sonden entstehen unten IM TEST (mutierte Kopien des Stil-Textes bzw. des
 // Markups), nie als Datei im Produktbaum.
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -329,12 +329,12 @@ const ALPHA_AUSNAHMEN: AlphaAusnahme[] = [
 // Umschalter-Grund #EEEAE3. Der Auftrag verlangt Gleichheit mit dem Mockup „in jedem tragenden
 // Wert"; themes.css (apps/web/src) ist dort nicht Zielpfad. Deshalb hier: KEIN Freibrief, sondern
 // eine Bindung an die andere Wahrheit — der Wert muss im genannten Mockup WÖRTLICH vorkommen
-// (geprüft, sobald die Mockup-Datei auf dem Rechner liegt), Klaras :root nennt die Datei per
+// (geprüft am versionierten Original), Klaras :root nennt die Datei per
 // „← mockup:<datei>", und eine unbenutzte Ausnahme ist rot. Der Nachzug der drei Token in
 // themes.css ist ein eigener Auftrag (Rückgabe JOB 3056, REST).
 type MockupAusnahme = { variable: string; wert: string; mockup: string; grund: string };
 
-const MOCKUP_ORDNER = "/Users/peterkohnert/klarwerk_steuerung/design/klara";
+const MOCKUP_ORDNER = join(REPO, "tests/design/vorlagen/klara");
 
 const MOCKUP_AUSNAHMEN: MockupAusnahme[] = [
   {
@@ -364,11 +364,8 @@ const MOCKUP_AUSNAHMEN: MockupAusnahme[] = [
   },
 ];
 
-function mockupFuehrt(a: MockupAusnahme): boolean | null {
+function mockupFuehrt(a: MockupAusnahme): boolean {
   const pfad = join(MOCKUP_ORDNER, a.mockup);
-  if (!existsSync(pfad)) {
-    return null; // Mockup nicht auf diesem Rechner — die Bindung ist dann nicht prüfbar, nicht falsch.
-  }
   return readFileSync(pfad, "utf8").toUpperCase().includes(a.wert.toUpperCase());
 }
 
@@ -943,7 +940,7 @@ function befunde(m: Modell = MODELL, kiStellen: KiStelle[] = KI_STELLEN): string
         continue;
       }
       benutzteMockup.add(a.variable);
-      if (mockupFuehrt(a) === false) {
+      if (!mockupFuehrt(a)) {
         raus.push(
           `--${name}: ${wert} steht NICHT im Mockup ${a.mockup} — die Bindung an die Vorlage ist gebrochen.`,
         );
@@ -1442,8 +1439,7 @@ describe("mega43 B1/B2 · Klara führt die Werkbank-Palette (keine zweite Wahrhe
       expect(MODELL.variablen.get(a.variable)?.wert.toUpperCase()).toBe(a.wert.toUpperCase());
       expect(MODELL.variablen.get(a.variable)?.mockup?.endsWith(a.mockup), a.variable).toBe(true);
       expect(PALETTE.has(a.wert.toUpperCase())).toBe(false);
-      // Auf diesem Rechner liegt das Mockup: der Wert steht wörtlich darin.
-      expect(mockupFuehrt(a), `${a.wert} in ${a.mockup}`).not.toBe(false);
+      expect(mockupFuehrt(a), `${a.wert} in ${a.mockup}`).toBe(true);
     }
   });
 });
