@@ -597,6 +597,7 @@ export function Lifecycle(): JSX.Element {
     // „Noch gültig" gesperrt, und die Karte bietet das Neuladen an. Rein fristfällige Einträge
     // ohne Merker bestätigen wie bisher (dort gibt es keinen Stand).
     const ohneStand = (query.data ?? []).includes(id) && !fall;
+    const brauchtFreigaberecht = view.status === "validiert" && role !== "admin";
     return (
       <div
         data-testid="pruefen-karte"
@@ -682,7 +683,7 @@ export function Lifecycle(): JSX.Element {
           <PruefenKnopf
             ton="gut"
             kennung="noch-gueltig"
-            disabled={confirm.isPending || ohneStand}
+            disabled={confirm.isPending || ohneStand || brauchtFreigaberecht}
             onClick={() =>
               confirm.mutate({
                 id,
@@ -696,6 +697,14 @@ export function Lifecycle(): JSX.Element {
             <Check size={14} aria-hidden="true" />
             {t("lcy.stillValid")}
           </PruefenKnopf>
+          {brauchtFreigaberecht ? (
+            <p className="text-[12.5px] text-muted">
+              {t("folgepruefung.bestaetigungDurchVerwaltung")}{" "}
+              <Link to={`/wissen/${id}?edit=1`} className="font-semibold text-brand-text underline">
+                {t("folgepruefung.aenderungVorschlagen")}
+              </Link>
+            </p>
+          ) : null}
           {cta ? (
             <PruefenKnopf kennung="erneut-pruefen" onClick={() => navigate(cta.href)}>
               {t(cta.labelKey)}

@@ -218,23 +218,33 @@ interface AskKoerper {
   result?: { answered?: boolean; citedSources?: string[] };
 }
 
-/** Eine Frage in der Assistenz stellen — Antwort des echten Frageweg als Körper zurück. */
-async function assistenzFragen(seite: Page, frage: string): Promise<AskKoerper> {
+async function kontextOeffnen(seite: Page): Promise<void> {
+  if ((await seite.getByTestId("klara-kontext").getAttribute("open")) === null) {
+    await seite.getByTestId("klara-kontext-zeile").click();
+  }
+  await expect(seite.getByTestId("klara-ort")).toBeVisible();
+}
+
+/** Eine freie Frage stellen und beim ersten Senden die persönliche Einwilligung erteilen. */
+async function assistenzFragen(
+  seite: Page,
+  frage: string,
+  ersteFrage = false,
+): Promise<AskKoerper> {
   await assistenzOeffnen(seite);
-  const einwilligen = seite.getByTestId("klara-einwilligung-erteilen");
-  if (await einwilligen.isVisible()) {
-    await einwilligen.click();
-    await expect(seite.getByTestId("klara-einwilligung-erteilt")).toBeVisible();
-  }
-  const frei = seite.getByTestId("klara-bezug-frei");
-  if (await frei.isVisible()) {
-    await frei.click();
-  }
+  await kontextOeffnen(seite);
+  await seite.getByTestId("klara-bezug-frei").click();
+  await expect(seite.getByTestId("klara-bezug-frei")).toHaveAttribute("aria-pressed", "true");
+  await seite.getByTestId("klara-kontext-zeile").click();
   const frageweg = seite.waitForResponse(
     (r) => new URL(r.url()).pathname === "/api/ask" && r.request().method() === "POST",
   );
   await seite.getByTestId("klara-eingabe").fill(frage);
   await seite.getByTestId("klara-eingabe").press("Enter");
+  if (ersteFrage) {
+    await expect(seite.getByTestId("klara-einwilligung")).toBeVisible();
+    await seite.getByTestId("klara-einwilligung-erteilen").click();
+  }
   const antwort = await frageweg;
   expect(antwort.status(), await antwort.text()).toBe(200);
   await expect(
@@ -461,7 +471,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       async (hilfe) => {
         await carla.goto("/start");
         hilfe.push("Assistenz: Frage gestellt");
-        const antwort = await assistenzFragen(carla, p.quellenFrage);
+        const antwort = await assistenzFragen(carla, p.quellenFrage, true);
         expect(antwort.result?.answered).toBe(true);
         expect(antwort.result?.citedSources ?? []).toContain(quelle.id);
         const klara = carla.locator('[data-testid="klara-nachricht"][data-von="klara"]').last();
@@ -477,6 +487,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
         // Seitenkontext der Assistenz auf der Quelle.
         hilfe.push("Assistenz: Seitenkontext gelesen");
         await assistenzOeffnen(carla);
+        await kontextOeffnen(carla);
         await expect(carla.getByTestId("klara-ort-seite")).toHaveText("Wissen");
         await expect(carla.getByTestId("klara-ort-objekt")).toHaveText(`„${quelle.title}“`, {
           timeout: 15_000,
@@ -530,7 +541,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
         // Fragende.
         await frida.goto("/start");
         hilfe.push("Assistenz: Frage gestellt");
-        const gefragt = await assistenzFragen(frida, LUECKENFRAGE);
+        const gefragt = await assistenzFragen(frida, LUECKENFRAGE, true);
         expect(gefragt.result?.answered ?? false).toBe(false);
         expect(gefragt.gap?.id).toBe(gapId);
         await vorgangOeffnen(frida, gapId);
@@ -719,7 +730,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
     await schritt(
       protokoll,
       "3 Quellenänderung",
-      "Folgeprüfung (Theo): Betroffenheit und Eintrag A",
+      "Folgeprüfung (Theo): Betroffenheit beider Einträge",
       theo,
       [],
       async (hilfe) => {
@@ -738,10 +749,33 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
         await expect(warum).toContainText(p.anlageAenderung);
         hilfe.push("Begründung der Betroffenheit gelesen (Karte)");
         await bild(theo, info, "G3 · begründete Betroffenheit, Unbeteiligter fehlt");
-        await theo.getByTestId("pruefen-knopf-noch-gueltig").click();
-        await amServerBestaetigt(theo, a.id);
-        await expect(zeile(theo, a.title)).toHaveCount(0, { timeout: 15_000 });
-        await expect(zeile(theo, b.title), "B bleibt offen").toBeVisible();
+        await expect(theo.getByTestId("pruefen-knopf-noch-gueltig")).toBeDisabled();
+        const vorschlagsweg = theo.getByRole("link", { name: "Änderung vorschlagen" });
+        await expect(vorschlagsweg).toHaveAttribute("href", `/wissen/${a.id}?edit=1`);
+        await vorschlagsweg.click();
+        await expect(theo.getByTestId("bib-einreichen-pflicht")).toBeVisible();
+        const abgewiesen = await theo.request.put(`/api/kos/${a.id}`, {
+          data: { action: "revalidate", fassung: a.version, stand: 1 },
+        });
+        expect(abgewiesen.status()).toBe(403);
+        expect(await abgewiesen.json()).toMatchObject({ error: "PROPOSAL_REQUIRED" });
+        await theo.goto("/lebenszyklus");
+        await expect(zeile(theo, a.title)).toBeVisible();
+      },
+    );
+    await schritt(
+      protokoll,
+      "3 Quellenänderung",
+      "Verwaltung: Gültigkeit von Eintrag A bestätigen",
+      page,
+      [],
+      async () => {
+        await page.goto("/lebenszyklus");
+        await zeile(page, a.title).click();
+        await page.getByTestId("pruefen-knopf-noch-gueltig").click();
+        await amServerBestaetigt(page, a.id);
+        await expect(zeile(page, a.title)).toHaveCount(0, { timeout: 15_000 });
+        await expect(zeile(page, b.title), "B bleibt offen").toBeVisible();
       },
     );
 
@@ -802,20 +836,20 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
     await schritt(
       protokoll,
       "3 Quellenänderung",
-      "Folgeprüfung (Theo): Eintrag B in neuer Fassung",
-      theo,
+      "Verwaltung: Eintrag B in neuer Fassung bestätigen",
+      page,
       [],
       async () => {
-        // B wurde inzwischen von ANDEREN geändert (Vorschlag, Übernahme): Theo öffnet den Reiter
+        // B hat nach Vorschlag und Übernahme eine neue Fassung. Die Verwaltung öffnet den Reiter
         // erneut, damit die Karte die neue Fassung zeigt. Der Abschluss danach ohne Neuladen.
-        await theo.goto("/lebenszyklus");
-        await expect(theo.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
-        await expect(zeile(theo, a.title), "A bleibt geschlossen").toHaveCount(0);
-        await zeile(theo, b.title).click();
-        await theo.getByTestId("pruefen-knopf-noch-gueltig").click();
-        await amServerBestaetigt(theo, b.id);
-        await expect(zeile(theo, b.title)).toHaveCount(0, { timeout: 15_000 });
-        await bild(theo, info, "G3 · beide Folgefälle geschlossen");
+        await page.goto("/lebenszyklus");
+        await expect(page.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
+        await expect(zeile(page, a.title), "A bleibt geschlossen").toHaveCount(0);
+        await zeile(page, b.title).click();
+        await page.getByTestId("pruefen-knopf-noch-gueltig").click();
+        await amServerBestaetigt(page, b.id);
+        await expect(zeile(page, b.title)).toHaveCount(0, { timeout: 15_000 });
+        await bild(page, info, "G3 · beide Folgefälle geschlossen");
       },
     );
 
