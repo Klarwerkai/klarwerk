@@ -517,7 +517,8 @@
 }
 /* Im schmalen Panel ordnen sich beide Aktionen untereinander an. Der aktive
    Schreibschritt bleibt durch seine Primärfarbe vom Kopieren unterscheidbar. */
-.kw-minimal #ask-insert-btn.primary {
+.kw-minimal #ask-insert-btn.primary,
+.kw-minimal #send-btn.primary:enabled {
   background: var(--brand-deep);
   color: #fff;
   font-weight: 600;
@@ -551,6 +552,12 @@
 .kw-minimal #section-capture {
   padding: 0;
 }
+.kw-minimal #mini-page-tool-capture:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding-bottom: 0;
+}
 .kw-minimal #kw-begleitung-eingabe label {
   display: block;
   margin: 0 0 5px;
@@ -582,6 +589,9 @@
   flex-wrap: wrap;
 }
 .kw-minimal #capture-karte,
+.kw-minimal #capture-felder,
+.kw-minimal #capture-stufe,
+.kw-minimal #capture-aktion,
 .kw-minimal .einst-gruppe {
   margin-left: 0;
   margin-right: 0;

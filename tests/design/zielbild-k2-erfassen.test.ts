@@ -87,14 +87,11 @@ const lies = <T>(q: string, arg?: unknown) => buehne().lies<T>(q, arg);
 const seiten = (sel: string) => vierSeiten(zielProp(zielStilZeile(zeile(sel)), art(sel)));
 /** Kleines Register: Selektor → Zielbildzeile und Eigenschaft (fuer die vier Seiten). */
 const REGISTER: Record<string, [number, "margin" | "padding"]> = {
-  "#capture-karte.margin": [28, "margin"],
   "#capture-karte.padding": [28, "padding"],
-  "#capture-felder.margin": [34, "margin"],
   "label.capture-zeile.padding": [35, "padding"],
   // JOB 3555 K2b: die zweite Zeile („Bereich") traegt dieselbe Klasse und muss dieselbe Polsterung
   // messen — aber gegen IHRE Zielbildzeile, nicht gegen die der Titelzeile.
   "label.capture-zeile.bereich.padding": [39, "padding"],
-  "#capture-aktion.margin": [48, "margin"],
   "#send-btn.padding": [49, "padding"],
   "#capture-dokument-link.padding": [52, "padding"],
 };
@@ -167,11 +164,11 @@ describe.runIf(zielbildDa)(
     });
 
     // ---- Z.28: die Markierungskarte ---------------------------------------------------------------
-    it("Z.28 · Karte: margin 10px 16px 0 — und 16px zum Fensterrand gemessen", async () => {
-      await vierSeitenGleich("#capture-karte.margin", "#capture-karte");
+    it("Z.28 · die Karte übernimmt den gemeinsamen Seitenrand der Word-Leiste", async () => {
+      expect(await messen("#capture-karte", "margin")).toBe("10px 0px 0px");
       const r = (await lies<R | null>(RECT, "#capture-karte")) as R;
-      expect(r.left).toBe(16);
-      expect(360 - r.right).toBe(16);
+      expect(r.left).toBe(12);
+      expect(360 - r.right).toBe(12);
     });
     it("Z.28 · Karte: padding 16px", async () => {
       await vierSeitenGleich("#capture-karte.padding", "#capture-karte");
@@ -230,8 +227,8 @@ describe.runIf(zielbildDa)(
     }
 
     // ---- Z.34-38: die Zeile „Titel“ ---------------------------------------------------------------
-    it("Z.34 · Felder: margin 14px 16px 0, display flex, flex-direction column, gap 8px", async () => {
-      await vierSeitenGleich("#capture-felder.margin", "#capture-felder");
+    it("Z.34 · Felder im gemeinsamen Seitenraster, mit 14px Abstand und 8px Zeilenabstand", async () => {
+      expect(await messen("#capture-felder", "margin")).toBe("14px 0px 0px");
       const stil = zielStilZeile(34);
       expect(await messen("#capture-felder", "display")).toBe(zielProp(stil, "display"));
       expect(await messen("#capture-felder", "flex-direction")).toBe(
@@ -315,8 +312,8 @@ describe.runIf(zielbildDa)(
     });
 
     // ---- Z.48/49: der EINE Knopf ------------------------------------------------------------------
-    it("Z.48 · Knopfzeile: margin 14px 16px 0", async () => {
-      await vierSeitenGleich("#capture-aktion.margin", "#capture-aktion");
+    it("Z.48 · Knopfzeile im gemeinsamen Seitenraster, mit 14px Abstand", async () => {
+      expect(await messen("#capture-aktion", "margin")).toBe("14px 0px 0px");
     });
     it("Z.49 · Knopf: text-align center, padding 13px 0, #C2500A auf #FFFFFF, radius 10px, 14px/600, volle Breite, frei", async () => {
       const stil = zielStilZeile(49);
@@ -330,8 +327,8 @@ describe.runIf(zielbildDa)(
       expect(await messen("#send-btn", "font-size")).toBe(zielProp(stil, "font-size"));
       expect(await messen("#send-btn", "font-weight")).toBe(zielProp(stil, "font-weight"));
       const r = (await lies<R | null>(RECT, "#send-btn")) as R;
-      expect(r.left).toBe(16);
-      expect(360 - r.right).toBe(16);
+      expect(r.left).toBe(12);
+      expect(360 - r.right).toBe(12);
       expect(await lies<string | null>(ATTR, ["#send-btn", "disabled"])).toBeNull();
       expect(await lies<string | null>(ATTR, ["#send-btn", "title"])).toBeFalsy();
     });
@@ -360,33 +357,37 @@ describe.runIf(zielbildDa)(
       const l = (await lies<R | null>(RECT, "#capture-dokument-link")) as R;
       expect(l.top).toBeGreaterThanOrEqual(k.bottom);
     });
-    // JOB 3506 K2b: bis hierher stand dieser Wert unten als OFFENER Posten, mit dem Grund „setzt
-    // eine Flex-Spalte von Fensterhoehe voraus (Kopf und Umschalter aus K1, JOB 3056 — nicht auf
-    // main)". K1 ist gelandet, die Bedingung ist erfuellt — der Posten wird ein scharfer Fall.
-    // GEMESSEN WIRD DIE WIRKUNG, NICHT DER STILWERT: Chromium loest `margin-top: auto` an einem
-    // Flex-Kind zu Pixeln auf (derselbe Befund steht in zielbild-k1-einstellungen.test.ts F1 fuer
-    // #kw-stand-zeile). Ein Vergleich gegen die Zeichenkette „auto" waere deshalb entweder immer
-    // rot oder — mit `margin-top` als Sollwert allein — wirkungslos: die Marge kann gesetzt und
-    // trotzdem tot sein, wenn die Spalte fehlt. Der Fall misst darum beides: die Voraussetzung
-    // (die Flaeche IST die Spalte) und den Abstand am Fensterboden.
-    it("Z.52 · Textlink am FENSTERBODEN: `margin-top: auto` in einer Flex-Spalte von Fensterhoehe — Abstand gemessen, nicht behauptet", async () => {
-      expect(zielProp(zielStilZeile(52), "margin-top"), "Zielbild Z.52 ohne margin-top").toBe(
-        "auto",
-      );
-      expect(await messen("#section-capture", "display")).toBe("flex");
-      expect(await messen("#section-capture", "flex-direction")).toBe("column");
-      const k = (await lies<R | null>(RECT, "#send-btn")) as R;
-      const l = (await lies<R | null>(RECT, "#capture-dokument-link")) as R;
-      const rumpfUnten = await lies<number>("() => document.body.getBoundingClientRect().bottom");
-      console.info(
-        `JOB 3506 K2b · Z.52 · Knopf unten ${k.bottom} · Link oben ${l.top} · Link unten ${l.bottom} · Rumpf unten ${rumpfUnten}`,
-      );
-      // Der Link schliesst mit dem Rumpfboden ab — und der Rumpf fuellt das 720px-Fenster.
-      expect(Math.abs(l.bottom - rumpfUnten), "Link nicht am Rumpfboden").toBeLessThan(1);
-      expect(Math.abs(rumpfUnten - 720), "der Rumpf fuellt das Fenster nicht").toBeLessThan(1);
-      // Und er klebt nicht mehr am Knopf: Z.48 und Z.52 tragen keine eigene Marge, der Abstand
-      // ist ausschliesslich der freie Raum, den die Auto-Marge aufnimmt.
-      expect(l.top - k.bottom, "kein freier Raum zwischen Knopf und Link").toBeGreaterThan(100);
+    it("Z.52 · der Dokumentlink nutzt den freien Raum und ist bei kleiner Fensterhöhe erreichbar", async () => {
+      expect(zielProp(zielStilZeile(52), "margin-top")).toBe("auto");
+      const seite = buehne().seite;
+      const position = async (hoehe: number) => {
+        await seite.setViewportSize({ width: 360, height: hoehe });
+        const knopf = await lies<R>(RECT, "#send-btn");
+        const link = await lies<R>(RECT, "#capture-dokument-link");
+        expect(link.top).toBeGreaterThanOrEqual(knopf.bottom);
+        return { abstand: link.top - knopf.bottom, boden: link.bottom };
+      };
+      try {
+        const hoch = await position(960);
+        const hoeher = await position(1160);
+        expect(hoch.boden).toBeCloseTo(960, 0);
+        expect(hoeher.boden).toBeCloseTo(1160, 0);
+        expect(hoch.abstand).toBeGreaterThan(100);
+        expect(hoeher.abstand - hoch.abstand).toBeCloseTo(200, 0);
+        const kurz = await position(480);
+        expect(kurz.boden).toBeGreaterThan(480);
+        expect(
+          await lies<boolean>(`() => {
+          const link = document.getElementById("capture-dokument-link");
+          link.scrollIntoView({ block: "end" });
+          const r = link.getBoundingClientRect();
+          const treffer = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return r.bottom <= window.innerHeight + 1 && r.top >= 0 && link.contains(treffer);
+        }`),
+        ).toBe(true);
+      } finally {
+        await seite.setViewportSize({ width: 360, height: 720 });
+      }
     });
 
     // ---- Zustaende (Auftrag §9), AKTIV ausgeloest --------------------------------------------------
