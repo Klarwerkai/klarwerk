@@ -2338,7 +2338,7 @@ export function CaptureArbeitsraum({
   // statt einer Wiederholung, und nach einem Antwortverlust entstünde ein zweites vollständiges
   // Wissensobjekt. Wann er fällt und wann er bleibt, steht in lib/createOperation.ts.
   const submitOperationRef = useRef<string | null>(null);
-  const submitAbdruckRef = useRef<string | null>(null);
+  const submitDraftRef = useRef<string | null>(null);
 
   // AUFTRAG-mega22 Block E: steht hier eine Meldung, hat der Server einen 409 mit einem Code
   // geliefert, für den ein NEUER Vorgang der richtige Ausweg ist. Die Oberfläche bietet die
@@ -2352,9 +2352,8 @@ export function CaptureArbeitsraum({
         throw new Error("no draft");
       }
       // Ein Vorgang, ein Schlüssel — über alle Wiederholungen hinweg, bis er eindeutig erledigt ist.
-      const abdruck = JSON.stringify({ draft, draftId, reviewerIds: [...reviewerIds].sort() });
-      if (!submitOperationRef.current || submitAbdruckRef.current !== abdruck) {
-        submitAbdruckRef.current = abdruck;
+      if (!submitOperationRef.current || submitDraftRef.current !== draftId) {
+        submitDraftRef.current = draftId;
         submitOperationRef.current = newCreateOperationId();
       }
       const operationId = submitOperationRef.current;
@@ -3410,6 +3409,8 @@ export function CaptureArbeitsraum({
   // löscht der Reset ALLE inhaltstragenden Modi, Ref-Caches, Queues und abgeleiteten Resultate über die
   // beiden kanonischen Räum-Funktionen. Eine Quelle für den Leerzustand, geteilt von beiden Verwerfen-Wegen.
   const resetCaptureForm = (): void => {
+    submitOperationRef.current = null;
+    setRestartOffer(null);
     setRaw("");
     // OCR-E04: mit dem Rohtext geht auch der Seitenstand eingefügter PDFs; ein laufendes Lesen
     // startet keine weitere Seite.
