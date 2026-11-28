@@ -4,6 +4,8 @@ import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   EXTERNAL_SEARCH_MELDUNG,
   type ExternalKnowledgePolicyRepo,
+  type ExternalKnowledgeStage,
+  ExternalSearchError,
   ExternalSearchFailure,
   type ExternalSearchService,
   externalSearchAllowed,
@@ -46,8 +48,15 @@ export function externalRoutes(deps: ExternalRoutesDeps, guards: Guards): Fastif
       if (!user) {
         return;
       }
+      let stage: ExternalKnowledgeStage;
       try {
-        const stage = normalizeExternalKnowledgeStage(request.body?.stage);
+        stage = normalizeExternalKnowledgeStage(request.body?.stage);
+      } catch (error) {
+        if (!(error instanceof ExternalSearchError)) throw error;
+        reply.code(400).send({ error: error.code, message: error.message });
+        return;
+      }
+      try {
         await policy.setStage(stage);
         await audit?.record({
           actor: user.id,

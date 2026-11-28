@@ -28,6 +28,7 @@ const MAX_INTERVIEW_QUELLEN_ANFRAGE = 200;
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
 import type { ModelRunService } from "../../../model-runs";
 import {
+  AssistOhneVorschlagFehler,
   // JOB 3353 B: der EINE Fehlertyp, den der Reasoner wirft, wenn er GEMESSEN hat, dass die
   // Vertraulichkeit den Lauf ohne Anbieter gelassen hat. Nur er wird hier typisiert beantwortet.
   ConfidentialCloudBlockedError,
@@ -371,6 +372,33 @@ async function sendeOderSperre<T>(
   try {
     reply.code(200).send(await lauf());
   } catch (error) {
+    if (error instanceof AssistOhneVorschlagFehler) {
+      const meldungen = {
+        de: {
+          "kein-modell": "Die KI hat keine Antwort geliefert. Kein KI-Modell hat geantwortet.",
+          leer: "Die KI hat keine Antwort geliefert. Die Modellantwort enthielt keinen vollständigen Vorschlag.",
+          unveraendert:
+            "Die KI hat keine Änderungen vorgeschlagen. Der Text wurde unverändert zurückgegeben.",
+        },
+        en: {
+          "kein-modell": "The AI returned no answer. No AI model answered.",
+          leer: "The AI returned no answer. The model response contained no complete suggestion.",
+          unveraendert: "The AI proposed no changes. The model returned the original text.",
+        },
+        nl: {
+          "kein-modell": "De AI heeft geen antwoord gegeven. Geen AI-model heeft geantwoord.",
+          leer: "De AI heeft geen antwoord gegeven. Het model gaf geen volledig voorstel.",
+          unveraendert:
+            "De AI heeft geen wijzigingen voorgesteld. Het model gaf de oorspronkelijke tekst terug.",
+        },
+      };
+      const model = error.modell ? ` (${error.modell})` : "";
+      reply.code(error.grund === "unveraendert" ? 422 : 503).send({
+        error: "ASSIST_OHNE_VORSCHLAG",
+        message: meldungen[locale][error.grund] + model,
+      });
+      return;
+    }
     if (!provenienz.confidential || !istVertraulichkeitsSperre(error)) {
       throw error;
     }

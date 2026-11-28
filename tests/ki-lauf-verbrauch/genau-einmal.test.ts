@@ -15,7 +15,8 @@
 // unsichtbar falsch — nichts an der Anzeige verrät, dass ein Schreibversuch dazwischenlag.
 //
 // DIE ZWEI FÄLLE SIND DIE ZWEI RICHTUNGEN DESSELBEN GESETZES:
-//   V6a — ein Modellaufruf, zwei Schreibversuche → EINMAL gezählt (nicht doppelt).
+//   V6a — ein Modellaufruf, der finale Schreibversuch scheitert. Der Verbrauch wird einmal
+//          gemeldet, der Vorschlag bleibt nutzbar und ein ungespeicherter Lauf wird nicht vorgetäuscht.
 //   V6b — zwei Provider-Versuche, die BEIDE wirklich verbraucht haben → ZWEIMAL gezählt (nicht
 //         einer davon unterschlagen). Ohne V6b wäre die Reparatur von V6a durch schlichtes
 //         Nicht-mehr-Addieren im Catch-Block zu erschleichen — dann verlöre der teuerste reale
@@ -57,7 +58,7 @@ afterEach(() => {
 });
 
 describe("JOB 3074 V6: jeder Provider-Versuch geht genau einmal in den Laufverbrauch", () => {
-  it("V6a · ein Modellaufruf, erster Protokollschreibversuch scheitert: 42/7 und EIN gemeldeter Aufruf", async () => {
+  it("V6a · ein Modellaufruf, finaler Schreibversuch scheitert: Ergebnis erhalten und 42/7 genau einmal gemeldet", async () => {
     let aufrufe = 0;
     vi.stubGlobal("fetch", (async () => {
       aufrufe++;
@@ -71,15 +72,14 @@ describe("JOB 3074 V6: jeder Provider-Versuch geht genau einmal in den Laufverbr
       repo,
     );
     await erteileKiFreigabe(reasoner);
-    await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
+    const vorschlag = await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
 
     expect(aufrufe, "genau EIN echter Modellaufruf in diesem Lauf").toBe(1);
-    expect(repo.versuche, "der erste Schreibversuch scheiterte, der zweite gelang").toHaveLength(2);
-
-    const laeufe = await repo.recent(10);
-    expect(laeufe).toHaveLength(1);
-    // Ein Aufruf, ein Verbrauch — auch wenn der Datensatz zweimal geschrieben werden musste.
-    expect(laeufe[0]?.verbrauch).toEqual({
+    expect(vorschlag.text).toBe("Geglätteter Satz.");
+    expect(repo.versuche, "genau ein finaler Schreibversuch").toHaveLength(1);
+    expect(await repo.recent(10), "der fehlgeschlagene Write erzeugt keinen Datensatz").toEqual([]);
+    expect(repo.versuche[0]?.status).toBe("success");
+    expect(repo.versuche[0]?.verbrauch).toEqual({
       eingabeToken: 42,
       ausgabeToken: 7,
       gemeldeteAufrufe: 1,

@@ -23,7 +23,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-async function aufbauen(modellAntwort: string) {
+async function aufbauen(modellAntwort: string | Error) {
   const services = buildServices();
   services.reasoner = new Reasoner(
     new ModelProvider(
@@ -31,7 +31,10 @@ async function aufbauen(modellAntwort: string) {
         {
           name: "cloud:openai:gpt-6-astra",
           model: "gpt-6-astra",
-          complete: async () => modellAntwort,
+          complete: async () => {
+            if (modellAntwort instanceof Error) throw modellAntwort;
+            return modellAntwort;
+          },
         },
         { rejectsConfidential: false },
       ),
@@ -62,7 +65,7 @@ async function aufbauen(modellAntwort: string) {
 
 async function assist(
   aufbau: Awaited<ReturnType<typeof aufbauen>>,
-  locale: "de" | "en" = "de",
+  locale: "de" | "en" | "nl" = "de",
 ): Promise<{ status: number; koerper: Record<string, unknown> }> {
   const antwort = await aufbau.app.inject({
     method: "POST",
@@ -89,11 +92,7 @@ describe("JOB 3276 H · über die echte Route kommt ein Vorschlag oder eine Meld
 
     const { status, koerper } = await assist(aufbau);
 
-    // GEMESSEN: 500 (Fastifys Standardweg, `modelBusyErrorHandler` reicht alles außer der
-    // Kapazitätsgrenze formtreu durch) — und er reicht `message` mit, was H2 prüft. Festgenagelt
-    // ist hier nur die Zusage, die zählt: KEIN 200 mit dem Originaltext.
-    expect(status).not.toBe(200);
-    expect(status).toBeGreaterThanOrEqual(400);
+    expect(status).toBe(503);
     expect(JSON.stringify(koerper)).not.toContain("notirt und die anzahl");
   });
 
@@ -112,6 +111,21 @@ describe("JOB 3276 H · über die echte Route kommt ein Vorschlag oder eine Meld
     const { koerper } = await assist(aufbau, "en");
 
     expect(String(koerper.message)).toContain("The AI returned no answer");
+  });
+
+  it("nennt eine unveränderte Antwort auf Niederländisch", async () => {
+    const { status, koerper } = await assist(await aufbauen(ROHTEXT), "nl");
+    expect(status).toBe(422);
+    expect(koerper.error).toBe("ASSIST_OHNE_VORSCHLAG");
+    expect(koerper.message).toContain("De AI heeft geen wijzigingen voorgesteld");
+  });
+
+  it("hält unbekannte Modellfehler und den Dokumenttext aus der HTTP-Antwort heraus", async () => {
+    const geheim = "Interne Providerdiagnose H3276";
+    const { status, koerper } = await assist(await aufbauen(new Error(geheim)), "en");
+    expect(status).toBeGreaterThanOrEqual(500);
+    expect(JSON.stringify(koerper)).not.toContain(geheim);
+    expect(JSON.stringify(koerper)).not.toContain(ROHTEXT);
   });
 
   it("H4 GEGENPROBE: antwortet das Modell wirklich, kommt der Vorschlag mit 200 an", async () => {

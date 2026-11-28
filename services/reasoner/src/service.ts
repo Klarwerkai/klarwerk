@@ -202,6 +202,17 @@ export class ConfidentialCloudBlockedError extends Error {
   }
 }
 
+/** Die HTTP-Antwort verwendet nur den fachlichen Ausgang und die konfigurierte Modellkennung. */
+export class AssistOhneVorschlagFehler extends Error {
+  constructor(
+    diagnose: string,
+    readonly grund: "kein-modell" | "leer" | "unveraendert",
+    readonly modell?: string,
+  ) {
+    super(diagnose);
+  }
+}
+
 // SCRUM-525 P.5 (WP6): der DEFINIERTE Default der KI-Zuordnung, wenn nichts persistiert ist. Exportiert,
 // damit Aufrufer/Tests den Default benennen können (kein magisches, verstecktes "auto").
 export const DEFAULT_REASONER_POLICY: ReasonerTaskConfig = { global: "auto", perTask: {} };
@@ -3509,6 +3520,8 @@ export class Reasoner {
   ): Promise<AssistResult> {
     // Der Grund des zuletzt gescheiterten Modells — er ist die Auskunft, die die Meldung trägt.
     let modellFehler: string | null = null;
+    let leereAntwort = false;
+    let antwortModell: string | undefined;
     // Und das Ergebnis eines Modells, das in DIESEM Lauf bereits geantwortet hat. Die Kette wird
     // auch dann am nächsten Glied fortgesetzt, wenn nicht der Modellaufruf, sondern das
     // PROTOKOLLSCHREIBEN danach scheitert (runTask, JOB 3074 R2). Einen fertigen Vorschlag des
@@ -3531,6 +3544,7 @@ export class Reasoner {
             // das nächste Glied etwas. Kann es das nicht, steht am Ende der ehrliche Satz.
             if (text.trim().length > 0 && !istEchterModellVorschlag(text, ergebnis.text)) {
               const modell = provider.modelName?.();
+              antwortModell = modell;
               const grund =
                 locale === "en"
                   ? "returned the text unchanged."
@@ -3542,6 +3556,9 @@ export class Reasoner {
             modellErgebnis = ergebnis;
             return ergebnis;
           } catch (err) {
+            leereAntwort = err instanceof ModelEmptyResponseError;
+            if (leereAntwort && modellOhneAenderung === null)
+              antwortModell = provider.modelName?.();
             modellFehler = err instanceof Error ? err.message : String(err);
             throw err;
           }
@@ -3564,21 +3581,31 @@ export class Reasoner {
         // lautet „warum sehe ich keinen Vorschlag", und die Antwort darauf ist die Antwort des
         // Modells, nicht der Ausfall daneben.
         if (modellOhneAenderung !== null) {
-          throw new ReasonerMeldungFehler(assistOhneAenderungMeldung(locale, modellOhneAenderung));
+          throw new AssistOhneVorschlagFehler(
+            assistOhneAenderungMeldung(locale, modellOhneAenderung),
+            "unveraendert",
+            antwortModell,
+          );
         }
         // Die Cloud kann auch OHNE Fehler ausgefallen sein: ist der Text vertraulich eingestuft,
         // nimmt providerChain sie aus der Kette, bevor irgendetwas gerufen wird (SCRUM-502).
         // „Kein KI-Modell hat geantwortet" wäre da zwar wahr, aber die schwächere Auskunft — der
         // Mensch soll erfahren, dass seine EINSTUFUNG die Ursache ist und nicht ein Ausfall.
-        throw new Error(
-          assistOhneVorschlagMeldung(
-            locale,
-            modellFehler ??
-              (this.cloudExcludedByConfidentiality("assist", confidential)
-                ? vertraulichkeitsGrund(locale)
-                : null),
-          ),
+        const diagnose = assistOhneVorschlagMeldung(
+          locale,
+          modellFehler ??
+            (this.cloudExcludedByConfidentiality("assist", confidential)
+              ? vertraulichkeitsGrund(locale)
+              : null),
         );
+        if (modellFehler === null || leereAntwort) {
+          throw new AssistOhneVorschlagFehler(
+            diagnose,
+            leereAntwort ? "leer" : "kein-modell",
+            antwortModell,
+          );
+        }
+        throw new Error(diagnose);
       },
       confidential,
     );

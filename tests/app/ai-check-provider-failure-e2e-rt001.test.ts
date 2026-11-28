@@ -44,6 +44,7 @@ async function makeKo(services: AppServices, title: string, statement: string) {
     type: "best_practice",
     category: "K",
     author: "u1",
+    confidentiality: "intern",
     title,
     statement,
   });

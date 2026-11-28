@@ -73,6 +73,7 @@ async function aufbauen(antwort: (prompt: string) => string) {
   // Die Suche ist fail-closed; die Projektion wird über den Produktpfad freigegeben.
   await koService.activateSearchProjectionV2();
   const ziel = await koService.create({
+    confidentiality: "intern",
     title: ZIELTITEL,
     statement: ZIELAUSSAGE,
     type: "best_practice",
@@ -83,6 +84,7 @@ async function aufbauen(antwort: (prompt: string) => string) {
   const koerper: string[] = [];
   for (let i = 0; i < KOERPERTREFFER; i += 1) {
     const ko = await koService.create({
+      confidentiality: "intern",
       title: `Sammelvermerk ${i}`,
       statement: `Allgemeine Ablaufnotiz ${i} ohne eigene Auskunft.`,
       type: "best_practice",
