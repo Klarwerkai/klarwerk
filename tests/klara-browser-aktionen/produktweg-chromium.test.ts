@@ -530,7 +530,18 @@ describe("BPA-03 · Produktweg: Leiste → Worker → Aktionskern → aktion.js 
     expect(s.erfolg).toBe(true);
     expect(s.quelle).toBe("getippt");
     expect(s.formular).toBe("Angebotsentwurf");
-    expect(s.host.adapter).toMatch(/aktion\.js@1\.0\.0/);
+    // Lies die Fassung aus dem bereits geladenen Seitenausführer im freigegebenen Tab.
+    const adapter = await b.sw.evaluate<string>(`(async () => {
+      const [tab] = await chrome.tabs.query({ url: ${JSON.stringify(ORIGIN + PFAD)} });
+      const [rahmen] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, func: () => globalThis.KlaraBrowserAktion.fassung,
+      });
+      return rahmen.result;
+    })()`);
+    expect(adapter).toMatch(/^aktion\.js@\d+\.\d+\.\d+$/);
+    const manifestVersion = await b.sw.evaluate<string>("chrome.runtime.getManifest().version");
+    expect(s.host.erweiterung).toBe(manifestVersion);
+    expect(s.host.adapter).toBe(`Erweiterung ${manifestVersion} · ${adapter}`);
     // K3: ein Entwurfsauftrag hat keinen Auslöseschritt.
     expect(s.schritte.map((x) => x.art)).not.toContain("ausloesen");
     // Die Wirkung, an der Seite gemessen — nicht Klaras Meldung.
