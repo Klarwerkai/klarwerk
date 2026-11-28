@@ -27,6 +27,7 @@ function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
     type: "best_practice",
     category: "Anlage 1",
     tags: [],
+    sources: [],
     confidence: 0,
     trust: 80,
     status: "validiert",
@@ -94,6 +95,12 @@ const BESTAND = [
     confidentiality: "streng_vertraulich",
     createdAt: "2026-10-08T08:00:00.000Z",
   }),
+  ko({
+    id: "QUELLRECHT",
+    title: "Nur für Instandhaltung",
+    quellrechte: { stufe: "intern", leser: ["anna"] },
+    createdAt: "2026-10-08T08:00:00.000Z",
+  }),
   ko({ id: "SPAETER", title: "Nach dem Zeitraum", createdAt: "2026-10-10T08:00:00.000Z" }),
 ];
 
@@ -138,10 +145,23 @@ describe("RECHERCHE:pmo-fea-0004 · Aufnahme", () => {
     const { svc } = await dienst();
     const u = await svc.erzeuge();
     const drin = new Set(u.eintraege.map((e) => e.koId));
-    for (const id of ["ALT", "ALT_UEBERARBEITET", "OFFEN", "GEHEIM", "STRENG", "SPAETER"]) {
+    for (const id of [
+      "ALT",
+      "ALT_UEBERARBEITET",
+      "OFFEN",
+      "GEHEIM",
+      "STRENG",
+      "QUELLRECHT",
+      "SPAETER",
+    ]) {
       expect(drin.has(id), id).toBe(false);
     }
-    for (const verboten of ["Noch offen", "Vertrauliche Rezeptur", "Streng vertraulich"]) {
+    for (const verboten of [
+      "Noch offen",
+      "Vertrauliche Rezeptur",
+      "Streng vertraulich",
+      "Nur für Instandhaltung",
+    ]) {
       expect(u.markdown).not.toContain(verboten);
     }
   });

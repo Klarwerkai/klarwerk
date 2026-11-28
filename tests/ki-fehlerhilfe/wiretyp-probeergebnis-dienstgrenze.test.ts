@@ -45,7 +45,6 @@ import { describe, expect, it } from "vitest";
 
 const SERVER_TYPES = join(__dirname, "../../services/reasoner/src/types.ts");
 const WEB_TYPES = join(__dirname, "../../apps/web/src/api/types.ts");
-const SERVER_FEHLERKLASSEN = join(__dirname, "../../services/reasoner/src/model-errors.ts");
 
 /** Ein Feld der Schnittstelle, wie der Parser es sieht: `status?: number`. */
 function felderAusQuelle(quelle: string, name = "ReasonerProbeResult"): string[] {
@@ -131,7 +130,7 @@ describe("JOB 3420 · Dienstgrenze — Server und Client führen dasselbe Prüfe
   });
 
   it("die Fehlerklassen sind auf beiden Seiten dieselbe geschlossene Menge", () => {
-    const server = fehlerklassen(SERVER_FEHLERKLASSEN);
+    const server = fehlerklassen(SERVER_TYPES);
     expect(server).toEqual(["http", "network", "parse", "timeout", "unknown"]);
     expect(fehlerklassen(WEB_TYPES)).toEqual(server);
   });

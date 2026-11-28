@@ -35,7 +35,7 @@ const TEXT_EINS = "Erst absperren, dann entlüften.";
 const GEHEIMER_SATZ = "Kessel 3 sofort abschalten.";
 
 const EINTRAEGE = [
-  eintrag({ id: "ko-a", title: "Anlage entlüften", version: 2 }, [
+  eintrag({ id: "ko-a", title: "Anlage entlüften", confidentiality: "intern", version: 2 }, [
     { version: 1, bodyHtml: `<h2>Absperren</h2><p>${TEXT_EINS}</p>` },
     { version: 2, bodyHtml: "<p>Zweite Fassung.</p>" },
   ]),
