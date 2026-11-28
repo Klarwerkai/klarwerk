@@ -93,7 +93,7 @@ jobs:
           PLAN_ERGEBNIS: ${{ needs.pflicht-plan.result }}
           PLAN_VERTEILT: ${{ needs.pflicht-plan.outputs.verteilt }}
           MATRIX_ERGEBNIS: ${{ needs.pflicht-teil.result }}
-          LAUF_ABGEBROCHEN: ${{ cancelled() }}
+          LAUF_ABGEBROCHEN: ${{ needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled' }}
         run: node tools/pflicht-pr.mjs abschluss "$RELEASE_BASE" .local/run/ci-pflicht
       - name: gemeinsamer schneller Pflichtvertrag (maximal 600 Sekunden)
         if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')

@@ -209,7 +209,9 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
     expect(ende).toContain("pattern: pflicht-pr-${{ github.sha }}-*");
     expect(ende).toContain("PLAN_ERGEBNIS: ${{ needs.pflicht-plan.result }}");
     expect(ende).toContain("MATRIX_ERGEBNIS: ${{ needs.pflicht-teil.result }}");
-    expect(ende).toContain("LAUF_ABGEBROCHEN: ${{ cancelled() }}");
+    expect(ende).toContain(
+      "LAUF_ABGEBROCHEN: ${{ needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled' }}",
+    );
     expect(ende).toContain(
       "if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')",
     );
