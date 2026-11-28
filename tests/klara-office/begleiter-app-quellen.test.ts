@@ -123,14 +123,24 @@ describe("Q2 · KO-02-04 — erreichbar über Fenstern, Spaces, Vollbild und Bil
     expect(quelle).toContain("hidesOnDeactivate = false");
   });
 
-  it("Bildschirmwechsel, Ziehen und Tastaturschritte enden eingepasst; Wiederfinden ohne reservierte globale Kürzel", () => {
+  it("Bildschirmwechsel, Ziehen und Tastaturschritte enden eingepasst; systemweite Suche nur mit erlaubter Kontobelegung", () => {
     const quelle = swift();
     expect(quelle).toContain("NSApplication.didChangeScreenParametersNotification");
     expect(quelle).toContain("Lage.eingepasst(panel.frame, in: flaechen())");
     expect(quelle).toContain("Lage.verschoben(panel.frame");
     expect(quelle).toContain("NSScreen.screens.map(\\.visibleFrame)");
-    expect(quelle).not.toContain("RegisterEventHotKey(");
-    expect(quelle).toContain("Systemweiter Aufruf: nicht eingerichtet");
+    const kuerzel = lies(`${APP}/Sources/Suchkuerzel.swift`);
+    expect(quelle.match(/\bRegisterEventHotKey\(/g)).toHaveLength(1);
+    const registrierung = kuerzel.indexOf("RegisterEventHotKey(taste, neu.modifikatoren");
+    const erlaubnis = kuerzel.indexOf(
+      "guard neu.erlaubt, let taste = Suchbelegung.tasten[neu.code]",
+    );
+    expect(erlaubnis).toBeGreaterThan(kuerzel.indexOf("guard let neu else { return }"));
+    expect(registrierung).toBeGreaterThan(erlaubnis);
+    expect(kuerzel).toContain("UnregisterEventHotKey(registrierung)");
+    expect(quelle).toContain(
+      "suchkuerzel.setzen(self.kartenQuelle.anmeldung != nil ? stand.suchbelegung : nil)",
+    );
   });
 });
 
@@ -426,7 +436,14 @@ describe("Q8 · MAC-01/02 — übernommene Fensterkorrekturen aus Original 90314
     expect(steuerung).toContain(
       "webView.fensterEintraege = { [weak self] in self?.fensterEintraege() ?? [] }",
     );
-    expect(steuerung).toContain('"Systemweiter Aufruf: nicht eingerichtet"');
+    const kuerzel = lies(`${APP}/Sources/Suchkuerzel.swift`);
+    expect(steuerung).toContain("private var kuerzelText: String { suchkuerzel.status }");
+    expect(steuerung).toContain("self.suchstatusEintrag?.title = self.kuerzelText");
+    expect(kuerzel).toContain('status = "Suchkürzel: nicht eingerichtet"');
+    expect(kuerzel).toContain('status = "Suchkürzel: nicht verfügbar');
+    expect(kuerzel.indexOf('status = "Suche systemweit:')).toBeGreaterThan(
+      kuerzel.indexOf("guard ergebnis == noErr else"),
+    );
     // Aktuelle Produktbasis: vorhandene Browserkarte und deren Sitzungsbindung erhalten.
     expect(swift()).toContain("BrowserKartenQuelle");
     expect(steuerung).toContain("anmeldungGewechselt()");

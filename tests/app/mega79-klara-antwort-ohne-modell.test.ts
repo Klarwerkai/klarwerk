@@ -599,13 +599,42 @@ describe("AUFTRAG-mega79: die Anzeige haengt am tatsaechlichen Antwortweg", () =
       "Diese Zustaende sagen nicht, dass Klaras Antwort ohne Modell entsteht",
     ).toBe("");
 
-    // Und die fuenf decken den ganzen Zustandsraum von `klaraWegKey` ab: waechst er um einen
-    // sechsten modellfreien Zustand, faellt das hier auf.
-    const inQuelle = [...HTML.matchAll(/return "(weg[A-Za-z]+)"/g)].map((m) => m[1] ?? "");
-    expect([...new Set(inQuelle)].sort()).toEqual([...WEG_OHNE_MODELL, WEG_MIT_MODELL].sort());
+    const start = HTML.indexOf("// KW-KLARA-WEG-START");
+    const ende = HTML.indexOf("// KW-KLARA-WEG-END", start);
+    expect(start).toBeGreaterThan(0);
+    expect(ende).toBeGreaterThan(start);
+    const block = HTML.slice(start, ende);
+    const entscheide = new Function(`${block}; return klaraWegKey;`)();
+    const schluessel = [
+      ...block.slice(0, block.indexOf("function klaraWegParam")).matchAll(/"(weg[A-Za-z]+)"/g),
+    ].map((m) => m[1]);
+    expect([...new Set(schluessel)].sort()).toEqual(
+      [...WEG_OHNE_MODELL, WEG_MIT_MODELL, "wegExternStandard", "wegExternStandardAus"].sort(),
+    );
+    for (const standard of [false, true]) {
+      const extern = { modeKey: "s4ModeExternal", externeKiStandardAn: standard };
+      expect(entscheide({ ...extern, askAllowed: true })).toBe(
+        standard ? "wegExternStandard" : WEG_MIT_MODELL,
+      );
+      expect(entscheide({ ...extern, askAllowed: false, consentKey: "s4ConsentRevoked" })).toBe(
+        standard ? "wegExternStandardAus" : "wegExternZustimmungWeg",
+      );
+    }
+    const status = {
+      de: ["Externe KI ist eingeschaltet", "ausgeschaltet"],
+      en: ["External AI is enabled", "switched off"],
+      nl: ["Externe AI is ingeschakeld", "uitgeschakeld"],
+    };
+    for (const sprache of SPRACHEN) {
+      const an = text(sprache, "wegExternStandard");
+      expect(an).toContain(status[sprache][0]);
+      expect(an).toContain("{provider}");
+      expect(an).toContain("{dokumenttext}");
+      expect(text(sprache, "wegExternStandardAus")).toContain(status[sprache][1]);
+    }
   }, 30000);
 
-  it("der EINE Zustand mit Modell sagt es — mit Anbieter und mit seiner Bedingung", async () => {
+  it("bei ausdrücklicher Einwilligung nennt die Anzeige Modell, Anbieter und Bedingung", async () => {
     for (const sprache of SPRACHEN) {
       const wert = text(sprache, WEG_MIT_MODELL);
       expect(

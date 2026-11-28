@@ -135,15 +135,13 @@ async function aufbauen(zustimmen: boolean) {
   };
   expect(bindung["x-klara-session"]).toBeTruthy();
   expect(bindung["x-klara-document"]).toBeTruthy();
-  if (zustimmen) {
-    const consent = await app.inject({
-      method: "POST",
-      url: `/api/klara/sessions/${bindung["x-klara-session"]}/consent`,
-      headers: { ...headers, ...bindung },
-    });
-    expect(consent.statusCode, consent.body).toBe(200);
-    expect(consent.json().consentState).toBe("granted");
-  }
+  const consent = await app.inject({
+    method: zustimmen ? "POST" : "DELETE",
+    url: `/api/klara/sessions/${bindung["x-klara-session"]}/consent`,
+    headers: { ...headers, ...bindung },
+  });
+  expect(consent.statusCode, consent.body).toBe(200);
+  expect(consent.json().consentState).toBe(zustimmen ? "granted" : "revoked");
   gesehen.length = 0;
   return { app, headers, bindung, gesehen };
 }
@@ -217,7 +215,7 @@ describe("JOB 3243 · Lieferung 6 · der Panelweg an der echten /api/check-text-
     expect(a.gesehen.join("\n")).toContain(TEXT);
   });
 
-  it("R3 · OHNE Zustimmung bleibt derselbe Rumpf vertraulich — kein Egress", async () => {
+  it("R3 · nach dem Ausschalten bleibt derselbe Rumpf vertraulich — kein Egress", async () => {
     const a = await aufbauen(false);
     const lauf = await panelweg(a, { want: "deep" });
     expect(lauf.antwort.konfliktpruefung).toMatchObject({ grund: "vertraulich" });

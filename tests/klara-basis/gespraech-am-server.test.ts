@@ -32,6 +32,8 @@ import {
   KLARA_GESPRAECH_GELOESCHT,
 } from "../../services/app/src/routes/klara-gespraech-routes";
 
+import { type AnswerEvidenceSnapshot, hashAnswerSnapshot } from "../../services/ask";
+
 type App = ReturnType<typeof buildApp>;
 
 let services: AppServices;
@@ -149,13 +151,56 @@ describe("S1 · ein Gespräch unter der eigenen Person — mit Verlauf und Objek
     });
     expect(frage.statusCode, frage.body).toBe(201);
     await eigeneAntwort(erik.id, "ans-erik-1");
+    const quellen = await Promise.all(
+      ["Schichtbuch", "Wartungsanleitung"].map((title) =>
+        services.ko.create({
+          title,
+          statement: "Der Ölwechsel dauert etwa 20 Minuten.",
+          type: "best_practice",
+          category: "Wartung",
+          confidentiality: "intern",
+          author: erik.id,
+        }),
+      ),
+    );
+    const ids = quellen.map((q) => q.id);
+    const snapshot: AnswerEvidenceSnapshot = {
+      answerId: "ans-erik-1",
+      snapshotRevision: 1,
+      supersedesSnapshotRevision: null,
+      schemaVersion: 1,
+      capturedAt: "2026-10-08T09:30:00.000Z",
+      citedSources: ids,
+      evidence: quellen.map((q) => ({
+        knowledgeObjectId: q.id,
+        knowledgeObjectVersion: q.version,
+        evidenceRole: "carrying",
+        sourceRecordId: null,
+        sourceRecordIdReason: "no_source_anchor",
+        locator: null,
+        locatorReason: "no_source_anchor",
+        validationReferenceAbsenceReason: "NOT_AVAILABLE_AT_EXECUTION",
+      })),
+      resolutionId: null,
+      resolutionIdReason: "w1_not_on_answer_path",
+      validationDecisionRef: null,
+      validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
+      status: "INCOMPLETE",
+      integrityHash: "",
+    };
+    expect(
+      await services.answerSnapshots.appendSnapshot({
+        ...snapshot,
+        integrityHash: hashAnswerSnapshot(snapshot),
+      }),
+    ).toBe(true);
     const antwort = await auf(erik.token, "POST", `${BASIS}/gespraeche/${g.id}/nachrichten`, {
       von: "klara",
       modus: "ki",
       text: "Etwa 20 Minuten [1].",
       objektbezug: ANDERER_BEZUG,
       antwortId: "ans-erik-1",
-      quellen: ["ko-1", "ko-1", "ko-2"],
+      quellen: [ids[0], ...ids],
       wissensklasse: "gesichert",
     });
     expect(antwort.statusCode, antwort.body).toBe(201);
@@ -179,7 +224,7 @@ describe("S1 · ein Gespräch unter der eigenen Person — mit Verlauf und Objek
     ]);
     expect(sicht.nachrichten[1]).toMatchObject({
       antwortId: "ans-erik-1",
-      quellen: ["ko-1", "ko-2"],
+      quellen: ids,
       wissensklasse: "gesichert",
       objektbezug: ANDERER_BEZUG,
     });

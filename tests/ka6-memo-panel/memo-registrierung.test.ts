@@ -220,14 +220,15 @@ describe("JOB 3110 · M2b · der gebaute Server kennt den Memo-Weg", () => {
     // Der Kern dieses Auftrags. 404 hiesse: der Server kennt den Memo-Weg nicht — genau der Satz,
     // den das Word-Panel bis heute anzeigen musste.
     expect(res.statusCode, "Die gebaute App kennt POST …/zuruf nicht").not.toBe(404);
-    // Und die Antwort ist die des Erzeugers, nicht irgendeine: ohne Zustimmung 403.
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("NO_FORMULIERER");
     await k.app.close();
   });
 
-  it("R2 · ohne Zustimmung: 403 CONSENT_MISSING, und kein Entwurfsfeld in der Antwort", async () => {
+  it("R2 · nach dem Ausschalten: 403 CONSENT_MISSING, und kein Entwurfsfeld in der Antwort", async () => {
     const spion = modellSpion();
     const k = await aufbau({ modell: spion.modell });
+    expect(await k.widerrufen()).toBe(200);
     const res = await k.zuruf();
     expect(res.statusCode).toBe(403);
     const body = res.json() as Record<string, unknown>;
@@ -311,6 +312,8 @@ describe("JOB 3110 · M2b · der gebaute Server kennt den Memo-Weg", () => {
     // Zuruf bliebe dauerhaft bei 403, obwohl der Mensch zugestimmt hat.
     const spion = modellSpion();
     const k = await aufbau({ modell: spion.modell });
+    expect((await k.zuruf()).statusCode).toBe(200);
+    expect(await k.widerrufen()).toBe(200);
     expect((await k.zuruf()).statusCode).toBe(403);
     expect(await k.zustimmen()).toBe(200);
     expect((await k.zuruf()).statusCode).toBe(200);
@@ -318,8 +321,8 @@ describe("JOB 3110 · M2b · der gebaute Server kennt den Memo-Weg", () => {
     const nachWiderruf = await k.zuruf();
     expect(nachWiderruf.statusCode, "der Widerruf wirkt auf dem Memo-Weg nicht").toBe(403);
     expect(nachWiderruf.json().error).toBe("CONSENT_MISSING");
-    // Gerufen wurde das Modell genau einmal: im Fenster zwischen Zustimmung und Widerruf.
-    expect(spion.aufrufe).toHaveLength(1);
+    // Genau die erste Anfrage mit Standardfreigabe und die ausdrückliche Wiederfreigabe.
+    expect(spion.aufrufe).toHaveLength(2);
     await k.app.close();
   });
 

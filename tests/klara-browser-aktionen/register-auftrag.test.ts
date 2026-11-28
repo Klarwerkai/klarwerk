@@ -283,6 +283,6 @@ describe("BPA-03 · manuelle Übergabe statt simuliertem Erfolg", () => {
     );
     // Kennwort-, Einmalcode- und Dateifelder sind gesperrt; CAPTCHA wird nur erkannt.
     expect(code).toContain('el.type === "password"');
-    expect(code).toContain('"one-time-code"');
+    expect(code).toContain("document.querySelectorAll(\"input[autocomplete='one-time-code']\")");
   });
 });
