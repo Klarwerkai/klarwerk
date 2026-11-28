@@ -225,6 +225,13 @@ beforeEach(async () => {
     payload: { ...CONTROLLER, role: "controller" },
   });
   expect(angelegt.statusCode, angelegt.body).toBe(201);
+  const niveau = await app.inject({
+    method: "PUT",
+    url: `/api/users/${angelegt.json().id}`,
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: { freigabe: "streng_vertraulich" },
+  });
+  expect(niveau.statusCode, niveau.body).toBe(200);
   token = adminToken;
   brueckeAufbauen();
 });
@@ -345,6 +352,7 @@ describe("Q3d · der Doppelhinweis kommt ZUSÄTZLICH — die Bibliothek bleibt r
     await klick(finde('[data-testid="pruefen-menue-karte"]'));
     await klick(knopfMitText(de("val.markTrue")));
     await klick(knopfMitText(de("val.markTrueYes")));
+    await klick(finde('[data-testid="pruefen-dublettenfrage-ja"]'));
     await klick(finde('[data-testid="pruefen-stufenfrage-wahl-intern"]'));
     await warteBis(async () => (await koLesen(koId)).status === "validiert");
 

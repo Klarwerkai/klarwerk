@@ -58,7 +58,7 @@ async function anlegen(
     payload: {
       confidentiality: "intern",
       title: titel,
-      statement: "Kurzfassung fuer den Pruefstand.",
+      statement: titel,
       type: "best_practice",
       category: kategorie,
       tags: [...tags],

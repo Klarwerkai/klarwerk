@@ -99,7 +99,7 @@ describe("R-0507 · wer verantwortlich ist, wer geprüft und wer freigegeben hat
     expect(freigabe, "die Eigentümerin sieht den Freigabeweg nicht").not.toBeNull();
     expect(rueckgabeKnopf(), "die Rückgabe bleibt daneben erhalten").not.toBeNull();
     await ausloesen(freigabe as HTMLButtonElement);
-    expect(netz.aufrufe).toEqual([{ action: "owner-validate" }]);
+    expect(netz.aufrufe).toEqual([{ action: "owner-validate", expectedVersion: 3 }]);
   });
 
   it("V6 · ohne Freigaberecht oder bei bereits freigegebenem Objekt kein Freigabeknopf", async () => {
