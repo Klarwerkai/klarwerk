@@ -168,6 +168,10 @@ describe("JOB 4061 · jede registrierte Route ist abgenommen", () => {
       "POST /api/auth/login",
       "POST /api/auth/setup",
       "POST /api/auth/office-handover/redeem",
+      // Die bestehende Desktop-Journalprüfung fährt Anmeldung, einzelne bestätigte Schritte
+      // und den echten Reset. Auf dieser Speicherbühne fehlt der Desktop-SSO-Betrieb.
+      "GET /api/admin/factory-reset/sso/start",
+      "POST /api/admin/factory-reset/sso",
     ];
     const baulich = NICHT_ABGENOMMEN.filter((e) => e.art === "baulich").map(
       (e) => `${e.methode} ${e.pfad}`,
@@ -223,7 +227,9 @@ describe("JOB 4061 · jede registrierte Route ist abgenommen", () => {
   it("E8: beide Abdeckungsumfänge stehen getrennt da — Gruppen UND Endpunkte", () => {
     const erhebung = erhebeRoutengruppen();
     const gruppen = erhebung.gruppen.length;
-    const gruppenGedeckt = new Set(TABELLE.map((z) => z.gruppe).filter((g) => g !== DIREKT)).size;
+    const gruppenGedeckt = new Set(
+      [...TABELLE, ...SCHREIB_TABELLE].map((z) => z.gruppe).filter((g) => g !== DIREKT),
+    ).size;
     const endpunkte = eigenstaendig().length;
     // RUNDE 2, Korrekturpflicht 1, zweiter Halbsatz: gezählt werden UNTERSCHIEDLICHE registrierte
     // Türen, nicht Tabellenzeilen. Stünde hier `TABELLE.length`, würden zwei Zeilen auf derselben

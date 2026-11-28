@@ -166,6 +166,10 @@ describe("JOB 4015 · unbekannte Rolle sperrt", () => {
       const guards = makeGuards(buehne.services.auth);
       const gemessen: { status?: number; rumpf?: unknown } = {};
       const reply = {
+        // requireUser setzt den Rechtekontext-Kopf vor der eigentlichen Rollenprüfung.
+        header() {
+          return this;
+        },
         code(status: number) {
           gemessen.status = status;
           return this;

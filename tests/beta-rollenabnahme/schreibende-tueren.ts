@@ -42,6 +42,7 @@
 // `NICHT_ABGENOMMEN`; eine stille Auslassung gibt es nicht (E2 verbietet sie).
 import type { FastifyInstance } from "fastify";
 import { lokalisierungsPaket } from "../../services/app/src/lesevarianten";
+import { totpCode, totpSchritt } from "../../services/auth";
 import { AKTEURE, type Akteur, type Buehne, PASSWORT, ROLLEN, type Rolle } from "./buehne";
 import {
   AB_CONTROLLER,
@@ -1051,7 +1052,110 @@ async function merkeVorliebe(buehne: Buehne, rolle: Rolle): Promise<string> {
 // DIE TABELLE DER SCHREIBENDEN TÜREN. Reihenfolge nach Nutzerweg: zuerst, was den BESTAND ändert.
 // ------------------------------------------------------------------------------------------------
 
+// Jeder Faktorvorgang gehört einem neuen Bühnenkonto. Auch der anonyme Aufruf erhält bei
+// Bestätigung und Abschaltung dieselbe gültige Nutzlast wie die vier Sitzungen. Damit misst
+// seine 401 tatsächlich die fehlende Sitzung und nicht einen unbrauchbaren Testcode.
+function faktorVorgang(art: "confirm" | "disable" | "login") {
+  return async (buehne: Buehne, akteur: Akteur): Promise<Vorgang> => {
+    const auth = buehne.services.auth;
+    const konto = buehne.konto[akteur === "anonym" ? "viewer" : akteur];
+    const { secret } = await auth.secondFactorSetupStart(konto.id, PASSWORT);
+    const aktiverFaktor = async () => (await auth.secondFactorStatus(konto.id)).active;
+    const code = () => totpCode(secret, totpSchritt(Date.now()));
+    if (art === "confirm") {
+      return {
+        pfad: "/api/auth/second-factor/confirm",
+        payload: { code: code() },
+        bestand: aktiverFaktor,
+        wirkung: {
+          beschreibung: "Der eigene zweite Faktor ist aktiv.",
+          eingetreten: (wert) => wert === true,
+        },
+      };
+    }
+    // Der Dienst akzeptiert auch den vorigen Taktschritt. Nur dieser wird bei der Einrichtung
+    // verbraucht; der aktuelle bleibt für die Abschaltung bzw. den Anmeldeschritt frei.
+    await auth.secondFactorSetupConfirm(konto.id, totpCode(secret, totpSchritt(Date.now()) - 1));
+    if (art === "disable") {
+      return {
+        pfad: "/api/auth/second-factor/disable",
+        payload: { password: PASSWORT, code: code() },
+        bestand: aktiverFaktor,
+        wirkung: {
+          beschreibung: "Der eigene zweite Faktor ist abgeschaltet.",
+          eingetreten: (wert) => wert === false,
+        },
+      };
+    }
+    const erster = await auth.anmelden({ email: konto.email, password: PASSWORT });
+    if (!("secondFactor" in erster))
+      throw new Error("Der Passwortschritt hat keine Faktorprüfung eröffnet.");
+    const protokoll = async () =>
+      (await buehne.services.audit.list({ action: "auth.login", target: konto.id })).filter(
+        (ereignis) => ereignis.payload?.method === "password+totp",
+      ).length;
+    return {
+      pfad: "/api/auth/login/second-factor",
+      payload: { challenge: erster.secondFactor.challenge, code: code() },
+      bestand: protokoll,
+      wirkung: {
+        beschreibung:
+          "Eine neue Anmeldung des vorbereiteten Kontos mit Passwort und zweitem Faktor wurde protokolliert.",
+        eingetreten: (wert) => wert === 1,
+      },
+    };
+  };
+}
+
 export const SCHREIB_TABELLE: Schreibzeile[] = [
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    route: "/api/auth/second-factor/setup",
+    belegstelle: "services/auth/src/routes.ts:729",
+    tor: "Eigene Sitzung und eigenes Passwort",
+    erwartet: ANGEMELDET,
+    codes: { "401": AUTH_401 },
+    erfolg: [200],
+    ruesten: async () => ({
+      pfad: "/api/auth/second-factor/setup",
+      payload: { password: PASSWORT },
+    }),
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    route: "/api/auth/second-factor/confirm",
+    belegstelle: "services/auth/src/routes.ts:751",
+    tor: "Eigene Sitzung und gültiger Einrichtungscode",
+    erwartet: ANGEMELDET,
+    codes: { "401": AUTH_401 },
+    erfolg: [200],
+    ruesten: faktorVorgang("confirm"),
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    route: "/api/auth/second-factor/disable",
+    belegstelle: "services/auth/src/routes.ts:771",
+    tor: "Eigene Sitzung, eigenes Passwort und frischer Zeitcode",
+    erwartet: ANGEMELDET,
+    codes: { "401": AUTH_401 },
+    erfolg: [200],
+    ruesten: faktorVorgang("disable"),
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    route: "/api/auth/login/second-factor",
+    belegstelle: "services/auth/src/routes.ts:681",
+    tor: "Eigene Anmeldeanfrage und frischer Zeitcode",
+    erwartet: OEFFENTLICH(
+      "Der zweite Anmeldeschritt erzeugt erst die Sitzung. Er setzt den erfolgreichen Passwortschritt und den Einmalcode des zugehörigen Kontos voraus.",
+    ),
+    erfolg: [200],
+    ruesten: faktorVorgang("login"),
+  },
   // --- Wissensobjekte ---------------------------------------------------------------------------
   {
     gruppe: "koRoutes",
