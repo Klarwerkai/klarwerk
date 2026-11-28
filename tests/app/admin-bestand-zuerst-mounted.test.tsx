@@ -93,7 +93,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 // JOB 3337: die Zahl der Themen wird gelesen, nicht abgeschrieben (siehe Fall „4 TABSTRUKTUR").
-import { ADMIN_SECTIONS } from "../../apps/web/src/lib/adminSections";
+import { ADMIN_SECTIONS, adminHref } from "../../apps/web/src/lib/adminSections";
 import { Admin } from "../../apps/web/src/pages/Admin";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -330,18 +330,15 @@ describe("JOB 1110 D1 · Konten-Tab: erst der Bestand, dann das Formular", () =>
     );
   });
 
-  it("4 TABSTRUKTUR · sieben Themen, die Kontenadresse zeichnet Benutzer und Rollen aus", async () => {
+  it("4 TABSTRUKTUR · alle Verwaltungsthemen sind erreichbar, die Kontenadresse zeichnet Benutzer und Rollen aus", async () => {
     await mount();
-    // JOB 3337 (Pedi 08.09.): aus den vier Behältern sind die sieben Themen der Vorlage geworden
-    // (Benutzer und Rollen · KI · Quellen und Daten · Vorführdaten · Sicherheit und Nachweise ·
-    // Berichte und Analyse · System). Die Zusage dieses Falls bleibt dieselbe: die Themenspalte
-    // steht — die ZAHL wird aus `ADMIN_SECTIONS` gelesen, nicht mehr abgeschrieben, damit das
-    // nächste Thema hier keine zweite Wahrheit braucht.
     // ADMIN-01: der Einstieg `/admin` ist seither die Übersicht (gemessen in
     // `tests/admin-navigation/adressierbarkeit.test.tsx`, D5); hier steht die Kontenadresse, und
     // sie zeichnet genau dieses Thema aus.
-    const tabs = [...container.querySelectorAll('button[data-einst="reiter"]')];
-    expect(tabs).toHaveLength(ADMIN_SECTIONS.length);
+    const tabs = [...container.querySelectorAll('[data-einst="reiter"]')];
+    expect(tabs.map(text)).toEqual(ADMIN_SECTIONS.map((thema) => i18n.t(thema.labelKey)));
+    const funktionen = tabs.find((tab) => text(tab) === i18n.t("funktionskatalog.nav"));
+    expect(funktionen?.getAttribute("href")).toBe(adminHref("funktionen"));
     const konten = tabs.find((b) => text(b) === i18n.t("adm.sec.konten"));
     expect(konten?.getAttribute("aria-pressed")).toBe("true");
   });
