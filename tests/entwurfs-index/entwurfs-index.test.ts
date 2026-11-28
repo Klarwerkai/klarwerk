@@ -269,8 +269,10 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
 
     const fuerBodo = await gleicherInhalt(app, bodo, fremd.id);
     expect(fuerBodo.json.entwuerfe).toEqual([]);
-    // Und einen fremden privaten Entwurf kann Bodo gar nicht erst befragen.
-    expect((await gleicherInhalt(app, bodo, eins.id)).status).toBe(403);
+    // Und einen fremden privaten Entwurf kann Bodo gar nicht erst befragen — für ihn gibt es ihn
+    // nicht (aufnahme:20260922:gesamt-leserechte, Entscheidung J24: 404 statt 403, damit keine
+    // Existenzauskunft; `requireVisibleDraft` in capture-routes.ts).
+    expect((await gleicherInhalt(app, bodo, eins.id)).status).toBe(404);
   });
 
   it("E7 · Papierkorb blendet aus, Wiederherstellen bringt zurück, endgültiges Löschen nimmt den Index mit", async () => {

@@ -76,7 +76,7 @@ export default {
       "Termine oder Geltungsbereiche widersprechen sich. Vor einer fachlichen Annahme klären; ein jüngerer Beleg ersetzt den anderen nicht.",
     "normereignisse.annahme": "Fachliche Ablösung dokumentieren",
     "normereignisse.annahmeHilfe":
-      "Wähle eine belegte bisherige Fassung und den heute freigegebenen Nachfolger aus der gespeicherten Normzuordnung.",
+      "Wähle aus der gespeicherten Normzuordnung die belegte bisherige Fassung und die heute freigegebene Nachfolgefassung.",
     "normereignisse.bisher": "Bisherige Anleitungsfassung",
     "normereignisse.nachfolger": "Freigegebene Nachfolgefassung",
     "normereignisse.fassung": "{{titel}} · Fassung {{fassung}}",

@@ -25,6 +25,7 @@ function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
     author: "anna",
     neededValidations: 3,
     assignments: [],
+    sources: [],
     asset: null,
     createdAt: "2026-01-01",
     history: [],

@@ -275,12 +275,16 @@ describe("aistate-fix4 · Read-Pfad fail-closed über die ECHTEN Routen", () => 
   it("ein per Alt-/Fehlerzustand entstandener stale Befund taucht NIE in Board/Badge auf; Altbestand ohne Versionsfelder bleibt sichtbar", async () => {
     const services = buildServices();
     const { app, headers } = await appWithUser(services);
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Entscheidung 16): „intern" ausdrücklich —
+    // nur ausdrücklich interner Inhalt steht wörtlich im Board (`feldFreigabe`); eine ungeklärte
+    // Stufe würde die Beschreibung des Befunds redigieren.
     const a = await services.ko.create({
       type: "best_practice",
       category: "K",
       author: "u1",
       title: "Ventilfarbe Anlage 3",
       statement: "Das Ventil ist rot.",
+      confidentiality: "intern",
     });
     const b = await services.ko.create({
       type: "best_practice",
@@ -288,6 +292,7 @@ describe("aistate-fix4 · Read-Pfad fail-closed über die ECHTEN Routen", () => 
       author: "u1",
       title: "Ventilkennzeichnung Halle",
       statement: "Das Ventil ist blau.",
+      confidentiality: "intern",
     });
 
     // Simulierter Fehlerzustand aus der Vor-fix4-Welt: ein OFFENER Befund, dessen gebundene
