@@ -19,14 +19,37 @@ import {
 // bleibt der 240-Sekunden-Grenze unterworfen. GitHub gestattet maximal 256 Matrixjobs.
 const EINZELGRENZE = 64;
 const DATEIEN_PRO_TEIL = 16;
+// Diese vollständigen Einzeldateien erreichten in den GitHub-/Gesamtläufen 53–235 Sekunden.
+// In einem Paket mit weiteren Suiten traten echte Abbrüche nach 240 Sekunden auf.
+const EIGENER_RUNNER = new Set([
+  "tests/app/modalgrenze-abweichende-bauformen.test.ts",
+  "tests/beta-rollenabnahme/schreibende-tueren-am-draht.test.ts",
+  "tests/capture/aufrufer-waechter.test.ts",
+  "tests/structure/fremddoppelungen-kd-capture.test.ts",
+  "tests/tor-inventar/browserdeckel.test.ts",
+  "tests/wiki-bearbeitungsreservierung/hinweis-in-der-flaeche.test.tsx",
+]);
 
 export function aufteilung(tests) {
   assert(tests.length > 0 && new Set(tests).size === tests.length, "Testauswahl leer oder doppelt");
   if (tests.length < EINZELGRENZE) return [];
-  const anzahl = Math.min(255, Math.ceil(tests.length / DATEIEN_PRO_TEIL));
-  const teile = Array.from({ length: anzahl }, (_, i) => ({ id: `test-${i + 1}`, tests: [] }));
-  tests.forEach((test, i) => teile[i % anzahl].tests.push(test));
-  return [{ id: "vorstufen", tests: [] }, ...teile];
+  // Der Wiederherstellungsdrill lag einzeln bei über 570 Sekunden. Jeder fachliche Abschnitt
+  // misst den echten Shellablauf und erhält bei großen PRs die ganze Stufenzeit.
+  const langsam = tests.filter(
+    (p) =>
+      EIGENER_RUNNER.has(p) || /^tests\/backup-drill\/restore-drill(?:-[^/]+)?\.test\.ts$/.test(p),
+  );
+  const einzeln = new Set(langsam);
+  const normal = tests.filter((p) => !einzeln.has(p));
+  const anzahl = Math.ceil(normal.length / DATEIEN_PRO_TEIL);
+  assert(langsam.length + anzahl <= 255, "mehr Pflichtteile als GitHub-Matrixplätze");
+  const gruppen = Array.from({ length: anzahl }, () => []);
+  normal.forEach((test, i) => gruppen[i % anzahl].push(test));
+  gruppen.push(...langsam.map((p) => [p]));
+  return [
+    { id: "vorstufen", tests: [] },
+    ...gruppen.map((tests, i) => ({ id: `test-${i + 1}`, tests })),
+  ];
 }
 
 function stufen(teil) {

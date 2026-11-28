@@ -53,6 +53,20 @@ function probe() {
     assert.equal(teile.length, Math.ceil(n / 16) + 1);
     assert(teile.every((t) => t.tests.length <= 16));
   }
+  const langsam = [
+    "tests/backup-drill/restore-drill.test.ts",
+    "tests/backup-drill/restore-drill-belege.test.ts",
+    "tests/app/modalgrenze-abweichende-bauformen.test.ts",
+    "tests/tor-inventar/browserdeckel.test.ts",
+    "tests/capture/aufrufer-waechter.test.ts",
+  ];
+  const gemischt = [
+    ...langsam,
+    ...Array.from({ length: 64 - langsam.length }, (_, i) => `tests/fall-${i}.test.ts`),
+  ];
+  const teile = aufteilung(gemischt);
+  assert.deepEqual(teile.flatMap((t) => t.tests).sort(), [...gemischt].sort());
+  for (const p of langsam) assert.deepEqual(teile.find((t) => t.tests.includes(p)).tests, [p]);
   for (const status of ["cancelled", "failure", "skipped"]) {
     assert.throws(() => laufzustand(true, status, "success"));
     assert.throws(() => laufzustand(true, "success", status));
