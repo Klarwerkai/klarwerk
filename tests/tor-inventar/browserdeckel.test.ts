@@ -1,5 +1,6 @@
 // JOB 3150: echte Unterprozesse, aber markierte Lastsonden statt Chromium/Servern.
-// V0 misst die heutige Verdrahtung vor dem Bau; F6 kalibriert dieselben Fenster ohne Deckel.
+// V0 misst die ungeschützte Überschneidung an beiden normalen Einstiegspunkten im Prüfwerk.
+// F6 misst die Gegenprobe an den direkten Aufrufen des Deckels.
 // GRENZE DER MESSUNG am Diagnosezweig des Schlosses (tools/browserdeckel.sh:284-307): gemessen
 // sind ENOENT nach echtem Entfernen (F26/F26c), ENOENT trotz liegendem Eintrag (F31/F31c),
 // EACCES (F27/F28) und ELOOP (F30/F30b/F30c). NICHT gemessen ist EIO: ein Ein-/Ausgabefehler
@@ -39,7 +40,7 @@ function werk() {
   const ort = mkdtempSync(join(werkbank, "werk-"));
   mkdirSync(join(ort, "tools"));
   mkdirSync(join(ort, "node_modules/.bin"), { recursive: true });
-  for (const name of ["test", "browserdeckel.sh"]) {
+  for (const name of ["test", "browserdeckel.sh", "test-zahl.mjs"]) {
     if (existsSync(join(WURZEL, "tools", name))) {
       copyFileSync(join(WURZEL, "tools", name), join(ort, "tools", name));
     }
@@ -50,17 +51,38 @@ function werk() {
     sonde,
     `
 const fs = require('node:fs');
+const { pathToFileURL } = require('node:url');
 const art = process.env.KLARWERK_TESTGRUPPE || 'smoke';
-const von = Date.now();
-fs.writeFileSync(process.env.SONDENPFAD + '/' + art + '.start', String(von));
-setTimeout(() => {
+async function messen() {
+  const reporterArg = process.argv.slice(2).find((arg) =>
+    arg.startsWith('--reporter=') && arg.endsWith('/tools/test-zahl.mjs'));
+  let reporter;
+  if (reporterArg) {
+    const url = pathToFileURL(reporterArg.slice('--reporter='.length));
+    const { default: TestZahl } = await import(url.href);
+    reporter = new TestZahl();
+  }
+  reporter?.onInit();
+  const von = Date.now();
+  fs.writeFileSync(process.env.SONDENPFAD + '/' + art + '.start', String(von));
+  if (process.env.SONDENPAAR_ABWARTEN === '1' && art !== 'rest') {
+    const partner = art === 'browser' ? 'smoke' : 'browser';
+    const frist = Date.now() + 5000;
+    while (!fs.existsSync(process.env.SONDENPFAD + '/' + partner + '.start')) {
+      if (Date.now() >= frist) throw new Error('Zweite Lastsonde ist nicht gestartet: ' + partner);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  await new Promise((r) => setTimeout(r, art === 'rest' ? Number(process.env.REST_MS || 0) : 800));
   fs.writeFileSync(process.env.SONDENPFAD + '/' + art + '.json',
     JSON.stringify({datei: art, von, bis: Date.now()}));
-}, art === 'rest' ? Number(process.env.REST_MS || 0) : 800);
+  reporter?.onFinished([{ tasks: [{ result: { state: 'pass' } }] }]);
+}
+messen().catch((error) => { console.error(error); process.exitCode = 1; });
 `,
   );
   for (const name of ["npx", "playwright"]) {
-    writeFileSync(join(ort, "node_modules/.bin", name), '#!/bin/sh\nexec node "$SONDE"\n', {
+    writeFileSync(join(ort, "node_modules/.bin", name), '#!/bin/sh\nexec node "$SONDE" "$@"\n', {
       mode: 0o755,
     });
   }
@@ -110,7 +132,11 @@ async function warteBis(bedingung: () => boolean) {
 
 async function paar(verdrahtet: boolean, aus = false) {
   const { ort, env } = werk();
-  const umgebung = { ...env, KLARWERK_BROWSERDECKEL: aus ? "0" : "1" };
+  const umgebung = {
+    ...env,
+    KLARWERK_BROWSERDECKEL: aus ? "0" : "1",
+    SONDENPAAR_ABWARTEN: aus ? "1" : "0",
+  };
   const browser = starte(
     ort,
     umgebung,
@@ -181,15 +207,11 @@ function fensterAusProtokoll(datei: string, mitMesslaeufen = false): Fenster[] {
 }
 
 describe("JOB 3150 · Browserdeckel", () => {
-  it.runIf(process.env.KLARWERK_VORHER_MESSUNG === "1")(
-    "V0 · Vorher-Beleg am unveränderten Aufrufweg",
-    async () => {
-      const lauf = await paar(true);
-      const paare = ueberlappendePaare(lauf.fenster);
-      console.log(`VORHER ${paare.join("\n")}`);
-      expect(paare).toHaveLength(1);
-    },
-  );
+  it("V0 · ohne Deckel überlappen die Lastsonden aus tools/test und npm-Smoke", async () => {
+    const lauf = await paar(true, true);
+    expect(lauf.ausgabe).toContain("⚠ Browserdeckel aus — nur für Messungen");
+    expect(ueberlappendePaare(lauf.fenster)).toHaveLength(1);
+  });
 
   it("F1 · zwei direkte Unterprozesse laufen seriell", async () => {
     const lauf = await paar(false);
@@ -197,6 +219,29 @@ describe("JOB 3150 · Browserdeckel", () => {
     expect(
       ueberlappendePaare(fensterAusProtokoll(join(lauf.ort, ".local/run/browserdeckel.jsonl"))),
     ).toEqual([]);
+  });
+
+  it("ein belegtes Schloss bleibt auch bei einem falschen Erfolg der mkdir-CLI belegt", async () => {
+    const { ort, env } = werk();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    mkdirSync(lock);
+    const halter = join(lock, `pid-${process.pid}`);
+    writeFileSync(halter, `${process.pid} 1 browser echter-halter\n`);
+    const hook = join(ort, "mkdir-meldet-erfolg.bash");
+    writeFileSync(
+      hook,
+      'mkdir() { if [ "$1" = "$KLARWERK_BROWSERDECKEL_LOCK" ] && [ -d "$1" ]; then return 0; fi; command mkdir "$@"; }\n',
+    );
+    const lauf = await starte(
+      ort,
+      { ...env, BASH_ENV: hook, KLARWERK_BROWSERDECKEL_TIMEOUT: "1" },
+      "./tools/browserdeckel.sh",
+      ["smoke", "node", env.SONDE],
+    ).fertig;
+    expect(lauf.code).toBe(1);
+    expect(lauf.stderr).toContain(`Zeitgrenze 1s: PID ${process.pid} hält`);
+    expect(existsSync(halter)).toBe(true);
+    expect(existsSync(join(ort, "smoke.start"))).toBe(false);
   });
 
   it("F1 · tools/test und npm-Smoke laufen unter demselben Deckel", async () => {
@@ -768,15 +813,6 @@ rm() {
   fi
   command rm "$@"
 }
-mkdir() {
-  local rc=0
-  command mkdir "$@" || rc=$?
-  if [ "$1" = "$KLARWERK_BROWSERDECKEL_LOCK" ] && [ -f "$SONDENPFAD/verloren-$LAUF" ]; then
-    printf '%s %s\\n' "$LAUF" "$rc" >> "$SONDENPFAD/runden"
-    : > "$SONDENPFAD/runde-$LAUF"
-  fi
-  return "$rc"
-}
 sleep() {
   if [ "$1" = 0.1 ] && [ -f "$SONDENPFAD/rm-$LAUF" ]; then
     if [ "$WEITERE_RUNDE" = 1 ] && [ -f "$SONDENPFAD/verloren-$LAUF" ] && [ ! -f "$SONDENPFAD/runde-$LAUF" ]; then
@@ -788,6 +824,15 @@ sleep() {
   command sleep "$@"
 }
 node() {
+  if [ "\${3:-}" = "$KLARWERK_BROWSERDECKEL_LOCK" ] && [[ "\${2:-}" = *mkdirSync* ]]; then
+    local rc=0
+    command node "$@" || rc=$?
+    if [ -f "$SONDENPFAD/verloren-$LAUF" ]; then
+      printf '%s %s\\n' "$LAUF" "$rc" >> "$SONDENPFAD/runden"
+      : > "$SONDENPFAD/runde-$LAUF"
+    fi
+    return "$rc"
+  fi
   if [ "\${3:-}" = "$PIDZIEL" ]; then
     vor_entfernen
     local rc=0
@@ -1483,7 +1528,7 @@ fs.openSync = function(pfad, ...args) {
       .join("\n");
     const warten = code.slice(code.indexOf('if [ "$an" = 1 ]; then'));
     expect(warten.match(/\bwhile\b/g)).toHaveLength(1);
-    expect(warten.match(/\bmkdir\b/g)).toHaveLength(1);
+    expect(warten.match(/\bmkdirSync\b/g)).toHaveLength(1);
     expect(warten.match(/\brmdir\b/g)).toHaveLength(1);
   });
 

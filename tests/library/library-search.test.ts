@@ -55,6 +55,13 @@ describe("SCRUM-245: librarySearch", () => {
     expect(typeOnly.matches).toContain("type");
   });
 
+  it("sucht auch in einem Altbestand ohne gespeicherte Kategorie", () => {
+    const alt = ko({ title: "Ventil" });
+    Reflect.deleteProperty(alt, "category");
+    expect(searchLibrary([alt], "ventil")[0]?.matches).toEqual(["title"]);
+    expect(searchLibrary([alt], "kein-treffer")[0]?.score).toBe(0);
+  });
+
   it("Trust/Status nur als Tie-Breaker bei gleichem Score", () => {
     // Beide nur Text-Treffer (gleicher Score) → validiert + höherer Trust zuerst.
     const low = ko({ id: "low", statement: "ventil", status: "offen", trust: 10 });

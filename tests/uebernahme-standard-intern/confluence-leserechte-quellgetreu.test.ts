@@ -29,7 +29,11 @@ import { darfSehen } from "../../services/app/src/sichtbarkeit";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
-import { LibraryService, groupingRequiresConfidential } from "../../services/library-analytics";
+import {
+  InMemoryExternalSourceRepo,
+  LibraryService,
+  groupingRequiresConfidential,
+} from "../../services/library-analytics";
 import { adapterFromConfig } from "../support/confluence-adapter";
 
 const OPTS = { baseUrl: "https://acme.atlassian.net/wiki", spaceKey: "K" };
@@ -440,9 +444,11 @@ describe("R-0182/R-0649 · geänderte Quellversion", () => {
 
   it("Q6 · reine Rechteänderung ohne neue Seitenversion: die frühere Beobachtung setzt nichts zurück", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const externalSources = new InMemoryExternalSourceRepo();
     const library = new LibraryService({
       koService,
       externalUpsert: true,
+      externalSources,
       quellLeserAufloesen: async (emails) => emails.map((e) => `konto:${e}`),
     });
     // Dieselbe Version 3 — zuerst offen beobachtet, später beschränkt (Confluence zählt bei einer
@@ -457,6 +463,7 @@ describe("R-0182/R-0649 · geänderte Quellversion", () => {
     const zweiterLauf = new LibraryService({
       koService,
       externalUpsert: true,
+      externalSources,
       quellLeserAufloesen: async (emails) => emails.map((e) => `konto:${e}`),
     });
     const [spaeterKandidat] = await zweiterLauf.createImportCandidates(spaet.items, "importeur");

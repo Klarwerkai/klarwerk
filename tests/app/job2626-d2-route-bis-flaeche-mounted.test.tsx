@@ -20,8 +20,8 @@
 // `fetch → app.inject`). Keine Antwort wird eingespeist, kein Endpunkt gemockt.
 //
 // DIE FAELLE:
-//   R1 · Pedis Fall — ein Dokument mit DREI zuen Toren (nicht validiert, keine Stufe, kein Volltext),
-//        Frage trifft es, keine Antwort → an der Flaeche stehen Titel UND alle drei Torwoerter.
+//   R1 · Ohne Einstufung bleibt selbst der Titel am Modellweg verborgen. Bei ausdrücklich interner
+//        Einstufung zeigt die Oberfläche die beiden belegten Gründe Freigabe und Volltext.
 //   G-a · genau EIN Tor zu (validiert, Stufe „intern", kein Volltext) → genau ein Torwort, nicht drei.
 //   G-b · fehlender Betrachter — dieselbe Frage ohne Sitzung: die Route weist ab (401), die Flaeche
 //        zeigt keine Torlage und stuerzt nicht; und am Endpunkt selbst: ohne Betrachter fehlt das Feld.
@@ -279,34 +279,38 @@ afterEach(() => {
 });
 
 describe("JOB 2626 D2 · von der echten Route bis zur gemounteten Ask-Flaeche — kein eingespeister Payload", () => {
-  it("R1 · Pedis Fall: ein Dokument mit DREI zuen Toren → die Flaeche zeigt Titel und ALLE drei Gruende, aus dem realen Routen-Response", async () => {
+  it("R1 · ohne Einstufung nennt die Antwort keine Dokumentdaten", async () => {
     const { services, autorId } = await serverStarten();
     await dokument(services, autorId);
     const c = await askMounten();
     await fragen(c, FRAGE);
-
-    // Der reale Response, den die Flaeche bekam — beobachtet an der Bruecke, nicht eingespeist.
     const antwort = letzteAskAntwort();
     expect(antwort.status).toBe(200);
-    expect(
-      (antwort.body.result as { answered: boolean }).answered,
-      "der Prueffall traegt nur als Nicht-Antwort",
-    ).toBe(false);
-    expect(
-      antwort.body.verschlossen,
-      "die Route hat die Torlage nicht geliefert — der Betrachter kam nicht bis zum Dienst",
-    ).toBeDefined();
+    expect((antwort.body.result as { answered: boolean }).answered).toBe(false);
+    expect(antwort.body.verschlossen).toEqual([]);
+    expect(c.textContent).toContain(i18n.t("ask.noBasisTitle"));
+    expect(c.textContent).not.toContain(TITEL);
+    expect(torlage(c)).toBeNull();
+    await bruecke.app.close();
+  });
 
-    // Die Flaeche, dort wo der Mensch liest.
-    expect(c.textContent ?? "").toContain(i18n.t("ask.noBasisTitle"));
+  it("R1 · ein interner Treffer ohne Freigabe und Volltext zeigt beide Gründe", async () => {
+    const { services, autorId } = await serverStarten();
+    const id = await dokument(services, autorId, { stufe: "intern" });
+    const c = await askMounten();
+    await fragen(c, FRAGE);
+    const antwort = letzteAskAntwort();
+    expect(antwort.status).toBe(200);
+    expect((antwort.body.result as { answered: boolean }).answered).toBe(false);
+    expect(antwort.body.verschlossen).toMatchObject([
+      { id, title: TITEL, freigabeFehlt: true, stufeFehlt: false, volltextFehlt: true },
+    ]);
     const lage = torlage(c);
-    expect(lage, "die Torlage fehlt in der Antwortflaeche").not.toBeNull();
     expect(lage?.closest('[data-testid="ask-result-anchor"]')).not.toBeNull();
-    const text = lage?.textContent ?? "";
-    expect(text).toContain(TITEL);
-    expect(text, "Tor „Freigabe“ fehlt").toContain(TOR.freigabe());
-    expect(text, "Tor „Stufe“ fehlt").toContain(TOR.stufe());
-    expect(text, "Tor „Volltext“ fehlt").toContain(TOR.volltext());
+    expect(lage?.textContent).toContain(TITEL);
+    expect(lage?.textContent).toContain(TOR.freigabe());
+    expect(lage?.textContent).toContain(TOR.volltext());
+    expect(lage?.textContent).not.toContain(TOR.stufe());
     await bruecke.app.close();
   });
 
@@ -354,7 +358,7 @@ describe("JOB 2626 D2 · von der echten Route bis zur gemounteten Ask-Flaeche �
   it("G-c · GEGENPROBE answered=true: die Frage IST der Titel, der Bestand traegt → Antwort sichtbar, keine Torlage — ueber den realen Response", async () => {
     const { services, autorId } = await serverStarten();
     // R-0278 (Nacharbeit 3): eine Antwort trägt nur Freigegebenes — das Tor „Freigabe" ist hier offen.
-    await dokument(services, autorId, { validiert: true });
+    await dokument(services, autorId, { validiert: true, stufe: "intern" });
     const c = await askMounten();
     await fragen(c, `${TITEL} Zustaendigkeit`);
     const antwort = letzteAskAntwort();

@@ -71,7 +71,7 @@ const ELEMENTE = `([pfadFnSrc]) => {
   const titel = q('[data-einst="titel"]');
   const spalte = q('[data-einst="reiterspalte"]');
   const reiterAktiv = q('[data-einst="reiter"][aria-pressed="true"]');
-  const karte = q('[data-einst="karte"]');
+  const karte = q('[data-testid="flaeche-nutzer"]');
   const zeilen = karte ? [...karte.querySelectorAll('[data-einst="zeile"]')] : [];
   const zeile = zeilen[0] || null;
   // Die Trennlinie steht zwischen zwei Zeilen — an der LETZTEN gibt es sie im Zielbild (Z.49) so
@@ -114,7 +114,9 @@ describe.runIf(existsSync(ZIELBILD))(
       if (stand.fehler === null && stand.seite) {
         // Auf die erste Zeile warten: die Nutzerliste kommt aus dem echten `/api/users`.
         await stand.seite.waitForFunction(
-          fn(`() => document.querySelectorAll('[data-einst="zeile"]').length > 0`),
+          fn(
+            `() => document.querySelector('[data-testid="flaeche-nutzer"] [data-einst="zeile"] [data-einst="chevron"]') !== null`,
+          ),
           undefined,
           { timeout: 30_000 },
         );

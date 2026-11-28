@@ -337,6 +337,7 @@ describe("KA4 · D2 · der erlaubte Zweig laesst Vertrauliches NICHT durch", () 
     });
     // Ein offenes Objekt zur selben Frage — die Kalibrierung.
     const offen = await koService.create({
+      confidentiality: "intern",
       title: "Xylophon Wartung Grundlagen",
       statement: "Die Xylophon-Wartung beginnt mit der Sichtpruefung.",
       type: "best_practice",

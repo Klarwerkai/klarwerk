@@ -97,7 +97,7 @@ und zeigt sie unter *System → Sicherung → Restore-Nachweis*. Grün („Erfol
 bei Exit 0, nachgerechneter Prüfsumme, genanntem Ziel und `gleich` in allen vier Kategorien; Exit 0
 mit einer nicht gemessenen Kategorie heißt „Teilweise belegt". Ein Archiv oder eine Prüfsummendatei
 allein ergibt nie eine grüne Restore-Aussage. Belege:
-`tests/backup-drill/restore-drill.test.ts` (Protokoll je Ausgang, PATH-Stubs),
+`tests/backup-drill/restore-drill*.test.ts` (Protokoll je Ausgang, PATH-Stubs),
 `tests/kundenbetrieb-sicherung/schutzwege-auskunft.test.ts` (Route) und
 `tests/backup-drill/echter-wiederanlauf.integration.test.ts` (echter Dump, echte PostgreSQL,
 Protokoll und Route).
@@ -123,7 +123,7 @@ jede Abweichung erklärt ist).
 | Träger | Was er belegt | Braucht Docker |
 |---|---|---|
 | `tests/backup-drill/tabellensatz.test.ts` | Die Bindung des Pflichtsatzes an die Migration: jede Tabelle aus `schemas` steht in `PFLICHTTABELLEN` — und eine simulierte neue Schema-Stufe ohne Eintrag im Drill wird erkannt | nein |
-| `tests/backup-drill/restore-drill.test.ts` | PATH-Stubs: Sidecar vor jedem Restore, leeres Ziel, der volle Pflichtsatz, Dumpabgleich (auch der Fall „kein Bestand für `ko_evidence`" und der Zeilenverlust in `drafts`), Startaufruf, Login-/Audit-/Wissensnachweis-Codes, die drei Antworten mit bloßem Textvorkommen der Kennung, die verwaiste Belegzeile und das Abweisen einer fremden PID | nein |
+| `tests/backup-drill/restore-drill*.test.ts` | PATH-Stubs: Sidecar vor jedem Restore, leeres Ziel, der volle Pflichtsatz, Dumpabgleich (auch der Fall „kein Bestand für `ko_evidence`" und der Zeilenverlust in `drafts`), Startaufruf, Login-/Audit-/Wissensnachweis-Codes, die drei Antworten mit bloßem Textvorkommen der Kennung, die verwaiste Belegzeile und das Abweisen einer fremden PID | nein |
 | `tests/backup-drill/start-identitaet.test.ts` | Echtes `npx tsx`: Launcher-PID und TypeScript-Prozess-PID sind verschieden | nein |
 | `tests/backup-drill/prozesszuordnung.test.ts` | Echter Prozessbaum (echtes `npx`, `tsx`, `node`, `curl`, `ps`): der Drill trifft den Prozess, der wirklich horchte, räumt die ganze Gruppe ab und gibt den Port frei; eine fremde PID in der PID-Datei endet mit 80, und der fremde Prozess lebt danach noch | nein |
 | `tests/backup-drill/echter-wiederanlauf.integration.test.ts` | Echter Custom-Dump aus `backup.sh` → echte, leere PostgreSQL → laufende Anwendung → dieselbe hochgeladene Datei Byte für Byte zurück; dazu die drei Gegenproben am echten Bestand: Anhang unbrauchbar (73), gar kein Beleg (nicht gemessen), Belegzeile ohne ihren Anhang (73) | **ja** (oder eine lokale PostgreSQL, s. u.) |

@@ -169,9 +169,12 @@ REST_FORKS="${KLARWERK_TEST_FORKS:-6}"
 PROTOKOLL=".local/run/browsergruppe-laufzeiten.json"
 rm -f "$PROTOKOLL"
 mkdir -p .local/run
+lesbar_flags=()
 protokoll_flags=()
 if [ "$hat_reporter" = "0" ]; then
-  protokoll_flags=(--reporter=default --reporter=json "--outputFile.json=$PROTOKOLL")
+  # Sobald der Zählreporter gesetzt ist, lädt Vitest den lesbaren Standardreporter nicht mehr selbst.
+  lesbar_flags=(--reporter=default)
+  protokoll_flags=(--reporter=json "--outputFile.json=$PROTOKOLL")
 fi
 
 # Beide Aufrufe werden gefahren, auch wenn der erste rot ist. Vorher meldete EIN Lauf ALLE roten
@@ -190,7 +193,7 @@ browser_rc=0
 echo "▶ test 1/2 · browser (Chromium-Dateien, EIN Fork, nacheinander)"
 KLARWERK_TEST_ZAHL_DATEI="$ZAHL_ORDNER/browser.json" KLARWERK_TESTGRUPPE=browser ./tools/browserdeckel.sh browser npx vitest run \
   --config vitest.browser.config.ts \
-  ${leerlauf[@]+"${leerlauf[@]}"} ${weiter[@]+"${weiter[@]}"} \
+  ${leerlauf[@]+"${leerlauf[@]}"} ${weiter[@]+"${weiter[@]}"} ${lesbar_flags[@]+"${lesbar_flags[@]}"} \
   ${protokoll_flags[@]+"${protokoll_flags[@]}"} --reporter="$ZAHL_REPORTER" \
   --pool=forks --poolOptions.forks.minForks=1 --poolOptions.forks.maxForks=1 || browser_rc=$?
 
@@ -205,7 +208,7 @@ fi
 rest_rc=0
 echo "▶ test 2/2 · rest (alles übrige, ${REST_FORKS} Forks)"
 KLARWERK_TEST_ZAHL_DATEI="$ZAHL_ORDNER/rest.json" KLARWERK_TESTGRUPPE=rest npx vitest run \
-  ${leerlauf[@]+"${leerlauf[@]}"} ${weiter[@]+"${weiter[@]}"} \
+  ${leerlauf[@]+"${leerlauf[@]}"} ${weiter[@]+"${weiter[@]}"} ${lesbar_flags[@]+"${lesbar_flags[@]}"} \
   --reporter="$ZAHL_REPORTER" \
   --pool=forks --poolOptions.forks.minForks=1 --poolOptions.forks.maxForks="$REST_FORKS" || rest_rc=$?
 

@@ -220,8 +220,8 @@ describe("Bildnachweis im Browser — gespeichert, neu geladen, angenommen, erne
         `/api/drafts/${kennung ?? ""}`,
       );
       expect(
-        rumpfBefunde(gespeichert.payload.bodyHtml ?? "", "de", ZWILLINGSDECK),
-        "gespeicherter Entwurf gegen Originalbytes",
+        await rumpfBefunde(gespeichert.payload.bodyHtml ?? "", "de", ZWILLINGSDECK, "speicher"),
+        "gespeicherter Entwurf gegen Originalpixel",
       ).toEqual([]);
 
       // ---- Eingereicht, angenommen, am Eintrag — und der Eintrag erneut geöffnet ---------------
@@ -240,8 +240,8 @@ describe("Bildnachweis im Browser — gespeichert, neu geladen, angenommen, erne
 
       const eintrag = await b.frage<{ bodyHtml?: string }>("GET", `/api/kos/${koId}`);
       expect(
-        rumpfBefunde(eintrag.bodyHtml ?? "", "de", ZWILLINGSDECK),
-        "angenommener Eintrag gegen Originalbytes",
+        await rumpfBefunde(eintrag.bodyHtml ?? "", "de", ZWILLINGSDECK, "speicher"),
+        "angenommener Eintrag gegen Originalpixel",
       ).toEqual([]);
 
       // ---- DIE DOM-GEGENPROBE AM EINTRAG ---------------------------------------------------------

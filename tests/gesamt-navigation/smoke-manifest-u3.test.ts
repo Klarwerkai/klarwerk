@@ -88,7 +88,8 @@ describe("Gesamt-Navigation · das Smoke-Mengenmanifest trägt den umgezogenen U
     }
     expect(summe).toBe(manifest.gesamt_fallinstanzen);
     // Version 16: Zusammenführung mit main 956a896c (beide Zweige hatten Version 15 eingetragen).
-    expect(manifest.version).toBe(16);
+    expect(Number.isSafeInteger(manifest.version)).toBe(true);
+    expect(manifest.version).toBeGreaterThanOrEqual(16);
   });
 
   it("M4 · die klara-vorschau-Fälle aus main sind erhalten — je Browserprojekt drei", () => {

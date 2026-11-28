@@ -54,7 +54,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
     };
   return {
     endpoints: {
-      validation: { board: vi.fn(quelle([{ id: "a" }, { id: "b" }], [])) },
+      validation: { boardCount: vi.fn(quelle({ length: 2 }, { length: 0 })) },
       conflicts: { list: vi.fn(quelle([{ id: "c-1", status: "offen" }], [])) },
       duplicates: { list: vi.fn(quelle([{ id: "d-1" }], [])) },
       gaps: {
@@ -141,11 +141,13 @@ const ZAHL: Record<string, string> = {
 const BASIS_KOPFBAND = ["start", "fragen", "bibliothek"];
 const ARBEIT_KOPFBAND = [...BASIS_KOPFBAND, "erfassen", "entwuerfe"];
 const PRUEF_KOPFBAND = [...ARBEIT_KOPFBAND, "validierung"];
-const LESEN = ["wissensnetz", "extern", "hilfe", "profil"];
-const ARBEIT = ["aufgaben", "gesamtanweisungen", "wissensnetz", "extern", "hilfe", "profil"];
+const TEAM = ["teamassistenten", "teamworkflows"];
+const LESEN = [...TEAM, "wissensnetz", "extern", "hilfe", "profil"];
+const ARBEIT = ["aufgaben", "gesamtanweisungen", ...LESEN];
 const PRUEFEN = [
   "aufgaben",
   "gesamtanweisungen",
+  ...TEAM,
   "wissensnetz",
   "extern",
   "konflikte",

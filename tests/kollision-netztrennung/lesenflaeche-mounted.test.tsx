@@ -198,7 +198,7 @@ const flush = async (): Promise<void> => {
   }
 };
 
-async function mount(): Promise<void> {
+async function mount(bereit: () => boolean = bereichVorhanden): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -245,10 +245,16 @@ async function mount(): Promise<void> {
         ),
       ),
     );
-    await flush();
   });
-  await act(flush);
-  await act(flush);
+  // Der Leseraum wird verzögert geladen. Erst nach dem Aufbau der tatsächlichen
+  // Ansicht kann der nächste Schritt den Online- bzw. Offlinezustand messen.
+  const ende = Date.now() + 10000;
+  while (!bereit() && Date.now() < ende) {
+    await act(async () => {
+      await new Promise((fertig) => setTimeout(fertig, 10));
+    });
+  }
+  expect(bereit(), "Lesefläche hat den erwarteten Ausgangszustand erreicht").toBe(true);
 }
 
 function bereich(): HTMLElement {
@@ -451,7 +457,15 @@ describe("JOB 3084 · (4d) offline ohne jeden Stand behauptet keinen Stand", () 
     box.kanal.kos = haengt;
     box.kanal.conflicts = haengt;
     box.kanal.signal = haengt;
-    await mount();
+    // Online schweigt die Fläche bei drei laufenden Erstabrufen. Erst der
+    // Netzwechsel kann den Offline-Hinweis zu diesem kalten Start auslösen.
+    await mount(
+      () =>
+        container.querySelector('[data-testid="bib-titel"]')?.textContent === KO.title &&
+        wirksameRolle() === "experte/experte" &&
+        QUELLEN.every((q) => qc.getQueryState(KEY[q])?.fetchStatus === "fetching"),
+    );
+    expect(bereichVorhanden()).toBe(false);
     await netzTrennen();
     expect(text()).toContain(i18n.t("kollision.lage.pausiertOhneStand"));
     expect(text()).not.toContain(i18n.t("kollision.lage.pausiert"));

@@ -68,7 +68,19 @@ const NACHLADEN: Partial<Record<NachladbareSprache, () => Promise<Woerterbuch>>>
 // `textmodul-vertrag` in `apps/web/vite.config.ts` (Produktbuild).
 const textmodule = import.meta.glob<Textmodul>("./texte/*.ts", { eager: true, import: "default" });
 const basis = new Set(Object.keys(de));
-const textmodulFehler = pruefeTextmodule(textmodule, basis, OBERFLAECHEN_SPRACHEN);
+// R-0801 (Gesamtcheck R-1329, Nacharbeit 49): auch die Textmodule tragen alle drei Sprachen. Im
+// PRODUKTIONSBAU nimmt `sprachpaketeNachladen` ihre Blöcke en und nl aus den Modulen (an ihrer Stelle
+// steht ein leerer Block) und liefert sie im Paket `i18n.textmodule.<sprache>.js` zusammen mit dem
+// Wörterbuch nach; diese Zeile wird dann zu `["en", "nl"]`. Ein Modul, das ausserhalb dieser Datei
+// direkt importiert wird (etwa `texte/anmeldefehler` in `auth/maskenfehler.ts`), behält alle Blöcke.
+// Den vollen Vertrag prüfen weiter das Tor und das Build-Plugin `textmodul-vertrag` an den Quellen.
+const TEXTMODULE_NACHGELADEN: readonly string[] = [];
+const textmodulFehler = pruefeTextmodule(
+  textmodule,
+  basis,
+  OBERFLAECHEN_SPRACHEN,
+  TEXTMODULE_NACHGELADEN,
+);
 if (textmodulFehler.length > 0) {
   throw new Error(`Textmodule verletzen ihren Vertrag:\n${textmodulFehler.join("\n")}`);
 }

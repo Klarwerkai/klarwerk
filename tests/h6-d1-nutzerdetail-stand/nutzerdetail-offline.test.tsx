@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
+    audit: { list: vi.fn(async () => []) },
     users: {
       list: vi.fn(async () => []),
       approve: vi.fn(async () => ({})),

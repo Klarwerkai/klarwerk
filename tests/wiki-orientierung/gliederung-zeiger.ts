@@ -21,6 +21,15 @@
 // Vorrichtung: `Seite` und `fn` kommen aus `tests/design/h4-harness.ts`.
 import { type Seite, fn } from "../design/h4-harness";
 
+/** Ein neues Testkonto bestätigt den Hinweis und wählt bei der persönlichen Einrichtung „Später“. */
+export async function bereiteLeseflaecheVor(seite: Seite): Promise<void> {
+  await seite.click('[data-testid="notice-ack"]');
+  await seite.click('[data-testid="assistenz-einrichtung-spaeter"]');
+  await seite.waitForFunction(
+    fn(`() => !document.querySelector('[data-testid="assistenz-einrichtung"]')`),
+  );
+}
+
 /**
  * BENs verschachteltes Gegenbeispiel (JOB 4145 R2), auf mehrere Bildschirmhöhen gestreckt.
  *

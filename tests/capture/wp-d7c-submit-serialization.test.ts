@@ -1,7 +1,7 @@
 // WP-D7c (bens D7b-ROT-Fix): der HARTE CAS-Vertragstest. Anders als der Latenz-/Nebenläufigkeits-Test
 // (wp-d7b-submit-latency.test.ts, Fake-API) läuft dieser gegen das ECHTE InMemoryKoRepo + KoService —
-// kein Fake, kein No-op. Er pinnt (a) den CAS-Vertrag: zwei PARALLELE KO-Mutationen am selben KO scheitern
-// mit STALE_WRITE (deshalb MUSS Phase B seriell sein), und (b) dass der korrigierte, serialisierte
+// kein Fake. Ein veralteter Vollobjekt-Write scheitert am CAS; der Dienst serialisiert Mutationen
+// am selben KO und erhält beide. Zusätzlich prüft die Suite, dass der serialisierte
 // Finalizer ALLE Mutationen ohne STALE_WRITE landet und das Original genau EINMAL hochlädt.
 import { describe, expect, it } from "vitest";
 import {
@@ -12,7 +12,7 @@ import {
 } from "../../apps/web/src/lib/captureAttachments";
 import type { PendingSource } from "../../apps/web/src/lib/captureSources";
 import { attachPendingSources } from "../../apps/web/src/lib/captureSources";
-import { InMemoryKoRepo, KoError, KoService } from "../../services/knowledge-object";
+import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 
 function makeService(): KoService {
   return new KoService({ repo: new InMemoryKoRepo() });
@@ -30,36 +30,24 @@ function createKo(svc: KoService) {
 }
 
 describe("WP-D7c: CAS-Vertrag (echtes Repo/Service)", () => {
-  it("Repro-Pin: zwei PARALLELE Mutationen am selben KO → mindestens ein STALE_WRITE", async () => {
-    const svc = makeService();
+  it("ein veralteter Vollobjekt-Write scheitert, während der Dienst gleichzeitige Ergänzungen erhält", async () => {
+    const repo = new InMemoryKoRepo();
+    const svc = new KoService({ repo });
     const ko = await createKo(svc);
-    // Genau das, was die D7b-Parallelisierung tat: zwei gleichzeitige addAttachment am selben KO. Beide
-    // lesen dieselbe rowVersion, beide schreiben per CAS → der zweite Write kollidiert.
-    const results = await Promise.allSettled([
+    await Promise.all([
       svc.addAttachment(ko.id, "anna", { name: "a.png", mime: "image/png", objectId: "obj-a" }),
       svc.addAttachment(ko.id, "anna", { name: "b.png", mime: "image/png", objectId: "obj-b" }),
+      svc.addSource(ko.id, "anna", { label: "Quelle A" }),
+      svc.addSource(ko.id, "anna", { label: "Quelle B" }),
     ]);
-    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
-    expect(rejected.length).toBeGreaterThanOrEqual(1);
-    // Und zwar GENAU der CAS-Fehler — das ist die Begründung, warum Phase B seriell sein muss.
-    for (const r of rejected) {
-      expect(r.reason).toBeInstanceOf(KoError);
-      expect((r.reason as KoError).code).toBe("STALE_WRITE");
-    }
-    // Dasselbe gilt für zwei parallele add-source-Aufrufe — exakt derselbe CAS-Fehler (WP-D7d, bens GELB).
-    const ko2 = await createKo(svc);
-    const sourceResults = await Promise.allSettled([
-      svc.addSource(ko2.id, "anna", { label: "Quelle A" }),
-      svc.addSource(ko2.id, "anna", { label: "Quelle B" }),
-    ]);
-    const sourceRejected = sourceResults.filter(
-      (r): r is PromiseRejectedResult => r.status === "rejected",
-    );
-    expect(sourceRejected.length).toBeGreaterThanOrEqual(1);
-    for (const r of sourceRejected) {
-      expect(r.reason).toBeInstanceOf(KoError);
-      expect((r.reason as KoError).code).toBe("STALE_WRITE");
-    }
+    // Derselbe Schreibstand von vor den Ergänzungen darf sie nicht überschreiben.
+    await expect(repo.update({ ...ko, statement: "Überholter Stand" })).rejects.toMatchObject({
+      code: "STALE_WRITE",
+    });
+    const gespeichert = await svc.get(ko.id);
+    expect(gespeichert?.statement).toBe(ko.statement);
+    expect(gespeichert?.attachments?.map((a) => a.objectId).sort()).toEqual(["obj-a", "obj-b"]);
+    expect(gespeichert?.sources?.map((q) => q.label).sort()).toEqual(["Quelle A", "Quelle B"]);
   });
 
   it("der serialisierte Finalizer landet ALLE Mutationen ohne STALE_WRITE, Original genau einmal", async () => {

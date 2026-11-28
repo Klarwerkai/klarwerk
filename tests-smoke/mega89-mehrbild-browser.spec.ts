@@ -30,6 +30,7 @@
 // Aufruf: npm run smoke:ui:gate (Chromium, hermetisch) oder npm run smoke:ui (drei Engines).
 import { type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
+import { bildpixel, galeriebilder } from "./support/bildpixel";
 
 test.describe.configure({ mode: "serial" });
 
@@ -96,19 +97,6 @@ async function beschreibe(page: Page, i: number, text: string): Promise<void> {
 }
 
 /**
- * Was die GALERIE zeigt: je Bild ein Thumbnail-Knopf, dessen `title` und dessen `alt` die AKTUELLE
- * Beschreibung sind (`BodyImageGallery`). Die Bilder im Fließtext stehen in keinem solchen Knopf.
- */
-async function galerie(page: Page): Promise<{ src: string; caption: string }[]> {
-  return await page.locator('button[title] img[src^="data:image"]').evaluateAll((els) =>
-    els.map((e) => ({
-      src: (e.getAttribute("src") ?? "").slice(0, 24),
-      caption: e.getAttribute("alt") ?? "",
-    })),
-  );
-}
-
-/**
  * AUFTRAG-mega90 Block C: die FOLGE des Fließtextes auf oberster Ebene — Text als Text, jede figure
  * als ihr Bild. Gelesen wird die Reihenfolge und nicht nur die Anwesenheit: „der Text ist noch da"
  * wäre auch dann wahr, wenn er ans Ende gerutscht wäre.
@@ -133,7 +121,7 @@ async function folge(page: Page): Promise<string[]> {
         const element = kind as Element;
         if (element.tagName.toLowerCase() === "figure") {
           const img = element.querySelector(":scope > img");
-          aus.push(`bild:${(img?.getAttribute("src") ?? "").slice(0, 24)}`);
+          aus.push(`bild:${img?.getAttribute("src") ?? ""}`);
           continue;
         }
         aus.push(`${element.tagName.toLowerCase()}`);
@@ -144,10 +132,15 @@ async function folge(page: Page): Promise<string[]> {
 
 /** Steht der Text nach dem Umbau noch GENAU ZWISCHEN den beiden Bildern? */
 async function textStehtZwischenDenBildern(page: Page, wann: string): Promise<void> {
-  const gefunden = await folge(page);
-  const erstes = gefunden.indexOf(`bild:${PNG.slice(0, 24)}`);
+  const folgeImDom = await folge(page);
+  const gefunden = await Promise.all(
+    folgeImDom.map(async (eintrag) =>
+      eintrag.startsWith("bild:") ? `bild:${await bildpixel(eintrag.slice(5))}` : eintrag,
+    ),
+  );
+  const erstes = gefunden.indexOf(`bild:${await bildpixel(PNG)}`);
   const text = gefunden.indexOf(`text:${ZWISCHENTEXT}`);
-  const zweites = gefunden.indexOf(`bild:${GIF.slice(0, 24)}`);
+  const zweites = gefunden.indexOf(`bild:${await bildpixel(GIF)}`);
   expect(
     text,
     `${wann}: der Text zwischen den Bildern ist verschwunden. Gefundene Folge: ${JSON.stringify(gefunden)}`,
@@ -205,21 +198,21 @@ test("mega89: zwei Bilder in EINER eingehenden Figure — getrennt beschreiben, 
     // Die Galerie unter dem Editor — dieselbe, die auch die Leseansicht zeigt (debounced, deshalb
     // wird auf sie gewartet statt sie einmal abzufragen).
     await expect
-      .poll(async () => await galerie(page), {
+      .poll(() => galeriebilder(page), {
         message: "Die Galerie zeigt nicht beide Bilder mit ihrer eigenen Beschreibung",
         timeout: 10_000,
       })
       .toEqual([
-        { src: PNG.slice(0, 24), caption: ERSTE },
-        { src: GIF.slice(0, 24), caption: ZWEITE },
+        { pixel: await bildpixel(PNG), caption: ERSTE },
+        { pixel: await bildpixel(GIF), caption: ZWEITE },
       ]);
 
     // DER KREIS: speichern und erneut öffnen. Erst wenn BEIDE Beschreibungen wirklich im abgelegten
     // Entwurf stehen, wird wieder geöffnet — sonst prüfte der zweite Teil den Zustand vor dem
     // Speichern und wäre grün, ohne etwas zu belegen.
-    // JOB 3062: der Knopf heisst am neuen Blatt „Entwurf sichern" (`erfassen.entwurfSichern`); der
+    // JOB 3062: der Knopf heisst am neuen Blatt „Als Entwurf speichern" (`erfassen.entwurfSichern`); der
     // Weg dahinter ist unverändert derselbe (`POST/PUT /api/drafts`).
-    await page.getByRole("button", { name: "Entwurf sichern", exact: true }).click();
+    await page.getByRole("button", { name: "Als Entwurf speichern", exact: true }).click();
     await expect
       .poll(
         async () => {

@@ -39,6 +39,7 @@ function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
     asset: null,
     createdAt: "2026-01-01",
     history: [],
+    sources: [],
     // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20, Variante B): ausdrücklich eingestuft —
     // eine fehlende Stufe ist „ungeklärt" und bliebe dem Betrachter ohne Freigabe verborgen
     // (Entscheidung 16); dieser Test misst Spaces, nicht die Stufe.

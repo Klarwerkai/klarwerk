@@ -203,7 +203,7 @@ async function mount(overrides: Partial<KnowledgeObject> = {}): Promise<void> {
     );
     await flush();
   });
-  await act(flush);
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
 }
 

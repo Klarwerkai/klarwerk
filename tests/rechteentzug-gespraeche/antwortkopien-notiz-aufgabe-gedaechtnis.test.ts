@@ -272,6 +272,9 @@ async function takt(zeit: string) {
   admin = await anmelden(ADMINMAIL);
   anna = await anmelden(ANNAMAIL);
   if (!lauf) throw new Error("Vorhandener Erinnerungstakt wurde nicht angeschlossen");
+  // Sechs Erinnerungen desselben Kontos, höchstens fünf pro Minutentakt.
+  await lauf();
+  vi.setSystemTime(new Date(Date.parse(zeit) + 60_000));
   return lauf();
 }
 
@@ -414,7 +417,9 @@ it("RC2-Kopiekette: echte Mischantwort bindet normale Notiz, Aufgabe und beide E
     .soft(neu.filter((m) => erinnerungen.some((e) => e.daten.id === m.erinnerungId)))
     .toEqual([]);
   for (const e of eigen.erinnerungen) {
-    expect(neu.some((m) => m.erinnerungId === e.daten.id && m.titel.includes(EIGEN))).toBe(true);
+    expect(neu.filter((m) => m.erinnerungId === e.daten.id)).toEqual([
+      expect.objectContaining({ titel: expect.stringContaining(EIGEN) }),
+    ]);
   }
   geschuetzt(await auf(anna, "GET", "/api/notifications"), b);
   await b.quellrecht(true);

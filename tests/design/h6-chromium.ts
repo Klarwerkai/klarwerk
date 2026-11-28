@@ -24,7 +24,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 export const WURZEL = resolve(process.cwd());
 export const DIST = resolve(WURZEL, "apps/web/dist");
 /** Das Zielbild liegt im Steuerungsordner (Pflichtquelle des Auftrags), nicht im Produkt. */
-export const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Admin.dc.html";
+export const ZIELBILD = join(WURZEL, "tests/design/vorlagen/klarwerk/Admin.dc.html");
 /**
  * JOB 3065 R2 — WARUM `https` UND NICHT `http`:
  *
@@ -128,9 +128,9 @@ interface Route {
  * `tests/review26-pruefen-schmal/pruefen-schmal-chromium.test.ts` (dort gelöscht).
  *
  * Er wird von `locator` und `getByTestId` unten zurückgegeben. Genannt ist NUR, was die Verbraucher
- * heute wirklich rufen — jedes Glied hat seine Aufrufstelle in `pruefen-schmal-chromium.test.ts`:
+ * heute wirklich rufen. In `pruefen-schmal-chromium.test.ts` stehen
  * `count` (:30), `last` (:84), `evaluate` (:85), `boundingBox` (:39), `textContent` (:91),
- * `getAttribute` (:144), `isVisible` (:32), `click` (:33), `waitFor` (:34). Ein Playwright-Typimport
+ * `getAttribute` (:144), `isVisible` (:32), `click` (:33), `waitFor` (:34). BPA-05 bedient mit `fill` das Prüfformular. Ein Playwright-Typimport
  * käme nicht in Frage: er zählte im Torgraphen als weitere Browser-Startstelle
  * (`tests/tor-inventar/browser-gruppe.ts`), und genau darum stand dieser Typ bis JOB 3819 in der
  * Testdatei.
@@ -144,6 +144,7 @@ export interface Elementgriff {
   getAttribute(name: string): Promise<string | null>;
   isVisible(): Promise<boolean>;
   click(): Promise<void>;
+  fill(wert: string): Promise<void>;
   waitFor(optionen: { state: "hidden" }): Promise<void>;
 }
 
@@ -289,7 +290,7 @@ async function chromiumStarten(): Promise<Browser> {
 }
 
 /**
- * Startet die echte App in Chromium, meldet einen Admin an und öffnet `pfad`.
+ * Startet die echte App in Chromium und öffnet `pfad` als vorbereitete Fachrolle oder als Admin.
  * `warteAuf` ist ein Selektor, der beweist, dass die Seite wirklich steht.
  */
 export async function starte(
@@ -300,9 +301,13 @@ export async function starte(
   /**
    * Optionaler Bestand VOR dem ersten Seitenaufbau — über die echten Routen der echten App.
    * (JOB 3065 R2: das Funktionsinventar braucht einen NICHT freigegebenen Nutzer, sonst gibt es
-   * den Knopf „Freigeben" gar nicht und sein Posten wäre unprüfbar.)
+   * den Knopf „Freigeben" gar nicht und sein Posten wäre unprüfbar.) Für eine Fachrolle kann
+   * die Vorbereitung deren echten Sitzungstoken zurückgeben.
    */
-  vorbereiten?: (app: ReturnType<typeof buildApp>) => Promise<void>,
+  vorbereiten?: (
+    app: ReturnType<typeof buildApp>,
+    adminToken: string,
+  ) => Promise<void> | Promise<string>,
 ): Promise<Stand> {
   const stand: Stand = {
     antworten: {},
@@ -338,7 +343,9 @@ export async function starte(
       url: "/api/auth/login",
       payload: { email: "pedi@job3065.test", password: "geheim12345" },
     });
-    const token = (login.json() as { token: string }).token;
+    const adminToken = (login.json() as { token: string }).token;
+    // Eine Fachrolle darf ihren eigenen Sitzungstoken für den gesamten Browserweg liefern.
+    const token = (await vorbereiten?.(app, adminToken)) ?? adminToken;
     stand.wirkungszahlen = async () => {
       const antwort = await app.inject({
         method: "GET",
@@ -354,9 +361,6 @@ export async function starte(
         return wert;
       });
     };
-    if (vorbereiten) {
-      await vorbereiten(app);
-    }
 
     stand.browser = await chromiumStarten();
     stand.version = stand.browser.version();

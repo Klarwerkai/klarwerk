@@ -8,10 +8,9 @@
 // Deklaration. jsdom rechnet weder Tailwind noch Farben — das kann nur ein Browser sagen.
 //
 // DIE BÜHNE: `tests/design/h6-chromium.ts` — die GEBAUTE App (`apps/web/dist`, frisch über
-// `../review26-pruefen-schmal/bau`) mit echtem Server in Chromium, 390 × 700 px. Die Bühne meldet
-// einen Admin an; das Prüfformular lässt aber nur experte/controller begleiten (G04). Deshalb wird
-// NUR die Antwort von `/api/auth/me` auf die Rolle `experte` umgestellt — ein Rollenwechsel des
-// Prüfkontos, keine Attrappe der Fläche: Seite, Leiste, CSS und Theme sind die ausgelieferten.
+// `../review26-pruefen-schmal/bau`) mit echtem Server in Chromium, 390 × 700 px. Der Admin legt
+// das Fachkonto an. Anschließend bedient eine angemeldete Person mit der Serverrolle `experte`
+// das Prüfformular (G04). Auch jede Rechteprüfung während der Begleitung läuft mit ihrer Sitzung.
 //
 // GEMESSEN, nicht behauptet:
 //   1. Die Leiste liegt tatsächlich ÜBER Formularfeldern (Rechtecke überschneiden sich).
@@ -31,7 +30,7 @@
 //   BILDBELEG: `test-results/klara-begleitung/begleitleiste-ueber-formular.png`.
 import { mkdirSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type Seite, type Stand, beende, fn, starte, wechsle } from "../design/h6-chromium";
+import { type Seite, type Stand, beende, fn, starte } from "../design/h6-chromium";
 import baueFrisch from "../review26-pruefen-schmal/bau";
 
 const ANGEBOT = '[data-testid="begleitung-angebot"]';
@@ -45,15 +44,6 @@ function seite(): Seite {
   expect(stand.fehler, "Chromium-Bühne kam nicht hoch").toBeNull();
   return stand.seite as Seite;
 }
-
-/** Ein kontrolliertes React-Feld wie ein Mensch füllen: nativer Setter, dann `input`. */
-const FUELLEN = `([sel, wert]) => {
-  const el = document.querySelector(sel);
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
-  setter.call(el, wert);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-  return el.value;
-}`;
 
 interface Messung {
   ueberdeckteFelder: number;
@@ -229,22 +219,41 @@ describe("BPA-05 · Begleitleiste über dem freigegebenen Formular (gebaute App,
 
   beforeAll(async () => {
     await baueFrisch();
-    stand = await starte("/start", "main", 390, 700);
-    // Nur die Rolle des Prüfkontos: experte (das Prüfformular lässt Verwaltung nicht zu, G04).
-    stand.antworten.vorAuslieferung = async (url, body) => {
-      if (url.pathname !== "/api/auth/me") return body;
-      const ich = JSON.parse(body) as Record<string, unknown>;
-      return JSON.stringify({ ...ich, role: "experte" });
-    };
-    await wechsle(stand, "/begleitung/pruefformular", ANGEBOT);
+    stand = await starte(
+      "/begleitung/pruefformular",
+      ANGEBOT,
+      390,
+      700,
+      async (app, adminToken) => {
+        const zugang = { email: "pruefformular@example.test", password: "testkonto-2026" };
+        const konto = await app.inject({
+          method: "POST",
+          url: "/api/users",
+          headers: { authorization: `Bearer ${adminToken}` },
+          payload: { ...zugang, name: "Prüfperson", role: "experte" },
+        });
+        expect(konto.statusCode, konto.body).toBe(201);
+        const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: zugang });
+        expect(login.statusCode, login.body).toBe(200);
+        const { token } = login.json<{ token: string }>();
+        const ich = await app.inject({
+          method: "GET",
+          url: "/api/auth/me",
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(ich.statusCode).toBe(200);
+        expect(ich.json().role).toBe("experte");
+        return token;
+      },
+    );
     const page = seite();
-    await page.evaluate(fn(FUELLEN), ['[data-testid="begleitung-auftrag"]', "Produktrecherche"]);
+    await page.locator('[data-testid="begleitung-auftrag"]').fill("Produktrecherche");
     await page.locator(`${ANGEBOT} button[type="submit"]`).click();
     await page.waitForFunction(fn("(s) => document.querySelector(s) !== null"), LEISTE, {
       timeout: 15_000,
     });
     // Den Hinweis auslösen und das Formular so scrollen, dass seine Felder UNTER der Leiste liegen.
-    await page.evaluate(fn(FUELLEN), ["#pf-leistung", "250"]);
+    await page.locator("#pf-leistung").fill("250");
     await page.waitForFunction(fn("(s) => document.querySelector(s) !== null"), HINWEIS, {
       timeout: 15_000,
     });

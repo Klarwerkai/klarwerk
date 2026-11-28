@@ -61,10 +61,19 @@ export const EXTERNAL_SEARCH_MELDUNG = {
  */
 export class ExternalSearchFailure extends ExternalSearchError {
   readonly detail: string | undefined;
+  readonly grund: Exclude<keyof typeof EXTERNAL_SEARCH_MELDUNG, "status"> | number;
 
-  constructor(message: string, detail?: string) {
-    super(message);
+  constructor(
+    grund: Exclude<keyof typeof EXTERNAL_SEARCH_MELDUNG, "status"> | number,
+    detail?: string,
+  ) {
+    super(
+      typeof grund === "number"
+        ? EXTERNAL_SEARCH_MELDUNG.status(grund)
+        : EXTERNAL_SEARCH_MELDUNG[grund],
+    );
     this.name = "ExternalSearchFailure";
+    this.grund = grund;
     this.detail = detail;
   }
 }
@@ -86,19 +95,13 @@ async function leseBegrenzt(
   };
   const angekuendigt = Number(reich.headers?.get?.("content-length"));
   if (Number.isFinite(angekuendigt) && angekuendigt > maxBytes) {
-    throw new ExternalSearchFailure(
-      EXTERNAL_SEARCH_MELDUNG.tooLarge,
-      `content-length ${angekuendigt} > ${maxBytes}`,
-    );
+    throw new ExternalSearchFailure("tooLarge", `content-length ${angekuendigt} > ${maxBytes}`);
   }
   if (typeof reich.text === "function") {
     const text = await reich.text();
     const bytes = Buffer.byteLength(text, "utf8");
     if (bytes > maxBytes) {
-      throw new ExternalSearchFailure(
-        EXTERNAL_SEARCH_MELDUNG.tooLarge,
-        `body ${bytes} > ${maxBytes}`,
-      );
+      throw new ExternalSearchFailure("tooLarge", `body ${bytes} > ${maxBytes}`);
     }
     return JSON.parse(text);
   }
@@ -155,13 +158,7 @@ export function createWikipediaProvider(config: WikipediaConfig = {}): SearchPro
       const frist = new Promise<never>((_, reject) => {
         controller.signal.addEventListener(
           "abort",
-          () =>
-            reject(
-              new ExternalSearchFailure(
-                EXTERNAL_SEARCH_MELDUNG.timeout,
-                `timeout after ${timeoutMs} ms`,
-              ),
-            ),
+          () => reject(new ExternalSearchFailure("timeout", `timeout after ${timeoutMs} ms`)),
           { once: true },
         );
       });
@@ -175,15 +172,12 @@ export function createWikipediaProvider(config: WikipediaConfig = {}): SearchPro
             throw error;
           }
           if (abgelaufen) {
-            throw new ExternalSearchFailure(EXTERNAL_SEARCH_MELDUNG.timeout, rohText(error));
+            throw new ExternalSearchFailure("timeout", rohText(error));
           }
-          throw new ExternalSearchFailure(EXTERNAL_SEARCH_MELDUNG.unreachable, rohText(error));
+          throw new ExternalSearchFailure("unreachable", rohText(error));
         }
         if (!res.ok) {
-          throw new ExternalSearchFailure(
-            EXTERNAL_SEARCH_MELDUNG.status(res.status),
-            `HTTP ${res.status}`,
-          );
+          throw new ExternalSearchFailure(res.status, `HTTP ${res.status}`);
         }
         try {
           data = (await Promise.race([
@@ -195,9 +189,9 @@ export function createWikipediaProvider(config: WikipediaConfig = {}): SearchPro
             throw error;
           }
           if (abgelaufen) {
-            throw new ExternalSearchFailure(EXTERNAL_SEARCH_MELDUNG.timeout, rohText(error));
+            throw new ExternalSearchFailure("timeout", rohText(error));
           }
-          throw new ExternalSearchFailure(EXTERNAL_SEARCH_MELDUNG.unreadable, rohText(error));
+          throw new ExternalSearchFailure("unreadable", rohText(error));
         }
       } finally {
         clearTimeout(timer);

@@ -253,7 +253,11 @@ describe("BASIC-u2 · AK7 — Query, Filterung, Ranking und Sichtbarkeit sind un
     expect(librarySrc).toContain(
       "const query = useLibrarySearch(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q: debouncedQ }));",
     );
-    expect(librarySrc).toContain("const ranked = searchLibrary(koItems, trimmedQ);");
+    // K1 / NFR-PERF-01 (Nacharbeit 27): dieselbe Rangfunktion über denselben eingegrenzten Bestand,
+    // jetzt nur an das gebunden, was sie liest (`useMemo`). Ranking und Sichtbarkeit unverändert.
+    expect(librarySrc.replace(/\s+/g, " ")).toContain(
+      "const ranked = useMemo( () => searchLibrary(applyLibraryScope(query.data ?? [], scope, user?.id), trimmedQ),",
+    );
   });
 
   it("der Leerzustand hängt weiter an derselben Verzweigung: eingegrenzt anders als nicht", () => {

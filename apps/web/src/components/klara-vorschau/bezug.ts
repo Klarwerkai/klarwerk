@@ -395,8 +395,8 @@ export function sperrgrund(lage: AuswahlLage, t: Uebersetzer): string | null {
 
 /**
  * Titel, Fassung und Prüfstatus je Quelle — aus DIESER Antwort des Fragewegs (`belastbarkeit`,
- * `quellenStand`). Was der Frageweg nicht sagt, bleibt `null`; eine Quelle ohne Titel bekommt
- * keine Angabe (die Fläche zeigt dann nur den Verweis).
+ * `quellenStand`). Fehlende Fassung und unbekannter Prüfstatus bleiben `null`. Ohne Titel
+ * zeigt die Fläche die Kennung als Verweis.
  */
 export function quellenAngabenAus(
   antwort: KlaraAskAntwort,

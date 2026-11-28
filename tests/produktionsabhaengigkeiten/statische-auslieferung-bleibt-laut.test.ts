@@ -13,7 +13,7 @@
 // statischen Dateipfad").
 //
 // DIE ANTWORT, NACHGELESEN UND HIER GEHALTEN: Es gibt genau EINE Registrierung von
-// `@fastify/static` im ganzen Produkt (`services/app/src/web-static.ts:109`), und sie liefert genau
+// `@fastify/static` im ganzen Produkt (`registerWebStatic` in `services/app/src/web-static.ts`), und sie liefert genau
 // EIN Verzeichnis aus — `apps/web/dist`, die gebaute SPA (`services/app/src/server.ts:61-66`).
 // Dieses Verzeichnis ist ÖFFENTLICH PER BAUART: ein Browser lädt es, bevor sich irgendjemand
 // angemeldet hat. Über ihm liegt keine Rechteprüfung, die umgangen werden könnte. Vor der
@@ -66,20 +66,19 @@ const WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
  * Der EINE app-weite Hook, den `registerWebStatic` hinzufügen darf: die Auslieferungszusage für
- * Klaras Fläche (`web-static.ts:140`, `Cache-Control: no-cache` auf `/word-addin/*`). Er ist keine
+ * Klaras Fläche (`Cache-Control: no-cache` auf `/word-addin/*`). Er ist keine
  * Autorisierung. Jeder weitere Hook ist ein Befund — denn dort könnte eine Rechteprüfung sitzen.
  */
 const ERLAUBTE_HOOKS = ["onSend"] as const;
 
 describe("JOB 4272 · @fastify/static: es gibt keinen geschützten statischen Pfad", () => {
   it("genau EINE Registrierung im ganzen Produkt — gezählt werden Aufrufstellen, nicht Importe", () => {
-    const gefunden = statischeRegistrierungen(quellen(join(WURZEL, "services"))).map(
-      (r) => `${r.pfad}:${r.zeile}`,
-    );
+    const gefunden = statischeRegistrierungen(quellen(join(WURZEL, "services")));
+    const fundstellen = gefunden.map((r) => `${r.pfad}:${r.zeile}`).join(", ");
     expect(
-      gefunden,
-      "Die Menge der @fastify/static-Registrierungen hat sich geändert. Damit ist nicht mehr belegt, dass kein geschützter statischer Pfad existiert — die Einordnung gehört neu gemacht, dieser Test NICHT angepasst.",
-    ).toEqual(["app/src/web-static.ts:109"]);
+      gefunden.map((r) => r.pfad),
+      `Erwartet ist genau eine @fastify/static-Registrierung in registerWebStatic. Gefunden: ${fundstellen}`,
+    ).toEqual(["app/src/web-static.ts"]);
   });
 
   it("der einzige ausgelieferte Baum ist die gebaute SPA — ohne Rechteprüfung davor", () => {

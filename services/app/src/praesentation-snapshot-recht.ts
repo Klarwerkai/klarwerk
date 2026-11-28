@@ -50,7 +50,7 @@ const kennung = (v: unknown): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= 200;
 const fassung = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
 
-function deckVon(roh: unknown, vertrag: DeckVertrag["vertrag"]): DeckVertrag | undefined {
+function istDeckVertrag(roh: unknown, vertrag: DeckVertrag["vertrag"]): roh is DeckVertrag {
   if (
     !objekt(roh) ||
     roh.vertrag !== vertrag ||
@@ -70,6 +70,7 @@ function deckVon(roh: unknown, vertrag: DeckVertrag["vertrag"]): DeckVertrag | u
         kennung(f.id) &&
         fassung(f.fassung) &&
         typeof f.wert === "string" &&
+        (f.fingerabdruck === undefined || typeof f.fingerabdruck === "string") &&
         (vertrag !== "klara-pp06-v1" ||
           (typeof f.fingerabdruck === "string" && /^[0-9a-f]{64}$/.test(f.fingerabdruck))),
     ) ||
@@ -83,12 +84,17 @@ function deckVon(roh: unknown, vertrag: DeckVertrag["vertrag"]): DeckVertrag | u
         kennung(b.shapeId) &&
         (b.zeile === undefined || fassung(b.zeile)) &&
         (b.spalte === undefined || fassung(b.spalte)) &&
+        (b.bindungId === undefined || typeof b.bindungId === "string") &&
         (vertrag !== "klara-pp06-v1" ||
           (typeof b.bindungId === "string" && /^pp06:[0-9a-f]{64}$/.test(b.bindungId))),
     )
   )
-    return undefined;
-  return roh as unknown as DeckVertrag;
+    return false;
+  return true;
+}
+
+function deckVon(roh: unknown, vertrag: DeckVertrag["vertrag"]): DeckVertrag | undefined {
+  return istDeckVertrag(roh, vertrag) ? roh : undefined;
 }
 
 /**

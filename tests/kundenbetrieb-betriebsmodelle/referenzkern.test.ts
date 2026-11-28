@@ -12,10 +12,9 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { type Server, createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { repoPfad } from "../support/repoPfad";
-import { fahreNode } from "./hilfen";
+import { fahreNode, lokalerTestport } from "./hilfen";
 
 const WERKZEUG = repoPfad("scripts/betrieb/modellbestand-erfassen.mjs");
 const LIZENZ = "Apache License\nVersion 2.0, January 2004";
@@ -54,9 +53,9 @@ afterEach(async () => {
 });
 
 async function lausche(server: Server): Promise<string> {
+  const port = await lokalerTestport(server);
   offen.push(server);
-  await new Promise<void>((bereit) => server.listen(0, "127.0.0.1", () => bereit()));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return `http://127.0.0.1:${port}`;
 }
 
 /** Bildet die Ollama-Schnittstelle nach, soweit das Werkzeug sie fragt. */

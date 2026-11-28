@@ -6328,14 +6328,13 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       ...fund,
       ausgefuehrteAufrufe: fund.ausgefuehrteAufrufe?.map((c) => c.getText(c.getSourceFile())),
     });
-    const aufrufAn = (sf: ts.SourceFile, position: number): ts.CallExpression => {
+    const eindeutigerAufruf = (
+      sf: ts.SourceFile,
+      passt: (aufruf: ts.CallExpression) => boolean,
+    ): ts.CallExpression => {
       const funde: ts.CallExpression[] = [];
       const suche = (n: ts.Node): void => {
-        if (
-          ts.isCallExpression(n) &&
-          ts.isPropertyAccessExpression(n.expression) &&
-          n.getStart(sf) === position
-        )
+        if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && passt(n))
           funde.push(n);
         ts.forEachChild(n, suche);
       };
@@ -6345,6 +6344,8 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       if (!fund) throw new Error("der gebundene AST-Aufruf fehlt");
       return fund;
     };
+    const aufrufAn = (sf: ts.SourceFile, position: number) =>
+      eindeutigerAufruf(sf, (n) => n.getStart(sf) === position);
     const pruefe = (
       datei: string,
       text: string,
@@ -6404,8 +6405,7 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       {
         datei: "services/app/src/routes/klara-besprechung-routes.ts",
         methode: "POST",
-        aufruf:
-          'app.post<{ Params: { id: string } }>(\n        `/api/me/klara/besprechungen/:id/${weg}`,\n        async (req, reply) => {\n          const u = await guards.requireUser(req, reply);\n          if (!u) return;\n          try {\n            return weg === "lesen"\n              ? await d.sicht(u.id, req.params.id)\n              : weg === "korrektur"\n                ? await d.korrektur(u.id, req.params.id, req.body)\n                : weg === "fristquelle"\n                  ? await d.fristquelle(u.id, req.params.id, req.body)\n                  : weg === "teilschritt"\n                    ? await d.teilschritt(u.id, req.params.id, req.body)\n                    : await d.uebernehmen(u.id, req.params.id, req.body);\n          } catch (e) {\n            if (e instanceof WissensFehler) {\n              reply.code(e.status).send({\n                error: e.status === 404 ? "NOT_FOUND" : "BESPRECHUNG",\n                message: e.message,\n              });\n              return;\n            }\n            sendError(reply, e);\n          }\n        },\n      )',
+        pfadargument: "`/api/me/klara/besprechungen/:id/${weg}`",
         pfade: [
           "/api/me/klara/besprechungen/:id/lesen",
           "/api/me/klara/besprechungen/:id/korrektur",
@@ -6417,8 +6417,7 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       {
         datei: "services/app/src/routes/klara-gespraech-routes.ts",
         methode: "POST",
-        aufruf:
-          'app.post<{ Params: { id: string; auftragId: string }; Body: { auftragFassung?: unknown } }>(\n        `/api/me/klara/gespraeche/:id/auftraege/:auftragId/${weg}`,\n        async (request, reply) => {\n          const user = await guards.requireUser(request, reply);\n          if (!user) return;\n          try {\n            const auftrag = await dienst.unterbrecheAuftrag(\n              user.id,\n              request.params.id,\n              request.params.auftragId,\n              weg === "fortsetzen",\n              request.body?.auftragFassung,\n            );\n            await audit.record({\n              actor: user.id,\n              action: `klara.auftrag.${weg}`,\n              target: `klara-auftrag:${auftrag.id}`,\n            });\n            reply.code(200).send({ auftrag: auftragMitVerlauf(auftrag) });\n          } catch (fehler) {\n            antworteMitFehler(reply, fehler);\n          }\n        },\n      )',
+        pfadargument: "`/api/me/klara/gespraeche/:id/auftraege/:auftragId/${weg}`",
         pfade: [
           "/api/me/klara/gespraeche/:id/auftraege/:auftragId/unterbrechen",
           "/api/me/klara/gespraeche/:id/auftraege/:auftragId/fortsetzen",
@@ -6427,8 +6426,7 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       {
         datei: "services/app/src/routes/klara-wissen-routes.ts",
         methode: "POST",
-        aufruf:
-          'app.post<{\n        Params: { id: string };\n        Body: { fassung?: unknown; ziel?: unknown; modus?: unknown };\n      }>(`/api/me/klara/notizen/:id/wissen/${weg}`, async (req, reply) => {\n        const u = await guards.requirePermission("ko.create", req, reply);\n        if (!u) return;\n        try {\n          const x = req.body ?? {};\n          if (weg !== "pruefen" && x.modus === "regelvorschlag")\n            return await dienst.regelvorschlag(u, req.params.id, x, weg === "uebernehmen");\n          if (weg === "vorschau")\n            return await dienst.vorschau(u, req.params.id, x.fassung, wissensZiel(x.ziel));\n          if (weg === "pruefen") {\n            const sprache = req.headers["accept-language"]\n              ?.split(/[-,;]/, 1)[0]\n              ?.trim()\n              .toLowerCase();\n            return await dienst.pruefe(\n              u,\n              req.params.id,\n              sprache === "en" || sprache === "nl" ? sprache : "de",\n            );\n          }\n          return await dienst.uebernehmen(u, req.params.id, x);\n        } catch (e) {\n          fehler(reply, e);\n        }\n      })',
+        pfadargument: "`/api/me/klara/notizen/:id/wissen/${weg}`",
         pfade: [
           "/api/me/klara/notizen/:id/wissen/vorschau",
           "/api/me/klara/notizen/:id/wissen/pruefen",
@@ -6438,26 +6436,31 @@ describe("A5 G15 · vorhandener gemeinsamer Pfadleser", () => {
       {
         datei: "services/app/src/web-static.ts",
         methode: "GET",
-        aufruf:
-          'app.get(pfad, async (_request, reply) => {\n      let roh: string;\n      try {\n        roh = await readFile(join(dist, "word-addin", datei), "utf8");\n      } catch {\n        // LAUT scheitern, nie still als SPA-HTML: ein fehlendes Add-in im Build ist ein Defekt,\n        // kein Navigationspfad (dieselbe Entscheidung wie bei den Assets unten).\n        reply.code(404).type("text/plain").send("Not Found");\n        return;\n      }\n      const koerper = stempleFassung(roh, version);\n      reply\n        .header("Cache-Control", "no-cache")\n        .header(KLARA_FASSUNG_KOPF, version)\n        // Der Validator über den GESENDETEN Körper — s. Kopfkommentar.\n        .header("ETag", `"${createHash("sha256").update(koerper).digest("hex").slice(0, 32)}"`)\n        .type("text/html; charset=utf-8")\n        .send(koerper);\n    })',
+        pfadargument: "pfad",
         pfade: ["/word-addin/taskpane.html", "/word-addin/begleitung.html"],
       },
       {
         datei: "services/app/src/wiederanlauf.ts",
         methode: "POST",
-        aufruf:
-          'app.post<{ Body: Record<string, unknown> | null }>(\n    `${WIEDERANLAUF_PFAD}/freigabe`,\n    async (request, reply) => {\n      const user = await guards.requirePermission("users.manage", request, reply);\n      if (!user) {\n        return;\n      }\n      const body = request.body && typeof request.body === "object" ? request.body : {};\n      const fehlend = FREIGABE_BESTAETIGUNGEN.filter((b) => body[b] !== true);\n      if (fehlend.length > 0) {\n        reply.code(400).send({\n          error: "BESTAETIGUNG_FEHLT",\n          message:\n            "Die Freigabe braucht alle vier Bestätigungen: Integrität geprüft, Rechteentzüge und Löschmarkierungen nachgeführt, Außenaktionen geprüft.",\n          fehlend,\n        });\n        return;\n      }\n      // Ohne Sicherungsstand gibt es keine Grenze, gegen die „nachgeführt" bestätigt werden könnte.\n      if (!sicherungsstand) {\n        reply.code(409).send({\n          error: "SICHERUNGSSTAND_UNBEKANNT",\n          message: `Der Sicherungsstand ist unbekannt — die Nachführung hat keine Grenze. Mit ${SICHERUNGSSTAND_ENV}=<Sicherungsname oder UTC-Zeit> neu starten.`,\n        });\n        return;\n      }\n      const bericht = await deps.audit.verifyReport();\n      const integritaet = {\n        eintraege: bericht.count,\n        linkageBreaks: bericht.linkageBreaks,\n        unresolvedDeviations: bericht.unresolvedDeviations,\n        uncheckedDeviations: bericht.uncheckedDeviations,\n      };\n      if (\n        bericht.linkageBreaks !== 0 ||\n        bericht.unresolvedDeviations !== 0 ||\n        bericht.uncheckedDeviations !== 0\n      ) {\n        reply.code(409).send({\n          error: "INTEGRITAET",\n          message:\n            "Die Auditkette trägt nicht (Kettenbruch oder unerklärte/ungeprüfte Abweichung) — keine Freigabe.",\n          integritaet,\n        });\n        return;\n      }\n      await deps.audit.recordOnce(`${AKTION_WIEDERANLAUF_FREIGEGEBEN}:${kennung}`, {\n        actor: user.id,\n        action: AKTION_WIEDERANLAUF_FREIGEGEBEN,\n        target: "wiederanlauf",\n        payload: {\n          kennung,\n          bestaetigt: [...FREIGABE_BESTAETIGUNGEN],\n          integritaet,\n          nachfuehrungsgrenze: sicherungsstand,\n        },\n      });\n      freigegeben = true;\n      reply.code(200).send(await auskunft());\n    },\n  )',
+        pfadargument: "`${WIEDERANLAUF_PFAD}/freigabe`",
         pfade: ["/api/admin/wiederanlauf/freigabe"],
       },
     ] as const;
     let anzahl = 0;
     for (const fall of echte) {
       const original = LIES_AUS_DEM_BAUM(fall.datei);
+      const sf = ts.createSourceFile(fall.datei, original, ts.ScriptTarget.Latest, true);
+      const methode = `app.${fall.methode.toLowerCase()}`;
+      const aufruf = eindeutigerAufruf(
+        sf,
+        (n) =>
+          n.expression.getText(sf) === methode && n.arguments[0]?.getText(sf) === fall.pfadargument,
+      ).getText(sf);
       for (const text of [
         original,
         `// Zwei zusätzliche Zeilen vor der Registrierung.\n\n${original}`,
       ]) {
-        pruefe(fall.datei, text, fall.methode, fall.aufruf, fall.pfade);
+        pruefe(fall.datei, text, fall.methode, aufruf, fall.pfade);
       }
       anzahl += fall.pfade.length;
     }

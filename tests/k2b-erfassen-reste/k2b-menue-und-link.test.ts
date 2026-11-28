@@ -87,6 +87,8 @@ describe.runIf(zielbildDa)(
     beforeAll(async () => {
       try {
         b = await buehneBauen({ markierung: MARKIERUNG });
+        // Freier Raum über dem Link ist die Voraussetzung für Fall 3 und seine Gegenprobe.
+        await b.seite.setViewportSize({ width: 360, height: 960 });
         await b.oeffnen();
         console.info(
           `JOB 3506 K2b · Chromium ${b.version} · Seitenfehler ${JSON.stringify(b.seitenfehler)}`,
@@ -157,7 +159,8 @@ describe.runIf(zielbildDa)(
 
     // ---- Fall 2: die vier Saetze stehen hinter dem Zahnrad ---------------------------------------
     it("2 · die vier Saetze stehen hinter dem Zahnrad — woertlich aus DENSELBEN Schluesseln, und nur dort", async () => {
-      expect(await lies<boolean>(KLICK, "#kw-zahnrad")).toBe(true);
+      await buehne().seite.click(".mini-menu-button");
+      await buehne().seite.click("#mini-menu-settings");
       expect(await lies<boolean>(SICHTBAR, "#kw-einstellungen")).toBe(true);
       expect(await lies<boolean>(SICHTBAR, "#section-capture")).toBe(false);
       // Die Gruppe steht in der vorhandenen Bauform: ein Kicker DIREKT davor, dann die Gruppe

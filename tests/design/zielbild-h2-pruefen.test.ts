@@ -38,11 +38,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
+import konfliktarbeit from "../../apps/web/src/texte/konfliktarbeit";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 const WURZEL = resolve(process.cwd());
 const DIST = resolve(WURZEL, "apps/web/dist");
-const MOCKUPS = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk";
+const MOCKUPS = join(WURZEL, "tests/design/vorlagen/klarwerk");
 const ORIGIN = "http://klarwerk.test";
 
 // ---- Die Vorlagen -------------------------------------------------------------------------------
@@ -184,10 +185,25 @@ const ZAEHLEN = "(sel) => document.querySelectorAll(sel).length";
 // zugeklapptes `<details>` also, ein geschlossenes Menü ohnehin (dessen Inhalt steht gar nicht im
 // DOM). Wer die Leitkarte nur per CSS ausblendete, käme hier trotzdem durch — deshalb misst die
 // Probe zusätzlich, dass die Menüblätter WIRKLICH nicht im DOM stehen.
-const TEXTMESSER = `() => {
+const SPERRHINWEISE = {
+  "konflikt-arbeitsart": konfliktarbeit.de["konfliktarbeit.satz.offen"],
+  "konflikt-eskalation-zuerst": konfliktarbeit.de["konfliktarbeit.eskalation.zuerst"],
+  "konflikt-einordnung-zuerst": konfliktarbeit.de["konfliktarbeit.einordnung.zuerst"],
+};
+const TEXTMESSER = `(sperrhinweise) => {
   const flaeche = document.querySelector('[data-testid="pruefen-flaeche"]');
   if (!flaeche) return null;
   const klon = flaeche.cloneNode(true);
+  // Nur die nachgewiesenen Sperrgründe der konkreten Entscheidung sind ausgenommen.
+  // Freie Zusätze am selben Element bleiben im Budget.
+  const belegteHinweise = [];
+  for (const [kennung, hinweis] of Object.entries(sperrhinweise)) {
+    const knoten = klon.querySelector('[data-testid="' + kennung + '"]');
+    if (knoten && knoten.textContent.trim() === hinweis) {
+      belegteHinweise.push(kennung);
+      knoten.remove();
+    }
+  }
   for (const el of [...klon.querySelectorAll('[data-text], button, select, input, textarea')]) {
     el.remove();
   }
@@ -197,7 +213,7 @@ const TEXTMESSER = `() => {
   document.body.appendChild(klon);
   const text = (klon.innerText || '').replace(/\\s+/g, ' ').trim();
   klon.remove();
-  return { text, laenge: text.length, blaetter: document.querySelectorAll('[data-testid^="pruefen-menue-panel-"]').length };
+  return { text, laenge: text.length, belegteHinweise, blaetter: document.querySelectorAll('[data-testid^="pruefen-menue-panel-"]').length };
 }`;
 
 let browser: Browser | null = null;
@@ -1003,8 +1019,17 @@ describe.runIf(VORLAGEN_DA)(
             text: string;
             laenge: number;
             blaetter: number;
-          } | null>(fn(TEXTMESSER));
+            belegteHinweise: string[];
+          } | null>(fn(TEXTMESSER), name === "Konflikte" ? SPERRHINWEISE : {});
           expect(mess, "die Fläche trägt keinen Messanker").not.toBeNull();
+          if (name === "Konflikte") {
+            expect(mess?.belegteHinweise).toEqual(Object.keys(SPERRHINWEISE));
+            const beideGesperrt = await (seite as Seite).evaluate<boolean>(
+              fn(`() => ["links-gilt", "rechts-gilt"].every(key =>
+                document.querySelector('[data-testid="pruefen-knopf-' + key + '"]')?.disabled === true)`),
+            );
+            expect(beideGesperrt).toBe(true);
+          }
           // Kein Menü ist offen — sonst misst die Probe eine aufgeklappte Fläche.
           expect(mess?.blaetter, "ein Menü stand offen").toBe(0);
           console.info(
@@ -1020,8 +1045,6 @@ describe.runIf(VORLAGEN_DA)(
   },
 );
 
-describe.runIf(!VORLAGEN_DA)("JOB 3061 · Zielbild-Abgleich übersprungen", () => {
-  it("meldet die fehlenden Mockups statt eine Prüfung vorzutäuschen", () => {
-    expect(VORLAGEN_DA, `Mockups nicht lesbar: ${MOCKUPS}`).toBe(false);
-  });
+it("die drei versionierten Prüfvorlagen sind vollständig verfügbar", () => {
+  expect(VORLAGEN_DA).toBe(true);
 });

@@ -80,7 +80,7 @@ beforeEach(() => {
     SpeechRecognition: ProbeRec,
     SpeechSynthesisUtterance: ProbeAusgabe,
     speechSynthesis: {
-      getVoices: () => [],
+      getVoices: () => [{ name: "Teststimme", lang: "de-DE", localService: true }],
       cancel: vi.fn(),
       speak: (u: ProbeAusgabe) => ausgaben.push(u),
     },
@@ -118,6 +118,7 @@ describe("R-1648 · montierter Sprach-Leseweg", () => {
       locale: "de",
     });
     expect(muss(rekorder[0]).gestoppt).toBe(true);
+    expect(muss(ausgaben[0]).voice).toMatchObject({ lang: "de-DE", localService: true });
     expect(muss(ausgaben[0]).text).toContain(
       "vollständige Prüfung dieser Antwort ist nicht belegt",
     );

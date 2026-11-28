@@ -17,6 +17,7 @@ function makeKo(id: string, title: string, statement: string): KnowledgeObject {
     id,
     title,
     statement,
+    confidentiality: "intern",
     conditions: [],
     measures: [],
     tags: [],

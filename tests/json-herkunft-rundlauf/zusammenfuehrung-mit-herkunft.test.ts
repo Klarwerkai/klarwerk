@@ -17,8 +17,8 @@
 //   HERKUNFT am Ziel: `importCandidateId` (der Kandidat, aus dem das Objekt entstand; über ihn die
 //           eingereichte Datei und die Prüfentscheidung mit Wer/Wann), `originalAuthor`, und der
 //           annehmende Nutzer als `author`.
-//   NICHT:  Kennung, Version, Status, Bewertungen, Quellen (`sources`), Anhänge, Einstufung — die
-//           Einstufung wird beim Import nie gelockert: ohne Signal gilt „vertraulich".
+//   NICHT:  Kennung, Version, Status, Bewertungen, Quellen (`sources`), Anhänge.
+//   Die exportierte Einstufung reist mit und bleibt am Ziel erhalten.
 //
 // WAS DIESE DATEI NICHT MISST: den sichtbaren Bedienweg (Smoke L3/L3-T, `tests-smoke/ui-smoke.spec.ts`)
 // und die Volltextkette über Socket/Browser/PostgreSQL (JOB 4293, `tests/json-volltext-nutzerweg/**`).
@@ -57,20 +57,27 @@ async function instanz() {
   return { koService, library: new LibraryService({ koService }) };
 }
 
-async function quelleExport(): Promise<{ datei: string; quellIds: string[] }> {
+async function quelleExport(
+  stufe: "intern" | "vertraulich" = "intern",
+): Promise<{ datei: string; quellIds: string[] }> {
   const q = await instanz();
   const a = await q.koService.create({
     ...NEU,
     author: "Quell-Reviewer",
     originalAuthor: URHEBERIN,
     bodyHtml: VOLLTEXT,
+    confidentiality: stufe,
+  });
+  const b = await q.koService.create({
+    ...SCHON_DA,
+    author: "Quell-Bert",
     confidentiality: "intern",
   });
-  const b = await q.koService.create({ ...SCHON_DA, author: "Quell-Bert" });
   for (const ko of [a, b]) {
     await q.koService.setValidationState(ko.id, { trust: 80, status: "validiert" });
   }
-  return { datei: JSON.stringify(await q.library.exportJson()), quellIds: [a.id, b.id] };
+  const exportiert = await q.library.exportJson({ includeConfidential: stufe === "vertraulich" });
+  return { datei: JSON.stringify(exportiert), quellIds: [a.id, b.id] };
 }
 
 describe("UX-20b-R · eigener Export in einen gefüllten Bestand zusammenführen (R-0150/R-1731)", () => {
@@ -176,8 +183,29 @@ describe("UX-20b-R · eigener Export in einen gefüllten Bestand zusammenführen
     expect(angelegt.status, "die Validierung der Quelle wurde mitübernommen").not.toBe("validiert");
     expect(angelegt.sources).toEqual([]);
     expect(angelegt.attachments).toEqual([]);
-    // Nie gelockert: „intern" in der Quelle, ohne Signal in der Datei → konservativ „vertraulich".
-    expect(angelegt.confidentiality).toBe("vertraulich");
+    // Die ausdrücklich gesetzte Einstufung des exportierten Objekts reist bis in den Zielbestand.
+    expect(zumNeuen?.item.confidentiality).toBe("intern");
+    expect(angelegt.confidentiality).toBe(zumNeuen?.item.confidentiality);
+  });
+
+  it("ein berechtigt mitexportierter vertraulicher Beitrag bleibt bis in das angenommene Zielobjekt vertraulich", async () => {
+    const { datei } = await quelleExport("vertraulich");
+    const ziel = await instanz();
+    const items = parseImportItems(datei).filter((item) => item.title === NEU.title);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.confidentiality).toBe("vertraulich");
+    const [kandidat] = await ziel.library.createImportCandidates(
+      items,
+      ZIEL_REVIEWER,
+      OHNE_AEHNLICHKEIT,
+    );
+    if (!kandidat) throw new Error("Importkandidat fehlt");
+    const angenommen = await ziel.library.reviewImportCandidate(
+      kandidat.id,
+      "accept",
+      ZIEL_REVIEWER,
+    );
+    expect((await ziel.koService.get(angenommen.koId ?? ""))?.confidentiality).toBe("vertraulich");
   });
 
   it("ein zweites Einspielen derselben Datei ändert den zusammengeführten Bestand nicht", async () => {

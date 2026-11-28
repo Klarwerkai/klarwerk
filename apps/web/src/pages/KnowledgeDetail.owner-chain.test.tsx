@@ -160,6 +160,19 @@ function transport(pfad: string): unknown {
     // nichts, worauf sie das Ereignis beziehen könnte, und C2 wäre trivial erfüllt.
     return antwort([ko()]);
   }
+  if (ohneFrage === `/api/kos/${KO_ID}/verstaendnisfragen`) {
+    return antwort({
+      koId: KO_ID,
+      aktuelleFassung: 1,
+      gueltig: true,
+      darfBearbeiten: false,
+      darfEntscheiden: false,
+      fragensaetze: [],
+    });
+  }
+  if (ohneFrage === "/api/me/klara/erinnerungen") {
+    return antwort({ erinnerungen: [], uebernommen: [] });
+  }
   if (ohneFrage === "/api/validation/board") {
     // BEWUSST LEER. Stünde das Objekt hier, führte `MyTasks` seinen Titel schon als PRÜFAUFGABE —
     // und `fuehrtAufgabe()` würde die Rückgabe-Aufgabe nicht mehr von ihr unterscheiden. Gemessen:
@@ -226,6 +239,7 @@ async function mounte(was: "detail" | "aufgaben"): Promise<void> {
   await act(async () => {
     root.render(createElement(QueryClientProvider, { client: qc }, inhalt));
   });
+  await act(() => vi.dynamicImportSettled());
   // Die Abrufe sind jetzt echt und damit asynchron. Mehrere Runden, weil abhängige Abfragen
   // (`useKo` → `useKoVersions`) erst nach der ersten Antwort starten.
   for (let runde = 0; runde < 12; runde += 1) {

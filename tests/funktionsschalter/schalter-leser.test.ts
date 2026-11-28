@@ -50,6 +50,9 @@ const REGISTER: Record<string, Leseweg> = {
   // Kein Registry-Schalter, sondern aus dem Host abgeleitet (JOB 4365) — aber ein Feld derselben
   // Auskunft, und deshalb ebenso eingeordnet.
   demoInstanz: { art: "auskunft", datei: "apps/web/src/auth/BrandPanel.tsx" },
+  // R-0570 (anonyme Vorführung), nachgetragen im Gesamtcheck R-1329: die Anmeldemaske liest den
+  // Schalter aus der Auskunft und verweist nur dann auf die Vorführung.
+  vorfuehrung: { art: "auskunft", datei: "apps/web/src/auth/AuthScreens.tsx" },
   confluenceImport: {
     art: "eigeneAuskunft",
     datei: "apps/web/src/components/ImportAccessPanel.tsx",

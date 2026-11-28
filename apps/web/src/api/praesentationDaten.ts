@@ -25,15 +25,6 @@ export type Bindungslage =
   | "element_fehlt"
   | "anhang_fehlt";
 
-export const DIMENSIONEN: readonly Dimension[] = [
-  "erkennung",
-  "struktur",
-  "berechnung",
-  "konsistenz",
-  "aktualitaet",
-  "fachliche_freigabe",
-];
-
 export interface Tabellenzelle {
   zeile: number;
   spalte: number;

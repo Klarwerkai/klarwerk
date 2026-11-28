@@ -464,8 +464,9 @@ describe("JOB 3323 B · /bibliothek — der getippte Filter bleibt stehen", () =
 
 describe("JOB 3323 D · der Wechsel kostet nichts: kein Abruf, kein Modell, kein Neuladen", () => {
   it("über den Wechsel hinweg wächst weder der Endpunkt-Zähler noch fetch", async () => {
-    const fetchSpion = vi.fn(async () => new Response("[]"));
-    (globalThis as unknown as { fetch: unknown }).fetch = fetchSpion;
+    const fetchSpion = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("[]"));
     montage = await montiere(
       "/erfassen",
       createElement("div", null, createElement(Capture), createElement(Ortsmelder)),
@@ -485,7 +486,7 @@ describe("JOB 3323 D · der Wechsel kostet nichts: kein Abruf, kein Modell, kein
       AUFRUFE,
       `Der Sprachwechsel hat abgerufen: ${AUFRUFE.slice(vorher.length).join(", ")}`,
     ).toEqual(vorher);
-    expect(fetchSpion.mock.calls.length).toBe(fetchVorher);
+    expect(fetchSpion.mock.calls.slice(fetchVorher)).toEqual([]);
   });
 
   it("der Schalter kennt keinen Neulade- und keinen Navigationsweg (Quelltext, nicht Absicht)", () => {

@@ -21,6 +21,7 @@ const DRAFT = "Bei Kaltstart keine Vorwärmung aktivieren und sichern.";
 function mkKo(over: Partial<KnowledgeObject> = {}): KnowledgeObject {
   return {
     id: "kc",
+    confidentiality: "intern",
     title: "Kaltstart Vorwärmung",
     statement: "Bei Kaltstart zuerst die Vorwärmung aktivieren.",
     conditions: [],

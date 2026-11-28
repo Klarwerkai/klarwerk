@@ -87,7 +87,8 @@ const METHODE = /(?<=^|[\s{,(])(async\s+)?onSend\s*(?=\()/gm;
 const ROH = /\bonSend\b/g;
 
 function registrierungenIn(src: string, datei: string): OnSendRegistrierung[] {
-  const text = ohneKommentare(src);
+  if (!src.includes("onSend") && !src.includes("addHook")) return [];
+  const text = ohneKommentare(src, datei);
   const funde: OnSendRegistrierung[] = [];
   const erklaert = new Set<number>();
   const zeileVon = (index: number) => text.slice(0, index).split("\n").length;
@@ -182,6 +183,11 @@ describe("WP-E2/mega71 B: onSend-Hooks im Produktbaum bleiben synchron (Sammler,
       ['app.get("/a", { ["onSend"]: async (r, s, p) => p }, h)', ["async"]],
       ['app.get("/a", { onSend: [stempel] }, h)', ["unbekannt"]],
       ['app.get("/a", { onSend(r, s, p, done) { done() } }, h)', ["callback"]],
+      ['// /word-addin/*\napp.addHook("onSend", async () => {}); /* danach */', ["async"]],
+      [
+        'const pfad = "/word-addin/*"; app.addHook("onSend", async () => {}); /* danach */',
+        ["async"],
+      ],
       // Indirekte Hooknamen — wörtlich bens Gegenbeispiel und seine Verwandten.
       ["const hook = 'onSend'; app.addHook(hook, async (r, s) => {})", ["unbekannt", "unbekannt"]],
       ["app.addHook(`on${art}`, async (r, s) => {})", ["unbekannt"]],

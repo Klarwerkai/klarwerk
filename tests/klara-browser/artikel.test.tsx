@@ -46,6 +46,7 @@
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Variants } from "../../extensions/klara-browser/types";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -393,7 +394,8 @@ describe("JOB 3279 · Umfang, Bilder und Herkunft in der Klara-Seitenleiste", ()
       // ZEICHENGLEICH im Gespeicherten — am Ende, hinter „Übernommener Inhalt". Bild, Beschriftung
       // und Tabelle gehen dabei nicht verloren; das misst der Rest dieses Falls weiter.
       const gespeichert = alsMarkup(String(draft.payload.bodyHtml));
-      expect(gespeichert.endsWith(view.el("content").innerHTML)).toBe(true);
+      const original = view.el("content").innerHTML;
+      expect(original).toContain(PNG);
       // Und die Angaben, die die Vorschau vorher füllten, stehen weiter im Entwurf — nur nicht
       // mehr in der Vorschau. Beides zusammen ist der Unterschied zwischen „ruhiger" und „weniger".
       expect(view.el("content").innerHTML).not.toContain("Seite / Page");
@@ -402,11 +404,50 @@ describe("JOB 3279 · Umfang, Bilder und Herkunft in der Klara-Seitenleiste", ()
       // Und das Bild ist nach dem Wiederöffnen wirklich da, mit Beschriftung und Quelle.
       const wieder = new JSDOM(`<div id="p">${draft.payload.bodyHtml}</div>`);
       const bild = wieder.window.document.querySelector("figure img");
-      expect(bild?.getAttribute("src")).toBe(PNG);
+      const webp = bild?.getAttribute("src") ?? "";
+      expect(webp).toMatch(/^data:image\/webp;base64,/);
+      expect(gespeichert.endsWith(original.replace(PNG, webp))).toBe(true);
+      // Die Kodierung darf wechseln; Pixelort, Farbe und Transparenz der Probe bleiben erhalten.
+      const pixel = async (url: string) =>
+        sharp(Buffer.from(url.slice(url.indexOf(",") + 1), "base64"))
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+      const [vorher, nachher] = await Promise.all([pixel(PNG), pixel(webp)]);
+      expect(nachher.info).toMatchObject({
+        width: vorher.info.width,
+        height: vorher.info.height,
+        channels: vorher.info.channels,
+      });
+      for (const [index, wert] of vorher.data.entries())
+        expect(Math.abs(wert - (nachher.data[index] ?? -1000))).toBeLessThanOrEqual(3);
+
       const unterschrift = wieder.window.document.querySelector("figure figcaption")?.textContent;
       expect(unterschrift).toContain("Rückseite mit beschrifteten Anschlüssen");
       expect(unterschrift).toContain("https://status.example.test/bilder/anschluss.png");
       wieder.window.close();
+      // Ein anderes gespeichertes Bild mit derselben Größe und Bezeichnung ist keine Bestätigung.
+      const stand = await h.send({ type: "state" });
+      expect(stand.status).toBe("saved");
+      const fremd = await sharp({
+        create: { width: 1, height: 1, channels: 3, background: "#00ff00" },
+      })
+        .png()
+        .toBuffer();
+      const geaendert = await app.inject({
+        method: "PUT",
+        url: `/api/drafts/${stand.draftId}`,
+        headers: { authorization: `Bearer ${(h.data.auth as { token: string }).token}` },
+        payload: {
+          ...draft.payload,
+          bodyHtml: String(draft.payload.bodyHtml).replace(
+            webp,
+            `data:image/png;base64,${fremd.toString("base64")}`,
+          ),
+        },
+      });
+      expect(geaendert.statusCode, geaendert.body).toBe(200);
+      expect((await h.send({ type: "state" })).status).toBe("verify_failed");
     } finally {
       await app.close();
     }

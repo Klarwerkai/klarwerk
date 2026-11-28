@@ -20,6 +20,7 @@ let qc: QueryClient;
 let originalFetch: typeof fetch;
 let pause: Promise<void> | undefined;
 const anfragen: string[] = [];
+const laufendeAntworten = new Set<Promise<unknown>>();
 beforeEach(async () => {
   w = await dateiwelt();
   pause = undefined;
@@ -29,12 +30,16 @@ beforeEach(async () => {
     const pfad = String(url);
     anfragen.push(`${init?.method ?? "GET"} ${pfad}`);
     if (pause && pfad.endsWith("/datenaktualisierung/vorschau")) await pause;
-    const r = await w.app.inject({
-      method: (init?.method ?? "GET") as "GET" | "POST",
-      url: pfad,
-      headers: { ...w.admin, "content-type": "application/json" },
-      ...(init?.body ? { payload: String(init.body) } : {}),
-    });
+    const antwort = w.app
+      .inject({
+        method: (init?.method ?? "GET") as "GET" | "POST",
+        url: pfad,
+        headers: { ...w.admin, "content-type": "application/json" },
+        ...(init?.body ? { payload: String(init.body) } : {}),
+      })
+      .then((r) => r);
+    laufendeAntworten.add(antwort);
+    const r = await antwort.finally(() => laufendeAntworten.delete(antwort));
     return {
       status: r.statusCode,
       statusText: String(r.statusCode),
@@ -76,6 +81,7 @@ function pflicht<T>(v: T | undefined | null): T {
 async function erwarte(test: () => boolean) {
   for (let i = 0; i < 150 && !test(); i++)
     await act(async () => {
+      await Promise.all(laufendeAntworten);
       await new Promise((r) => setTimeout(r, 10));
     });
   expect(test(), host.textContent ?? "").toBe(true);
@@ -94,20 +100,24 @@ async function eingabe(e: HTMLInputElement, wert: string) {
     e.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
+function aenderungsformular() {
+  const oeffner = knopf("Änderungen vorschauen");
+  const abschnitt = document.getElementById(pflicht(oeffner.getAttribute("aria-controls")));
+  return pflicht(abschnitt?.querySelector("form"));
+}
 async function datenVorschau() {
   await klick("Änderungen vorschauen");
-  const s = host.querySelector("select") as HTMLSelectElement;
+  const form = aenderungsformular();
+  const s = pflicht(form.querySelector("select"));
   await act(async () => {
     s.value = w.b.id;
     s.dispatchEvent(new Event("change", { bubbles: true }));
   });
-  const inputs = host.querySelectorAll<HTMLInputElement>("form input:not([type=checkbox])");
+  const inputs = form.querySelectorAll<HTMLInputElement>("input:not([type=checkbox])");
   await eingabe(pflicht(inputs[0]), "700 T€");
   await eingabe(pflicht(inputs[1]), "Fiktive bewusste Änderung aus der Oberfläche.");
   await act(async () => {
-    host
-      .querySelector("form")
-      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   });
   await erwarte(() => host.textContent?.includes("Vorschau: 2 Datenfassungen betroffen") ?? false);
 }
@@ -172,7 +182,7 @@ describe("PP07 · tatsächlicher Produktbedienweg in der bestehenden Folienfläc
       freigeben = r;
     });
     await klick("Übernahme vorbereiten");
-    const input = host.querySelector("form input") as HTMLInputElement;
+    const input = pflicht(aenderungsformular().querySelector("input"));
     await act(async () => {
       input.focus();
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

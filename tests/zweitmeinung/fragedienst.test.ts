@@ -30,6 +30,7 @@ async function aufbau(textA = "Ab 5 bar schließen [1].", textB = "Ab 7 bar schl
   // Die Voraussetzung trägt eine Zahl: ein Zuschnitt (R-0346) hängt sie an die Antwort an (F4).
   const ventil = await koService.create({
     title: "Ventil Kranichsee: Druck beim Schließen",
+    confidentiality: "intern",
     statement: "Das Ventil Kranichsee wird bei hohem Druck geschlossen.",
     type: "best_practice",
     category: "Anlage 1",

@@ -2,10 +2,248 @@
   "openapi": "3.1.0",
   "info": {
     "title": "KLARWERK Integrationsschnittstelle",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "description": "Anmeldung mit Dienst-Schlüssel im Kopf x-klarwerk-service-key. Jeder Schlüssel hat eigene Rechte und eine eigene Anfragegrenze. Antworten aus Wissen stammen ausschließlich aus validiertem Wissen. Zustandstabelle: docs/architektur/integrations-schnittstelle.md."
   },
   "paths": {
+    "/api/eingang/email": {
+      "post": {
+        "summary": "Der konfigurierte Mailadapter liefert eine Nachricht als privaten Entwurf mit Originalbeleg ein.",
+        "x-klarwerk-recht": "mail.entwurf",
+        "security": [
+          {
+            "dienstSchluessel": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailNachricht"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Frühere Zustellung bestätigt oder abgeschlossen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mailannahme"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Neuer Entwurf angelegt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mailannahme"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request: Rumpf verletzt das Schema oder ist kein JSON (code: FST_ERR_VALIDATION bzw. FST_ERR_CTP_…). | EMAIL_FORM: Nachrichtenfelder oder Klartext ungültig. | EMAIL_ADRESSE: Empfänger gehört nicht zum konfigurierten Eingang. | DRAFT_STALE: Der Entwurf änderte sich während der Originalbindung.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "enum": ["Bad Request", "EMAIL_FORM", "EMAIL_ADRESSE", "DRAFT_STALE"]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: Kein gültiger Dienst-Schlüssel: falsch, gesperrt oder nicht (mehr) konfiguriert. Es gibt keinen Rückfall auf eine Sitzung.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "const": "UNAUTHENTICATED"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: Der Schlüssel ist gültig, trägt aber das Recht dieser Route nicht.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "const": "FORBIDDEN"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: Der wartende Entwurf ist nicht mehr vorhanden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "const": "NOT_FOUND"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: Die Herkunft des wartenden Entwurfs hat sich geändert. | IDEMPOTENCY_PAYLOAD_MISMATCH: Die Nachrichtenkennung wurde bereits mit anderem Inhalt verwendet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "enum": ["CONFLICT", "IDEMPOTENCY_PAYLOAD_MISMATCH"]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large: Rumpf größer als 1 MiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "const": "Payload Too Large"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "const": "Unsupported Media Type"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "EMAIL_ANHAENGE: Der Eingang akzeptiert ausschließlich Klartext ohne Anhänge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "const": "EMAIL_ANHAENGE"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Gebremst"
+          },
+          "500": {
+            "$ref": "#/components/responses/Intern"
+          },
+          "503": {
+            "description": "EMAIL_NICHT_KONFIGURIERT: Für diese Instanz ist kein gültiger Eingang konfiguriert. | EMAIL_ZUSTAENDIGKEIT_FEHLT: Das zuständige Konto kann keine Entwürfe anlegen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Mailfehler"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "enum": ["EMAIL_NICHT_KONFIGURIERT", "EMAIL_ZUSTAENDIGKEIT_FEHLT"]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ask": {
       "post": {
         "summary": "Frage stellen. Antwort ausschließlich aus validiertem, nicht vertraulichem Wissen, ohne Modellaufruf; sonst eine ehrliche Wissenslücke.",
@@ -838,6 +1076,71 @@
               "available": { "type": "boolean" },
               "recent": { "type": "array", "items": { "type": "object" } }
             }
+          }
+        }
+      },
+      "EmailNachricht": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["recipient", "messageId", "from", "subject", "sentAt", "text"],
+        "properties": {
+          "recipient": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 254
+          },
+          "messageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time",
+            "maxLength": 35
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 0
+          }
+        }
+      },
+      "Mailannahme": {
+        "type": "object",
+        "required": ["entwurfId", "neu"],
+        "properties": {
+          "entwurfId": {
+            "type": "string"
+          },
+          "neu": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Mailfehler": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         }
       },

@@ -93,7 +93,7 @@ function mitSprachausgabe(): void {
     cancel: () => {
       ausgabe.abgebrochen += 1;
     },
-    getVoices: () => [],
+    getVoices: () => [{ name: "Teststimme", lang: "de-DE", localService: true }],
     addEventListener: () => {},
     removeEventListener: () => {},
   };

@@ -47,9 +47,24 @@ function jobBlock(name: string): string {
 }
 
 function runBefehle(block: string): string[] {
-  return Array.from(block.matchAll(/^\s*(?:- )?run:\s*(.+?)\s*$/gm))
-    .map((m) => m[1])
-    .filter((b): b is string => b !== undefined);
+  const zeilen = block.split("\n");
+  const befehle: string[] = [];
+  for (let i = 0; i < zeilen.length; i++) {
+    const treffer = /^( *)(?:- )?run: (.+)$/.exec(zeilen[i] ?? "");
+    if (!treffer) continue;
+    const wert = treffer[2]?.trim();
+    if (wert !== "|") {
+      if (wert) befehle.push(wert);
+      continue;
+    }
+    const einrueckung = (treffer[1]?.length ?? 0) + 1;
+    const rumpf = [];
+    while (zeilen[i + 1]?.startsWith(" ".repeat(einrueckung))) {
+      rumpf.push(zeilen[++i]?.trim());
+    }
+    befehle.push(rumpf.join("\n"));
+  }
+  return befehle;
 }
 
 /** Alle Jobnamen der Datei — damit kein Job unbemerkt dazukommt. */
@@ -77,13 +92,50 @@ function jobNamen(): string[] {
 type Lage = "VOR" | "IST_DAS_TOR" | "NACH" | "AUSSERHALB";
 
 const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
+  { job: "pflicht-plan", befehl: "npm ci --ignore-scripts", lage: "AUSSERHALB" },
+  {
+    job: "pflicht-plan",
+    befehl: 'node tools/pflicht-pr.mjs plan "$RELEASE_BASE" .local/run/ci-pflicht-plan',
+    lage: "AUSSERHALB",
+  },
+  { job: "pflicht-plan", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  { job: "pflicht-plan", befehl: "npx vite build", lage: "AUSSERHALB" },
+  { job: "pflicht-teil", befehl: "npm ci", lage: "AUSSERHALB" },
+  { job: "pflicht-teil", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  {
+    job: "pflicht-teil",
+    befehl: "npx playwright install --with-deps chromium",
+    lage: "AUSSERHALB",
+  },
+  {
+    job: "pflicht-teil",
+    befehl: 'node tools/pflicht-pr.mjs teil "$RELEASE_BASE" .local/run/ci-pflicht-teil "$TEIL"',
+    lage: "AUSSERHALB",
+  },
   { job: "pflicht", befehl: "npm ci", lage: "AUSSERHALB" },
   { job: "pflicht", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  {
+    job: "pflicht",
+    befehl: 'node tools/pflicht-pr.mjs abschluss "$RELEASE_BASE" .local/run/ci-pflicht',
+    lage: "AUSSERHALB",
+  },
+  {
+    job: "pflicht",
+    befehl: `node --input-type=module -e '
+import {releaseInputs, schmalansichtsTest} from "./tools/release.mjs";
+const {tests} = releaseInputs(process.cwd(), process.env.RELEASE_BASE);
+console.log("chromium=" + tests.includes(schmalansichtsTest));
+' >> "$GITHUB_OUTPUT"`,
+    lage: "AUSSERHALB",
+  },
+  { job: "pflicht", befehl: "npx playwright install --with-deps chromium", lage: "AUSSERHALB" },
+  { job: "pflicht", befehl: "npx vite build", lage: "AUSSERHALB" },
   {
     job: "pflicht",
     befehl: 'node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht',
     lage: "AUSSERHALB",
   },
+  { job: "check", befehl: "node tools/klara-macos.mjs --nachweis", lage: "AUSSERHALB" },
   { job: "check", befehl: "npm ci", lage: "VOR" },
   { job: "check", befehl: "npm ci --prefix apps/web", lage: "VOR" },
   {
@@ -105,6 +157,29 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
     lage: "AUSSERHALB",
   },
   { job: "integration", befehl: "npm run test:integration", lage: "AUSSERHALB" },
+  { job: "integration-insel-macos", befehl: "npm ci", lage: "AUSSERHALB" },
+  { job: "integration-insel-macos", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  { job: "integration-insel-macos", befehl: "node tools/klara-macos.mjs", lage: "AUSSERHALB" },
+  { job: "integration-insel-macos", befehl: "npx playwright install chromium", lage: "AUSSERHALB" },
+  {
+    job: "integration-insel-macos",
+    befehl:
+      "npm run test:integration -- tests/insel-auslieferung/release-update-rueckfall.integration.test.ts",
+    lage: "AUSSERHALB",
+  },
+  { job: "integration-kundeninstallation", befehl: "npm ci", lage: "AUSSERHALB" },
+  { job: "integration-kundeninstallation", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  {
+    job: "integration-kundeninstallation",
+    befehl: "npx playwright install --with-deps chromium",
+    lage: "AUSSERHALB",
+  },
+  {
+    job: "integration-kundeninstallation",
+    befehl:
+      "npm run test:integration -- tests/neuinstallation/kundeninstallation-strecke.integration.test.ts",
+    lage: "AUSSERHALB",
+  },
   // R-1487 (aufnahme:20260922:gesamt-kundenbetrieb): der Abbildbau läuft NACH dem Tor (`needs:
   // check`) in einem eigenen Job; `./tools/check` fährt ihn nicht mit.
   {
@@ -116,11 +191,24 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
 
 describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeordnet", () => {
   it("kennt genau die Jobs, die eingeordnet sind — ein neuer Job macht diesen Test rot", () => {
-    expect(jobNamen()).toEqual(["pflicht", "check", "integration", "abbild"]);
-    expect([...new Set(EINORDNUNG.map((e) => e.job))]).toEqual([
+    expect(jobNamen()).toEqual([
+      "pflicht-plan",
+      "pflicht-teil",
       "pflicht",
       "check",
       "integration",
+      "integration-insel-macos",
+      "integration-kundeninstallation",
+      "abbild",
+    ]);
+    expect([...new Set(EINORDNUNG.map((e) => e.job))]).toEqual([
+      "pflicht-plan",
+      "pflicht-teil",
+      "pflicht",
+      "check",
+      "integration",
+      "integration-insel-macos",
+      "integration-kundeninstallation",
       "abbild",
     ]);
   });
@@ -135,6 +223,115 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
     // Und die Gegenrichtung: keine Einordnung ohne Schritt.
     const alleSchritte = jobNamen().flatMap((j) => runBefehle(jobBlock(j)));
     expect(EINORDNUNG).toHaveLength(alleSchritte.length);
+  });
+
+  it("bindet die PR-Teilberichte an den gleichen GitHub-Commit und den abschließenden Pflichtjob", () => {
+    const plan = jobBlock("pflicht-plan");
+    const teile = jobBlock("pflicht-teil");
+    const ende = jobBlock("pflicht");
+    for (const job of [plan, teile, ende]) {
+      expect(job).toContain("ref: ${{ github.sha }}");
+      expect(job).toContain("fetch-depth: 0");
+    }
+    expect(plan).toContain("if: github.event_name == 'pull_request'");
+    expect(teile).toContain("needs: pflicht-plan");
+    expect(teile).toContain("if: needs.pflicht-plan.outputs.verteilt == 'true'");
+    expect(teile).toContain("fail-fast: false");
+    expect(teile).toContain("fromJSON(needs.pflicht-plan.outputs.matrix");
+    expect(teile).toContain("name: pflicht-pr-${{ github.sha }}-${{ matrix.teil }}");
+    expect(ende).toContain("needs: [pflicht-plan, pflicht-teil]");
+    expect(ende).toContain("pattern: pflicht-pr-${{ github.sha }}-*");
+    expect(ende).toContain("PLAN_ERGEBNIS: ${{ needs.pflicht-plan.result }}");
+    expect(ende).toContain("MATRIX_ERGEBNIS: ${{ needs.pflicht-teil.result }}");
+    expect(ende).toContain(
+      "LAUF_ABGEBROCHEN: ${{ needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled' }}",
+    );
+    expect(ende).toContain(
+      "if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')",
+    );
+    expect(ende).toContain("name: pflicht-${{ github.sha }}");
+  });
+
+  it("bricht den laufenden Sammler bei manuellem Abbruch ab und wertet gescheiterte Vorstufen aus", () => {
+    const ende = jobBlock("pflicht");
+    const sammler =
+      "!cancelled() || needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled'";
+    expect(ende.split("\n").find((zeile) => zeile.startsWith("    if:"))).toBe(
+      `    if: \${{ ${sammler} }}`,
+    );
+    expect(ende).toContain(
+      `if: \${{ github.event_name == 'pull_request' && (${sammler}) }}\n        env:\n          RELEASE_BASE:`,
+    );
+    expect(ende).toContain(
+      "uses: actions/upload-artifact@v4\n        if: ${{ !cancelled() }}\n        with:\n          name: pflicht-${{ github.sha }}",
+    );
+    for (const zeile of ende.split("\n").filter((z) => z.includes("cancelled()"))) {
+      expect(zeile.trim()).toMatch(/^(?:- )?if:/);
+    }
+  });
+
+  it("übergibt das Produktionsbündel desselben Commits vor dem Vitest-Aufruf an jeden Testteil", () => {
+    const plan = jobBlock("pflicht-plan");
+    const teile = jobBlock("pflicht-teil");
+    const name = "pflicht-web-dist-${{ github.sha }}";
+    expect(plan).toMatch(
+      /if: steps\.plan\.outputs\.verteilt == 'true'\s+working-directory: apps\/web\s+timeout-minutes: 4\s+env:\s+NODE_ENV: production\s+run: npx vite build/,
+    );
+    expect(plan).toContain(
+      `name: ${name}\n          path: apps/web/dist/\n          include-hidden-files: true\n          if-no-files-found: error`,
+    );
+    expect(plan.indexOf("run: npx vite build")).toBeLessThan(plan.indexOf(name));
+    expect(teile).toContain(
+      `- uses: actions/download-artifact@v4\n        if: matrix.teil != 'vorstufen'\n        with:\n          name: ${name}\n          path: apps/web/dist/`,
+    );
+    expect(teile.indexOf(name)).toBeLessThan(teile.indexOf("run: node tools/pflicht-pr.mjs teil"));
+  });
+
+  it("belegt den echten launchd-Weg auf macOS und die eigene Docker-Installationsstrecke", () => {
+    expect(jobBlock("integration-insel-macos")).toContain("runs-on: macos-15");
+    expect(jobBlock("integration-insel-macos")).toContain('KLARWERK_INSEL_LAUNCHD_PFLICHT: "1"');
+    const insel = jobBlock("integration-insel-macos");
+    expect(insel).toContain("id: insel_checkout");
+    expect(insel).toContain("commit: ${{ steps.insel_checkout.outputs.commit }}");
+    expect(insel).toContain(
+      "run: npm run test:integration -- tests/insel-auslieferung/release-update-rueckfall.integration.test.ts",
+    );
+    const pg = jobBlock("integration");
+    expect(pg).toContain("needs: [integration-insel-macos, integration-kundeninstallation]");
+    expect(pg).toContain("if: ${{ !cancelled() }}");
+    expect(pg).toContain(
+      "KLARWERK_CI_INSEL_COMMIT: ${{ needs.integration-insel-macos.outputs.commit }}",
+    );
+    expect(pg).toContain("KLARWERK_CI_INSEL_ERGEBNIS: ${{ needs.integration-insel-macos.result }}");
+    const installation = jobBlock("integration-kundeninstallation");
+    expect(installation).toContain("runs-on: ubuntu-24.04");
+    expect(installation).toContain("id: installation_checkout");
+    expect(installation).toContain("commit: ${{ steps.installation_checkout.outputs.commit }}");
+    expect(installation).toContain(
+      "run: npm run test:integration -- tests/neuinstallation/kundeninstallation-strecke.integration.test.ts",
+    );
+    expect(pg).toContain(
+      "KLARWERK_CI_KUNDENINSTALLATION_COMMIT: ${{ needs.integration-kundeninstallation.outputs.commit }}",
+    );
+    expect(pg).toContain(
+      "KLARWERK_CI_KUNDENINSTALLATION_ERGEBNIS: ${{ needs.integration-kundeninstallation.result }}",
+    );
+  });
+
+  it("bindet den Linux-Gesamtcheck an den nach beiden nativen Fällen ausgegebenen macOS-Commit", () => {
+    const check = jobBlock("check");
+    const mac = jobBlock("integration-insel-macos");
+    expect(mac).toContain("klara_commit: ${{ steps.klara.outputs.commit }}");
+    expect(mac).toMatch(/id: klara\s+run: node tools\/klara-macos\.mjs/);
+    expect(check).toContain("needs: integration-insel-macos");
+    expect(check).toContain("if: ${{ always() }}");
+    expect(check).toContain("run: node tools/klara-macos.mjs --nachweis");
+    expect(check).toContain(
+      "KLARWERK_CI_KLARA_MACOS_COMMIT: ${{ needs.integration-insel-macos.outputs.klara_commit }}",
+    );
+    expect(check).toContain(
+      "KLARWERK_CI_KLARA_MACOS_ERGEBNIS: ${{ needs.integration-insel-macos.result }}",
+    );
   });
 
   it("genau EIN Schritt ist das Tor — und er steht im `check`-Job", () => {

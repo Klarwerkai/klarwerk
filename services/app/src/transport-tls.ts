@@ -22,8 +22,7 @@
 // einer lauten Warnung (`klartextWarnung`). Die harte Pflicht ohne vorherige Proxy-Umstellung würde
 // die laufende Installation beim nächsten Ausrollen abschalten; die Reihenfolge steht in der Anleitung.
 import { readFileSync } from "node:fs";
-import type { Server as HttpServer, IncomingMessage, ServerResponse } from "node:http";
-import { createServer } from "node:https";
+import type { ServerOptions } from "node:https";
 
 export const TLS_CERT_ENV = "KLARWERK_TLS_CERT_FILE";
 export const TLS_KEY_ENV = "KLARWERK_TLS_KEY_FILE";
@@ -94,16 +93,7 @@ export function klartextWarnung(
   return `App-Port nimmt Klartext-HTTP an — R-2057 verlangt TLS bis zur Anwendung. ${TLS_CERT_ENV} und ${TLS_KEY_ENV} setzen und den Proxy auf https umstellen (docs/operations/tls-bis-zur-anwendung.md).`;
 }
 
-type Anfragebehandlung = (req: IncomingMessage, res: ServerResponse) => void;
-
-/**
- * Fastify-`serverFactory` für den App-Port mit TLS. Der Rückgabetyp ist der des Fastify-Standards;
- * zur Laufzeit ist es ein `https.Server` (gleiche Ereignis- und `listen`-Schnittstelle).
- */
-export function tlsServerFabrik(tls: TransportTls): (handler: Anfragebehandlung) => HttpServer {
-  return (handler) =>
-    createServer(
-      { cert: tls.cert, key: tls.key, minVersion: TLS_MINDESTFASSUNG },
-      handler,
-    ) as unknown as HttpServer;
+/** Fastifys nativer HTTPS-Server verwendet dieselbe Mindestfassung am App-Port. */
+export function tlsServerOptionen(tls: TransportTls): ServerOptions {
+  return { cert: tls.cert, key: tls.key, minVersion: TLS_MINDESTFASSUNG };
 }

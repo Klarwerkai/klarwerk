@@ -25,11 +25,11 @@ async function starte() {
 }
 beforeAll(async () => {
   container = await new GenericContainer("postgres:16-alpine")
-    .withEnvironment({ POSTGRES_PASSWORD: "p03-synthetic", POSTGRES_DB: "team_test" })
+    .withEnvironment({ POSTGRES_PASSWORD: "p03-synthetic", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
-  url = `postgresql://postgres:p03-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/team_test`;
+  url = `postgresql://postgres:p03-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
   const pool = createPool(url);
   const ende = poolAbschluss(pool);
   try {

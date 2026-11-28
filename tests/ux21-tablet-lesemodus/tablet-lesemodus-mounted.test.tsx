@@ -202,7 +202,7 @@ function Sonde(): ReturnType<typeof createElement> {
   return createElement("span", { "data-testid": "sonde-adresse" }, `${ort.pathname}${ort.search}`);
 }
 
-function flaeche(adresse: string): void {
+async function flaeche(adresse: string): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -221,6 +221,7 @@ function flaeche(adresse: string): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 function abbauen(): void {
   act(() => {
@@ -296,9 +297,9 @@ function hinweise(): HTMLElement[] {
 const TABLET = 768;
 
 describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsch", () => {
-  it("R1 · 768 mit Bericht: ein beschrifteter Schalter blendet die Liste ein, ohne den Bericht zu schliessen", () => {
+  it("R1 · 768 mit Bericht: ein beschrifteter Schalter blendet die Liste ein, ohne den Bericht zu schliessen", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(da("bib-lesen")).not.toBeNull();
     expect(leseTitel()).toBe(KOS[1]?.title);
     // Der Kern: ein Bedienelement, das die Liste EINBLENDET — nicht der Rückweg, der schliesst.
@@ -331,9 +332,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(leseTitel()).toBe(KOS[1]?.title);
   });
 
-  it("R2 · der Schalter ändert NUR die Sichtbarkeit der Liste: Bericht bleibt, Adresse bleibt, kein Abruf", () => {
+  it("R2 · der Schalter ändert NUR die Sichtbarkeit der Liste: Bericht bleibt, Adresse bleibt, kein Abruf", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     const adresseVorher = adresse();
     expect(adresseVorher).toBe("/bibliothek?eintrag=k2");
     const rufeVorher = stand.rufe;
@@ -354,9 +355,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(stand.rufe).toBe(rufeVorher);
   });
 
-  it("R3 · eingeklappt heisst nicht gebaut: kein Listenknoten, kein Suchfeld, keine Zeile — auch nicht versteckt", () => {
+  it("R3 · eingeklappt heisst nicht gebaut: kein Listenknoten, kein Suchfeld, keine Zeile — auch nicht versteckt", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     // `da`/`alle` lesen `hidden`- und `aria-hidden`-Teilbäume MIT (s. o.): ein CSS-Versteck fiele hier
     // durch, weil die Knoten im Baum stünden.
     expect(da("bib-liste")).toBeNull();
@@ -375,10 +376,10 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(zeilen()).toHaveLength(0);
   });
 
-  it("R4 · Suchbegriff und Facette überleben Ein- und Ausklappen — und nichts wird neu abgerufen", () => {
+  it("R4 · Suchbegriff und Facette überleben Ein- und Ausklappen — und nichts wird neu abgerufen", async () => {
     setzeBreite(TABLET);
     // Suchbegriff UND Facettenwahl in der Adresse: „Anlage 1" lässt k1 und k2 übrig, k3 fällt raus.
-    flaeche("/bibliothek?q=entl%C3%BCften&category=Anlage+1&eintrag=k2");
+    await flaeche("/bibliothek?q=entl%C3%BCften&category=Anlage+1&eintrag=k2");
     expect(da("bib-lesen")).not.toBeNull();
     const rufeVorher = stand.rufe;
     const adresseVorher = adresse();
@@ -400,9 +401,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(stand.rufe).toBe(rufeVorher);
   });
 
-  it("R5 · 390 bleibt JOB 3121: kein Schalter, der Bericht ersetzt die Liste, der Rückweg führt zurück", () => {
+  it("R5 · 390 bleibt JOB 3121: kein Schalter, der Bericht ersetzt die Liste, der Rückweg führt zurück", async () => {
     setzeBreite(390);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(schalter()).toBeNull();
     expect(da("bib-lesen")).not.toBeNull();
     expect(da("bib-liste")).toBeNull();
@@ -418,9 +419,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(da("bib-liste")?.getAttribute("data-lage")).toBe("allein");
   });
 
-  it("R6 · 1280 bleibt breit: kein Schalter, Liste und Bericht nebeneinander, kein Rückweg", () => {
+  it("R6 · 1280 bleibt breit: kein Schalter, Liste und Bericht nebeneinander, kein Rückweg", async () => {
     setzeBreite(1280);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(schalter()).toBeNull();
     expect(rueckweg()).toBeNull();
     expect(da("bib-liste")).not.toBeNull();
@@ -434,7 +435,7 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
 
   it("R7 · `aria-expanded` sagt, was im Baum steht, und die Beschriftung ist in DE und EN übersetzt", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     const s = schalter() as HTMLButtonElement;
     expect(s.getAttribute("aria-expanded")).toBe("false");
     expect(s.textContent?.trim()).toBe("Trefferliste einblenden");
@@ -459,9 +460,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(schalter()?.textContent).not.toContain("lib.");
   });
 
-  it("R8 · der Fokus geht mit: ausklappen → die gelesene Zeile, einklappen → der Schalter", () => {
+  it("R8 · der Fokus geht mit: ausklappen → die gelesene Zeile, einklappen → der Schalter", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     act(() => {
       schalter()?.focus();
     });
@@ -475,10 +476,10 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(document.activeElement).toBe(schalter());
   });
 
-  it("R8b · ausklappen ohne auffindbare Zeile: der Fokus nimmt das Suchfeld, nie <body>", () => {
+  it("R8b · ausklappen ohne auffindbare Zeile: der Fokus nimmt das Suchfeld, nie <body>", async () => {
     setzeBreite(TABLET);
     // Die Wahl aus der Adresse steht NICHT in der gefilterten Liste (k3 ist „Anlage 2").
-    flaeche("/bibliothek?category=Anlage+1&eintrag=k3");
+    await flaeche("/bibliothek?category=Anlage+1&eintrag=k3");
     expect(da("bib-lesen")).not.toBeNull();
     klickeSchalter();
     expect(zeile("k3")).toBeUndefined();
@@ -494,9 +495,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
   // Position war verloren (BEN, Runde 1: „expected +0 to be 240"). Gemessen wird hier der DOM-Zustand
   // der Rollspur (`bib-spur`, `BibliothekListe.tsx`) in jsdom: `scrollTop` ist dort eine gespeicherte
   // Zahl, kein Layout — die Pixel misst `tablet-chromium.test.ts` T6/T7.
-  it("R8c · Bericht außerhalb der Treffer: die Rollposition der Liste überlebt Ein- und Ausklappen", () => {
+  it("R8c · Bericht außerhalb der Treffer: die Rollposition der Liste überlebt Ein- und Ausklappen", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek?category=Anlage+1&eintrag=k3");
+    await flaeche("/bibliothek?category=Anlage+1&eintrag=k3");
     klickeSchalter();
     expect(zeile("k3")).toBeUndefined();
     const spur = da("bib-spur") as HTMLElement;
@@ -516,9 +517,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(leseTitel()).toBe(KOS[2]?.title);
   });
 
-  it("R8d · KONTROLLE mit auffindbarer Zeile: Rollposition UND Fokus auf der gelesenen Zeile", () => {
+  it("R8d · KONTROLLE mit auffindbarer Zeile: Rollposition UND Fokus auf der gelesenen Zeile", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     klickeSchalter();
     const spur = da("bib-spur") as HTMLElement;
     spur.scrollTop = 180;
@@ -528,10 +529,10 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(document.activeElement).toBe(zeile("k2"));
   });
 
-  it("R9 · der Auffrischungssatz steht GENAU EINMAL — eingeklappt am Bericht, ausgeklappt an der Liste", () => {
+  it("R9 · der Auffrischungssatz steht GENAU EINMAL — eingeklappt am Bericht, ausgeklappt an der Liste", async () => {
     stand.auffrischungScheitert = true;
     setzeBreite(TABLET);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(da("bib-liste")).toBeNull();
     expect(hinweise()).toHaveLength(1);
     expect(da("bib-hinweis-erneut")).not.toBeNull();
@@ -546,10 +547,10 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(da("bib-liste")).toBeNull();
   });
 
-  it("R10 · die Bandgrenzen sind lückenlos: 759 Telefon · 760, 768, 899 Tablet · 900 Desktop", () => {
+  it("R10 · die Bandgrenzen sind lückenlos: 759 Telefon · 760, 768, 899 Tablet · 900 Desktop", async () => {
     // Telefon: kein Schalter, der Bericht ersetzt die Liste, der Rückweg ist da.
     setzeBreite(759);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(schalter()).toBeNull();
     expect(rueckweg()).not.toBeNull();
     expect(da("bib-liste")).toBeNull();
@@ -557,7 +558,7 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     // Tablet an beiden Rändern und in der Mitte: der Schalter ist da.
     for (const px of [760, 768, 899]) {
       setzeBreite(px);
-      flaeche("/bibliothek?eintrag=k2");
+      await flaeche("/bibliothek?eintrag=k2");
       expect(schalter(), `${px} px`).not.toBeNull();
       expect(rueckweg(), `${px} px`).not.toBeNull();
       expect(da("bib-liste"), `${px} px`).toBeNull();
@@ -565,7 +566,7 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     }
     // Desktop: kein Schalter, kein Rückweg, beides nebeneinander.
     setzeBreite(900);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(schalter()).toBeNull();
     expect(rueckweg()).toBeNull();
     expect(da("bib-liste")).not.toBeNull();
@@ -573,9 +574,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     // `afterEach` baut diese letzte Fläche ab.
   });
 
-  it("R11 · die Vorliebe überlebt ein Neumontieren, und NUR sie wird gespeichert", () => {
+  it("R11 · die Vorliebe überlebt ein Neumontieren, und NUR sie wird gespeichert", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(da("bib-liste")).toBeNull();
     const schluessel = (): string[] =>
       Array.from(
@@ -590,21 +591,21 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     const neu = schluessel().filter((k) => !schluesselVorher.includes(k));
     expect(neu).toHaveLength(1);
     abbauen();
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(da("bib-liste")).not.toBeNull();
     expect(schalter()?.getAttribute("aria-expanded")).toBe("true");
     expect(da("bib-liste")?.getAttribute("data-lage")).toBe("darueber");
     // Und zurück: eingeklappt bleibt eingeklappt.
     klickeSchalter();
     abbauen();
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(da("bib-liste")).toBeNull();
     expect(schalter()?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("R12 · 768 ohne Wahl: die Liste trägt die Fläche allein — keine Vorwahl, kein Schalter, kein leerer Bericht", () => {
+  it("R12 · 768 ohne Wahl: die Liste trägt die Fläche allein — keine Vorwahl, kein Schalter, kein leerer Bericht", async () => {
     setzeBreite(TABLET);
-    flaeche("/bibliothek");
+    await flaeche("/bibliothek");
     expect(da("bib-liste")).not.toBeNull();
     expect(da("bib-liste")?.getAttribute("data-lage")).toBe("allein");
     expect(zeilen()).toHaveLength(KOS.length);
@@ -627,9 +628,9 @@ describe("JOB 3335 · UX-21 · das Lese-Tablet klappt die Trefferliste auf Wunsc
     expect(adresse()).toBe("/bibliothek?eintrag=k2");
   });
 
-  it("R13 · Breitenwechsel ohne Neuladen: 1280 → 768 → 1280, ohne zweiten Abruf", () => {
+  it("R13 · Breitenwechsel ohne Neuladen: 1280 → 768 → 1280, ohne zweiten Abruf", async () => {
     setzeBreite(1280);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(da("bib-liste")).not.toBeNull();
     expect(schalter()).toBeNull();
     const rufeVorher = stand.rufe;

@@ -40,8 +40,8 @@ import { ISO_HELP_TOPICS, isoHelpSprache } from "../../apps/web/src/lib/helpTopi
 const SPRACHEN = ["de", "en", "nl"] as const;
 type Sprache = (typeof SPRACHEN)[number];
 
-/** Die zehn Kapitel dieses Auftrags. Fall A1/A2 hält sie gegen `HELP_TOPICS`. */
-const ALTKAPITEL = [
+/** Die bisherigen zehn Kapitel und die beiden Teamkapitel im selben Abschnitt der Hilfe. */
+const GEPRUEFTE_KAPITEL = [
   "firststart",
   "capture",
   "ask",
@@ -52,6 +52,8 @@ const ALTKAPITEL = [
   "lifecycle",
   "stufe2",
   "mobile",
+  "teamassistenten",
+  "teamworkflows",
 ] as const;
 
 /**
@@ -177,13 +179,13 @@ function wert(lng: Sprache, key: string): string {
 
 /** Die Tabelle trägt NUR Sprache und Kennung — der Vergleich steht im Callback (Bauvorschrift b). */
 const FAELLE: { lng: Sprache; id: string }[] = SPRACHEN.flatMap((lng) =>
-  ALTKAPITEL.map((id) => ({ lng, id: id as string })),
+  GEPRUEFTE_KAPITEL.map((id) => ({ lng, id: id as string })),
 );
 
 describe("JOB 4071 · A — die Sollmenge kommt aus HELP_TOPICS, nicht aus dieser Datei", () => {
-  it("A1: jede der zehn Kennungen steht in `HELP_TOPICS`", () => {
+  it("A1: jede geprüfte Kennung steht in `HELP_TOPICS`", () => {
     const vorhanden = HELP_TOPICS.map((t) => t.id);
-    for (const id of ALTKAPITEL) {
+    for (const id of GEPRUEFTE_KAPITEL) {
       expect(
         vorhanden,
         `\`${id}\` ist kein Hilfekapitel mehr — dieser Wächter prüfte sonst ein Kapitel weniger, ohne es zu sagen`,
@@ -191,7 +193,7 @@ describe("JOB 4071 · A — die Sollmenge kommt aus HELP_TOPICS, nicht aus diese
     }
   });
 
-  it("A2: vor `wissensnetz` steht kein Kapitel außer den zehn und `fileimport`", () => {
+  it("A2: jedes Kapitel vor `wissensnetz` ist hier oder durch die Dateianleitung gedeckt", () => {
     const grenze = HELP_TOPICS.findIndex((t) => t.id === ERSTES_NEUES_KAPITEL);
     expect(
       grenze,
@@ -199,7 +201,7 @@ describe("JOB 4071 · A — die Sollmenge kommt aus HELP_TOPICS, nicht aus diese
     ).toBeGreaterThan(0);
     const fremd = HELP_TOPICS.slice(0, grenze)
       .map((t) => t.id)
-      .filter((id) => !(ALTKAPITEL as readonly string[]).includes(id) && id !== AUSNAHME);
+      .filter((id) => !(GEPRUEFTE_KAPITEL as readonly string[]).includes(id) && id !== AUSNAHME);
     expect(
       fremd,
       "diese Kapitel stehen im Altbestand, werden von diesem Wächter aber nicht geprüft — Liste nachführen oder Kapitel verschieben",
@@ -325,6 +327,12 @@ interface Sucherhalt {
  * IHRES Kapitels und findet es dort — nachgemessen mit derselben Funktion, die dieser Lauf ruft.
  */
 const SUCHERHALT: readonly Sucherhalt[] = [
+  { lng: "de", id: "teamassistenten", frage: "freigegebene Quellen" },
+  { lng: "en", id: "teamassistenten", frage: "approved sources" },
+  { lng: "nl", id: "teamassistenten", frage: "goedgekeurde bronnen" },
+  { lng: "de", id: "teamworkflows", frage: "gemeinsame Workflows" },
+  { lng: "en", id: "teamworkflows", frage: "shared workflows" },
+  { lng: "nl", id: "teamworkflows", frage: "gezamenlijke workflows" },
   // ---- firststart: „Review" war das Fachwort, „Einarbeitung" das Sachwort; der Beispielbestand
   //      legt auch Widersprüche an (am Basisstand fand „konflikte" firststart UND risk).
   { lng: "de", id: "firststart", frage: "review" },
@@ -481,7 +489,7 @@ describe("JOB 4071 · D — die Umformulierung hat keinen Suchweg gekostet", () 
     }
   });
 
-  it("D0b: die Sollmenge deckt jedes der zehn Kapitel in jeder Sprache ab", () => {
+  it("D0b: die Sollmenge deckt jedes geprüfte Kapitel in jeder Sprache ab", () => {
     // Ohne diesen Fall könnte die Tabelle oben still auf ein Kapitel zusammenschrumpfen.
     const fehlend = FAELLE.filter(
       ({ lng, id }) => !SUCHERHALT.some((s) => s.lng === lng && s.id === id),

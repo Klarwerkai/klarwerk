@@ -1,5 +1,6 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import { browserMuster } from "./tests/tor-inventar/browser-gruppe";
+import { aufMacGeprueft } from "./tests/tor-inventar/klara-macos";
 
 // ==================================================================================================
 // JOB 3131 T2 — DIE ZWEI GRUPPEN, UND WARUM SIE ZWEI AUFRUFE SIND UND KEIN WORKSPACE.
@@ -130,6 +131,7 @@ export default defineConfig({
     // ersten Aufruf, ein zweites Mal waere Doppelarbeit UND die parallele Last, die dieser Auftrag
     // beseitigt. In jedem anderen Aufruf (Bahn, `-t`, einzelne Datei) bleibt der Bestand ganz.
     // Dass Abzug und Zuschlag sich exakt decken, misst `tests/tor-inventar` am echten Collector.
-    exclude: GRUPPE === "rest" ? [...AUSSCHLUSS, ...browserMuster()] : AUSSCHLUSS,
+    exclude:
+      GRUPPE === "rest" ? [...AUSSCHLUSS, ...browserMuster(), ...aufMacGeprueft()] : AUSSCHLUSS,
   },
 });

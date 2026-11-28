@@ -28,6 +28,7 @@ import { wholeDocumentDraftPayload } from "../../apps/web/src/lib/captureFromFil
 import { MAX_INLINE_BODY_HTML_BYTES, extractDocxRich } from "../../apps/web/src/lib/docx";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { imageCaptionEntries } from "../../services/structure/src/captions";
+import { pruefeBildpixel } from "./bildpixel";
 import { type Absatz, PNG_BLAU, PNG_ROT, alsPuffer, baueDocx } from "./docx-bauen";
 
 /** Der lokalisierte Fussnoten-Platzhalter, den die Oberfläche injiziert (sein Text landet nie im Body). */
@@ -105,7 +106,7 @@ function bilddaten(html: string): Map<string, string> {
   const raus = new Map<string, string>();
   for (const t of html.matchAll(/<img\b[^>]*>/g)) {
     const id = /\bdata-image-id="([^"]+)"/.exec(t[0])?.[1] ?? "";
-    const src = /\bsrc="data:image\/[a-zA-Z0-9.+-]+;base64,([^"]+)"/.exec(t[0])?.[1] ?? "";
+    const src = /\bsrc="([^"]+)"/.exec(t[0])?.[1] ?? "";
     raus.set(id, src);
   }
   return raus;
@@ -131,14 +132,10 @@ describe("JOB 3210 · R · die Beschriftung überlebt Speichern und Zurücklesen
       "Die gespeicherten figcaption sind leer — genau der gemessene BAADER-Befund",
     ).toEqual(["Figure 1: Profiles", "Figure 6: Bolted connection"]);
 
-    // Und die HERKUNFT hält: jeder Anker zeigt auf das Bild mit den richtigen Bytes.
     const daten = bilddaten(g.bodyHtml);
-    expect(daten.get(eintraege[0]?.imageId ?? ""), "Der Profiles-Treffer zeigt woanders hin").toBe(
-      PNG_ROT,
-    );
-    expect(daten.get(eintraege[1]?.imageId ?? ""), "Der Bolted-Treffer zeigt woanders hin").toBe(
-      PNG_BLAU,
-    );
+    expect([...daten.keys()]).toEqual(eintraege.map((e) => e.imageId));
+    await pruefeBildpixel(daten.get(eintraege[0]?.imageId ?? "") ?? "", PNG_ROT);
+    await pruefeBildpixel(daten.get(eintraege[1]?.imageId ?? "") ?? "", PNG_BLAU);
 
     // Der Fliesstext bleibt vollständig, und keine Beschriftung steht doppelt da.
     expect(g.bodyHtml).toContain("Der Rahmen wird aus zwei Profilen gefügt.");

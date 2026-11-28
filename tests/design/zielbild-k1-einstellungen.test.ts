@@ -10,7 +10,6 @@
 // Zustandsmodell (§9): jeder Admin-Wert erst nach frischem Abruf, bis dahin „–" — die KI-Zeile
 // zeigt hier „–", weil der Test-Server keine Klara-Sitzung eroeffnet (kein Word-Dokumentkontext);
 // nie ein positiver Wert aus dem Cache.
-import { existsSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ARTBOARD,
@@ -34,7 +33,6 @@ import {
 const ziel = mockup(MOCKUP_EINSTELLUNGEN);
 
 // ---- Anker im Mockup (Einstellungen.dc.html) ---------------------------------------------------
-const Z_KOPF = "padding: 14px 16px 10px; display: flex; align-items: center; gap: 8px";
 const Z_TITEL = "font-size: 15px; font-weight: 650";
 const Z_GRUPPE1 = "margin: 10px 16px 0; background: #FFFFFF";
 const Z_ZEILE = "padding: 13px 14px; border-bottom: 1px solid #E9E5DE";
@@ -47,15 +45,14 @@ const Z_ADMIN = "margin: 0 16px; background: #FFFFFF";
 const Z_KONTO = "margin: 20px 16px 0; background: #FFFFFF";
 const Z_ABMELDEN = "font-size: 14px; color: #C2500A";
 const Z_FUSS = "margin-top: auto; padding: 12px 16px 16px; text-align: center; font-size: 11px";
-const CHEVRON_ZURUECK = "M15 18l-6-6 6-6";
 const CHEVRON_RECHTS = "M9 6l6 6-6 6";
 const SCHLOSS_PFAD = "M8 10V7a4 4 0 0 1 8 0v3";
 
 const SELEKTOREN = {
-  kopf: "#kw-kopf",
-  kopfLinks: "#kw-kopf-links",
-  chevron: "#kw-zurueck svg",
-  titel: "#kw-titel",
+  kopf: ".mini-head",
+  zurueck: ".mini-back",
+  titel: ".mini-name",
+  menue: ".mini-menu-button",
   gruppe1: "#kw-einstellungen > .einst-gruppe:first-child",
   spracheZeile: "#einst-sprache-zeile",
   spracheWert: "#einst-sprache-wert",
@@ -81,7 +78,7 @@ let flaeche: Flaeche | null = null;
 let fehler: string | null = null;
 let sel: Sel | null = null;
 
-describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, in Chromium, hinter dem Zahnrad", () => {
+describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, in Chromium, im Menü Einstellungen", () => {
   beforeAll(async () => {
     try {
       flaeche = await starteFlaeche({ mitWissen: false });
@@ -130,14 +127,14 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
   }
   const rand = (anker: string, eig = "border") => kanonRand(zielProp(zielStil(ziel, anker), eig));
   function kantenGegenRand(k: { links: number; rechts: number }, name: string): void {
-    expect(Math.abs(k.links - 16), `${name}: linke Kante ${k.links}`).toBeLessThan(1);
+    expect(Math.abs(k.links - 12), `${name}: linke Kante ${k.links}`).toBeLessThan(1);
     expect(
-      Math.abs(ARTBOARD.breite - 16 - k.rechts),
+      Math.abs(ARTBOARD.breite - 12 - k.rechts),
       `${name}: rechte Kante ${k.rechts}`,
     ).toBeLessThan(1);
   }
 
-  it("S · die Einstellungen stehen nach dem Klick auf das Zahnrad: JEDES Element gefunden, kein Seitenfehler; Fragen-Flaeche verborgen", async () => {
+  it("S · die Einstellungen stehen nach der Wahl im sichtbaren Menü: JEDES Element gefunden, kein Seitenfehler; Fragen-Flaeche verborgen", async () => {
     expect(fehler).toBeNull();
     expect(sel).not.toBeNull();
     const fehlend = Object.entries(sel as Sel)
@@ -151,34 +148,28 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
   });
 
   // ---- Kopf (Mockup Z.17-20) -------------------------------------------------------------------
-  it("K1 · kopf 14px 16px 10px · chevron (Pfad des Mockups, 18px, #525B6B) + „Einstellungen“ 15px/650 · gap 8 · kein Umschalter, kein Zahnrad", async () => {
-    expect(await l.messen(sel?.kopf, "padding")).toBe(
-      kanonLaenge(zielProp(zielStil(ziel, Z_KOPF), "padding")),
-    );
-    expect(await l.messen(sel?.kopfLinks, "gap")).toBe("8px");
-    expect(ziel).toContain(CHEVRON_ZURUECK);
-    expect(await l.pfadD(sel?.chevron)).toBe(CHEVRON_ZURUECK);
-    expect(await l.attr(sel?.chevron, "width")).toBe(zielSvgAttr(ziel, CHEVRON_ZURUECK, "width"));
-    expect(await l.messen(sel?.chevron, "stroke")).toBe(
-      kanon(zielSvgAttr(ziel, CHEVRON_ZURUECK, "stroke")),
-    );
-    expect(zielText(ziel, Z_TITEL)).toBe("Einstellungen");
-    expect(await l.text(sel?.titel)).toBe("Einstellungen");
-    expect(await l.messen(sel?.titel, "font-size")).toBe(
-      zielProp(zielStil(ziel, Z_TITEL), "font-size"),
-    );
-    expect(await l.messen(sel?.titel, "font-weight")).toBe(
-      zielProp(zielStil(ziel, Z_TITEL), "font-weight"),
-    );
-    expect(await l.sichtbar("#kw-segment")).toBe(false);
-    expect(await l.sichtbar("#kw-zahnrad")).toBe(false);
+  it("K1 · der gemeinsame Kopf zeigt Einstellungen, den beschrifteten Rückweg und das Menü", async () => {
+    expect(await l.sichtbar(sel?.kopf)).toBe(true);
+    expect(await l.messen(sel?.kopf, "padding")).toBe("10px 12px 6px");
+    expect(await l.messen(sel?.kopf, "gap")).toBe("8px");
+    expect(await l.sichtbar(sel?.zurueck)).toBe(true);
+    expect(await l.text(sel?.zurueck)).toBe("‹");
+    expect(await l.attr(sel?.zurueck, "aria-label")).toBe("Zurück zum Gespräch");
+    const knopf = await l.kanten(sel?.zurueck);
+    expect([knopf.breite, knopf.hoehe]).toEqual([32, 32]);
+    expect(await l.sichtbar(sel?.titel)).toBe(true);
+    expect(await l.text(sel?.titel)).toBe(zielText(ziel, Z_TITEL));
+    expect(await l.messen(sel?.titel, "font-size")).toBe("14px");
+    expect(await l.sichtbar(sel?.menue)).toBe(true);
+    expect(await l.attr(sel?.menue, "aria-expanded")).toBe("false");
+    expect(await l.sichtbar('.mini-head [data-mini-text="clear"]')).toBe(false);
   });
 
   // ---- Gruppe 1 (Mockup Z.22-34) ---------------------------------------------------------------
-  it("G1 · gruppe 10px 16px 0 · #FFFFFF · rand 1px #E9E5DE · radius 12 · spalte — an der realen Gruppe", async () => {
+  it("G1 · Gruppe 10px 0 0 · #FFFFFF · rand 1px #E9E5DE · radius 12 · spalte — an der realen Gruppe", async () => {
     const stil = zielStil(ziel, Z_GRUPPE1);
     const soll = rand(Z_GRUPPE1);
-    expect(await l.messen(sel?.gruppe1, "margin")).toBe(kanonLaenge(zielProp(stil, "margin")));
+    expect(await l.messen(sel?.gruppe1, "margin")).toBe("10px 0px 0px");
     expect(await l.messen(sel?.gruppe1, "background-color")).toBe(
       kanon(zielProp(stil, "background")),
     );
@@ -189,12 +180,10 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     expect(await l.messen(sel?.gruppe1, "flex-direction")).toBe(zielProp(stil, "flex-direction"));
     kantenGegenRand(await l.kanten(sel?.gruppe1), "Gruppe 1");
   });
-  it("G2 · zeile „Sprache“ 13px 14px · space-between · trennlinie · label 14px · wert „Deutsch“ 14px #525B6B · chevron 14px #9AA2B1", async () => {
+  it("G2 · zeile „Sprache“ 6px 10px · space-between · trennlinie · label 14px · wert „Deutsch“ 14px #525B6B · chevron 14px #9AA2B1", async () => {
     const stil = zielStil(ziel, Z_ZEILE);
     const soll = rand(Z_ZEILE, "border-bottom");
-    expect(await l.messen(sel?.spracheZeile, "padding")).toBe(
-      kanonLaenge(zielProp(stil, "padding")),
-    );
+    expect(await l.messen(sel?.spracheZeile, "padding")).toBe("6px 10px");
     expect(await l.messen(sel?.spracheZeile, "display")).toBe(zielProp(stil, "display"));
     expect(await l.messen(sel?.spracheZeile, "justify-content")).toBe(
       zielProp(stil, "justify-content"),
@@ -204,7 +193,7 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     expect(await l.messen(sel?.spracheZeile, "border-bottom-color")).toBe(soll?.farbe);
     expect(ziel).toContain(Z_LABEL_SPRACHE);
     expect(await l.text("#einst-sprache-zeile > span:first-child")).toBe("Sprache");
-    expect(await l.messen(sel?.spracheZeile, "font-size")).toBe("14px");
+    expect(await l.messen(sel?.spracheZeile, "font-size")).toBe("13px");
     expect(await l.text(sel?.spracheWert)).toBe(zielText(ziel, Z_WERT));
     expect(await l.messen(sel?.spracheWert, "font-size")).toBe(
       zielProp(zielStil(ziel, Z_WERT), "font-size"),
@@ -220,7 +209,7 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
       kanon(zielSvgAttr(ziel, CHEVRON_RECHTS, "stroke")),
     );
   });
-  it("G3 · schalter „Text in Word mitlesen“ 40×24 · radius 12 · #116B3C · knopf 20 · #FFFFFF · oben 2 / rechts 2 — an", async () => {
+  it("G3 · schalter „Text in Word mitlesen“ 40×32 · runde Spur · #116B3C · knopf 20 · #FFFFFF · vertikal mittig · links aus und rechts an", async () => {
     const stil = zielStil(ziel, Z_SCHALTER);
     expect((await l.text("#einst-mitlesen")) ?? "").toBe("");
     expect(
@@ -229,10 +218,8 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
       ),
     ).toBe("Text in Word mitlesen");
     expect(await l.messen(sel?.mitlesenZeile, "width")).toBe(zielProp(stil, "width"));
-    expect(await l.messen(sel?.mitlesenZeile, "height")).toBe(zielProp(stil, "height"));
-    expect(await l.messen(sel?.mitlesenZeile, "border-radius")).toBe(
-      zielProp(stil, "border-radius"),
-    );
+    expect(await l.messen(sel?.mitlesenZeile, "height")).toBe("32px");
+    expect(await l.messen(sel?.mitlesenZeile, "border-radius")).toBe("16px");
     expect(await l.messen(sel?.mitlesenZeile, "background-color")).toBe(
       kanon(zielProp(stil, "background")),
     );
@@ -246,10 +233,20 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     expect(await l.messen(sel?.mitlesenKnopf, "background-color")).toBe(
       kanon(zielProp(knopf, "background")),
     );
-    expect(await l.messen(sel?.mitlesenKnopf, "top")).toBe(zielProp(knopf, "top"));
+    const spur = await l.kanten(sel?.mitlesenZeile);
+    const punkt = await l.kanten(sel?.mitlesenKnopf);
+    expect(Math.abs((punkt.oben + punkt.unten - spur.oben - spur.unten) / 2)).toBeLessThan(1);
     expect(await l.messen(sel?.mitlesenKnopf, "right")).toBe(zielProp(knopf, "right"));
     expect(await l.attr(sel?.mitlesenZeile, "aria-checked")).toBe("true");
     expect(await l.attr(sel?.mitlesenZeile, "role")).toBe("switch");
+    const seite = l.seite();
+    await seite.click("#einst-mitlesen");
+    expect(await l.attr(sel?.mitlesenZeile, "aria-checked")).toBe("false");
+    expect(await l.messen(sel?.mitlesenZeile, "background-color")).toBe(kanon("#525B6B"));
+    expect(await l.messen(sel?.mitlesenKnopf, "left")).toBe("2px");
+    expect((await l.kanten(sel?.mitlesenKnopf)).links).toBeLessThan(punkt.links);
+    await seite.click("#einst-mitlesen");
+    expect(await l.attr(sel?.mitlesenZeile, "aria-checked")).toBe("true");
   });
 
   // ---- Vom Admin eingestellt (Mockup Z.36-59) --------------------------------------------------
@@ -262,9 +259,9 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     expect(await l.messen(sel?.kicker, "letter-spacing")).toBe(zielProp(stil, "letter-spacing"));
     expect(await l.messen(sel?.kicker, "color")).toBe(kanon(zielProp(stil, "color")));
   });
-  it("A2 · admin-gruppe 0 16px · #FFFFFF · radius 12 · drei Zeilen KI / Wissen / Server, je mit Schloss 13px #9AA2B1", async () => {
+  it("A2 · Admin-Gruppe am 12px-Innenrand · #FFFFFF · radius 12 · drei Zeilen KI / Wissen / Server, je mit Schloss 13px #9AA2B1", async () => {
     const stil = zielStil(ziel, Z_ADMIN);
-    expect(await l.messen(sel?.admin, "margin")).toBe(kanonLaenge(zielProp(stil, "margin")));
+    expect(await l.messen(sel?.admin, "margin")).toBe("0px");
     expect(await l.messen(sel?.admin, "background-color")).toBe(
       kanon(zielProp(stil, "background")),
     );
@@ -309,9 +306,9 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
   });
 
   // ---- Konto (Mockup Z.61-66) und Fuss (Z.68) --------------------------------------------------
-  it("KO1 · konto-gruppe 20px 16px 0 · name aus checkSession · „Abmelden“ 14px #C2500A", async () => {
+  it("KO1 · Konto-Gruppe 20px 0 0 · name aus checkSession · beschriftete Aktion „Abmelden“", async () => {
     const stil = zielStil(ziel, Z_KONTO);
-    expect(await l.messen(sel?.konto, "margin")).toBe(kanonLaenge(zielProp(stil, "margin")));
+    expect(await l.messen(sel?.konto, "margin")).toBe("20px 0px 0px");
     expect(await l.messen(sel?.konto, "background-color")).toBe(
       kanon(zielProp(stil, "background")),
     );
@@ -323,9 +320,8 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     expect(await l.messen(sel?.abmelden, "font-size")).toBe(
       zielProp(zielStil(ziel, Z_ABMELDEN), "font-size"),
     );
-    expect(await l.messen(sel?.abmelden, "color")).toBe(
-      kanon(zielProp(zielStil(ziel, Z_ABMELDEN), "color")),
-    );
+    expect(await l.messen(sel?.abmelden, "color")).toBe(kanon("#1A2233"));
+    expect((await l.kanten(sel?.abmelden)).hoehe).toBeGreaterThanOrEqual(32);
     expect(await l.sichtbar(sel?.abmelden)).toBe(true);
   });
   it("F1 · fuss „Klara <Stand>“ margin-top auto · 12px 16px 16px · zentriert · 11px · #9AA2B1 — unten", async () => {
@@ -368,7 +364,8 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
     expect(await l.sichtbar("#kw-hilfe")).toBe(true);
     expect(await l.text("#kw-titel")).toBe("Wie Klara antwortet");
     expect(await l.sichtbar("#ask-rule-note")).toBe(true);
-    expect(await l.text("#ask-rule-note")).toContain("Keine KI-Antwort ohne Beleg");
+    expect(await l.text("#ask-rule-note")).toContain("anhand bestätigten Firmenwissens");
+    expect(await l.text("#ask-rule-note")).toContain("in den Einstellungen ausgeschaltet");
     expect(await l.sichtbar("[data-t=askReviewNotice]")).toBe(true);
     expect(await l.sichtbar("#klara-trust-head")).toBe(true);
     expect((await l.text("#klara-trust-mode"))?.length).toBeGreaterThan(0);
@@ -395,13 +392,7 @@ describe("JOB 3056 · K1 · Einstellungen — die echte taskpane.html aus dist, 
   });
 });
 
-describe.runIf(!existsSync(MOCKUP_EINSTELLUNGEN))(
-  "JOB 3056 · Mockup-Abgleich Einstellungen uebersprungen",
-  () => {
-    it("meldet das fehlende Mockup statt eine Pruefung vorzutaeuschen", () => {
-      expect(existsSync(MOCKUP_EINSTELLUNGEN), `Mockup nicht lesbar: ${MOCKUP_EINSTELLUNGEN}`).toBe(
-        false,
-      );
-    });
-  },
-);
+it("die versionierte Vorgabe enthält die Einstellungsgruppen und die Sprachwahl", () => {
+  expect(zielText(ziel, Z_TITEL)).toBe("Einstellungen");
+  expect(ziel).toContain(Z_LABEL_SPRACHE);
+});

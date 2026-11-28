@@ -4,12 +4,63 @@ on:
   pull_request: {}
 
 jobs:
-  pflicht:
+  pflicht-plan:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    outputs:
+      verteilt: ${{ steps.plan.outputs.verteilt }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci --ignore-scripts
+      - id: plan
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node tools/pflicht-pr.mjs plan "$RELEASE_BASE" .local/run/ci-pflicht-plan
+      - if: steps.plan.outputs.verteilt == 'true'
+        run: npm ci --prefix apps/web
+      - name: Web-Bündel für die Testteile wie in tools/build erzeugen
+        if: steps.plan.outputs.verteilt == 'true'
+        working-directory: apps/web
+        timeout-minutes: 4
+        env:
+          NODE_ENV: production
+        run: npx vite build
+      - uses: actions/upload-artifact@v4
+        if: steps.plan.outputs.verteilt == 'true'
+        with:
+          name: pflicht-web-dist-${{ github.sha }}
+          path: apps/web/dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          overwrite: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pflicht-auswahl-${{ github.sha }}
+          path: .local/run/ci-pflicht-plan/auswahl.json
+          if-no-files-found: error
+          overwrite: true
+
+  pflicht-teil:
+    needs: pflicht-plan
+    if: needs.pflicht-plan.outputs.verteilt == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.pflicht-plan.outputs.matrix || '{"teil":["einzeln"]}') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -17,16 +68,89 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm ci --prefix apps/web
+      - uses: actions/download-artifact@v4
+        if: matrix.teil != 'vorstufen'
+        with:
+          name: pflicht-web-dist-${{ github.sha }}
+          path: apps/web/dist/
+      - if: matrix.teil == 'schmalansicht'
+        run: npx playwright install --with-deps chromium
+      - name: Pflichtteil mit denselben Stufen- und Prozessgrenzen
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
+          TEIL: ${{ matrix.teil }}
+        run: node tools/pflicht-pr.mjs teil "$RELEASE_BASE" .local/run/ci-pflicht-teil "$TEIL"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pflicht-pr-${{ github.sha }}-${{ matrix.teil }}
+          path: .local/run/ci-pflicht-teil/
+          if-no-files-found: error
+          overwrite: true
+
+  pflicht:
+    needs: [pflicht-plan, pflicht-teil]
+    # Ein später manueller Abbruch muss auch den laufenden Sammler abbrechen.
+    # Abgebrochene Vorstufen meldet der Sammler ausdrücklich als fehlgeschlagen.
+    if: ${{ !cancelled() || needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - if: github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false'
+        run: npm ci --prefix apps/web
+      - uses: actions/download-artifact@v4
+        if: github.event_name == 'pull_request' && needs.pflicht-plan.outputs.verteilt == 'true'
+        with:
+          pattern: pflicht-pr-${{ github.sha }}-*
+          path: .local/run/ci-pflicht/teile/
+      - name: PR-Auswahl und gegebenenfalls alle Teilbelege prüfen
+        if: ${{ github.event_name == 'pull_request' && (!cancelled() || needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled') }}
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
+          PLAN_ERGEBNIS: ${{ needs.pflicht-plan.result }}
+          PLAN_VERTEILT: ${{ needs.pflicht-plan.outputs.verteilt }}
+          MATRIX_ERGEBNIS: ${{ needs.pflicht-teil.result }}
+          LAUF_ABGEBROCHEN: ${{ needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled' }}
+        run: node tools/pflicht-pr.mjs abschluss "$RELEASE_BASE" .local/run/ci-pflicht
+      - name: Browserbedarf des Einzelvertrags ermitteln
+        id: einzelbrowser
+        if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node --input-type=module -e '
+            import {releaseInputs, schmalansichtsTest} from "./tools/release.mjs";
+            const {tests} = releaseInputs(process.cwd(), process.env.RELEASE_BASE);
+            console.log("chromium=" + tests.includes(schmalansichtsTest));
+          ' >> "$GITHUB_OUTPUT"
+      - if: steps.einzelbrowser.outputs.chromium == 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.einzelbrowser.outputs.chromium == 'true'
+        working-directory: apps/web
+        env:
+          NODE_ENV: production
+        run: npx vite build
       - name: gemeinsamer schneller Pflichtvertrag (maximal 600 Sekunden)
+        if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: pflicht-${{ github.sha }}
           path: .local/run/ci-pflicht/
           if-no-files-found: error
+          overwrite: true
   # I51 (OFFEN.md): DIESER JOB PRÜFTE ZWEI WOCHEN LANG EINE ANDERE PIPELINE ALS DAS SHIP-TOR.
   #
   # Hier standen `npm run build`, `lint`, `arch` und `test` als Viererliste. `./tools/check` ruft
@@ -49,12 +173,19 @@ jobs:
   # Nachgelagerte Diagnose: Root, binnen 24 Stunden; kein Pflichtgrün aus diesem Job.
   check:
     runs-on: ubuntu-latest
+    needs: integration-insel-macos
+    if: ${{ always() }}
+    env:
+      KLARWERK_CI_KLARA_MACOS_COMMIT: ${{ needs.integration-insel-macos.outputs.klara_commit }}
+      KLARWERK_CI_KLARA_MACOS_ERGEBNIS: ${{ needs.integration-insel-macos.result }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: "npm"
+      - name: Erfolgreichen macOS-Nachweis dieses Checkouts prüfen
+        run: node tools/klara-macos.mjs --nachweis
       - run: npm ci
       - run: npm ci --prefix apps/web
       # `--with-deps` ist der Unterschied zum lokalen `npm run smoke:browser:setup`: der Runner
@@ -79,6 +210,8 @@ jobs:
   # Der Integrationsjob bleibt getrennt. Beide Jobs benötigen Root- und Web-Abhängigkeiten:
   # Integrationstests importieren auch Webmodule und führen den gemeinsamen Typecheck aus.
   integration:
+    needs: [integration-insel-macos, integration-kundeninstallation]
+    if: ${{ !cancelled() }}
     env:
       KLARWERK_PG_PFLICHT: "1"
     # Dump/Restore brauchen passende PostgreSQL-16-Werkzeuge; Ubuntu 26 bringt PostgreSQL 18.
@@ -109,6 +242,10 @@ jobs:
       - name: gezielte berührte PG-Verträge (vor der langen Diagnose)
         id: pg_gezielt
         env:
+          KLARWERK_CI_INSEL_COMMIT: ${{ needs.integration-insel-macos.outputs.commit }}
+          KLARWERK_CI_INSEL_ERGEBNIS: ${{ needs.integration-insel-macos.result }}
+          KLARWERK_CI_KUNDENINSTALLATION_COMMIT: ${{ needs.integration-kundeninstallation.outputs.commit }}
+          KLARWERK_CI_KUNDENINSTALLATION_ERGEBNIS: ${{ needs.integration-kundeninstallation.result }}
           RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           KLARWERK_PG_TEST_URL: "postgresql://klarwerk_ci:fiktiv-ci-postgres@localhost:5432/klarwerk_ci_test"
         run: node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt
@@ -123,6 +260,48 @@ jobs:
         env:
           KLARWERK_PG_TEST_URL: "postgresql://klarwerk_ci:fiktiv-ci-postgres@localhost:5432/klarwerk_ci_test"
         run: npm run test:integration
+
+  integration-insel-macos:
+    runs-on: macos-15
+    outputs:
+      commit: ${{ steps.insel_checkout.outputs.commit }}
+      klara_commit: ${{ steps.klara.outputs.commit }}
+    env:
+      KLARWERK_INSEL_LAUNCHD_PFLICHT: "1"
+    steps:
+      - uses: actions/checkout@v4
+        id: insel_checkout
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npm ci --prefix apps/web
+      - name: Klara für macOS bauen und die native Fensterlogik ausführen
+        id: klara
+        run: node tools/klara-macos.mjs
+      - run: npx playwright install chromium
+      - run: npm run test:integration -- tests/insel-auslieferung/release-update-rueckfall.integration.test.ts
+
+  integration-kundeninstallation:
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.installation_checkout.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        id: installation_checkout
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npm ci --prefix apps/web
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:integration -- tests/neuinstallation/kundeninstallation-strecke.integration.test.ts
 
   # R-1487 (aufnahme:20260922:gesamt-kundenbetrieb): DAS AUSLIEFERUNGSABBILD ENTSTEHT AUTOMATISCH.
   #

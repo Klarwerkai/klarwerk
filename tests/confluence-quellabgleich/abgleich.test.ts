@@ -278,11 +278,14 @@ describe("R-0162 · Löschungen in der Quelle werden beim nächsten Abgleich nac
     const q = quelle();
     q.setze(seite("P-4"));
     await laufUndAnnehmen(q, d);
+    // Gesamtcheck R-1329 (Nacharbeit 66): die Einzelnachfrage heisst seit der Zusammenführung mit
+    // R-0162 `isGoneAtSource` (`confluence-import.ts`, `quellAbgleich`) — eine Attrappe nur mit
+    // `fetchItem` trug gar keinen Abgleich (`sourceSync` fehlte, gemessen: „expected undefined").
     const abgeschnitten = {
       source: "Confluence",
       sourceScope: "K",
       collectAll: async () => ({ items: [], failed: [], truncated: true }),
-      fetchItem: async () => undefined,
+      isGoneAtSource: async () => false,
     } as unknown as Parameters<typeof runConfluenceImport>[0]["adapter"];
     const lauf = await runConfluenceImport({
       ...d,
@@ -316,7 +319,8 @@ describe("R-0162 · Löschungen in der Quelle werden beim nächsten Abgleich nac
       source: "Confluence",
       sourceScope: "K",
       collectAll: async () => ({ items: [], failed: [], truncated: false }),
-      fetchItem: async () => {
+      // Die Einzelnachfrage (`isGoneAtSource`, s. oben) scheitert.
+      isGoneAtSource: async () => {
         throw new Error("Confluence antwortet nicht");
       },
     } as unknown as Parameters<typeof runConfluenceImport>[0]["adapter"];

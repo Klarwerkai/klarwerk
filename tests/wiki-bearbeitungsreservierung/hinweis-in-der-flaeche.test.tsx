@@ -23,7 +23,7 @@
 //
 // BENANNTE PRÜFLÜCKEN: Speicherablagen, jsdom (kein Layout, keine echte Tastatur), ein Prozess.
 // Echte Browser, PostgreSQL und zwei App-Prozesse misst die `.integration`-Datei daneben.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QueryClient,
   QueryClientProvider,
@@ -211,6 +211,7 @@ async function mount(koId: string, bearbeiten: boolean): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
 }
@@ -417,6 +418,7 @@ describe("F2 · Bernd bearbeitet selbst — Konflikt statt stillem Überschreibe
     expect(suche("bib-speichern-trotzdem")).not.toBeNull();
 
     await klick(knopfMitText(i18n.t("ko.cancelEdit")));
+    await klick(knopfMitText(i18n.t("nav.guard.discard")));
     await amServerBis(
       async () => (await lageVon(anna.token, id)).bearbeitungen.length === 0,
       "Abbrechen nimmt den Hinweis zurück",
@@ -618,6 +620,7 @@ describe("F9 · eine noch laufende Anmeldung stellt nach dem Beenden keinen Hinw
     await tippen(aussagefeld(), MEIN_TEXT);
     expect(angekommen).toBe(0);
     await klick(knopfMitText(i18n.t("ko.cancelEdit")));
+    await klick(knopfMitText(i18n.t("nav.guard.discard")));
     // Das Formular ist zu, die Anmeldung hängt noch. Jetzt kommt sie an.
     freigeben();
     await amServerBis(async () => angekommen === 1, "die verspätete Anmeldung ist angekommen");

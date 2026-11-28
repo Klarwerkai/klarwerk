@@ -84,7 +84,7 @@ function starteSeed(env: Record<string, string>): Lauf {
 }
 
 describe("JOB 3655 F · der echte Serverstart", () => {
-  it("F1 · fehlen BEIDE Pflichtwerte, nennt der echte Prozess BEIDE Namen — in einer Meldung", () => {
+  it("F1 · fehlen alle drei Pflichtwerte, nennt der echte Prozess alle drei Namen — in einer Meldung", () => {
     const lauf = starteServer({ NODE_ENV: "production" });
     expect(lauf.code, `Prozess endete mit ${lauf.code}; Ausgabe: ${lauf.ausgabe}`).not.toBe(0);
     expect(lauf.ausgabe).toContain("DATABASE_URL");
@@ -96,7 +96,9 @@ describe("JOB 3655 F · der echte Serverstart", () => {
     // einen Namen trägt, trägt auch den anderen.
     const zeileMitBeiden = lauf.ausgabe
       .split("\n")
-      .some((z) => z.includes("DATABASE_URL") && z.includes("APP_BASE_URL"));
+      .some((z) =>
+        ["DATABASE_URL", "APP_BASE_URL", "KLARWERK_TRUST_PROXY"].every((name) => z.includes(name)),
+      );
     expect(zeileMitBeiden, `keine gemeinsame Zeile in:\n${lauf.ausgabe}`).toBe(true);
     // Der alte Speicherwächter kommt gar nicht mehr zum Zug — er hätte sonst die kürzere
     // Auskunft gegeben und die Sammelmeldung abgeschnitten.
@@ -110,6 +112,7 @@ describe("JOB 3655 F · der echte Serverstart", () => {
     const lauf = starteServer({
       NODE_ENV: "production",
       DATABASE_URL: "postgresql://kennung:kennwort@127.0.0.1:1/klarwerk_demo",
+      KLARWERK_TRUST_PROXY: "none",
     });
     expect(lauf.code).not.toBe(0);
     expect(lauf.ausgabe).toContain("APP_BASE_URL");
@@ -118,13 +121,14 @@ describe("JOB 3655 F · der echte Serverstart", () => {
     expect(lauf.ausgabe).not.toContain("kennwort");
   }, 120_000);
 
-  it("F3 · KALIBRIERUNG: mit beiden Pflichtwerten lässt der Vertrag den Start durch", () => {
+  it("F3 · KALIBRIERUNG: mit allen drei Pflichtwerten lässt der Vertrag den Start durch", () => {
     // Ohne diese Gegenrichtung wäre F1/F2 auch dann grün, wenn der Vertrag IMMER abbräche.
     // Hier scheitert der Start an etwas anderem (die Datenbank antwortet nicht) — und genau das
     // ist der Beleg: der Vertrag hat ihn passieren lassen.
     const lauf = starteServer({
       NODE_ENV: "production",
       DATABASE_URL: "postgresql://kennung:kennwort@127.0.0.1:1/klarwerk_demo",
+      KLARWERK_TRUST_PROXY: "none",
       APP_BASE_URL: "https://demo.klarwerk.ai",
     });
     expect(lauf.ausgabe).not.toContain("Pflichtwert(e)");

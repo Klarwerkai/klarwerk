@@ -72,6 +72,7 @@ import { KoView } from "../../apps/web/src/components/KoView";
 import i18n from "../../apps/web/src/i18n";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { grossesPng } from "../m5c-b-bildbudget/bilder";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -83,19 +84,14 @@ Element.prototype.scrollIntoView = () => {};
 //
 // DIE GROESSE IST DER GEGENSTAND, nicht Beiwerk: Fastifys Vorgabe fuer den Rumpf liegt bei 1 MiB.
 // Genau daran ist Pedis Weg gescheitert — der Entwurf reiste, der Server wies ihn mit 413 ab,
-// bevor irgendeine Fachlogik ihn sah. Zwei Bilder zu je rund 700 KiB liegen sicher darueber und
-// bleiben unter dem erhoehten Deckel, damit dieser Fall den ERFOLG misst und nicht die naechste
-// Grenze.
-const BILD_BYTES = 700 * 1024;
-function grossesBild(fuellzeichen: string): string {
-  // Ein gueltiger data:-URI mit echtem Gewicht. Der Inhalt muss kein decodierbares PNG sein — die
-  // Kette, die hier geprueft wird, wiegt und transportiert ihn, sie decodiert ihn nicht. Was
-  // decodiert werden muss, prueft `tests/app/job2613-docx-bilder-uebergabe.test.ts`.
-  return `data:image/png;base64,${fuellzeichen.repeat(BILD_BYTES)}`;
+// bevor irgendeine Fachlogik ihn sah. Die PNGs passen zusammen unter das Entwurfslimit. Beim
+// Einreichen müssen ihre gespeicherten WebP-Ableitungen zusammen immer noch über 1 MiB liegen.
+function grossesBild(saat: number): string {
+  return `data:image/png;base64,${grossesPng(930, 680, saat).toString("base64")}`;
 }
 
-const BILD_EINS = grossesBild("A");
-const BILD_ZWEI = grossesBild("B");
+const BILD_EINS = grossesBild(1);
+const BILD_ZWEI = grossesBild(2);
 const QUELL_BILDZAHL = 2;
 
 // Der lange Fliesstext, aus dem die Kernaussage entsteht. Er ist absichtlich weit laenger als ein

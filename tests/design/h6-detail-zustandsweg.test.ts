@@ -99,6 +99,18 @@ function matrixAdmin(): Quelle[] {
       inhalt: "Pedi",
     },
     {
+      // R-0756, nachgetragen im Gesamtcheck R-1329: die Prüfaufträge je Person unter „Konten".
+      // Bis hierher verschwand die Fläche bei einem Ausfall still; jetzt trägt sie die Abfragehülle
+      // (`huelle-pruefauftraege`). Der Prüfstand legt nur das Admin-Konto an — nach der Erholung
+      // steht deshalb die echte Leermeldung der Übersicht da (sie steht nur im Erfolgszweig).
+      id: "Prüfaufträge je Person · /api/validation/overview",
+      pfad: "/api/validation/overview",
+      reiter: t("adm.sec.konten"),
+      zeile: "",
+      behaelter: "huelle-pruefauftraege",
+      inhalt: t("prueferzuweisung.person.leer"),
+    },
+    {
       id: "KI-Verwaltung · /api/reasoner/config",
       pfad: "/api/reasoner/config",
       reiter: t("adm.sec.ki"),
@@ -390,6 +402,36 @@ function matrixNachrangig(): NachrangigeQuelle[] {
       // der erste Protokolleintrag, also steht sein Name nach der Erholung als Ausführender da.
       erholt: "Pedi",
     },
+    // ADMIN-04, nachgetragen im Gesamtcheck R-1329: die Nutzerkarte trägt zwei NACHRANGIGE Quellen.
+    // Fällt eine aus, bleibt die Karte bedienbar und sagt an genau dieser Stelle „nicht abrufbar"
+    // (AdminKontenDetails.tsx, `konto-verantwortung` und `konto-protokoll`).
+    {
+      id: "Nutzerkarte · /api/verantwortung/uebersicht (nachrangig, ADMIN-04)",
+      pfad: "/api/verantwortung/uebersicht",
+      reiter: t("adm.sec.konten"),
+      zeile: '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
+      behaelter: "detail-nutzer",
+      inhalt: t("nutzerliste.konto.protokoll"),
+      schwach: `${t("nutzerliste.verantwortung")}: ${t("einst.wert.nichtAbrufbar")}`,
+      // Ohne Antwort darf keine Beitragszahl dastehen — auch keine Null.
+      verboten: i18n.t("nutzerliste.konto.beitraege", { anzahl: "" }).trim(),
+      zwischen: `${t("nutzerliste.verantwortung")}: ${t("einst.wert.unbekannt")}`,
+      // Nach der Erholung steht die gezählte Verantwortung wieder da.
+      erholt: i18n.t("nutzerliste.konto.beitraege", { anzahl: "" }).trim(),
+    },
+    {
+      id: "Nutzerkarte · /api/audit (nachrangig, ADMIN-04)",
+      pfad: "/api/audit",
+      reiter: t("adm.sec.konten"),
+      zeile: '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
+      behaelter: "detail-nutzer",
+      inhalt: t("nutzerliste.konto.protokoll"),
+      schwach: t("einst.wert.nichtAbrufbar"),
+      // Ohne Antwort darf die Karte nicht behaupten, es gebe keinen Vermerk.
+      verboten: t("nutzerliste.konto.protokollLeer"),
+      zwischen: t("state.loading"),
+      erholt: "Pedi",
+    },
   ];
 }
 
@@ -644,10 +686,16 @@ const OEFFNE_ROH = `(async ([reiter, zeile, behaelter]) => {
     r.click();
     await warte(() => r.getAttribute('aria-pressed') === 'true', 4000);
   }
-  const z = document.querySelector(zeile);
-  if (!z) return 'Zeile fehlt: ' + zeile;
-  z.click();
-  return (await warte(() => document.querySelector('[data-testid="' + behaelter + '"]') !== null)) ? null : 'Karte ging nicht auf: ' + behaelter;
+  // Gesamtcheck R-1329: eine FLÄCHE mit eigener Hülle hat keine Zeile (Prüfaufträge je Person) —
+  // dieselbe Unterscheidung wie in OEFFNE_UND_LIES. Bis hierher war die einzige Fläche ohne Zeile
+  // auch ohne Hülle und kam in Z/R gar nicht vor (BEHAELTER_OHNE_HUELLE).
+  if (zeile) {
+    const z = document.querySelector(zeile);
+    if (!z) return 'Zeile fehlt: ' + zeile;
+    z.click();
+    return (await warte(() => document.querySelector('[data-testid="' + behaelter + '"]') !== null)) ? null : 'Karte ging nicht auf: ' + behaelter;
+  }
+  return (await warte(() => document.querySelector('[data-testid="' + behaelter + '"]') !== null)) ? null : 'Fläche fehlt: ' + behaelter;
 })`;
 
 /** In der Seite: was der Behälter gerade zeigt. */
@@ -803,15 +851,17 @@ const INHALT_LIES = `(async ([reiter, zeile, behaelter, bereich]) => {
   const ruhig = () => {
     const k = karte();
     return k !== null && !k.matches('[data-einst="laedt"]') && k.querySelector('[data-einst="laedt"]') === null
-      && k.querySelector('[data-einst="stand"]') === null && k.querySelector('[data-einst="abfrage-fehler"]') === null;
+      && k.querySelector('[data-einst="stand"], [data-einst="bereitschaft-stand"], [data-einst="abfrage-fehler"]') === null;
   };
   await warte(ruhig, 20000);
   // Nachrangige Abfragen (z. B. Namen im Prüfprotokoll) dürfen noch auflaufen.
   await new Promise((r) => setTimeout(r, 1500));
-  if (!ruhig()) return { fehler: 'Karte kam nicht zur Ruhe: ' + behaelter };
   const knoepfe = [...karte().querySelectorAll('[data-einst="hilfe"]')];
   knoepfe.forEach((b) => { if (b.getAttribute('aria-expanded') !== 'true') b.click(); });
   await warte(() => karte().querySelectorAll('[data-einst="hilfemenue"]').length >= knoepfe.length, 4000);
+  // Auch während des Öffnens der Hilfen kann eine Auffrischung starten. Alle Sprachen am
+  // ruhenden Bestand vergleichen, einschließlich der eigenen Standzeile der Bereitschaftskarte.
+  if (!(await warte(ruhig, 20000))) return { fehler: 'Karte kam nicht zur Ruhe: ' + behaelter };
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
   const sichtbar = (el) => {
     if (!el) return false;
@@ -1771,6 +1821,22 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         behaelter: "detail-produktbudget",
         seitenPfad: "/admin",
       },
+      // REF-03 (Referenz-KI als eigene Prüfrolle), nachgetragen im Gesamtcheck R-1329: die Karte
+      // hinter der Zeile „Referenzprüfung" unter „KI" (Admin.tsx, `zeile-ki-referenz`).
+      {
+        reiter: t("adm.sec.ki"),
+        zeile: '[data-testid="zeile-ki-referenz"]',
+        behaelter: "detail-ki-referenz",
+        seitenPfad: "/admin",
+      },
+      // AA-04 (Klara-Einrichtung im Profil), nachgetragen im Gesamtcheck R-1329: die Karte hinter
+      // der Zeile „Assistenz" auf /profil (Profile.tsx, `zeile-assistenz`).
+      {
+        reiter: "",
+        zeile: '[data-testid="zeile-assistenz"]',
+        behaelter: "detail-assistenz",
+        seitenPfad: "/profil",
+      },
       {
         reiter: "",
         zeile: '[data-testid="zeile-passwort"]',
@@ -1960,6 +2026,13 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     "authApi.secondFactorStatus": "/api/auth/second-factor",
     // R-0913: die Betriebsschalter der Demodatenkarte — Fall `SCH · Demodaten · /api/features`.
     useFeatures: "/api/features",
+    // Gesamtcheck R-1329: drei Quellen späterer Lieferungen. ADMIN-04 liest die Verantwortung
+    // (Listenzeile UND Nutzerkarte, derselbe Schlüssel) und auf der Nutzerkarte wieder die
+    // Gesamtliste `/api/audit`; R-0756 die Übersicht der Prüfaufträge. Fälle: `Prüfaufträge je
+    // Person · …` (tragend) und die zwei `N · Nutzerkarte · …` (nachrangig).
+    "verantwortungApi.uebersicht": "/api/verantwortung/uebersicht",
+    useValidationOverview: "/api/validation/overview",
+    useAudit: "/api/audit",
   };
 
   /** Jede Abfragequelle, die in den sechs Seiten wirklich vorkommt — samt ihrer Datei. */

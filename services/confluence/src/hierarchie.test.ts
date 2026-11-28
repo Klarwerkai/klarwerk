@@ -125,11 +125,24 @@ describe("Confluence-Import · verschachtelter Testraum mit Untergruppen", () =>
     const { fetchFn, urls } = verschachtelterSpace(CURSOR_1, CURSOR_2);
     const result = await adapterFromConfig(config(fetchFn)).collectAll();
 
-    expect(urls).toHaveLength(2);
+    // Gesamtcheck R-1329 (Nacharbeit 66): gezählt werden die BLÄTTERAUFRUFE der Bereichsliste —
+    // dieselbe Regel wie `tests/confluence-verschachtelt/verschachtelter-import.test.ts` (E6). Der
+    // Adapter liest je Lauf weitere Angaben; gemessen waren 3 Anfragen statt 2.
+    const istListe = (aufruf: string): boolean => {
+      const url = new URL(aufruf, "https://x");
+      const status = url.searchParams.get("status");
+      return (
+        url.pathname.endsWith("/rest/api/content") &&
+        url.searchParams.has("spaceKey") &&
+        (status === null || status === "current")
+      );
+    };
+    const blaettern = urls.filter(istListe);
+    expect(blaettern).toHaveLength(2);
     // Die Folge-URL stammt aus dem `next`-Cursor des Fixtures; geprüft wird die ERSTE Anfrage, die
     // der Client selbst baut — sie bestimmt, ob Confluence `ancestors` überhaupt liefert.
-    expect(decodeURIComponent(urls[0] ?? "")).toMatch(/expand=[^&]*\bancestors\b/);
-    expect(urls[1]).toContain("start=8");
+    expect(decodeURIComponent(blaettern[0] ?? "")).toMatch(/expand=[^&]*\bancestors\b/);
+    expect(blaettern[1]).toContain("start=8");
     expect(result.truncated).toBe(false);
     expect(result.failed).toEqual([]);
     expect(result.items.map((i) => i.externalId).sort()).toEqual(

@@ -50,6 +50,7 @@
 // Aufruf: npm run smoke:ui:gate (Chromium, hermetisch) oder npm run smoke:ui (drei Engines).
 import { type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
+import { bildpixel } from "./support/bildpixel";
 
 test.describe.configure({ mode: "serial" });
 
@@ -115,27 +116,25 @@ async function beschreibungSchreiben(page: Page, text: string): Promise<void> {
  * Nutzer nach dem Wiederöffnen SIEHT.
  */
 async function speichernUndWiederOeffnen(page: Page): Promise<string> {
-  // JOB 3062: der Knopf heisst am neuen Blatt „Entwurf sichern" (`erfassen.entwurfSichern`); der
+  // JOB 3062: der Knopf heisst am neuen Blatt „Als Entwurf speichern" (`erfassen.entwurfSichern`); der
   // Weg dahinter ist unverändert derselbe (`POST/PUT /api/drafts`).
-  await page.getByRole("button", { name: "Entwurf sichern", exact: true }).click();
-  // Erst wenn der Entwurf wirklich liegt, ist die Id da.
-  let id = "";
-  await expect
-    .poll(
-      async () => {
-        const antwort = await page.request.get("/api/drafts");
-        if (!antwort.ok()) {
-          return 0;
-        }
-        const liste = (await antwort.json()) as { id: string; updatedAt?: string }[];
-        id = liste[0]?.id ?? "";
-        return liste.length;
-      },
-      { message: "Der Entwurf ist nicht gespeichert worden", timeout: 15_000 },
-    )
-    .toBeGreaterThan(0);
+  // Die Antwort dieses Klicks nennt den gespeicherten Entwurf, auch bei bereits gefüllter Ablage.
+  const [antwort] = await Promise.all([
+    page.waitForResponse((r) => {
+      const pfad = new URL(r.url()).pathname;
+      const methode = r.request().method();
+      return (
+        (methode === "POST" && pfad === "/api/drafts") ||
+        (methode === "PUT" && /^\/api\/drafts\/[^/]+$/.test(pfad))
+      );
+    }),
+    page.getByRole("button", { name: "Als Entwurf speichern", exact: true }).click(),
+  ]);
+  expect(antwort.ok(), `Entwurf speichern: HTTP ${antwort.status()}`).toBe(true);
+  const { id } = (await antwort.json()) as { id: string };
+  expect(id).toMatch(/^\S+$/);
 
-  await page.goto(`/capture/frontdoor?draft=${id}`);
+  await page.goto(`/capture/frontdoor?draft=${encodeURIComponent(id)}`);
   await expect(page.getByRole("textbox", { name: "Wissensseite — Fließtext" }).first()).toBeVisible(
     { timeout: 15_000 },
   );
@@ -161,7 +160,7 @@ async function entwurfLoeschen(page: Page, id: string): Promise<void> {
  * Rundlauf ein zweites Bild erfindet oder die Reihung dreht.
  */
 async function merkmale(page: Page): Promise<Record<string, unknown>> {
-  return page.evaluate((fussnoteSel) => {
+  const { src, ...rest } = await page.evaluate((fussnoteSel) => {
     const editor = document.querySelector('[contenteditable="true"]');
     const bilder = Array.from(editor?.querySelectorAll("img") ?? []);
     const fussnoten = Array.from(document.querySelectorAll(fussnoteSel));
@@ -180,6 +179,7 @@ async function merkmale(page: Page): Promise<Record<string, unknown>> {
       fussnotenText: (cap?.textContent ?? "").trim(),
     };
   }, FUSSNOTE);
+  return { ...rest, pixel: await bildpixel(src) };
 }
 
 test("mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, erneut lesen", async ({
@@ -262,8 +262,7 @@ test("mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, er
 //      Produkt allein weiter: `onDrop` → `handleMediaFiles` → `insertImageFile` →
 //      `fileToThumbDataUrl` (echtes `<canvas>`) → `insertHtmlReliable` → die Invariante.
 //   2. ABZUG des Editor-DOM UNMITTELBAR danach (`merkmale`) — das ist der Prüfling.
-//   3. SPEICHERN über den VORHANDENEN Entwurfsweg: der Knopf „Entwurf sichern" (bis JOB 3062:
-//      „Als Entwurf speichern")
+//   3. SPEICHERN über den VORHANDENEN Entwurfsweg: der Knopf „Als Entwurf speichern"
 //      (`speichernUndWiederOeffnen`), also `POST /api/drafts` → `capture-routes.ts:160` →
 //      `services/capture/src/service.ts:339` → `sanitizeDraftPayload` (`:45-49`) →
 //      `sanitizeHtml` aus `services/structure`. Kein nachgebauter Sanitizer-Aufruf im Test.
@@ -315,10 +314,9 @@ test("mega88: Drop — ein fallengelassenes Bild ist sofort beschreibbar", async
   // Erwartung von mir gefangen, bevor sie grün werden konnte.
   expect(vorher.bildzahl, "Das echte Drop hat gar kein Bild in den Editor gebracht").toBe(1);
   expect(vorher.fussnotenzahl, "Das fallengelassene Bild hat keine eigene Fußnote").toBe(1);
-  expect(
-    String(vorher.src ?? ""),
-    "Das eingebettete Bild ist keine data:-URL — dann ist es nicht der Weg über fileToThumbDataUrl",
-  ).toMatch(/^data:image\//);
+  expect(vorher.pixel, "Das eingebettete Drop-Bild muss einen RGBA-Pixel enthalten").toMatch(
+    /^[0-9a-f]{8}$/,
+  );
   expect(vorher.ankerVorhanden, "Das Bild steht in keiner figure").toBe("ja");
   expect(String(vorher.kennungAmBild ?? ""), "Das Bild trägt keine Kennung").toMatch(
     /^kw-img-[a-z0-9]+-\d+$/,

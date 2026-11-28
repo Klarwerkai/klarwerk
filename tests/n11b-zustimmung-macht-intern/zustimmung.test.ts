@@ -106,15 +106,13 @@ async function aufbauen(zustimmen = true, modellfehler = false) {
   };
   expect(binding["x-klara-session"]).toBeTruthy();
   expect(binding["x-klara-document"]).toBeTruthy();
-  if (zustimmen) {
-    const consent = await app.inject({
-      method: "POST",
-      url: `/api/klara/sessions/${binding["x-klara-session"]}/consent`,
-      headers: { ...headers, ...binding },
-    });
-    expect(consent.statusCode, consent.body).toBe(200);
-    expect(consent.json().consentState).toBe("granted");
-  }
+  const consent = await app.inject({
+    method: zustimmen ? "POST" : "DELETE",
+    url: `/api/klara/sessions/${binding["x-klara-session"]}/consent`,
+    headers: { ...headers, ...binding },
+  });
+  expect(consent.statusCode, consent.body).toBe(200);
+  expect(consent.json().resolution.externalConsentGranted).toBe(zustimmen);
   gesehen.length = 0;
   return { services, app, headers, binding, gesehen, bilder, koId: ko.json().id as string };
 }

@@ -698,6 +698,47 @@ const WOPI_TOR = "keines aus der Sitzung — die WOPI-Zugangsmarke (HMAC) je Anh
 const WOPI_GRUND =
   "Der eingebettete Office-Editor ruft diese Tür server-zu-server ohne Klarwerk-Sitzung; ein Sitzungstor wäre hier falsch. Ohne gültige Marke endet jede Anfrage VOR dem Parsen mit 401, ohne Editor-Einrichtung (so im Prüfaufbau) mit 404 für alle fünf Akteure — gemessen ist damit, dass die Sitzungsrolle hier nichts öffnet. Marke, Dateibindung und Rechteentzug prüft `tests/office-artikel-editor/office-routes.test.ts` (O6).";
 
+// Die angegebenen Tore sind festgeschriebene Erwartungen. Jede Route wird mit allen fünf
+// Akteuren am Router gefahren. Nicht vorhandene Objektkennungen halten die Fachoperation isoliert.
+const KIOSK_LESER: Erwartungen = {
+  anonym: "401",
+  viewer: "erlaubt",
+  experte: "403",
+  controller: "403",
+  admin: "403",
+};
+const ROLLEN_AM_TOR = {
+  "ko.read": NUR_LESEN,
+  "ko.create": AB_EXPERTE,
+  "ko.validate": AB_CONTROLLER,
+  "users.manage": NUR_ADMIN,
+  auth: ANGEMELDET,
+  admin: NUR_ADMIN,
+  "dienst-schluessel": NUR_DIENSTSCHLUESSEL,
+} satisfies Record<string, Erwartungen>;
+
+type Rollenfall = [
+  methode: Zeile["methode"],
+  route: string,
+  zeile: number,
+  tor: keyof typeof ROLLEN_AM_TOR,
+  optionen?: Partial<Pick<Zeile, "erwartet" | "payload" | "codes" | "tor">>,
+];
+
+function rollenzeilen(gruppe: string, datei: string, faelle: Rollenfall[]): Zeile[] {
+  return faelle.map(([methode, route, zeile, tor, optionen]) => ({
+    gruppe,
+    methode,
+    route,
+    pfad: route.replace(/:\w+/g, "nicht-vorhanden"),
+    belegstelle: `${datei}:${zeile}`,
+    tor,
+    erwartet: ROLLEN_AM_TOR[tor],
+    ...(methode === "POST" || methode === "PUT" ? { payload: {} } : {}),
+    ...optionen,
+  }));
+}
+
 export const TABELLE: Zeile[] = [
   {
     gruppe: "addinStaticRoutes",
@@ -4940,4 +4981,303 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  {
+    gruppe: DIREKT,
+    methode: "GET",
+    pfad: "/ready",
+    belegstelle: "services/app/src/build-app.ts:4260",
+    tor: "Öffentliche Bereitschaftsauskunft",
+    erwartet: OEFFENTLICH(
+      "Meldet ausschließlich bereit oder nicht bereit. Eine Sitzung ändert die Betriebsbereitschaft nicht.",
+    ),
+  },
+  ...rollenzeilen("adminRoutes", "services/app/src/routes/admin-routes.ts", [
+    ["GET", "/api/admin/funktionen", 832, "users.manage"],
+  ]),
+  ...rollenzeilen("askRoutes", "services/app/src/routes/ask-routes.ts", [
+    ["POST", "/api/gaps/:id/zurueckweisen", 2331, "ko.create"],
+  ]),
+  ...rollenzeilen("assistenzLernenRoutes", "services/app/src/routes/assistenz-lernen-routes.ts", [
+    ["POST", "/api/me/vormachen/routinen/:id/lauf", 242, "auth"],
+    ["PUT", "/api/me/vormachen/routinen/:id/zustand", 297, "auth"],
+    ["PUT", "/api/me/vormachen/routinen/:id/zeitplan", 320, "auth"],
+    ["PUT", "/api/me/vormachen/routinen/:id/ausfuehrung", 382, "auth"],
+    ["GET", "/api/me/vormachen/word-routinen", 410, "auth"],
+    ["PUT", "/api/me/vormachen/routinen/:id/host", 444, "auth"],
+    ["POST", "/api/me/vormachen/routinen/:id/word-lauf", 492, "auth"],
+    ["POST", "/api/me/vormachen/routinen/:id/korrektur", 643, "auth"],
+  ]),
+  ...rollenzeilen("chatRoutes", "services/app/src/routes/chat-routes.ts", [
+    ["GET", "/api/chat/konten", 421, "ko.read"],
+    ["GET", "/api/chat/gespraeche", 436, "ko.read"],
+    ["POST", "/api/chat/gespraeche", 477, "ko.read"],
+    ["GET", "/api/chat/gespraeche/:id", 538, "ko.read"],
+    ["GET", "/api/chat/nachrichten/:id", 580, "ko.read"],
+    ["POST", "/api/chat/gespraeche/:id/auffrischen", 600, "ko.read"],
+    ["POST", "/api/chat/gespraeche/:id/nachrichten", 635, "ko.read"],
+    ["POST", "/api/chat/nachrichten/:id/wissen", 694, "ko.create"],
+    ["GET", "/api/chat/erwaehnungen", 733, "ko.read"],
+  ]),
+  ...rollenzeilen("emailEingangRoutes", "services/app/src/routes/email-eingang-routes.ts", [
+    ["POST", "/api/eingang/email", 79, "dienst-schluessel"],
+  ]),
+  ...rollenzeilen("freigaberegelnRoutes", "services/app/src/routes/freigaberegeln-routes.ts", [
+    ["GET", "/api/spaces/:id/freigaberegel", 76, "ko.read"],
+    ["POST", "/api/spaces/:id/freigaberegel/vorschau", 99, "users.manage"],
+    ["PUT", "/api/spaces/:id/freigaberegel", 125, "users.manage"],
+    ["POST", "/api/spaces/:id/freigaberegel/fristlauf", 218, "ko.read"],
+  ]),
+  ...rollenzeilen("gedaechtnisRoutes", "services/app/src/routes/gedaechtnis-routes.ts", [
+    ["PUT", "/api/me/gedaechtnis/:id", 140, "auth"],
+  ]),
+  ...rollenzeilen("kioskRoutes", "services/app/src/routes/kiosk-routes.ts", [
+    [
+      "GET",
+      "/api/kiosk/profil",
+      31,
+      "ko.read",
+      {
+        tor: "ko.read und Bindung an das Kiosk-Lesekonto",
+        erwartet: KIOSK_LESER,
+        codes: { "403": "KIOSK_GESPERRT" },
+      },
+    ],
+    [
+      "POST",
+      "/api/kiosk/fragen",
+      37,
+      "ko.read",
+      {
+        tor: "ko.read und Bindung an das Kiosk-Lesekonto",
+        payload: {
+          profilId: "rollenabnahme",
+          revision: 1,
+          question: "Welche Form hat die Testkarte?",
+        },
+        erwartet: KIOSK_LESER,
+        codes: { "403": "KIOSK_GESPERRT" },
+      },
+    ],
+  ]),
+  ...rollenzeilen("klaraBegleiterRoutes", "services/app/src/routes/klara-begleiter-routes.ts", [
+    ["POST", "/api/me/klara/begleiter/auftraege/:schluessel/klaeren", 162, "auth"],
+    ["POST", "/api/me/klara/begleiter/adapter/:instanz/aktionen/:aktion/stopp", 192, "auth"],
+  ]),
+  ...rollenzeilen("klaraBesprechungRoutes", "services/app/src/routes/klara-besprechung-routes.ts", [
+    ["POST", "/api/me/klara/besprechungen/import", 13, "auth"],
+    ["POST", "/api/me/klara/besprechungen/:id/lesen", 27, "auth"],
+    ["POST", "/api/me/klara/besprechungen/:id/korrektur", 27, "auth"],
+    ["POST", "/api/me/klara/besprechungen/:id/uebernehmen", 27, "auth"],
+    ["POST", "/api/me/klara/besprechungen/:id/fristquelle", 27, "auth"],
+    ["POST", "/api/me/klara/besprechungen/:id/teilschritt", 27, "auth"],
+    ["GET", "/api/me/klara/besprechungen/:id/audio", 54, "auth"],
+  ]),
+  ...rollenzeilen("klaraGespraechRoutes", "services/app/src/routes/klara-gespraech-routes.ts", [
+    ["POST", "/api/me/klara/gespraeche/:id/auftraege/:auftragId/fortsetzen", 413, "auth"],
+    ["POST", "/api/me/klara/gespraeche/:id/auftraege/:auftragId/unterbrechen", 413, "auth"],
+  ]),
+  ...rollenzeilen(
+    "klaraNormereignisRoutes",
+    "services/app/src/routes/klara-normereignis-routes.ts",
+    [["POST", "/api/me/klara/normereignisse/:id/klaerung", 139, "ko.validate"]],
+  ),
+  ...rollenzeilen("klaraWissenRoutes", "services/app/src/routes/klara-wissen-routes.ts", [
+    ["GET", "/api/me/klara/wissen/ziele", 14, "ko.create"],
+    ["POST", "/api/me/klara/wissen/import", 23, "auth"],
+    ["GET", "/api/me/klara/notizen/:id/wissen/stand", 33, "ko.read"],
+    ["POST", "/api/me/klara/notizen/:id/wissen/vorschau", 62, "ko.create"],
+    ["POST", "/api/me/klara/notizen/:id/wissen/pruefen", 62, "ko.create"],
+    ["POST", "/api/me/klara/notizen/:id/wissen/uebernehmen", 62, "ko.create"],
+  ]),
+  ...rollenzeilen("mediaRoutes", "services/app/src/routes/media-routes.ts", [
+    ["POST", "/api/media/transcribe", 109, "ko.read"],
+  ]),
+  ...rollenzeilen("officeKontextRoutes", "services/app/src/routes/office-kontext-routes.ts", [
+    ["POST", "/api/klara/sessions/:sessionId/office-kontext", 150, "ko.read"],
+    ["POST", "/api/klara/sessions/:sessionId/office-kontext/ziel", 232, "ko.read"],
+    ["DELETE", "/api/klara/sessions/:sessionId/office-kontext", 290, "ko.read"],
+  ]),
+  ...rollenzeilen("officeRoutes", "services/app/src/routes/office-routes.ts", [
+    ["POST", "/api/kos/:id/office/:anhangId/ergaenzung/uebernehmen", 628, "ko.create"],
+  ]),
+  ...rollenzeilen(
+    "persoenlicheFunktionenRoutes",
+    "services/app/src/routes/persoenliche-funktionen-routes.ts",
+    [
+      ["GET", "/api/me/funktionen", 134, "auth"],
+      ["POST", "/api/me/funktionen/entwurf", 149, "auth"],
+      ["POST", "/api/me/funktionen", 166, "auth"],
+      ["GET", "/api/me/funktionen/:id", 199, "auth"],
+      ["PUT", "/api/me/funktionen/:id", 212, "auth"],
+      ["PUT", "/api/me/funktionen/:id/zeitauftrag", 236, "auth"],
+      ["DELETE", "/api/me/funktionen/:id/zeitauftrag", 266, "auth"],
+      ["POST", "/api/me/funktionen/:id/laeufe", 289, "auth"],
+    ],
+  ),
+  ...rollenzeilen("officeRoutes", "services/app/src/routes/praesentation-aenderungs-routes.ts", [
+    ["POST", "/api/kos/:id/office/:anhangId/datenaktualisierung/vorschau", 362, "ko.create"],
+    ["POST", "/api/kos/:id/office/:anhangId/datenaktualisierung/uebernehmen", 399, "ko.create"],
+    ["GET", "/api/kos/:id/office/:anhangId/datenaktualisierung/stand", 458, "ko.read"],
+    ["POST", "/api/kos/:id/office/:anhangId/datenaktualisierung/ruecknahme", 520, "ko.create"],
+    ["POST", "/api/kos/:id/office/:anhangId/datenaktualisierung/fassungen", 642, "ko.create"],
+  ]),
+  ...rollenzeilen("officeRoutes", "services/app/src/routes/praesentation-aufbau-routes.ts", [
+    ["POST", "/api/kos/:id/office/:anhangId/folienaufbau/vorschau", 189, "ko.create"],
+    ["POST", "/api/kos/:id/office/:anhangId/folienaufbau/uebernehmen", 198, "ko.create"],
+  ]),
+  ...rollenzeilen(
+    "praesentationDatenRoutes",
+    "services/app/src/routes/praesentation-daten-routes.ts",
+    [
+      ["POST", "/api/kos/:id/office/:anhangId/ergaenzung/vorschau", 335, "ko.read"],
+      ["POST", "/api/kos/:id/office/:anhangId/vortrag", 358, "ko.read"],
+      ["POST", "/api/kos/:id/office/:anhangId/aenderungsvorschau", 397, "ko.read"],
+    ],
+  ),
+  ...rollenzeilen("quellrevisionRoutes", "services/app/src/routes/quellrevision-routes.ts", [
+    ["GET", "/api/kos/:id/quellrevisionen/:sourceRecordId", 46, "ko.read"],
+  ]),
+  ...rollenzeilen("reasonerRoutes", "services/app/src/routes/reasoner-routes.ts", [
+    ["GET", "/api/reasoner/ausfuehrung", 1327, "ko.read"],
+    ["GET", "/api/reasoner/verhaltensartefakte", 1828, "users.manage"],
+    ["POST", "/api/reasoner/verhaltensartefakte", 1838, "users.manage"],
+  ]),
+  ...rollenzeilen("spacesRoutes", "services/app/src/routes/spaces-routes.ts", [
+    ["GET", "/api/spaces/artikel", 791, "ko.read"],
+    ["GET", "/api/spaces/teams", 838, "ko.read"],
+    ["POST", "/api/spaces/:id/loeschung/vorschau", 1037, "ko.read"],
+    ["POST", "/api/spaces/:id/loeschung", 1055, "ko.read"],
+    ["GET", "/api/spaces/:id/zugriff", 1210, "ko.read"],
+    ["POST", "/api/spaces/:id/archivierung/vorschau", 1244, "ko.read"],
+    ["POST", "/api/spaces/:id/archivieren", 1269, "ko.read"],
+    ["POST", "/api/spaces/:id/wiederaufnehmen", 1365, "ko.read"],
+    ["POST", "/api/spaces/bestand/vorschau", 1441, "users.manage"],
+    ["POST", "/api/spaces/bestand/zuordnung", 1454, "users.manage"],
+    ["GET", "/api/spaces/bestand/protokoll", 1534, "users.manage"],
+  ]),
+  ...rollenzeilen("teamassistentenRoutes", "services/app/src/routes/teamassistenten-routes.ts", [
+    ["GET", "/api/teamassistenten", 25, "ko.read"],
+    ["GET", "/api/teamassistenten/:id", 29, "ko.read"],
+    ["POST", "/api/teamassistenten", 33, "ko.create"],
+    ["PUT", "/api/teamassistenten/:id", 37, "ko.create"],
+    ["DELETE", "/api/teamassistenten/:id", 41, "ko.create"],
+    ["POST", "/api/teamassistenten/:id/pruefen", 48, "ko.create"],
+    ["POST", "/api/teamassistenten/:id/freigeben", 53, "ko.create"],
+    ["POST", "/api/teamassistenten/:id/zurueckziehen", 58, "ko.create"],
+    ["POST", "/api/teamassistenten/:id/fragen", 62, "ko.read"],
+    ["POST", "/api/office/teamassistenten/:id/fragen", 74, "ko.read"],
+  ]),
+  ...rollenzeilen("teamsRoutes", "services/app/src/routes/teams-routes.ts", [
+    ["GET", "/api/teams", 117, "users.manage"],
+    ["GET", "/api/teams/:id", 139, "users.manage"],
+    ["POST", "/api/teams", 178, "users.manage"],
+    ["POST", "/api/teams/:id/vorschau", 219, "users.manage"],
+    ["PUT", "/api/teams/:id", 260, "users.manage"],
+    ["POST", "/api/teams/:id/archivieren", 355, "users.manage"],
+  ]),
+  ...rollenzeilen("workflowLaufRoutes", "services/app/src/routes/teamworkflow-lauf-routes.ts", [
+    ["GET", "/api/teamworkflows/wissenspruefungen", 28, "ko.read"],
+    [
+      "GET",
+      "/api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag",
+      32,
+      "ko.read",
+    ],
+    [
+      "POST",
+      "/api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag",
+      40,
+      "ko.read",
+    ],
+    [
+      "POST",
+      "/api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag/entscheiden",
+      50,
+      "ko.validate",
+    ],
+    ["GET", "/api/teamworkflows/:id/laeufe", 60, "ko.read"],
+    ["POST", "/api/teamworkflows/:id/laeufe", 64, "ko.read"],
+    ["GET", "/api/teamworkflows/:id/laeufe/:laufId", 69, "ko.read"],
+    ["POST", "/api/teamworkflows/:id/laeufe/:laufId/weiter", 76, "ko.read"],
+  ]),
+  ...rollenzeilen("teamworkflowRoutes", "services/app/src/routes/teamworkflow-routes.ts", [
+    ["GET", "/api/teamworkflows", 21, "ko.read"],
+    ["GET", "/api/teamworkflows/:id", 25, "ko.read"],
+    ["POST", "/api/teamworkflows", 29, "ko.create"],
+    ["PUT", "/api/teamworkflows/:id", 33, "ko.create"],
+    ["DELETE", "/api/teamworkflows/:id", 37, "ko.create"],
+    ["POST", "/api/teamworkflows/:id/pruefen", 44, "ko.create"],
+    ["POST", "/api/teamworkflows/:id/freigeben", 49, "ko.create"],
+    ["POST", "/api/teamworkflows/:id/zurueckziehen", 54, "ko.create"],
+  ]),
+  ...rollenzeilen("technischeDatenRoutes", "services/app/src/routes/technische-daten-routes.ts", [
+    ["POST", "/api/technische-daten/vorschau", 302, "ko.create"],
+    ["POST", "/api/technische-daten/uebernahme", 324, "ko.create"],
+    ["POST", "/api/technische-daten/quellenabgleich", 522, "ko.create"],
+    ["POST", "/api/technische-daten/quellenrechte", 558, "ko.validate"],
+  ]),
+  ...rollenzeilen("validationRoutes", "services/app/src/routes/validation-routes.ts", [
+    ["GET", "/api/validation/board/count", 217, "ko.read"],
+  ]),
+  ...rollenzeilen("verantwortungRoutes", "services/app/src/routes/verantwortung-routes.ts", [
+    ["GET", "/api/verantwortung/person/:id", 743, "users.manage"],
+    ["GET", "/api/verantwortung/person/:id/vermaechtnis", 796, "users.manage"],
+    ["GET", "/api/verantwortung/uebersicht", 834, "users.manage"],
+    ["GET", "/api/verantwortung/person/:id/vorgaenge", 877, "users.manage"],
+    ["GET", "/api/verantwortung/ungeklaert", 911, "users.manage"],
+    ["POST", "/api/verantwortung/vorschau", 938, "users.manage"],
+    ["POST", "/api/verantwortung/uebergabe", 962, "users.manage"],
+    ["POST", "/api/verantwortung/deaktivierung", 977, "users.manage"],
+    ["POST", "/api/verantwortung/ablauf/vorschau", 1051, "users.manage"],
+    ["POST", "/api/verantwortung/ablauf", 1069, "users.manage"],
+    ["GET", "/api/verantwortung/person/:id/ablaeufe", 1372, "users.manage"],
+  ]),
+  ...rollenzeilen("vorlagenRoutes", "services/app/src/routes/vorlagen-routes.ts", [
+    ["GET", "/api/vorlagen", 161, "ko.read"],
+    ["GET", "/api/vorlagen/start", 190, "ko.read"],
+    ["PUT", "/api/vorlagen/standard", 231, "ko.create"],
+    ["POST", "/api/vorlagen/pruefung", 282, "ko.read"],
+    ["GET", "/api/vorlagen/nutzung/:koId", 316, "ko.read"],
+    ["GET", "/api/vorlagen/verwaltung", 354, "users.manage"],
+    ["GET", "/api/vorlagen/space-vorgaben/:spaceId", 447, "ko.read"],
+    ["PUT", "/api/vorlagen/space-vorgaben/:spaceId", 469, "ko.read"],
+    ["POST", "/api/vorlagen/begriffe/vorschau", 589, "users.manage"],
+    ["POST", "/api/vorlagen/begriffe/ausfuehren", 601, "users.manage"],
+    ["GET", "/api/vorlagen/:id", 789, "ko.read"],
+    ["POST", "/api/vorlagen", 812, "ko.create"],
+    ["POST", "/api/vorlagen/:id/vorschau", 901, "ko.create"],
+    ["PUT", "/api/vorlagen/:id", 923, "ko.create"],
+    ["POST", "/api/vorlagen/:id/ausmustern", 1004, "ko.create"],
+  ]),
+  ...rollenzeilen("vormachenRoutes", "services/app/src/routes/vormachen-routes.ts", [
+    ["GET", "/api/me/vormachen", 149, "auth"],
+    ["POST", "/api/me/vormachen", 183, "auth"],
+    ["DELETE", "/api/me/vormachen", 230, "auth"],
+    ["POST", "/api/me/vormachen/:id/beobachtungen", 249, "auth"],
+    ["PUT", "/api/me/vormachen/:id/zustand", 267, "auth"],
+    ["GET", "/api/me/vormachen/:id/vorschau", 289, "auth"],
+    ["PUT", "/api/me/vormachen/:id/korrektur", 305, "auth"],
+    ["POST", "/api/me/vormachen/:id/bestaetigung", 322, "auth"],
+    ["POST", "/api/me/vormachen/:id/abbruch", 345, "auth"],
+    ["DELETE", "/api/me/vormachen/:id", 367, "auth"],
+    ["POST", "/api/me/vormachen/routinen/:id/schritte/:schrittId/freigabe", 385, "auth"],
+    ["POST", "/api/me/vormachen/routinen/:id/firmenuebergabe", 419, "ko.create"],
+  ]),
+  ...rollenzeilen("authRoutes", "services/auth/src/routes.ts", [
+    ["GET", "/api/auth/second-factor", 721, "auth", { codes: { "401": "INVALID_CREDENTIALS" } }],
+    [
+      "POST",
+      "/api/auth/me/email/confirm",
+      885,
+      "auth",
+      { codes: { "401": "INVALID_CREDENTIALS" } },
+    ],
+    [
+      "DELETE",
+      "/api/users/:id/second-factor",
+      2013,
+      "admin",
+      { codes: { "401": "INVALID_CREDENTIALS" } },
+    ],
+  ]),
 ];

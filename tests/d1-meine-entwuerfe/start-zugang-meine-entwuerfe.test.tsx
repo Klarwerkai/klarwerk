@@ -331,6 +331,13 @@ describe("Weiterarbeiten am persönlichen Start", () => {
     },
   );
 
+  it("zeigt für Betrachter keine Bearbeitungslinks zu früheren eigenen Entwürfen", async () => {
+    await box.seed({ title: "Vor dem Rollenwechsel" });
+    await mount("/start", "viewer");
+    expect(endpoints.drafts.letzteEigene).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="start-weiterarbeiten"]')).toBeNull();
+  });
+
   it("hat höchstens drei direkte Schritte und zeigt keine abgelaufene oder fremde Zuweisung", async () => {
     vi.mocked(endpoints.drafts.letzteEigene).mockResolvedValueOnce({
       kontoId: "u1",

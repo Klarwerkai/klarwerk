@@ -33,6 +33,7 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { SanitizedHtml } from "../../apps/web/src/components/SanitizedHtml";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { pruefeBildpixel } from "../m5-docx-bildunterschriften/bildpixel";
 
 /** Mountet eine Komponente in einen echten DOM-Knoten und gibt ihn zurück. */
 async function rendere(element: unknown): Promise<HTMLElement> {
@@ -125,12 +126,9 @@ async function angemeldeteApp() {
   return { app, headers: { authorization: `Bearer ${login.json().token as string}` } };
 }
 
-/** Die einzelnen eingebetteten Bilddaten eines DOM-Baums — Base64-Rumpf je `<img>`. */
+/** Die Bildquellen in der Reihenfolge des gerenderten Dokuments. */
 function bilderImDom(behaelter: HTMLElement): string[] {
-  return [...behaelter.querySelectorAll("img")].map((b) => {
-    const t = /^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/.exec(b.getAttribute("src") ?? "");
-    return t?.[1] ?? "";
-  });
+  return [...behaelter.querySelectorAll("img")].map((bild) => bild.getAttribute("src") ?? "");
 }
 
 describe("JOB 2613 · K · DIE KETTE AM STÜCK: .docx → Route → Entwurf → BILDSCHIRM", () => {
@@ -179,8 +177,8 @@ describe("JOB 2613 · K · DIE KETTE AM STÜCK: .docx → Route → Entwurf → 
     // ── Das Ende der Kette: die Bilder sind am BILDSCHIRM, einzeln ────────────────────────────
     const gesehen = bilderImDom(container);
     expect(gesehen, "Im gerenderten Entwurf steht kein einziges Bild").toHaveLength(2);
-    expect(gesehen[0], "Das ERSTE Bild (rot) fehlt im gerenderten Entwurf").toBe(PNG_ROT);
-    expect(gesehen[1], "Das ZWEITE Bild (blau) fehlt im gerenderten Entwurf").toBe(PNG_BLAU);
+    await pruefeBildpixel(gesehen[0] ?? "", PNG_ROT);
+    await pruefeBildpixel(gesehen[1] ?? "", PNG_BLAU);
     expect(new Set(gesehen).size, "Beide Bilder am Bildschirm tragen dieselben Bytes").toBe(2);
 
     // Und der Text der Quelle ist mitgereist — der Entwurf ist keine reine Bildergalerie.
@@ -238,7 +236,7 @@ describe("JOB 2613 · K · DIE KETTE AM STÜCK: .docx → Route → Entwurf → 
     // VOR dem Rendern: die Bilder stehen im gespeicherten bodyHtml.
     const imSpeicher = [
       ...(gespeichert.bodyHtml as string).matchAll(
-        /<img[^>]+src="data:image\/[a-zA-Z0-9.+-]+;base64,([^"]+)"/g,
+        /<img[^>]+src="(data:image\/[a-zA-Z0-9.+-]+;base64,[^"]+)"/g,
       ),
     ].map((t) => t[1] ?? "");
     expect(imSpeicher, "Schon der gespeicherte Entwurf trägt nicht beide Bilder").toHaveLength(2);

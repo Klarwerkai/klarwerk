@@ -296,10 +296,15 @@ const WEG_ZURUECK =
 //   tools/bodytext-nachziehen.ts    — CLI-Werkzeug hinter einem `invokedDirectly`-Riegel, lädt
 //        `build-app` per dynamischem `import`. Ob es den Vertrag trägt, entscheidet JOB 3797; R2/7
 //        prüft die BEKANNTHEIT, nicht den Vertrag — siehe (b) im Kopf dieser Datei.
+//   tools/datenintegritaet.ts       — R-0846/L6 und R-1437/I10, der Betreiberweg für Datenbankprüfung
+//        und Bestandsbereinigung: CLI hinter einem `invokedDirectly`-Riegel, lädt `buildPgServices`
+//        per dynamischem `import` und ruft `pruefeStartvertrag(process.env)` als erste Anweisung
+//        seines Ablaufs (Exit 2 „nicht angefangen"). Nachgetragen im Gesamtcheck R-1329, Nacharbeit 27.
 const ERWARTETE_EINSTIEGSPUNKTE = [
   "services/app/src/seed.ts",
   "services/app/src/server.ts",
   "tools/bodytext-nachziehen.ts",
+  "tools/datenintegritaet.ts",
 ];
 
 interface Quelldatei {
@@ -1194,7 +1199,7 @@ describe("JOB 3776 R2 · der Startvertrag steht am Einstiegspunkt, nicht im Modu
       .toContain("nichtGerufen");
   });
 
-  it("R2/7 · jeder Einstiegspunkt ist bekannt — der Suchlauf findet keinen vierten", () => {
+  it("R2/7 · jeder Einstiegspunkt ist bekannt — der Suchlauf findet keinen weiteren", () => {
     // ============================================================================================
     // JOB 3828 · LÜCKE 2 — DIE ZWEITE PRÜFLÜCKE AUS JOB 3776 R2: DAS INVENTAR.
     // ============================================================================================
@@ -1266,7 +1271,7 @@ describe("JOB 3776 R2 · der Startvertrag steht am Einstiegspunkt, nicht im Modu
     ]);
     expect(
       mitErfundenem,
-      `Ein vierter Einstiegspunkt (${ERFUNDENER_EINSTIEGSPUNKT.pfad}: dynamischer build-app-Import plus invokedDirectly-Riegel) wurde NICHT aufgenommen — das Inventar würde ihn übersehen.`,
+      `Ein zusätzlicher Einstiegspunkt (${ERFUNDENER_EINSTIEGSPUNKT.pfad}: dynamischer build-app-Import plus invokedDirectly-Riegel) wurde NICHT aufgenommen — das Inventar würde ihn übersehen.`,
     ).toContain(ERFUNDENER_EINSTIEGSPUNKT.pfad);
     expect(
       mitErfundenem,

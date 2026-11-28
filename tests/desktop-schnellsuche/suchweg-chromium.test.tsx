@@ -50,20 +50,21 @@ it("J · Begleiter: Suchaufruf, Tastatur, echtes Wissensziel, Entwurf, Modalgren
     });
     expect(leser.statusCode).toBe(200);
     const token = leser.json().token as string;
+    const suchbelegung = {
+      code: "KeyU",
+      taste: "U",
+      strg: false,
+      alt: false,
+      umschalt: true,
+      meta: true,
+    };
     const gesetzt = await app.inject({
       method: "PUT",
       url: "/api/me/assistenz/tastenkuerzel",
       headers: { authorization: `Bearer ${token}` },
       payload: {
         aktion: "suchen",
-        belegung: {
-          code: "KeyU",
-          taste: "U",
-          strg: false,
-          alt: false,
-          umschalt: true,
-          meta: true,
-        },
+        belegung: suchbelegung,
       },
     });
     expect(gesetzt.statusCode).toBe(200);
@@ -117,7 +118,20 @@ it("J · Begleiter: Suchaufruf, Tastatur, echtes Wissensziel, Entwurf, Modalgren
         contentType: typen[extname(pfad)] ?? "application/octet-stream",
       });
     });
-    await page.goto(`${origin}/begleiter`);
+    // Die sichtbare Figur und der native Suchbefehl stehen schon vor den persönlichen Kürzeln bereit.
+    const [kuerzelAntwort] = await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.request().method() === "GET" && r.url() === `${origin}/api/me/assistenz/tastenkuerzel`,
+      ),
+      page.goto(`${origin}/begleiter`),
+    ]);
+    expect(kuerzelAntwort.status()).toBe(200);
+    expect((await kuerzelAntwort.json()).aktionen).toContainEqual({
+      aktion: "suchen",
+      quelle: "eigen",
+      belegung: suchbelegung,
+    });
     await browserExpect(page.getByTestId("begleiter-figur")).toBeVisible();
     const nativ = async (befehl: string) =>
       page.evaluate(

@@ -72,11 +72,13 @@ import { askAnswerHref } from "../../apps/web/src/lib/askQuestion";
 // AUFTRAG-mega71 Block E: die benannten Herkünfte der Ask-Fläche — die Zielmengen werden aus den
 // PRODUKTIVEN Funktionen gelesen, nicht abgeschrieben (Stufe-2-Regel dieses Sammlers).
 import { answerReviewGuard } from "../../apps/web/src/lib/askView";
+import { belegstelleHref } from "../../apps/web/src/lib/belegstelle";
 import { captureGapHref } from "../../apps/web/src/lib/captureFromGap";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../../apps/web/src/lib/captureFrontDoor";
 import { captureNextSteps } from "../../apps/web/src/lib/captureSuccess";
 import { OWN_KNOWLEDGE_FILTER, ownKnowledgeEmptyHint } from "../../apps/web/src/lib/demoKnowledge";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
+import { quellenRueckwegHref } from "../../apps/web/src/lib/objektbezug";
 import { reworkValidationHref } from "../../apps/web/src/lib/reviewReworkContext";
 
 const WEB_SRC = join(__dirname, "../../apps/web/src");
@@ -245,6 +247,22 @@ const HERKUNFT: Record<(typeof FLAECHEN)[number], Herkunft[]> = {
   // AUFTRAG-mega71 Block E: die Ask-Fläche. `/fragen` ist ab viewer sichtbar — jedes bewachte
   // Ziel (alle fünf Fundstellen, auch /erfassen mit minRole experte) braucht deshalb das Tor.
   Ask: [
+    {
+      muster: /^quellenHref\(s\.(?:id|sourceId)\)$/,
+      herkunft: "Ask.quellenHref · Belegstelle und Rückweg zum gefragten Beitrag",
+      ziele: () => {
+        const id = "quellobjekt";
+        const bezug = { koId: id, fassung: 3 };
+        expect(lies(join(WEB_SRC, "pages/Ask.tsx"))).toContain(
+          "demoHref(quellenRueckwegHref(id, belegstelleHref(id, stelle), objektbezug), params)",
+        );
+        return [
+          quellenRueckwegHref(id, belegstelleHref(id, null), null),
+          quellenRueckwegHref(id, belegstelleHref(id, null), bezug),
+          quellenRueckwegHref(id, belegstelleHref(id, { passage: "Beleg", fassung: 2 }), bezug),
+        ];
+      },
+    },
     {
       muster: /^item\.to$/,
       herkunft: "lib/knowledgeGuidance.ts · knowledgeGuidance(ask)",

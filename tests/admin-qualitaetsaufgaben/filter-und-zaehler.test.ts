@@ -14,7 +14,6 @@ import { describe, expect, it } from "vitest";
 import type { QualitaetsVorgang } from "../../apps/web/src/api/qualitaetsaufgaben";
 import {
   type FilterDimension,
-  LEERER_FILTER,
   OHNE,
   type QualitaetsFilter,
   alterInTagen,
@@ -25,6 +24,16 @@ import {
   zaehleJe,
   zustaendigeIm,
 } from "../../apps/web/src/lib/qualitaetsaufgaben";
+
+// Gesamtcheck R-1329 (Aufrufer-Wächter): „keine Wahl“ als Vergleichsobjekt dieser Prüfung. Bis
+// hierher war es ein Export von `lib/qualitaetsaufgaben.ts`, den nur dieser Test las — das Produkt
+// erzeugt die leere Wahl über `filterAusAdresse` (F3 unten hält genau das fest).
+const LEERER_FILTER: QualitaetsFilter = {
+  space: null,
+  typ: null,
+  zustand: null,
+  zustaendig: null,
+};
 
 function vorgang(teil: Partial<QualitaetsVorgang> & { schluessel: string }): QualitaetsVorgang {
   return {

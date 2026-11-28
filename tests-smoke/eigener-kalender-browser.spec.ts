@@ -78,7 +78,12 @@ async function eigeneSeite(browser: Browser, admin: Page, name: string): Promise
   await seite.locator('input[type="email"]').fill(email);
   await pw.first().fill(KENNWORT);
   await seite.locator('button[type="submit"]').click();
-  await expect(seite.getByTestId("kopfband")).toBeVisible({ timeout: 15_000 });
+  // Beim ersten Login steht das Kopfband schon während des Wechsels von / nach /start.
+  // Das neue Konto schließt den Einstieg über den wirklichen Hinweis ab, bevor es navigiert.
+  await expect(seite).toHaveURL(/\/start$/);
+  await expect(seite.getByTestId("page-start")).toBeVisible();
+  await seite.getByTestId("notice-ack").click();
+  await expect(seite.getByTestId("notice-banner")).toHaveCount(0);
   return seite;
 }
 

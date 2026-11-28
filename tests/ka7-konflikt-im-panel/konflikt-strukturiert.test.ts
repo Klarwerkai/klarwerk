@@ -45,6 +45,7 @@ function regel(
 ): KnowledgeObject {
   return {
     id,
+    confidentiality: "intern",
     title: "Homeoffice-Regelung",
     statement,
     status: "validiert",

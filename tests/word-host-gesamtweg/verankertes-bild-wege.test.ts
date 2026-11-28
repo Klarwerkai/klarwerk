@@ -18,6 +18,7 @@ import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MAX_INLINE_BODY_HTML_BYTES, extractDocxRich } from "../../apps/web/src/lib/docx";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { pruefeBildpixel } from "../m5-docx-bildunterschriften/bildpixel";
 import {
   type Absatz,
   PNG_BLAU,
@@ -90,7 +91,10 @@ describe("R-0408 · A · Word-Ganzdokumentweg (POST /api/drafts/from-docx) bis z
     const get = await app.inject({ method: "GET", url: `/api/drafts/${antwort.id}`, headers });
     expect(get.statusCode).toBe(200);
     const payload = get.json().payload as { bodyHtml: string; origin: string };
-    expect(bildquellen(payload.bodyHtml)).toEqual([ROT, BLAU]);
+    const bilder = bildquellen(payload.bodyHtml);
+    expect(bilder).toHaveLength(2);
+    await pruefeBildpixel(bilder[0] ?? "", PNG_ROT);
+    await pruefeBildpixel(bilder[1] ?? "", PNG_BLAU);
     expect(payload.origin).toBe("word_addin");
   });
 });

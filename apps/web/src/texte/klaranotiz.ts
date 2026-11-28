@@ -90,7 +90,7 @@ export default {
     "klaranotiz.weg.gespraech": "from the conversation",
     "klaranotiz.weg.ausschnitt": "from a selected passage",
     "klaranotiz.herkunft": "Note {{weg}} · created {{zeit}}",
-    "klaranotiz.ruecklink": "Go to the passage: {{ort}}",
+    "klaranotiz.ruecklink": "Go to passage: {{ort}}",
     "klaranotiz.absatz": "Paragraph {{nr}}",
     "klaranotiz.fassung": "Version {{nr}}",
     "klaranotiz.offen.titel": "Note",
@@ -139,7 +139,7 @@ export default {
     "klaranotiz.bedienhilfe.ausschnitt":
       "To keep a selected passage, use “Note draft” and then “Save as private note”.",
     "klaranotiz.bedienhilfe.wiederfinden":
-      "Under “My notes” you search, open, change and delete your notes; “Go to the passage” leads back to article and paragraph.",
+      "Under “My notes” you search, open, change and delete your notes; “Go to passage” leads back to article and paragraph.",
     "klaranotiz.bedienhilfe.arbeitszettel":
       "Enter open questions one per line – as a personal worksheet they stay until you remove them.",
     "klaranotiz.bedienhilfe.privat":

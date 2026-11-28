@@ -94,6 +94,18 @@ export default {
       "Lies Status, Zuständigkeit und Ergebnis. Eine gespeicherte Notiz erledigt nicht automatisch die zugehörige Aufgabe.",
     "seitentutorial.aufgaben.sonderfall":
       "Bei pausiertem oder veraltetem Stand die Erklärung und Wie weiter öffnen.",
+    "seitentutorial.teamassistenten.aktion":
+      "Wähle einen freigegebenen Assistenten und stelle eine Frage zu seinen Teamquellen.",
+    "seitentutorial.teamassistenten.ergebnis":
+      "Lies die Antwort und öffne die angegebene Quelle, um eine Aussage zu prüfen.",
+    "seitentutorial.teamassistenten.sonderfall":
+      "Ist die Liste leer, prüfe mit der zuständigen Person, ob eine Version für dein Team freigegeben ist.",
+    "seitentutorial.teamworkflows.aktion":
+      "Öffne einen freigegebenen Workflow und wähle, ob du die angezeigte Version starten oder einen vorhandenen Lauf fortsetzen möchtest.",
+    "seitentutorial.teamworkflows.ergebnis":
+      "Öffne den Lauf und prüfe den aktuellen Schritt und die bereits gespeicherten Ergebnisse.",
+    "seitentutorial.teamworkflows.sonderfall":
+      "Ist ein Lauf angehalten, lies den Hinweis zur betroffenen Version oder zu deinen Zugriffsrechten.",
     "seitentutorial.pruefen.aktion":
       "Wähle einen Beitrag in der Warteschlange, prüfe Inhalt und Belege und entscheide mit deiner Prüfrolle über Freigabe oder Rückfrage.",
     "seitentutorial.pruefen.ergebnis":
@@ -358,6 +370,18 @@ export default {
       "Read status, owner and result. Saving a note does not automatically complete its task.",
     "seitentutorial.aufgaben.sonderfall":
       "For a paused or stale state, open the explanation and next-step help.",
+    "seitentutorial.teamassistenten.aktion":
+      "Choose a released assistant and ask a question about its team sources.",
+    "seitentutorial.teamassistenten.ergebnis":
+      "Read the answer and open the cited source to check a statement.",
+    "seitentutorial.teamassistenten.sonderfall":
+      "If the list is empty, ask the person who manages the assistant whether a version has been released to your team.",
+    "seitentutorial.teamworkflows.aktion":
+      "Open a released workflow and choose whether to start the version shown or continue an existing run.",
+    "seitentutorial.teamworkflows.ergebnis":
+      "Open the run to see its current step and the results already saved.",
+    "seitentutorial.teamworkflows.sonderfall":
+      "If the run is on hold, read the message about the affected version or your access.",
     "seitentutorial.pruefen.aktion":
       "Select a contribution in the queue, review content and evidence and use your reviewer role to approve or ask a question.",
     "seitentutorial.pruefen.ergebnis":
@@ -622,6 +646,18 @@ export default {
       "Lees status, verantwoordelijke en resultaat. Een notitie opslaan voltooit niet automatisch de taak.",
     "seitentutorial.aufgaben.sonderfall":
       "Open bij een gepauzeerde of verouderde status de uitleg en vervolghulp.",
+    "seitentutorial.teamassistenten.aktion":
+      "Kies een vrijgegeven assistent en stel een vraag over de bronnen van je team.",
+    "seitentutorial.teamassistenten.ergebnis":
+      "Lees het antwoord en open de vermelde bron om een uitspraak te controleren.",
+    "seitentutorial.teamassistenten.sonderfall":
+      "Is de lijst leeg, vraag dan de beheerder of er een versie voor je team is vrijgegeven.",
+    "seitentutorial.teamworkflows.aktion":
+      "Open een vrijgegeven workflow en kies of je de getoonde versie wilt starten of een bestaande uitvoering wilt voortzetten.",
+    "seitentutorial.teamworkflows.ergebnis":
+      "Open de uitvoering om de huidige stap en de al opgeslagen resultaten te bekijken.",
+    "seitentutorial.teamworkflows.sonderfall":
+      "Is de uitvoering gepauzeerd, lees dan de melding over de betreffende versie of je toegangsrechten.",
     "seitentutorial.pruefen.aktion":
       "Kies een bijdrage in de wachtrij, beoordeel inhoud en bewijs en keur met je beoordelaarsrol goed of stel een vraag.",
     "seitentutorial.pruefen.ergebnis":

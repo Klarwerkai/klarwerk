@@ -26,7 +26,7 @@ const t = i18n.getFixedT("de");
 
 const WURZEL = resolve(process.cwd());
 const DIST = resolve(WURZEL, "apps/web/dist");
-const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Fragen.dc.html";
+const ZIELBILD = join(WURZEL, "tests/design/vorlagen/klarwerk/Fragen.dc.html");
 const ORIGIN = "http://klarwerk.test";
 
 const TITEL = "Profile in Spritzzonen";
@@ -298,9 +298,10 @@ describe("JOB 3064 · H5 · die Fragenfläche gegen `Fragen.dc.html` — die ech
         statement: AUSSAGE,
         type: "best_practice",
         category: "Konstruktion",
+        confidentiality: "intern",
         author: autorId,
         tags: ["Profile", "Spritzzone", "Hohlprofile"],
-      } as never);
+      });
       // Derselbe Weg, den auch `tests/ask/job2659-eine-marke-ist-kein-beleg.test.ts` nimmt: die
       // Freigabe kommt aus dem Dienst, nicht aus einem gesetzten Feld.
       await services.ko.setValidationState((ko as { id: string }).id, {
@@ -533,17 +534,20 @@ describe("JOB 3064 · H5 · die Fragenfläche gegen `Fragen.dc.html` — die ech
   });
 
   // ---- Das Frage-Feld unten (Z.45–48) -------------------------------------------------------------
-  it("V11 · feld: Abstand 12px, Polster 14px 18px, Radius 14px, Grund weiss, Rahmen #E9E5DE", async () => {
+  it("V11 · feld: Abstand 12px, Polster 14px 18px, Radius 14px, Grund weiss und erkennbare Feldgrenze", async () => {
     const stil = zielStil(ziel, Z_FELD_A, Z_FELD_B);
     const p = zielProp(stil, "padding")?.split(" ") ?? [];
-    const [breite, , farbe] = zielProp(stil, "border")?.split(" ") ?? [];
+    const [breite] = zielProp(stil, "border")?.split(" ") ?? [];
     expect(await messen(sel?.feld, "gap")).toBe(zielProp(stil, "gap"));
     expect(await messen(sel?.feld, "padding-top")).toBe(p[0]);
     expect(await messen(sel?.feld, "padding-left")).toBe(p[1]);
     expect(await messen(sel?.feld, "border-radius")).toBe(zielProp(stil, "border-radius"));
     expect(await messen(sel?.feld, "background-color")).toBe(kanon(zielProp(stil, "background")));
     expect(await messen(sel?.feld, "border-top-width")).toBe(breite);
-    expect(await messen(sel?.feld, "border-top-color")).toBe(kanon(farbe ?? null));
+    // Die helle Kartenhaarlinie der Vorlage genügt am Feld nicht dem späteren
+    // Kontrastvertrag (WCAG 1.4.11 in index.css). Der exakte moderne Feldton
+    // unterscheidet auch eine versehentlich wiederhergestellte Haarlinie.
+    expect(await messen(sel?.feld, "border-top-color")).toBe("rgba(82, 91, 107, 0.8)");
   });
   it("V12 · feld-schatten (Z.45, Sonde im selben Renderer)", async () => {
     expect(sichtbareSchatten(await messen(sel?.feld, "box-shadow"))).toBe(
@@ -901,9 +905,10 @@ describe("R-1580 · die Fragenfläche bedient: Quelle öffnen, Kopieren, Rückme
         statement: AUSSAGE,
         type: "best_practice",
         category: "Konstruktion",
+        confidentiality: "intern",
         author: autorId,
         tags: ["Profile", "Spritzzone", "Hohlprofile"],
-      } as never);
+      });
       koId = (ko as { id: string }).id;
       await services.ko.setValidationState(koId, { trust: 92, status: "validiert" });
     } catch (e) {

@@ -9,8 +9,8 @@
 // — ohne input-Ereignis. Klara zeigte dann weiter das falsche Objekt.
 //
 // Diese Gegenprobe stellt genau diese Lage nach, in der ECHTEN Hülle: eine Erfassungsfläche, die
-// ihr Feld `blatt-titel` wie das Blatt erst 700 ms nach dem Seitenaufruf bzw. nach einem Wechsel
-// von `?draft=` per Zustand setzt. Das Gespräch bleibt dabei die ganze Zeit offen.
+// ihr Feld `blatt-titel` erst nach der Antwort auf den jeweiligen Leseaufruf setzt. Der Test
+// gibt die Antwort nach dem früheren 400-ms-Fenster frei. Das Gespräch bleibt dabei offen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QueryClient,
@@ -33,24 +33,34 @@ import { setzeKlaraVorschauAktiv } from "../../apps/web/src/components/klara-vor
 import { zuruecksetzenGanz } from "../../apps/web/src/components/klara-vorschau/zustand";
 import i18n from "../../apps/web/src/i18n";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
-import { bis, klick, medienStub, netz, netzStub, q, ruhe } from "../fe003-tutorial-fragen/huelle";
+import {
+  bis,
+  klick,
+  medienStub,
+  netz,
+  netzStub,
+  q,
+  ruhe,
+  warte,
+} from "../fe003-tutorial-fragen/huelle";
 
-const ENTWURF: Record<string, string> = {
-  a: "Ölwechsel Presse 4",
-  b: "Schichtübergabe Linie 2",
-};
-const LADEZEIT_MS = 700;
+type TitelLaden = (entwurf: string) => Promise<string>;
 
 /** Wie das Blatt: Titel kommt verzögert und programmatisch, nie über ein input-Ereignis. */
-function TestBlatt(): JSX.Element {
+function TestBlatt({ laden }: { laden: TitelLaden }): JSX.Element {
   const [parameter] = useSearchParams();
   const entwurf = parameter.get("draft") ?? "";
   const [titel, setTitel] = useState("");
   useEffect(() => {
     setTitel("");
-    const uhr = window.setTimeout(() => setTitel(ENTWURF[entwurf] ?? ""), LADEZEIT_MS);
-    return () => window.clearTimeout(uhr);
-  }, [entwurf]);
+    let aktuell = true;
+    void laden(entwurf).then((antwort) => {
+      if (aktuell) setTitel(antwort);
+    });
+    return () => {
+      aktuell = false;
+    };
+  }, [entwurf, laden]);
   // `LinkProps` kennt `data-*` nicht als Literal-Eigenschaft (TS2769); als vorab gebautes Objekt
   // reicht React das Attribut wie im JSX an das <a> durch.
   const zuEntwurfB = { to: "/erfassen?draft=b", "data-testid": "zu-entwurf-b" };
@@ -64,7 +74,7 @@ function TestBlatt(): JSX.Element {
 
 let abbauen: (() => void) | null = null;
 
-async function montiere(route: string): Promise<void> {
+async function montiere(route: string, laden: TitelLaden): Promise<void> {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -97,7 +107,7 @@ async function montiere(route: string): Promise<void> {
                       null,
                       createElement(Route, {
                         path: "/erfassen",
-                        element: createElement(TestBlatt),
+                        element: createElement(TestBlatt, { laden }),
                       }),
                     ),
                   ),
@@ -143,7 +153,15 @@ afterEach(() => {
 
 describe("K4 · Erfassung: Klara zeigt den tatsächlich geladenen Entwurf", () => {
   it("verzögert geladener Titel und Entwurfswechsel über ?draft= bei offenem Gespräch", async () => {
-    await montiere("/erfassen?draft=a");
+    const anfragen = new Map<string, (titel: string) => void>();
+    const laden: TitelLaden = (id) => new Promise((antwort) => anfragen.set(id, antwort));
+    async function beantworte(id: string, titel: string): Promise<void> {
+      const antwort = anfragen.get(id);
+      if (!antwort) throw new Error(`Keine offene Anfrage für Entwurf ${id}`);
+      await warte(450);
+      await act(async () => antwort(titel));
+    }
+    await montiere("/erfassen?draft=a", laden);
     await bis(() => Boolean(q(document, "klara-figur")), 120);
     await klick(q(document, "klara-figur"));
     await bis(() => Boolean(q(document, "klara-gespraech")));
@@ -152,13 +170,16 @@ describe("K4 · Erfassung: Klara zeigt den tatsächlich geladenen Entwurf", () =
     expect(q(document, "klara-ort-seite")?.textContent).toBe("Erfassung");
     expect(objekt()).toBe("Neuer, noch unbenannter Entwurf");
 
-    // Der Titel kommt erst nach 700 ms — ohne input-Ereignis, also nach dem früheren 400-ms-Fenster.
+    // Erst jetzt liefert der Leseweg den Titel, ohne ein input-Ereignis auszulösen.
+    await beantworte("a", "Ölwechsel Presse 4");
     await bis(() => objekt().includes("Ölwechsel"), 80);
     expect(objekt()).toBe("Entwurf „Ölwechsel Presse 4“");
 
     // Wechsel des Entwurfs über die Abfrage, das Gespräch bleibt offen.
     await klick(q(document, "zu-entwurf-b"));
     expect(q(document, "klara-gespraech")).not.toBeNull();
+    expect(q<HTMLInputElement>(document, "blatt-titel")?.value).toBe("");
+    await beantworte("b", "Schichtübergabe Linie 2");
     await bis(() => objekt().includes("Schichtübergabe"), 80);
     expect(objekt()).toBe("Entwurf „Schichtübergabe Linie 2“");
     expect(q(document, "klara-gespraech")).not.toBeNull();

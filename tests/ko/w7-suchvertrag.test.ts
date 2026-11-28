@@ -241,7 +241,12 @@ describe("JOB 544 · S — vertrauliches Wissen verlässt den Kandidatenweg nich
         bodyHtml: "<p>Grenzwort</p>",
       });
     }
-    await ko.create({ ...EINGABE, title: "Zulaessig", bodyHtml: "<p>Grenzwort</p>" });
+    await ko.create({
+      ...EINGABE,
+      title: "Zulaessig",
+      confidentiality: "intern",
+      bodyHtml: "<p>Grenzwort</p>",
+    });
     // Ohne Deckel liefert der Weg alle vier; nach der Vertraulichkeitsgrenze bleibt genau der eine
     // zulässige übrig. Das ist die Zusage „kein Leck UND kein falsches Leer" — für den Fall, dass
     // der Deckel nicht greift.

@@ -453,6 +453,7 @@ PFLICHTTABELLEN=(
   users
   sessions
   password_resets
+  email_changes
   user_second_factors
   kos
   ko_schreibstand
@@ -545,7 +546,9 @@ PFLICHTTABELLEN=(
   meeting_dokumentbezuege
   praesentation_datenpunkte
   klara_notizen
+  klara_notiz_pruefstaende
   klara_aufgaben
+  push_abos
   klara_kalender_anbindungen
   klara_kalender_zuordnungen
   klara_erinnerungen
@@ -557,6 +560,10 @@ PFLICHTTABELLEN=(
   kalender_einstellungen
   klara_fristen
   produktbudget
+  verhaltensartefakte
+  team_assistenten
+  team_workflows
+  team_workflow_laeufe
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

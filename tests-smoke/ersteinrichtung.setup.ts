@@ -32,6 +32,7 @@ import { expect, test } from "@playwright/test";
 // dass sich die Gliederung geändert hat; dieser Import schon.
 import { ADMIN_SECTIONS, adminSectionFuerDetail } from "../apps/web/src/lib/adminSections";
 import { SMOKE_MAIL, SMOKE_NAME, SMOKE_PASS, workspaceMarker } from "./support/auth";
+import { pruefePruefboardDatenlage } from "./support/pruefboard-datenlage";
 
 /**
  * Die Reiterspalte der VERWALTUNG.
@@ -146,5 +147,14 @@ test("Ersteinrichtung legt den Admin an und landet im Arbeitsbereich", async ({ 
     // HARTE Zusicherung, kein „falls es klappt": der Server ist frisch, also MUSS geladen werden.
     // Käme „Übersprungen", wäre die Datenlage eine andere als angenommen — und das soll krachen.
     await expect(page.getByText(/Demodaten geladen:/)).toBeVisible({ timeout: 30_000 });
+  }
+
+  // Das Setup-Projekt läuft vor allen schreibenden Tests gegen seinen frischen Server.
+  // Der Seed muss hier einen sichtbaren Prüfeintrag liefern, der unbespielte Stand keinen.
+  const anzahl = await pruefePruefboardDatenlage(page);
+  if (process.env.KLARWERK_SMOKE_SEED === "1") {
+    expect(anzahl, "Der Demo-Seed hat das Prüfboard nicht gefüllt.").toBeGreaterThan(0);
+  } else {
+    expect(anzahl, "Das frische Prüfboard enthält bereits Beiträge.").toBe(0);
   }
 });

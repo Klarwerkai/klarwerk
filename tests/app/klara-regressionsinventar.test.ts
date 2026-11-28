@@ -185,6 +185,7 @@ const ACHSEN: Achse[] = [
 // aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
+  "tests/erstladezeit/sprachpakete-nachladen.test.ts",
   // ARBEITSWEGE AM SELBEN ARTIKEL (produkt:20261007:arbeitswege-objekt): Klara nennt Seite, Kennung
   // und Fassung aus derselben Quelle wie „Fragen". Die Datei montiert `KlaraAssistant` und kommt
   // über die Inhaltsachse `komponente` herein; „klara" steht NICHT im Pfad, K5 bleibt deshalb
@@ -1694,6 +1695,13 @@ const INVENTAR: readonly string[] = [
   "tests/word-minimal/auslieferung.test.ts", // taskpane,manifest,version
   "tests/word-minimal/bedienung.test.ts", // taskpane
   // A5 · Ende der nachgeführten Treffer.
+  "tests/klara-kontext/frage-zur-word-markierung.test.ts",
+  "tests/klara-kontext/freie-aussage-pruefen.test.ts",
+  "tests/klara-kontext/ohne-dokument-anzeige.test.tsx",
+  "tests/klara-wissensuebernahme/notiz-modellpruefung.test.ts",
+  "tests/klara-wissensuebernahme/regelvorschlag.test.ts",
+  "tests/security/route-guard-tupelschleife.test.ts",
+  "tests/word-minimal/direktvergleich-word-bereich.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -2042,7 +2050,7 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Dateien mit „klara" im Pfad, darunter die sieben oben nachgeführten Prüfungen.
     // BPA-03 Produktanschluss (Chat 62, gemessen): +5 durch die fünf neuen Prüfdateien oben — 161.
     // Im vereinigten Stand gemessen: 161 + sieben OCR-Prüfdateien des Hauptzweigs = 168.
-    expect(nurName.length).toBe(313);
+    expect(nurName.length).toBe(318);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

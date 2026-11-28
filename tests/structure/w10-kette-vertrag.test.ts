@@ -263,12 +263,10 @@ async function erfasse(
   app: App,
   admin: Record<string, string>,
   titel = "Hydraulikzylinder HZ7 sicher entlüften",
+  aussage = "Vor dem Entlüften des Hydraulikzylinders HZ7 den Systemdruck ablassen.",
 ) {
   let bodyHtml = applyBodyTemplate("", "procedure", "de");
-  bodyHtml = applyBodyAssistSection(
-    bodyHtml,
-    "Sicherheitshinweis\nVor dem Entlüften des Hydraulikzylinders HZ7 den Systemdruck vollständig ablassen.",
-  );
+  bodyHtml = applyBodyAssistSection(bodyHtml, `Sicherheitshinweis\n${aussage}`);
   const created = await app.inject({
     method: "POST",
     url: "/api/kos",
@@ -276,13 +274,14 @@ async function erfasse(
     payload: {
       confidentiality: "intern",
       title: titel,
-      statement: "Vor dem Entlüften des Hydraulikzylinders HZ7 den Systemdruck ablassen.",
+      statement: aussage,
       bodyHtml,
       type: "best_practice",
       category: "Anlage 2",
       neededValidations: 1,
     },
   });
+  expect(created.statusCode, created.body).toBe(201);
   return { created, bodyHtml };
 }
 
@@ -433,20 +432,29 @@ describe("JOB 550 · Teil C — alle sechs Negativkanten laufen", () => {
     const { app, admin } = await frischesWerk();
     const a = (await erfasse(app, admin)).created.json() as KnowledgeObject;
     const b = (
-      await erfasse(app, admin, "Hydraulikzylinder HZ7 unter Druck entlüften")
+      await erfasse(
+        app,
+        admin,
+        "Hydraulikzylinder HZ7 unter Druck entlüften",
+        "Vor dem Entlüften des Hydraulikzylinders HZ7 den Systemdruck nicht ablassen.",
+      )
     ).created.json() as KnowledgeObject;
     for (const id of [a.id, b.id]) {
-      await app.inject({
+      const bewertet = await app.inject({
         method: "PUT",
         url: `/api/kos/${id}`,
         headers: admin,
         payload: { action: "rate", verdict: "up" },
       });
+      expect(bewertet.statusCode, bewertet.body).toBe(200);
+      const vorKonflikt = await app.inject({
+        method: "GET",
+        url: `/api/kos/${id}`,
+        headers: admin,
+      });
+      expect(vorKonflikt.statusCode, vorKonflikt.body).toBe(200);
+      expect(vorKonflikt.json()).toMatchObject({ id, status: "validiert" });
     }
-    const vorKonflikt = (
-      await app.inject({ method: "GET", url: `/api/kos/${a.id}`, headers: admin })
-    ).json() as KnowledgeObject;
-    expect(vorKonflikt.status).toBe("validiert");
 
     const konflikt = await app.inject({
       method: "PUT",
@@ -462,14 +470,21 @@ describe("JOB 550 · Teil C — alle sechs Negativkanten laufen", () => {
         },
       },
     });
-    expect(konflikt.statusCode).toBe(201);
+    expect(konflikt.statusCode, konflikt.body).toBe(201);
+    expect(konflikt.json()).toMatchObject({ koA: a.id, koB: b.id, type: "truth", status: "offen" });
 
-    // DIE EIGENTLICHE ZUSAGE: der Konflikt wirkt auf den BESTAND zurück, nicht nur auf eine Liste.
-    const nachKonflikt = (
-      await app.inject({ method: "GET", url: `/api/kos/${a.id}`, headers: admin })
-    ).json() as KnowledgeObject;
-    expect(nachKonflikt.status).not.toBe("validiert");
-    expect(koOverview(nachKonflikt).usability).not.toBe("ready");
+    // Der offene Wahrheitskonflikt gibt beide betroffenen Beiträge in die Prüfung zurück.
+    for (const id of [a.id, b.id]) {
+      const nachKonflikt = await app.inject({
+        method: "GET",
+        url: `/api/kos/${id}`,
+        headers: admin,
+      });
+      expect(nachKonflikt.statusCode, nachKonflikt.body).toBe(200);
+      const ko = nachKonflikt.json() as KnowledgeObject;
+      expect(ko).toMatchObject({ id, status: "offen" });
+      expect(koOverview(ko).usability).not.toBe("ready");
+    }
   });
 
   it("N5 · Rechteentzug: ohne ko.validate wird nicht bewertet, und ohne Freigabe gibt es kein Token", async () => {

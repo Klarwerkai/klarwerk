@@ -191,7 +191,13 @@ describe("R-0348 · Gesprächsfaden auf der Fragenseite", () => {
     expect(faden(f)).toBeNull();
     await fragen(f, ERSTFRAGE);
     expect(askMock).toHaveBeenCalledTimes(1);
-    expect(askMock.mock.calls[0]).toEqual([ERSTFRAGE, "de"]);
+    expect(askMock.mock.calls[0]).toEqual([
+      ERSTFRAGE,
+      "de",
+      [],
+      undefined,
+      expect.any(AbortSignal),
+    ]);
     expect(faden(f)?.textContent).toContain(i18n.t("fragenseite.fadenTitel"));
     // Die gestellte Frage steht in der Fragezeile — nicht ein zweites Mal im Faden.
     expect(fadenfragen(f)).toEqual([]);
@@ -202,7 +208,13 @@ describe("R-0348 · Gesprächsfaden auf der Fragenseite", () => {
     await fragen(f, ERSTFRAGE);
     await fragen(f, NACHFRAGE);
     expect(askMock).toHaveBeenCalledTimes(2);
-    expect(askMock.mock.calls[1]).toEqual([NACHFRAGE, "de", [ERSTFRAGE]]);
+    expect(askMock.mock.calls[1]).toEqual([
+      NACHFRAGE,
+      "de",
+      [ERSTFRAGE],
+      undefined,
+      expect.any(AbortSignal),
+    ]);
     expect(f.container.querySelector('[data-testid="ask-fragezeile"]')?.textContent).toBe(
       NACHFRAGE,
     );
@@ -218,7 +230,13 @@ describe("R-0348 · Gesprächsfaden auf der Fragenseite", () => {
     });
     expect(faden(f)).toBeNull();
     await fragen(f, NACHFRAGE);
-    expect(askMock.mock.calls[1]).toEqual([NACHFRAGE, "de"]);
+    expect(askMock.mock.calls[1]).toEqual([
+      NACHFRAGE,
+      "de",
+      [],
+      undefined,
+      expect.any(AbortSignal),
+    ]);
   });
 
   it("M4 · dieselbe Frage erneut ist eine Auffrischung — sie schickt sich nicht selbst als Faden", async () => {
@@ -226,7 +244,13 @@ describe("R-0348 · Gesprächsfaden auf der Fragenseite", () => {
     await fragen(f, ERSTFRAGE);
     await fragen(f, ERSTFRAGE);
     expect(askMock).toHaveBeenCalledTimes(2);
-    expect(askMock.mock.calls[1]).toEqual([ERSTFRAGE, "de"]);
+    expect(askMock.mock.calls[1]).toEqual([
+      ERSTFRAGE,
+      "de",
+      [],
+      undefined,
+      expect.any(AbortSignal),
+    ]);
   });
 
   it("M5 · Ben, Nacharbeit 2: „Neues Thema“ während einer laufenden Nachfrage — die späte Antwort bringt den alten Faden nicht zurück", async () => {
@@ -242,7 +266,13 @@ describe("R-0348 · Gesprächsfaden auf der Fragenseite", () => {
         }),
     );
     await fragen(f, NACHFRAGE);
-    expect(askMock.mock.calls[1]).toEqual([NACHFRAGE, "de", [ERSTFRAGE]]);
+    expect(askMock.mock.calls[1]).toEqual([
+      NACHFRAGE,
+      "de",
+      [ERSTFRAGE],
+      undefined,
+      expect.any(AbortSignal),
+    ]);
     await act(async () => {
       f.container.querySelector<HTMLButtonElement>(NEUES_THEMA)?.click();
       await flush();
@@ -257,6 +287,12 @@ describe("R-0348 · Gesprächsfaden auf der Fragenseite", () => {
     expect(faden(f)).toBeNull();
     // Die nächste Frage fängt wirklich neu an — ohne alten Zusammenhang.
     await fragen(f, "Wie beantrage ich Sonderurlaub?");
-    expect(askMock.mock.calls[2]).toEqual(["Wie beantrage ich Sonderurlaub?", "de"]);
+    expect(askMock.mock.calls[2]).toEqual([
+      "Wie beantrage ich Sonderurlaub?",
+      "de",
+      [],
+      undefined,
+      expect.any(AbortSignal),
+    ]);
   });
 });

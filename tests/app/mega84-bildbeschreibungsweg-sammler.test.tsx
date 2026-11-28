@@ -245,16 +245,100 @@ function liesQuelle(datei: string, roh: string): Quelle {
   return erhebe(datei, baum, programm.getTypeChecker());
 }
 
+// Erfasst den bei BibliothekLesen verwendeten lazy-Import mit benanntem Export.
+// Die Bindungen von lazy, Import-Namensraum und Rückgabewert müssen alle übereinstimmen.
+function lazyExport(
+  deklaration: ts.VariableDeclaration,
+  checker: ts.TypeChecker,
+): ts.Symbol | undefined {
+  const aufruf = deklaration.initializer;
+  if (
+    !(deklaration.parent.flags & ts.NodeFlags.Const) ||
+    !aufruf ||
+    !ts.isCallExpression(aufruf) ||
+    !ts.isIdentifier(aufruf.expression) ||
+    aufruf.arguments.length !== 1
+  )
+    return;
+  const bindung = checker.getSymbolAtLocation(aufruf.expression)?.declarations?.[0];
+  if (
+    !bindung ||
+    !ts.isImportSpecifier(bindung) ||
+    bindung.isTypeOnly ||
+    bindung.parent.parent.isTypeOnly ||
+    (bindung.propertyName ?? bindung.name).text !== "lazy"
+  )
+    return;
+  const herkunft = bindung.parent.parent.parent.moduleSpecifier;
+  if (!ts.isStringLiteral(herkunft) || herkunft.text !== "react") return;
+
+  const laden = aufruf.arguments[0];
+  if (
+    !laden ||
+    !ts.isArrowFunction(laden) ||
+    laden.parameters.length ||
+    !ts.isBlock(laden.body) ||
+    !laden.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ||
+    laden.body.statements.length !== 2
+  )
+    return;
+  const [importiere, rueckgabe] = laden.body.statements;
+  if (
+    !importiere ||
+    !ts.isVariableStatement(importiere) ||
+    !(importiere.declarationList.flags & ts.NodeFlags.Const) ||
+    importiere.declarationList.declarations.length !== 1 ||
+    !rueckgabe ||
+    !ts.isReturnStatement(rueckgabe) ||
+    !rueckgabe.expression ||
+    !ts.isObjectLiteralExpression(rueckgabe.expression) ||
+    rueckgabe.expression.properties.length !== 1
+  )
+    return;
+  const modul = importiere.declarationList.declarations[0];
+  const feld = rueckgabe.expression.properties[0];
+  if (
+    !modul ||
+    !ts.isIdentifier(modul.name) ||
+    !modul.initializer ||
+    !ts.isAwaitExpression(modul.initializer) ||
+    !feld ||
+    !ts.isPropertyAssignment(feld) ||
+    !ts.isIdentifier(feld.name) ||
+    feld.name.text !== "default" ||
+    !ts.isPropertyAccessExpression(feld.initializer) ||
+    !ts.isIdentifier(feld.initializer.expression)
+  )
+    return;
+  const dynamisch = modul.initializer.expression;
+  if (
+    !ts.isCallExpression(dynamisch) ||
+    dynamisch.expression.kind !== ts.SyntaxKind.ImportKeyword ||
+    dynamisch.arguments.length !== 1 ||
+    !dynamisch.arguments[0] ||
+    !ts.isStringLiteral(dynamisch.arguments[0])
+  )
+    return;
+  const modulSymbol = checker.getSymbolAtLocation(modul.name);
+  if (!modulSymbol || checker.getSymbolAtLocation(feld.initializer.expression) !== modulSymbol)
+    return;
+  const quelle = checker.getSymbolAtLocation(dynamisch.arguments[0]);
+  const ausgabe = checker.getSymbolAtLocation(feld.initializer.name);
+  if (!quelle || !ausgabe || !checker.getExportsOfModule(quelle).includes(ausgabe)) return;
+  return ausgabe;
+}
+
 // Die KENNUNG einer Komponente: der Ort ihrer DEKLARATION, `datei:zeile`. Ein Alias und ein
 // JSX-Memberzugriff laufen darauf zusammen, weil beide dasselbe Symbol meinen — das ist der ganze
 // Gewinn dieser Umstellung. Ist ein Symbol nicht auflösbar (in einer Sonde ohne Importe der
 // Normalfall), bleibt die Kennung `null`; Stufe 2 fällt dann auf den Namen zurück, statt die
 // Einbindung STILL zu verlieren. Ein Rückfall, der gemeldet wird, ist etwas anderes als eine Lücke.
 function kennungVon(knoten: ts.Node, checker: ts.TypeChecker): string | null {
-  let symbol = checker.getSymbolAtLocation(knoten);
-  if (!symbol) {
+  const ausgang = checker.getSymbolAtLocation(knoten);
+  if (!ausgang) {
     return null;
   }
+  let symbol: ts.Symbol = ausgang;
   // GEMESSEN, nicht angenommen — und meine erste Fassung war zu kurz: `getAliasedSymbol` allein
   // löst NUR Import-Aliase. Für `const E = Editor` blieb sie an der `VariableDeclaration` stehen,
   // für `<Umschlag.Editor />` am `ShorthandPropertyAssignment`. Beide Formen sind aber genau das,
@@ -273,7 +357,7 @@ function kennungVon(knoten: ts.Node, checker: ts.TypeChecker): string | null {
         // Kein auflösbarer Alias — dann gilt das bisherige Symbol.
       }
     }
-    const erste = symbol.declarations?.[0];
+    const erste: ts.Declaration | undefined = symbol.declarations?.[0];
     if (erste && ts.isShorthandPropertyAssignment(erste)) {
       const ziel = checker.getShorthandAssignmentValueSymbol(erste);
       if (ziel && ziel !== symbol) {
@@ -282,15 +366,12 @@ function kennungVon(knoten: ts.Node, checker: ts.TypeChecker): string | null {
       }
     }
     if (erste && ts.isVariableDeclaration(erste) && erste.initializer) {
-      // NUR ein blosser Bezeichner. `const A = memo(B)` ist eine andere Komponente als `B`, und
-      // sie hier gleichzusetzen wäre eine Behauptung über Laufzeitverhalten, die der Sammler
-      // nicht belegen kann.
-      if (ts.isIdentifier(erste.initializer)) {
-        const ziel = checker.getSymbolAtLocation(erste.initializer);
-        if (ziel && ziel !== symbol) {
-          symbol = ziel;
-          continue;
-        }
+      const ziel: ts.Symbol | undefined = ts.isIdentifier(erste.initializer)
+        ? checker.getSymbolAtLocation(erste.initializer)
+        : lazyExport(erste, checker);
+      if (ziel && ziel !== symbol) {
+        symbol = ziel;
+        continue;
       }
     }
     break;
@@ -767,14 +848,16 @@ const DISPOSITIONEN: Record<string, string> = {
   // Hier ist hingesehen worden: die PROPMENGE ist Zeichen fuer Zeichen dieselbe geblieben, nur die
   // Datei, die Huelle und der Ahnenpfad haben gewechselt (statt `[Field<div<Card<div]` jetzt
   // `[Field<div<div<ImageDescribeProvider]` — die Karte ist weg, der Provider steht darueber).
-  "apps/web/src/components/bibliothek/BibliothekLesen.tsx › BibliothekLesen › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+files+images+onApply+onClose+open+runAssist] in [Field<div<div<ImageDescribeProvider] #1":
+  "apps/web/src/components/bibliothek/BibliothekLesen.tsx › BibliothekLesen › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+files+images+onApply+onClose+open+runAssist] in [Suspense<Field<div<div] #1":
     "Wissensobjekt bearbeiten, Studio-Weg — seit JOB 3063 auf der Leseflaeche der Bibliothek.",
   // 26.08.2026, JOB 2426 D1 (TV1, letzte Einbindung): die Signatur traegt zusaetzlich
   // `onTitelVorschlag`. Sie ist die einzige der fuenf, auf der ein Uebernehmen einen bereits
   // vergebenen Titel ERSETZT — die Begruendung dafuer steht an der Einbindung selbst: drei bewusste
   // Handlungen davor, und `edit` ist reiner Formularzustand ohne Autosave.
-  "apps/web/src/components/bibliothek/BibliothekLesen.tsx › BibliothekLesen › <RichTextEditor> [captionFormRequest+documentTitle+files+images+onChange+onTitelVorschlag+value] in [Field<div<div<ImageDescribeProvider] #1":
+  "apps/web/src/components/bibliothek/BibliothekLesen.tsx › BibliothekLesen › <RichTextEditor> [captionFormRequest+documentTitle+files+images+onChange+onTitelVorschlag+value] in [Suspense<Field<div<div] #1":
     "Wissensobjekt bearbeiten, direkter Editor — seit JOB 3063 auf der Leseflaeche der Bibliothek. Seit JOB 2426 D1 mit dem Uebernahme-Weg fuer den Titelvorschlag.",
+  "apps/web/src/pages/GemeinsamerEntwurf.tsx › GemeinsamerEntwurfSeite › <RichTextEditor> [documentTitle+onChange+onTitelVorschlag+value] in [div<ImageDescribeProvider<Card<div] #1":
+    "Gemeinsamer Artikelentwurf mit eigenem Titelfeld. Der Editor verwendet die Vertraulichkeit des Artikels und übernimmt einen Titelvorschlag auf Klick.",
 };
 
 const identitaet = (f: Fund): string =>
@@ -2920,7 +3003,9 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. Seitdem hat dieser Auftrag keine
     // Komponente hinzugefügt oder entfernt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 637,
+      // 07a53edb4 ergänzt BibliotheksEinstieg in App.tsx. Der AST-Vergleich von
+      // ee11ffdd3 mit 0400b0ae9 findet genau diesen Zugang in denselben 1155 Dateien.
+      komponenten: 999,
       anbieter: 1,
       traeger: 2,
     });
@@ -3012,6 +3097,27 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
       treffer.map((e) => e.komponente),
       "Alle drei Schreibweisen meinen dieselbe Komponente — genau das war I44, drittens.",
     ).toEqual(["Editor", "Umschlag.Editor", "E"]);
+  });
+
+  it("folgt beim Nachladen nur dem benannten Export des wirklich importierten Moduls über React.lazy", () => {
+    const sonde = liesQuelle(
+      join(WURZEL, "apps/web/src/components/lazy-sonde.tsx"),
+      `import { lazy as nachladen } from "react";
+       import { RichTextEditor as Direkt } from "./RichTextEditor";
+       const Echt = nachladen(async () => { const m = await import("./RichTextEditor"); return { default: m.RichTextEditor }; });
+       function lazy(ladefunktion) { return ladefunktion; }
+       const Attrappe = lazy(async () => { const m = await import("./RichTextEditor"); return { default: m.RichTextEditor }; });
+       const FremdesModul = { RichTextEditor: Direkt };
+       const Fremd = nachladen(async () => { const m = await import("./RichTextEditor"); return { default: FremdesModul.RichTextEditor }; });
+       const Fehlend = nachladen(async () => { const m = await import("./RichTextEditor"); return { default: m.Unbekannt }; });
+       const Komplex = nachladen(async () => { const m = await import("./RichTextEditor"); auswahl(); return { default: m.RichTextEditor }; });
+       export function Probe() {return <><Direkt/><Echt/><Attrappe/><Fremd/><Fehlend/><Komplex/></>;}`,
+    );
+    const [direkt, echt, ...andere] = sonde.einbindungen;
+    expect(direkt?.kennung).toMatch(/\/RichTextEditor\.tsx:\d+$/);
+    expect(echt?.kennung).toBe(direkt?.kennung);
+    expect(andere.map((e) => e.komponente)).toEqual(["Attrappe", "Fremd", "Fehlend", "Komplex"]);
+    for (const e of andere) expect(e.kennung).toMatch(/\/lazy-sonde\.tsx:\d+$/);
   });
 
   it("DIE GRENZE IST GEWANDERT: der Alias wird aufgelöst, sobald sein ZIEL im Programm liegt", () => {

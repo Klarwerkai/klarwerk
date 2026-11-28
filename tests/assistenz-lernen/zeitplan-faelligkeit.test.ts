@@ -7,7 +7,9 @@
 // Sommerzeitbeginn So 29.03. (02:00 → 03:00); in den USA endet sie So 01.11.
 import { describe, expect, it } from "vitest";
 import type { Zeitplan } from "../../services/app/src/assistenz-lernen";
-import { faelligerTermin, lokalZuUtc } from "../../services/app/src/assistenz-lernen-zeitplan";
+import { faelligerTermin } from "../../services/app/src/assistenz-lernen-zeitplan";
+
+import { SOMMERZEIT_VORGABE, loeseMitRegel } from "../../services/app/src/klara-erinnerung-zeit";
 
 const BERLIN = "Europe/Berlin";
 const ms = (iso: string) => Date.parse(iso);
@@ -24,25 +26,27 @@ const montags8: Zeitplan = {
 
 describe("AC05 · lokale Zeit in der Zone, Sommerzeit", () => {
   it("rechnet Sommer- und Winterzeit verschieden um", () => {
-    expect(lokalZuUtc(BERLIN, { y: 2026, mo: 10, d: 19, h: 8, mi: 0 })).toBe(
-      ms("2026-10-19T06:00:00Z"),
-    );
-    expect(lokalZuUtc(BERLIN, { y: 2026, mo: 10, d: 26, h: 8, mi: 0 })).toBe(
-      ms("2026-10-26T07:00:00Z"),
-    );
+    expect(
+      loeseMitRegel({ datum: "2026-10-19", uhrzeit: "08:00" }, BERLIN, SOMMERZEIT_VORGABE).ms,
+    ).toBe(ms("2026-10-19T06:00:00Z"));
+    expect(
+      loeseMitRegel({ datum: "2026-10-26", uhrzeit: "08:00" }, BERLIN, SOMMERZEIT_VORGABE).ms,
+    ).toBe(ms("2026-10-26T07:00:00Z"));
     const ny = "America/New_York";
-    expect(lokalZuUtc(ny, { y: 2026, mo: 11, d: 2, h: 8, mi: 0 })).toBe(ms("2026-11-02T13:00:00Z"));
+    expect(
+      loeseMitRegel({ datum: "2026-11-02", uhrzeit: "08:00" }, ny, SOMMERZEIT_VORGABE).ms,
+    ).toBe(ms("2026-11-02T13:00:00Z"));
   });
 
   it("übersprungene Stunde → erste gültige Zeit danach; doppelte Stunde → erstes Auftreten", () => {
     // 29.03. 02:30 gibt es nicht: 03:30 Sommerzeit = 01:30Z.
-    expect(lokalZuUtc(BERLIN, { y: 2026, mo: 3, d: 29, h: 2, mi: 30 })).toBe(
-      ms("2026-03-29T01:30:00Z"),
-    );
+    expect(
+      loeseMitRegel({ datum: "2026-03-29", uhrzeit: "02:30" }, BERLIN, SOMMERZEIT_VORGABE).ms,
+    ).toBe(ms("2026-03-29T01:30:00Z"));
     // 25.10. 02:30 gibt es zweimal: zuerst in Sommerzeit = 00:30Z.
-    expect(lokalZuUtc(BERLIN, { y: 2026, mo: 10, d: 25, h: 2, mi: 30 })).toBe(
-      ms("2026-10-25T00:30:00Z"),
-    );
+    expect(
+      loeseMitRegel({ datum: "2026-10-25", uhrzeit: "02:30" }, BERLIN, SOMMERZEIT_VORGABE).ms,
+    ).toBe(ms("2026-10-25T00:30:00Z"));
   });
 });
 

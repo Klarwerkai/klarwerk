@@ -230,7 +230,7 @@ export default {
     "klarakontext.bedienhilfe.uebersetzen":
       "“Translate” shows the existing reading translation of the entry. If there is none, {{assistenz}} says so.",
     "klarakontext.bedienhilfe.tutorial":
-      "On “Ask”: “Accompany the walkthrough” shows the real step. An interim question pauses it; “Continue”, “Back” and “Next” stay with the tutorial.",
+      "On “Ask”: “Guide me through it” shows the real step. An interim question pauses it; “Continue”, “Back” and “Next” stay with the tutorial.",
   },
   nl: {
     "klarakontext.seite.wissen": "Kennis",

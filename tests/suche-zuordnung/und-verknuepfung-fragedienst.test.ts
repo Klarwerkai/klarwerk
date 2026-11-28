@@ -29,6 +29,7 @@ const VORLAGE: Omit<CreateKoInput, "title" | "statement"> = {
   type: "best_practice",
   category: "Technik",
   author: "anna",
+  confidentiality: "intern",
 };
 
 async function stapel() {
@@ -83,6 +84,13 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     expect(undVerknuepfteFragebegriffe("hängt der Speiseplan aus?")).toEqual(
       queryTokens("hängt Speiseplan"),
     );
+  });
+
+  it("bindet bei der Frage nach dem Fälligkeitszeitpunkt das Objekt und seine Kennung", () => {
+    const quelle = "Die Wartung am Ventil F3 erfolgt jährlich.";
+    expect(decktAlleFragebegriffe("Wann ist die Wartung am Ventil F3 fällig?", quelle)).toBe(true);
+    expect(decktAlleFragebegriffe("Wann ist die Wartung am Ventil F4 fällig?", quelle)).toBe(false);
+    expect(decktAlleFragebegriffe("Welche Wartung ist fällig?", quelle)).toBe(false);
   });
 
   it("R-0278-Nacharbeit: „dient“, „hoch“, „many“ sind Fragegerüst — die Sachbegriffe bleiben gebunden", () => {

@@ -559,26 +559,32 @@ export function technischeDatenRoutes(
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) return;
       const body = (request.body ?? {}) as Record<string, unknown>;
+      const { url, abschnitt, anker } = body;
       const ort = {
+        url,
+        abschnitt,
+        anker,
         art: "html",
-        url: body.url,
-        abschnitt: body.abschnitt,
-        ...(body.anker !== undefined ? { anker: body.anker } : {}),
         abgerufenAm: new Date(uhr()).toISOString(),
         kopf: ["-"],
         zeilen: [["-"]],
       };
       const fehler = pruefeAbschnitt(ort);
-      if (fehler) {
-        ablehnen(reply, 400, fehler);
+      if (
+        fehler ||
+        typeof url !== "string" ||
+        typeof abschnitt !== "string" ||
+        (anker !== undefined && typeof anker !== "string")
+      ) {
+        ablehnen(reply, 400, fehler ?? "BELEG_FORM");
         return;
       }
+      const q: QuellOrt = { url, abschnitt, ...(anker !== undefined ? { anker } : {}) };
       const zustand = body.zustand;
       if (zustand !== "entzogen" && zustand !== "erteilt") {
         ablehnen(reply, 400, "ZUSTAND_FORM");
         return;
       }
-      const q = ort as unknown as QuellOrt;
       try {
         const am = new Date(uhr()).toISOString();
         let wissensobjekte = 0;

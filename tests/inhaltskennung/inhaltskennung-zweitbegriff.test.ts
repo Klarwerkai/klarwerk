@@ -390,9 +390,46 @@ describe("K3 · lesbar für die Dublettenerkennung, nie Ersatz für den Vorkomme
     };
     sammle("apps/web/src");
     expect(dateien.length).toBeGreaterThan(50);
-    const treffer = dateien.filter((d) =>
-      /inhaltskennung|bildInhalte|bildinhalt/i.test(readFileSync(d, "utf8")),
+    // Nur die Inhaltskennung des Bildes und das KO-Feld sind Gegenstand dieses Registers.
+    //   · Andere Fundstellen treffen nur das Wort „Bildinhalt": seit OCR-02 heisst so die BESCHREIBUNG eines Bildes
+    //     (W02, `Bildinhalt.status/text`), ein anderer Begriff als das Feld `bildInhalte` am KO.
+    //     Gesucht wird darum nach der Inhaltskennung und dem KO-Feld, nicht nach dem Wort.
+    //   · Kommentarzeilen zählen nicht (Capture.tsx nennt die Kennung nur in einem Kommentar).
+    //   · Der OCR-Befundweg (OCR-02/03, OCR-E01/E02) liest die Kennung als BILDFASSUNG — Schlüssel
+    //     der Berichtigung und der Befundliste. Er ist benannt; der Vorkommensanker bleibt dort
+    //     `imageId`/`data-image-id`, und das prüft der Gegenfall darunter Zeile für Zeile.
+    const OCR_BEFUNDWEG = [
+      "apps/web/src/api/bildKorrekturen.ts",
+      // Redaktion und Vorschau binden die OCR-Lesung an die Bildfassung.
+      "apps/web/src/components/BildTabelleBearbeiten.tsx",
+      "apps/web/src/components/KlaraBereichsfrage.tsx",
+      "apps/web/src/components/bibliothek/FolienDaten.tsx",
+      "apps/web/src/components/bibliothek/PowerPointBildquellen.tsx",
+      "apps/web/src/lib/bildTabelle.ts",
+      "apps/web/src/lib/klaraBereich.ts",
+      // Der Finder-Import prüft die tatsächlich empfangenen Bytes gegen den Herkunftsbeleg.
+      "apps/web/src/lib/finderOcrEingang.ts",
+      "apps/web/src/components/BildBefundListe.tsx",
+      "apps/web/src/components/BildTextBerichtigung.tsx",
+      "apps/web/src/lib/bildAutomatik.ts",
+      "apps/web/src/lib/bildKorrektur.ts",
+      "apps/web/src/lib/bildKorrekturenStand.ts",
+    ];
+    const codezeilen = (d: string): string[] =>
+      readFileSync(d, "utf8")
+        .split("\n")
+        .filter((z) => !/^\s*(\/\/|\/\*|\*)/.test(z));
+    const KENNUNG = /inhaltskennung|bildInhalte/i;
+    const treffer = dateien.filter((d) => codezeilen(d).some((z) => KENNUNG.test(z)));
+    expect(treffer.filter((d) => !OCR_BEFUNDWEG.includes(d))).toEqual([]);
+    // Jeder benannte Leser liest die Kennung wirklich (sonst ist die Ausnahme veraltet) …
+    expect(OCR_BEFUNDWEG.filter((d) => !treffer.includes(d))).toEqual([]);
+    // … und nirgends an derselben Stelle wie der Vorkommensanker: kein Ersatz, kein Vergleich.
+    const vermengt = OCR_BEFUNDWEG.flatMap((d) =>
+      codezeilen(d)
+        .filter((z) => KENNUNG.test(z) && /imageId|data-image-id|anchorFigures/.test(z))
+        .map((z) => `${d}: ${z.trim()}`),
     );
-    expect(treffer).toEqual([]);
+    expect(vermengt).toEqual([]);
   });
 });

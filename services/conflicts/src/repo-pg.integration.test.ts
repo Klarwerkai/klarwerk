@@ -446,8 +446,8 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
   it("KO14: echte parallele PG-Entscheidungen haben einen Gewinner", async (ctx) => {
     const p = requirePool(ctx);
     await reset(p);
-    await mitNeuemPool(p, async (repoA) => {
-      await mitNeuemPool(p, async (repoB) => {
+    const entscheidung = await mitNeuemPool(p, async (repoA) => {
+      return mitNeuemPool(p, async (repoB) => {
         const audit = new AuditService({ repo: new InMemoryAuditRepo() });
         const memory = new PgConflictMemoryRepo(p);
         const a = new ConflictService({ repo: repoA, audit, memory });
@@ -515,20 +515,23 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
         expect(verlierer.reason).toMatchObject({ code: "CONFLICT" });
         const ersterGewann = ergebnisse[0]?.status === "fulfilled";
         const grund = ersterGewann ? "decided" : "dismissed";
-        const gespeichert = await new PgConflictRepo(p).findById(c.id);
-        expect(gespeichert).toEqual(gewinner.value);
-        expect(gespeichert?.status).toBe("geloest");
-        expect(gespeichert?.decidedBy).toBe(ersterGewann ? "pg-resolve" : "pg-dismiss");
-        expect(gespeichert?.decision).toBe(ersterGewann ? "Quelle A gilt." : "Andere Anlage.");
-        expect(gespeichert?.resolutionReason).toBe(grund);
         const belege = (await audit.list({ target: c.id })).slice(zuvor);
         expect(belege).toHaveLength(1);
         expect(belege[0]?.action).toBe(ersterGewann ? "conflict.resolved" : "conflict.dismissed");
         expect(await memory.find(["ko:a|ko:b"])).toMatchObject([
           { stand: "2".repeat(64), conflictId: c.id, outcome: grund },
         ]);
+        return { id: c.id, gewinner: gewinner.value, ersterGewann, grund };
       });
     });
+    const gespeichert = await mitNeuemPool(p, (repo) => repo.findById(entscheidung.id));
+    expect(gespeichert).toEqual(entscheidung.gewinner);
+    expect(gespeichert?.status).toBe("geloest");
+    expect(gespeichert?.decidedBy).toBe(entscheidung.ersterGewann ? "pg-resolve" : "pg-dismiss");
+    expect(gespeichert?.decision).toBe(
+      entscheidung.ersterGewann ? "Quelle A gilt." : "Andere Anlage.",
+    );
+    expect(gespeichert?.resolutionReason).toBe(entscheidung.grund);
   });
 
   it("KO14: neue Verbindung bewahrt den Beschluss vor erneuter Eskalation", async (ctx) => {

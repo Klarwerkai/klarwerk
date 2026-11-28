@@ -192,7 +192,7 @@ const ALLOWED: AttachDecision = { allowed: true };
  * und hinterlaesst eine auditierte Spur im eigenen Bestand (`ko.attached` + gespeichertes Objekt) —
  * aber es ist keine Unmoeglichkeit, und dieser Absatz ist die Stelle, an der das auffallen muss.
  * Ein wirklicher Beleg waere die Auszugs-Pruefung gegen den Dokumententext (G-2,
- * `excerptFoundInDocument`); sie braucht serverseitige Textextraktion und ist ein eigener Vorgang.
+ * `findExcerptInDocument`); sie braucht serverseitige Textextraktion und ist ein eigener Vorgang.
  */
 export function decideExternalAttach(facts: AttachRequestFacts): AttachDecision {
   if (facts.stage === "search_attach" || facts.stage === "open") {

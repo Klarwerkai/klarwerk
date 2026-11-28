@@ -97,7 +97,7 @@
 //
 // KALIBRIERUNG: die Sonden entstehen unten IM TEST (mutierte Kopien des Stil-Textes bzw. des
 // Markups), nie als Datei im Produktbaum.
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -329,12 +329,12 @@ const ALPHA_AUSNAHMEN: AlphaAusnahme[] = [
 // Umschalter-Grund #EEEAE3. Der Auftrag verlangt Gleichheit mit dem Mockup „in jedem tragenden
 // Wert"; themes.css (apps/web/src) ist dort nicht Zielpfad. Deshalb hier: KEIN Freibrief, sondern
 // eine Bindung an die andere Wahrheit — der Wert muss im genannten Mockup WÖRTLICH vorkommen
-// (geprüft, sobald die Mockup-Datei auf dem Rechner liegt), Klaras :root nennt die Datei per
+// (geprüft am versionierten Original), Klaras :root nennt die Datei per
 // „← mockup:<datei>", und eine unbenutzte Ausnahme ist rot. Der Nachzug der drei Token in
 // themes.css ist ein eigener Auftrag (Rückgabe JOB 3056, REST).
 type MockupAusnahme = { variable: string; wert: string; mockup: string; grund: string };
 
-const MOCKUP_ORDNER = "/Users/peterkohnert/klarwerk_steuerung/design/klara";
+const MOCKUP_ORDNER = join(REPO, "tests/design/vorlagen/klara");
 
 const MOCKUP_AUSNAHMEN: MockupAusnahme[] = [
   {
@@ -364,11 +364,8 @@ const MOCKUP_AUSNAHMEN: MockupAusnahme[] = [
   },
 ];
 
-function mockupFuehrt(a: MockupAusnahme): boolean | null {
+function mockupFuehrt(a: MockupAusnahme): boolean {
   const pfad = join(MOCKUP_ORDNER, a.mockup);
-  if (!existsSync(pfad)) {
-    return null; // Mockup nicht auf diesem Rechner — die Bindung ist dann nicht prüfbar, nicht falsch.
-  }
   return readFileSync(pfad, "utf8").toUpperCase().includes(a.wert.toUpperCase());
 }
 
@@ -446,6 +443,31 @@ const REGEL_AUSNAHMEN: RegelAusnahme[] = [
       "Elternelement: `#rw-block` setzt `background: var(--surface)` (Z.643). --warn-text #8A5A00 auf " +
       "--surface #FFFFFF = 5,93:1, AA erfüllt — gemessen im Fall „B1b“ unten mit derselben " +
       "Rechenfunktion, nicht hier behauptet.",
+  },
+  // Gesamtcheck R-1329 (Abschnitt E, mega43): der Quellen-Einschub (R-0329) entsteht ganz zur
+  // LAUFZEIT (`askEinschubOeffnen`, taskpane.js) — Überschrift, Standzeile und Hinweis „kein
+  // Original“ sind DIREKTE Kinder des Kastens `#ask-einschub`, der seine Fläche selbst setzt
+  // (`background: var(--surface)`, taskpane.css). Ohne Markup-Fundstelle rät der Sammler gegen jede
+  // deckende Fläche (u. a. --brand-deep, --pos-text) und fällt dort durch. Gemessen wird die
+  // wirkliche Fläche im Fall „B1c“ unten, mit derselben Rechenfunktion — nicht hier behauptet.
+  {
+    selektor: "#ask-einschub h3",
+    grund:
+      "Überschrift des Quellen-Einschubs, erst zur LAUFZEIT erzeugt (askEinschubOeffnen). Sie steht " +
+      "als direktes Kind auf der eigenen Fläche von #ask-einschub (--surface); --ink darauf ist in " +
+      "„B1c“ gemessen.",
+  },
+  {
+    selektor: "#ask-einschub .einschub-stand",
+    grund:
+      "Standzeile des Quellen-Einschubs (Prüfstand, Version, Datum), erst zur LAUFZEIT erzeugt. " +
+      "Direktes Kind von #ask-einschub auf --surface; --muted darauf ist in „B1c“ gemessen.",
+  },
+  {
+    selektor: "#ask-einschub-kein-original",
+    grund:
+      "Hinweis „kein Original hinterlegt“ im Quellen-Einschub, nur zur LAUFZEIT und nur ohne Original " +
+      "erzeugt. Direktes Kind von #ask-einschub auf --surface; --muted darauf ist in „B1c“ gemessen.",
   },
   {
     selektor: "#capture-aktion #send-btn:disabled",
@@ -918,7 +940,7 @@ function befunde(m: Modell = MODELL, kiStellen: KiStelle[] = KI_STELLEN): string
         continue;
       }
       benutzteMockup.add(a.variable);
-      if (mockupFuehrt(a) === false) {
+      if (!mockupFuehrt(a)) {
         raus.push(
           `--${name}: ${wert} steht NICHT im Mockup ${a.mockup} — die Bindung an die Vorlage ist gebrochen.`,
         );
@@ -1417,8 +1439,7 @@ describe("mega43 B1/B2 · Klara führt die Werkbank-Palette (keine zweite Wahrhe
       expect(MODELL.variablen.get(a.variable)?.wert.toUpperCase()).toBe(a.wert.toUpperCase());
       expect(MODELL.variablen.get(a.variable)?.mockup?.endsWith(a.mockup), a.variable).toBe(true);
       expect(PALETTE.has(a.wert.toUpperCase())).toBe(false);
-      // Auf diesem Rechner liegt das Mockup: der Wert steht wörtlich darin.
-      expect(mockupFuehrt(a), `${a.wert} in ${a.mockup}`).not.toBe(false);
+      expect(mockupFuehrt(a), `${a.wert} in ${a.mockup}`).toBe(true);
     }
   });
 });
@@ -1584,6 +1605,32 @@ describe("mega43 B3 / mega44 B1 · Kontrast der Klara-Paare (WCAG AA, ≥ 4,5:1)
     const wert = kontrast(rgbAusHex(warnText?.wert as string), rgbAusHex(surface?.wert as string));
     expect(wert, `--warn-text auf --surface = ${wert.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
   });
+
+  // Gesamtcheck R-1329 · DIE AUSNAHMEN FÜR DEN QUELLEN-EINSCHUB TRAGEN ZAHLEN, KEINE ZUSICHERUNG.
+  // Dieselbe Bauform wie „B1b“: die Fläche ist die eigene des Kastens `#ask-einschub`, und beide
+  // Textfarben seiner Laufzeit-Kinder werden mit DERSELBEN Rechenfunktion darauf gemessen. Wer die
+  // Fläche des Kastens oder eines der Token verschiebt, wird hier rot.
+  it.each([
+    ["#ask-einschub h3", "ink"],
+    ["#ask-einschub .einschub-stand", "muted"],
+    ["#ask-einschub-kein-original", "muted"],
+  ] as const)(
+    "B1c · %s erreicht auf der Fläche des geöffneten Quellen-Einschubs AA",
+    (selektor, token) => {
+      const kasten = MODELL.regeln.find((r) => r.selektor === "#ask-einschub");
+      const kind = MODELL.regeln.find((r) => r.selektor === selektor);
+      expect(kasten?.dekl.get("background")).toBe("var(--surface)");
+      expect(kind?.dekl.get("color")).toBe(`var(--${token})`);
+      expect(kind?.dekl.get("background")).toBeUndefined();
+      expect(kind?.dekl.get("background-color")).toBeUndefined();
+      const vorn = MODELL.variablen.get(token);
+      const surface = MODELL.variablen.get("surface");
+      expect(vorn).toBeDefined();
+      expect(surface).toBeDefined();
+      const wert = kontrast(rgbAusHex(vorn?.wert as string), rgbAusHex(surface?.wert as string));
+      expect(wert, `--${token} auf --surface = ${wert.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 
   it("B1 · keine Annahme greift heute still — der Markup-Weg trägt jede Regel", () => {
     const mitAnnahme = KONTRAST_MODELL.paare.filter((p) => p.annahmen.length > 0);

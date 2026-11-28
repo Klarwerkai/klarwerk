@@ -360,14 +360,22 @@ describe("W2 · Rollenänderung über die Nutzerkarte", () => {
     await montiere(createElement(NutzerDetail, { nutzerId: wandaId, onZurueck: ohneZurueck }));
     await warteBis(() => container.querySelector("select") !== null, "Rollenwahl");
 
-    await waehle(container.querySelector("select"), "controller");
+    await waehle(container.querySelector('[data-testid="konto-rolle"]'), "controller");
+    expect((await nutzer(wandaId)).role, "Die Vorschau ändert die Rolle noch nicht").toBe(
+      "experte",
+    );
+    await klick(container.querySelector('[data-testid="rolle-uebernehmen"]'));
     expect((await nutzer(wandaId)).role, "/api/users nach der Änderung").toBe("controller");
     const login = await anmelden(WANDA.email, WANDA.password);
     const sitzungWanda = `kw_session=${login.body.token ?? ""}`;
     const ich = await lies<{ role: string }>("/api/auth/me", sitzungWanda);
     expect(ich.role, "die Sitzung des Kontos trägt die neue Rolle").toBe("controller");
 
-    await waehle(container.querySelector("select"), "experte");
+    await waehle(container.querySelector('[data-testid="konto-rolle"]'), "experte");
+    expect((await nutzer(wandaId)).role, "Die Rücknahme braucht eine Bestätigung").toBe(
+      "controller",
+    );
+    await klick(container.querySelector('[data-testid="rolle-uebernehmen"]'));
     expect((await nutzer(wandaId)).role, "Rücknahme").toBe("experte");
     expect(fehlerToasts(), "kein Fehler auf dem gelungenen Weg").toEqual([]);
   });
@@ -375,11 +383,18 @@ describe("W2 · Rollenänderung über die Nutzerkarte", () => {
   it("Fehler: der letzte Admin kann sich nicht selbst herabstufen — Meldung, Stand unverändert", async () => {
     await montiere(createElement(NutzerDetail, { nutzerId: adminId, onZurueck: ohneZurueck }));
     await warteBis(() => container.querySelector("select") !== null, "eigene Rollenwahl");
-    await waehle(container.querySelector("select"), "experte");
+    await waehle(container.querySelector('[data-testid="konto-rolle"]'), "experte");
+    await klick(container.querySelector('[data-testid="rolle-uebernehmen"]'));
     await warteBis(() => fehlerToasts().length > 0, "Fehlermeldung des Servers");
     expect(fehlerToasts()[0]?.trim().length ?? 0).toBeGreaterThan(0);
     expect((await nutzer(adminId)).role, "der Server hat nichts geändert").toBe("admin");
-    expect((container.querySelector("select") as HTMLSelectElement).value).toBe("admin");
+    expect(container.querySelector('[data-testid="rolle-fehler"]')?.textContent).toContain(
+      t("nutzerliste.rolle.unveraendert"),
+    );
+    await klick(container.querySelector('[data-testid="rolle-abbrechen"]'));
+    expect(
+      (container.querySelector('[data-testid="konto-rolle"]') as HTMLSelectElement).value,
+    ).toBe("admin");
   });
 });
 

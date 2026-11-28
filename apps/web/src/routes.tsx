@@ -1,4 +1,4 @@
-import { type ComponentType, Suspense, lazy } from "react";
+import { type ComponentType, Suspense, lazy as reactLazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useRole } from "./app/RoleContext";
 import { GUARDED_ITEMS, HOME_ROUTE, type NavItem, roleAllows } from "./app/navigation";
@@ -9,6 +9,14 @@ import { Splash } from "./components/Splash";
 import { RoleNotice, Stage2Notice } from "./components/Stage2Notice";
 import { PRUEFFORMULAR_PFAD } from "./components/klara-begleitung/pfad";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
+import { mitFachtexten } from "./lib/fachtexte";
+
+// R-0801 (Gesamtcheck R-1329, Nacharbeit 58): jede Seite lädt ihr Stück und die deutschen Fachtexte
+// GLEICHZEITIG und zeichnet erst mit beiden (`lib/fachtexte.ts`). Ein ausbleibendes Paket scheitert
+// wie ein ausbleibendes Seitenstück — an derselben Fehlergrenze. Die `lazy`-Zeilen unten bleiben
+// dafür wörtlich, wie sie sind (der Gegenbau in `tests/erstladezeit/` liest genau diese Form).
+// Im Quelltext gibt es kein Paket; dann wird das Seitenstück unverändert durchgereicht.
+const lazy: typeof reactLazy = (laden) => reactLazy(() => mitFachtexten(laden()));
 
 // ================================================================================================
 // JOB 3030 (U4/SCRUM-543) — JEDE SEITE WIRD NACHGELADEN, KEINE HÄNGT MEHR AM EINTRITT.

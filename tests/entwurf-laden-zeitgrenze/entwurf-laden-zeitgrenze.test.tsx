@@ -66,7 +66,7 @@
 // keine grossen Entwürfe.
 //
 // T3 lädt seit dieser Runde DIESELBE Nutzlast, an der die Frist gemessen wurde
-// (`./grosser-entwurf.ts`, rund 3,8 MiB, dreissig verankerte Abbildungen) — und prüft sie auf der
+// (`./grosser-entwurf.ts`, rund 4 MiB, dreissig verankerte Abbildungen) — und prüft sie auf der
 // FLÄCHE, nicht am Draht.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -209,7 +209,7 @@ async function grossenEntwurfAnlegen(): Promise<string> {
     method: "POST",
     url: "/api/drafts",
     headers: kopf(),
-    payload: JSON.stringify(grosserEntwurf()),
+    payload: JSON.stringify(await grosserEntwurf()),
   });
   expect(res.statusCode, `grosser Entwurf nicht angelegt: ${res.body.slice(0, 300)}`).toBe(201);
   return (JSON.parse(res.body) as { id: string }).id;

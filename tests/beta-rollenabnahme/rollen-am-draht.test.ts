@@ -46,7 +46,7 @@ let buehne: Buehne;
 let laufende = 0;
 
 beforeAll(async () => {
-  buehne = await baueBuehne();
+  buehne = await baueBuehne({ mitKiosk: true });
 });
 
 afterAll(schliesseBuehnen);

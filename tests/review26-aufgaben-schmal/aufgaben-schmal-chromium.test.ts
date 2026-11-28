@@ -565,10 +565,8 @@ describe("JOB 3462 · schmale Aufgabenliste: Titel und Phase lesbar, in Chromium
     expect(offen.erklaerungRect.hoehe, "der geöffnete Erklärsatz hat keine Höhe").toBeGreaterThan(
       0,
     );
-    // UNTER der Zeile, nicht in ihr: der Satz beginnt unterhalb von Titel, Meta-Zeile und Knopf und
-    // bleibt innerhalb der Zeile und des Fensters. (Der Chevron steht im DOM HINTER dem Satz und
-    // rückt beim Aufklappen unter ihn — so war die Zeile schon vor JOB 3462 gebaut; hier zählt, dass
-    // er sichtbar und treffbar bleibt und den Satz nicht überdeckt.)
+    // Beide Aktionen bleiben zusammen oberhalb des aufgeklappten Satzes.
+    expect(offen.erklaerungRect.y, lage).toBeGreaterThanOrEqual(offen.chevronRect.unten - 0.5);
     expect(
       offen.erklaerungRect.y,
       `Erklärsatz nicht unter dem Titel: ${lage}`,

@@ -22,7 +22,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   return {
     endpoints: {
       analytics: { overview: ok({ total: 0, byStatus: { offen: 0, validiert: 0 } }) },
-      validation: { board: ok({ columns: [] }) },
+      validation: { board: ok([]) },
       conflicts: { list: ok([]) },
       lifecycle: { pending: ok([]) },
       gaps: { summary: ok({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } }) },

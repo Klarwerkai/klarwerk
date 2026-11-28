@@ -81,6 +81,10 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 
+import { verwendeManuellesBildprofil } from "./manuelles-bildprofil";
+
+verwendeManuellesBildprofil();
+
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // jsdom kennt showModal()/close() des <dialog> nicht — derselbe minimale Polyfill wie in

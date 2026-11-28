@@ -39,6 +39,7 @@ import {
 import { invalidateAiState } from "../lib/aiStateInvalidate";
 import { type KiTestArt, type KiTestBefund, kiTestBefund } from "../lib/kiTestBefund";
 import { isNeededValidationsValid, parseNeededValidations } from "../lib/reviewerMinimum";
+import { nachGrundwoerterbuch } from "../lib/sprachNachlader";
 import { maxRawAttachmentMb } from "../lib/uploadLimits";
 
 // KI-Verwaltung v1 (Pedi 02.07.): Zuordnung global + je Aufgabe.
@@ -668,8 +669,12 @@ const FREIGABE_TEXTE_NL = {
     "De stand kon niet opnieuw worden geladen — verdere wijzigingen zijn tot dan geblokkeerd.",
 } as const;
 i18n.addResourceBundle("de", "translation", FREIGABE_TEXTE_DE, true, false);
-i18n.addResourceBundle("en", "translation", FREIGABE_TEXTE_EN, true, false);
-i18n.addResourceBundle("nl", "translation", FREIGABE_TEXTE_NL, true, false);
+nachGrundwoerterbuch(i18n, "en", () => {
+  i18n.addResourceBundle("en", "translation", FREIGABE_TEXTE_EN, true, false);
+});
+nachGrundwoerterbuch(i18n, "nl", () => {
+  i18n.addResourceBundle("nl", "translation", FREIGABE_TEXTE_NL, true, false);
+});
 
 /** Ein Schalter der Freigabe: Kästchen, Beschriftung — statische Klassen, kein Zustand in der Kette. */
 const FREIGABE_ZEILE = "flex items-start gap-2 text-[12.5px] font-semibold text-text";

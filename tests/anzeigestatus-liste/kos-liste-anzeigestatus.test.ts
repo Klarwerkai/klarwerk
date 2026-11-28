@@ -420,7 +420,16 @@ describe("JOB 3043 · der Anzeigestatus an der Liste, mit gezaehltem Aufwand", (
       author: "u-jemand-anders",
       confidentiality: "vertraulich",
     });
-    const offen = await anlegen(services, "Internes Alltagswissen");
+    // aufnahme:20260922:gesamt-leserechte (Entscheidung 16): das offene Objekt ausdrücklich „intern"
+    // — ohne Stufe wäre es ungeklärt und dem fremden Prüfer (ohne Niveau) ebenfalls verborgen.
+    const offen = await services.ko.create({
+      title: "Internes Alltagswissen",
+      statement: "Kerntext zu Internes Alltagswissen.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "u-autor",
+      confidentiality: "intern",
+    });
 
     // Das uebergebene Kennungsfeld wird abgefangen — eine Pruefstandsabfrage fuer ein unsichtbares
     // Objekt waere eine Existenzauskunft ueber den Umweg der Kosten.

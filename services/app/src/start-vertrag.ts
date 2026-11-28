@@ -638,6 +638,175 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Abstand, in dem der Bestand auf neue Wissensereignisse abgeglichen wird.",
     ohneIhn: "Es gilt der Abstand von 60 Sekunden (mindestens 10).",
   },
+  // Gesamtcheck R-1329 (Nacharbeit 27): die zehn Werte, die spätere Lieferungen lesen, ohne sie hier
+  // eingetragen zu haben — je Eintrag aus der lesenden Stelle abgelesen.
+  // R-0677/R-0688 (dienst-schluessel.ts): Dienst-Schlüssel angebundener Systeme.
+  {
+    name: "KLARWERK_SERVICE_KEYS",
+    bereich: "Integration",
+    pflicht: { art: "nie" },
+    // Steht nur als SHA-256-Prüfsumme in der Umgebung, nie als Schlüssel — trotzdem wie ein Schlüssel
+    // geführt, damit keine Liste von Zugangsdaten in eine Beispieldatei gerät.
+    geheim: true,
+    wofuer:
+      "Die Dienst-Schlüssel angebundener Systeme (JSON-Liste mit Kennung, SHA-256-Prüfsummen, Rechten und eigener Grenze) — nie der Schlüssel selbst.",
+    ohneIhn: "Kein angebundenes System kann sich mit einem eigenen Dienst-Schlüssel anmelden.",
+  },
+  // R-0842 (ki-anfragebremse.ts): Bremse modellgestützter Anfragen angemeldeter Sitzungen.
+  {
+    name: "KLARWERK_KI_ANFRAGEN_MAX",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "30",
+    wofuer:
+      "Höchstzahl modellgestützter Anfragen je angemeldeter Sitzung im Fenster; „aus“ schaltet die Bremse bewusst ab.",
+    ohneIhn:
+      "Es gelten 30 Anfragen je Fenster; ein unlesbarer Wert fällt auf diesen Standard zurück.",
+  },
+  {
+    name: "KLARWERK_KI_ANFRAGEN_FENSTER_SEK",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "60 Sekunden",
+    wofuer: "Länge des Fensters, in dem die Bremse modellgestützte Anfragen zählt.",
+    ohneIhn: "Es gilt ein Fenster von 60 Sekunden.",
+  },
+  // Office im Artikel (office-artikel.ts): der eingebettete Editor über WOPI.
+  {
+    name: "KLARWERK_OFFICE_EDITOR_URL",
+    bereich: "Office im Artikel",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Adresse des eingebetteten Office-Editors (WOPI-Client), wie der Browser ihn erreicht.",
+    ohneIhn:
+      "Der eingebettete Editor ist nicht eingerichtet; Office-Dateien im Artikel lassen sich nicht im Browser bearbeiten.",
+  },
+  {
+    name: "KLARWERK_WOPI_HOST_URL",
+    bereich: "Office im Artikel",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "die Herkunft aus APP_BASE_URL",
+    wofuer: "Adresse, unter der der Editor Klarwerk als WOPI-Host erreicht.",
+    ohneIhn: "Es gilt APP_BASE_URL; fehlt auch diese, ist der Editor nicht eingerichtet.",
+  },
+  {
+    name: "KLARWERK_WOPI_SCHLUESSEL",
+    bereich: "Office im Artikel",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer: "Signierschlüssel der WOPI-Zugangsmarken (base64 oder hex, mindestens 32 Byte).",
+    ohneIhn: "Der eingebettete Editor ist nicht eingerichtet; kein WOPI-Zugriff ist möglich.",
+  },
+  {
+    name: "KLARWERK_OFFICE_EDITOR_INTERN_URL",
+    bereich: "Office im Artikel",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "die Adresse aus KLARWERK_OFFICE_EDITOR_URL",
+    wofuer: "Interne Adresse, unter der Klarwerk die Discovery des Editors abruft.",
+    ohneIhn: "Die Discovery wird unter der Adresse aus KLARWERK_OFFICE_EDITOR_URL abgerufen.",
+  },
+  // klara-aufraeumen.ts / server.ts: der periodische Klara-Aufräumlauf.
+  {
+    name: "KLARWERK_KLARA_AUFRAEUM_INTERVAL_MS",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "6 Stunden",
+    wofuer: "Abstand des periodischen Aufräumlaufs abgelaufener Klara-Sitzungen.",
+    ohneIhn: "Es gilt der Abstand von sechs Stunden.",
+  },
+  // P09 (wiederanlauf.ts): kontrollierter Wiederanlauf nach Wiederherstellung einer Sicherung.
+  {
+    name: "KLARWERK_WIEDERANLAUF",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Kennung eines Wiederanlaufs nach Wiederherstellung einer Sicherung: Außenaktionen bleiben gestoppt, bis die Freigabe erteilt ist.",
+    ohneIhn: "Normaler Start; alle Außenaktionen laufen wie gewohnt.",
+  },
+  {
+    name: "KLARWERK_WIEDERANLAUF_SICHERUNG",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Sicherungsstand des Wiederanlaufs — Dateiname der Sicherung (klarwerk-<UTC>.dump) oder ein UTC-Zeitpunkt.",
+    ohneIhn:
+      "Der Wiederanlauf kennt den Sicherungsstand nicht; er muss vor der Freigabe nachgetragen werden.",
+  },
+  {
+    name: "KLARWERK_GEDAECHTNIS_LOESCHJOURNAL",
+    bereich: "Aufbewahrung",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Dateipfad für die Löschvermerke des persönlichen Gedächtnisses außerhalb der Datenbank.",
+    ohneIhn: "Für die Wiederherstellung ist kein externes Gedächtnis-Löschjournal konfiguriert.",
+  },
+  {
+    name: "KLARWERK_EMAIL_EINGANG",
+    bereich: "Integration",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer: "JSON-Zuordnung der Empfangsadresse zu Firmeninstanz, Maildienst und Eigentümerkonto.",
+    ohneIhn: "Die Instanz nimmt über diesen Eingang keine E-Mail als Entwurf an.",
+  },
+  {
+    name: "KLARWERK_KLARA_ERINNERUNG_TAKT_MS",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "60.000 Millisekunden",
+    wofuer: "Abstand zwischen zwei Prüfungen auf fällige Klara-Erinnerungen.",
+    ohneIhn: "Klara prüft jede Minute auf fällige Erinnerungen.",
+  },
+  {
+    name: "KLARWERK_KALENDER_M365_BASE_URL",
+    bereich: "Kalender",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "HTTPS-Basisadresse des Microsoft-365-Kalenderdienstes.",
+    ohneIhn: "Die Verbindung zum Microsoft-365-Kalender ist ausgeschaltet.",
+  },
+  {
+    name: "KLARWERK_KALENDER_M365_TOKEN",
+    bereich: "Kalender",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer: "Delegiertes Zugangsmerkmal für das angebundene Microsoft-365-Kalenderkonto.",
+    ohneIhn: "Die Verbindung zum Microsoft-365-Kalender ist ausgeschaltet.",
+  },
+  {
+    name: "KLARWERK_KALENDER_M365_KONTO_IDS",
+    bereich: "Kalender",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer: "Kommagetrennte Klarwerk-Konto-IDs, die den angebundenen Kalender verwenden dürfen.",
+    ohneIhn: "Kein Klarwerk-Konto kann diese Kalenderverbindung verwenden.",
+  },
+  {
+    name: "KLARWERK_LOESCHMARKIERUNGEN",
+    bereich: "Aufbewahrung",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Pfad zu den Löschmarkierungen für persönliche Routinen außerhalb der Datenbank.",
+    ohneIhn:
+      "Bei der Wiederherstellung können keine externen Löschmarkierungen für Routinen nachgeführt werden.",
+  },
+  {
+    name: "KLARWERK_DIAGNOSE_FRIST_TAGE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "14 Tage",
+    wofuer: "Aufbewahrungsfrist der Diagnoseprotokolle in ganzen Tagen.",
+    ohneIhn: "Die Diagnosefrist beträgt 14 Tage.",
+  },
   {
     name: "KLARWERK_SKIP_KEYCHAIN",
     bereich: "Betrieb",

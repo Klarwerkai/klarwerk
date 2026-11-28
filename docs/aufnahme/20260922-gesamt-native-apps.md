@@ -64,12 +64,13 @@ Zu klären war „Altbestand: Einordnung offen“.
 - **Einordnung:** Der Punkt ist ein Vorschlag aus dem Altbestand. Er war für v1 ausgeschlossen und
   wurde im Juni 2026 verworfen (F-1052). Er ist kein Funktionsversprechen und kein gelieferter
   Stand. Ob er endgültig verworfen ist oder später kommt, ist die offene Entscheidung aus §2.
-- **Heutiger Stand im Produktbaum, durch Quelleninspektion in diesem Lauf geprüft:**
+- **Stand der Quelleninspektion am 13.10.2026:**
   - Es gibt kein natives Projekt. Unter `apps/` liegt nur `apps/web`, ohne `android/`, `ios/` oder
     `capacitor.config.*`.
   - `apps/web/package.json` hat keine Abhängigkeit auf Capacitor, Cordova, React Native oder Expo.
   - Ausgeliefert wird die installierbare Web-App: `apps/web/public/manifest.webmanifest` mit
     `display: standalone` und `apps/web/public/sw.js`.
+- **Stand am 28.11.2026:** Für Mobilgeräte wird die installierbare Web-App ausgeliefert. Hinzugekommen ist der Klara-Begleiter für macOS ab Version 13. Sein Swift-Paket benennt die Plattform und das ausführbare Ziel in `apps/desktop/klara-begleiter/Package.swift`. Die Frage nach iOS und Android bleibt offen.
 - **„Alte Pedi-Auswahl“:** In der zugeordneten Quelle gibt es keine. `pedi_override` ist `null`,
   `override_am` ist `null`, `entscheidung` ist `null` und `entscheidungen` ist leer. Die Hinweiszeile
   „Auch eine alte Pedi-Auswahl bleibt unten als historische Entscheidung erhalten“ ist ein

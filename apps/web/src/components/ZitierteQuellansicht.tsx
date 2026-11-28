@@ -48,8 +48,7 @@ export function ZitierteQuellansicht({
       : t("quellen.fokus.aktuellerEintrag");
   const linkKlasse =
     "mt-4 inline-flex rounded-btn text-sm font-medium text-brand-text underline underline-offset-4";
-  const freigabezeit =
-    beleg.data.freigegebenAm && formatKoTimestamp(beleg.data.freigegebenAm, i18n.language);
+  const freigabezeit = formatKoTimestamp(beleg.data.freigegebenAm, i18n.language);
   return (
     <section data-testid="quellenfokus" className="mx-auto max-w-3xl py-3">
       {notizbezug && (

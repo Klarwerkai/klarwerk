@@ -74,6 +74,7 @@ genommen=0
 besitzt=0
 gewartet=0
 kind=""
+kind_beendet=0
 
 # Atomare JSONL-Zeilen (ein appendFileSync je Ereignis). Bei JEDEM Freigeben wird nachgerechnet,
 # also auch NACH dem letzten Smoke, der zeitlich hinter dem Vitest-Messfall liegt.
@@ -219,7 +220,10 @@ aufraeumen() {
   trap - EXIT INT TERM
   # Eigene Prozessgruppe: Abbruch beendet auch npm/npx-Kinder, BEVOR der Platz frei wird.
   if [ -n "$kind" ]; then
-    kill -TERM -- "-$kind" 2>/dev/null || true
+    if ! kill -TERM -- "-$kind" 2>/dev/null && [ "$kind_beendet" = 0 ]; then
+      # Direkt nach dem Start kann das Kind seine Gruppe noch nicht angelegt haben.
+      kill -TERM "$kind" 2>/dev/null || true
+    fi
     # Bis zu fünf Sekunden für den geregelten Abbau. Nicht sofort wait: ein Kind, das TERM
     # ignoriert, würde den EXIT-Trap sonst für immer vor dem nachfolgenden KILL festhalten.
     for ((versuch=0; versuch<50; versuch++)); do
@@ -258,7 +262,9 @@ if [ "$an" = 1 ]; then
   ohne_pid_seit=-1
   letzte_pruefwarnung=''
   letzte_typwarnung=''
-  while ! mkdir "$lock" 2>/dev/null; do
+  # Ein einzelnes mkdir(2) entscheidet, wer das Schloss erhält. Die mkdir-CLI von uutils 0.10
+  # auf Ubuntu 26.04 kann EEXIST nach ihrer vorgelagerten Existenzprüfung als Erfolg melden.
+  while ! node -e 'require("node:fs").mkdirSync(process.argv[1])' "$lock" 2>/dev/null; do
     gewartet=1
     gueltige_pid=0; raeumen=0; pid_frist_abgelaufen=0
     halter='unbekannt'; seit='unbekannt'
@@ -375,10 +381,20 @@ if [ "$an" = 1 ]; then
 fi
 genommen=1
 schreibe nehmen
-# Job-Control gibt dem Befehl eine eigene Prozessgruppe, ohne ps/pgrep und ohne setsid (macOS).
-set -m
-"$@" &
+# Das Kind führt den Nutzbefehl in einer eigenen Gruppe aus, damit der EXIT-Trap
+# auch dessen Nachfahren erreicht. Die macOS-System-Bash 3.2 kann bei sehr kurzen
+# Jobs zwischen den zwei setpgid-Aufrufen in Kind und Elternprozess EPERM melden.
+if [[ "$OSTYPE" == darwin* ]]; then
+  /usr/bin/perl -e '
+    setpgrp(0, 0) or die "Browserdeckel: setpgrp: $!";
+    exec @ARGV or die "Browserdeckel: exec: $!";
+  ' -- "$BASH" -c '"$@"' browserdeckel "$@" &
+else
+  set -m
+  "$@" &
+fi
 kind=$!
 rc=0
 wait "$kind" || rc=$?
+kind_beendet=1
 exit "$rc"

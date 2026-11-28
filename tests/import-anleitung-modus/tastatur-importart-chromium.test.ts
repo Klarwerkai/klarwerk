@@ -37,24 +37,26 @@ type SeiteMitTastatur = Buehne["seite"] & { keyboard: Tastatur };
 let b: Buehne;
 let seite: SeiteMitTastatur;
 
-/** Der sichtbare Text der Anleitung unter den Auswahlkarten — genau der eine Knoten. */
-const ANLEITUNG_LESEN = `() => {
-  // Vom Kartenknopf hoch zum Raster, von dort zur ChoiceCards-Wurzel — die Anleitung ist deren
-  // unmittelbarer Nachbar im Baum (Capture.tsx: <ChoiceCards/> gefolgt von der Hinweiszeile).
-  const karte = document.querySelector('button[aria-pressed]');
-  const raster = karte ? karte.closest('div') : null;
-  const wurzel = raster ? raster.parentElement : null;
-  const zeile = wurzel ? wurzel.nextElementSibling : null;
-  return zeile ? (zeile.textContent || '').replace(/\\s+/g, ' ').trim() : '';
-}`;
-
-/** Welche Auswahlkarte ist gewählt? Gibt die Beschriftung der gedrückten Karte zurück. */
-const GEWAEHLTE_KARTE = `() => {
-  const karte = [...document.querySelectorAll('button[aria-pressed="true"]')].find(
-    (b) => b.closest('div') && b.querySelector('span span'),
+async function sichtbareAnleitungen(): Promise<string[]> {
+  return seite.evaluate<string[]>(
+    fn(`(texte) => [...document.querySelectorAll('span')].filter(el => el.getClientRects().length > 0)
+      .map(el => el.textContent.trim()).filter(text => texte.includes(text))`),
+    [i18n.t(CAPTURE_FILE_TEXT.hint), i18n.t(CAPTURE_FILE_TEXT.hintWhole)],
   );
-  return karte ? (karte.textContent || '').replace(/\\s+/g, ' ').trim() : '';
-}`;
+}
+
+async function warteAufImportart(gewaehlt: string, andere: string): Promise<void> {
+  await seite.waitForFunction(
+    fn(`([an, aus]) => {
+      const karten = [...document.querySelectorAll('button[aria-pressed]')];
+      const passt = (name, wert) => karten.filter(k => k.textContent.includes(name)
+        && k.getAttribute('aria-pressed') === wert).length === 1;
+      return passt(an, 'true') && passt(aus, 'false');
+    }`),
+    [gewaehlt, andere],
+    { timeout: 10_000 },
+  );
+}
 
 /** Trägt das gerade fokussierte Element diese Beschriftung? */
 const FOKUS_TEXT = `() => {
@@ -114,36 +116,20 @@ describe("JOB 3196 · A6 — die Importart mit echten Tasten wählen (Chromium)"
       }`),
       i18n.t("erfassen.weg.datei"),
     );
-    await seite.waitForFunction(
-      fn(`() => document.querySelectorAll('button[aria-pressed]').length >= 2`),
-      undefined,
-      { timeout: 20_000 },
-    );
-
-    // Ausgangslage: der Punkte-Weg ist gewählt, seine Anleitung steht da.
     const punkte = String(i18n.t(CAPTURE_FILE_TEXT.importModePoints));
     const ganzes = String(i18n.t(CAPTURE_FILE_TEXT.importModeWhole));
-    expect(await seite.evaluate<string>(fn(GEWAEHLTE_KARTE))).toContain(punkte);
-    const anleitungVorher = await seite.evaluate<string>(fn(ANLEITUNG_LESEN));
-    expect(anleitungVorher).toContain(String(i18n.t(CAPTURE_FILE_TEXT.hint)).slice(0, 60));
+    const punkteAnleitung = i18n.t(CAPTURE_FILE_TEXT.hint);
+    const ganzesAnleitung = i18n.t(CAPTURE_FILE_TEXT.hintWhole);
+    await warteAufImportart(punkte, ganzes);
+    expect(await sichtbareAnleitungen()).toEqual([punkteAnleitung]);
 
     // NUR TASTATUR ab hier.
     const anschlaege = await tabBis(ganzes);
     expect(anschlaege, `„${ganzes}“ war mit Tab nicht erreichbar`).toBeGreaterThan(0);
 
     await seite.keyboard.press("Enter");
-    await seite.waitForFunction(
-      fn(`(w) => {
-        const k = document.querySelector('button[aria-pressed="true"]');
-        return k !== null && (k.textContent || '').includes(w);
-      }`),
-      ganzes,
-      { timeout: 10_000 },
-    );
-
-    const anleitungNachher = await seite.evaluate<string>(fn(ANLEITUNG_LESEN));
-    expect(anleitungNachher).toContain(String(i18n.t(CAPTURE_FILE_TEXT.hintWhole)).slice(0, 60));
-    expect(anleitungNachher).not.toBe(anleitungVorher);
+    await warteAufImportart(ganzes, punkte);
+    expect(await sichtbareAnleitungen()).toEqual([ganzesAnleitung]);
 
     // ------------------------------------------------------------------------------------------
     // UND ZURÜCK — mit Shift+Tab und der LEERTASTE, der zweiten Taste, die einen Knopf auslöst.
@@ -155,19 +141,7 @@ describe("JOB 3196 · A6 — die Importart mit echten Tasten wählen (Chromium)"
     expect(fokusText, "Shift+Tab hat die Punkte-Karte nicht erreicht").toContain(punkte);
 
     await seite.keyboard.press("Space");
-    await seite.waitForFunction(
-      fn(`(w) => {
-        const k = document.querySelector('button[aria-pressed="true"]');
-        return k !== null && (k.textContent || '').includes(w);
-      }`),
-      punkte,
-      { timeout: 10_000 },
-    );
-
-    const anleitungZurueck = await seite.evaluate<string>(fn(ANLEITUNG_LESEN));
-    expect(anleitungZurueck).toContain(String(i18n.t(CAPTURE_FILE_TEXT.hint)).slice(0, 60));
-    expect(anleitungZurueck).not.toContain(
-      String(i18n.t(CAPTURE_FILE_TEXT.hintWhole)).slice(0, 60),
-    );
+    await warteAufImportart(punkte, ganzes);
+    expect(await sichtbareAnleitungen()).toEqual([punkteAnleitung]);
   }, 120_000);
 });

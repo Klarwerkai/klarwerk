@@ -6,6 +6,7 @@ import { RICHTLINIEN_PFAD } from "../api/unternehmen";
 import { useSession } from "../app/AuthContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
+import { HOME_ROUTE } from "../app/navigation";
 // JOB 3323: der Sprachschalter der Hülle. Er wohnt in DIESER Liste und nicht im Kopfband selbst,
 // weil `KontoEintraege` der eine Baustein ist, den BEIDE Orte rendern — das Konto-Menü im breiten
 // wie im schmalen Kopfband und der Off-Canvas-Drawer (DrawerMenue.tsx). Ein Ort, jede Seite.
@@ -121,10 +122,12 @@ export function KontoMenue({ meldungen }: { meldungen: MeldungenZustand }): JSX.
   const menue = useMenue();
   const { pathname } = useLocation();
   const { schliessen } = menue;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur auf Pfadwechsel schließen.
+  // / ist der automatische Einstieg nach /start, auch wenn die Startseite gerade noch lädt.
+  const seite = pathname === "/" ? HOME_ROUTE : pathname;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur auf Seitenwechsel schließen.
   useEffect(() => {
     schliessen(false);
-  }, [pathname, schliessen]);
+  }, [seite, schliessen]);
   const kuerzel = initialen(user?.name);
   // JOB 3085 · Q4 (Pedis Entscheidung 21, 05.09.2026) — DIE FARBE DES KREISES.
   // Er trägt den vollen Funke des Mockups (Main.dc.html Z.32, #E8630A) und deshalb NACHT-Initialen

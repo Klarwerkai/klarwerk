@@ -210,11 +210,13 @@ describe("D-AISTATE V2: Konflikt-Cap 8 im Live-Pfad aufgehoben — ALLE Kandidat
     // früheren stillen Cap 8).
     for (let i = 0; i < 12; i++) {
       await makeKo(services, {
+        confidentiality: "intern",
         title: `Kandidat ${i}`,
         statement: `verschiedene aussage nummer ${i}`,
       });
     }
     const subject = await makeKo(services, {
+      confidentiality: "intern",
       title: "Subjekt",
       statement: "subjekt aussage ohne deckung",
     });

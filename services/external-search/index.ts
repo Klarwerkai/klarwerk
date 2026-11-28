@@ -4,7 +4,13 @@ export {
   createExternalSearchFromEnv,
 } from "./src/service";
 export type { ExternalSearchDeps } from "./src/service";
-export { createWikipediaProvider, stripHtml, articleUrl } from "./src/wikipedia";
+export {
+  createWikipediaProvider,
+  stripHtml,
+  articleUrl,
+  ExternalSearchFailure,
+  EXTERNAL_SEARCH_MELDUNG,
+} from "./src/wikipedia";
 export { ExternalSearchError } from "./src/types";
 export type { ExternalResult, SearchProvider, FetchLike } from "./src/types";
 // REF-01 (Ben nacharbeit-7 K2): der serverseitige Abrufbeleg externer Treffer.

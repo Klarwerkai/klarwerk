@@ -98,14 +98,22 @@ function sprachSchnittstellen(lage: Lage): void {
   }
   setze("SpeechRecognition", Rekorder);
   setze("webkitSpeechRecognition", Rekorder);
+  const lokaleStimme = { name: "Teststimme", lang: "de-DE", localService: true };
+  setze(
+    "SpeechSynthesisUtterance",
+    class {
+      constructor(readonly text: string) {}
+    },
+  );
   setze("speechSynthesis", {
-    speak: (u: { text: string; lang: string }) => {
+    speak: (u: { text: string; lang: string; voice: unknown }) => {
+      if (u.voice !== lokaleStimme) throw new Error("Keine lokale Teststimme ausgewählt.");
       w.__klara.gesprochen.push({ text: u.text, lang: u.lang });
     },
     cancel: () => {
       w.__klara.abgebrochen += 1;
     },
-    getVoices: () => [],
+    getVoices: () => [lokaleStimme],
     addEventListener: () => {},
     removeEventListener: () => {},
   });

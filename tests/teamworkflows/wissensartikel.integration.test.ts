@@ -7,12 +7,12 @@ import { pruefeArtikelBuchung } from "./wissensartikel-fixture";
 
 it("rollt Artikel, Herkunft, Prüfnachweis und Suchprojektion bei einer gescheiterten Entscheidung gemeinsam zurück", async () => {
   const container = await new GenericContainer("postgres:16-alpine")
-    .withEnvironment({ POSTGRES_PASSWORD: "workflow-synthetic", POSTGRES_DB: "wissen" })
+    .withEnvironment({ POSTGRES_PASSWORD: "workflow-synthetic", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
   const pool = createPool(
-    `postgresql://postgres:workflow-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/wissen`,
+    `postgresql://postgres:workflow-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
   );
   const schliessen = poolAbschluss(pool);
   try {

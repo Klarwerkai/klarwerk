@@ -108,7 +108,10 @@ const REGELN: readonly { id: string; was: string; muster: RegExp }[] = [
         "|macht\\s+(?:es|das)\\s+(?:irgendwann\\s+)?allein" +
         "|nachfolger\\s+aus" +
         "|bilden\\s+[^.!?;:\\n]{0,20}nachfolger" +
-        "|ersetzt\\s+(?:sie|dich|ihre|deine)" +
+        // Gesamtcheck R-1329 (Nacharbeit 63): mit Wortgrenze — sonst biss „übersetzt sie"
+        // (`uebersetzungen.hilfe`) — und ohne nachgestelltes „nicht": „Die Quellenliste ersetzt sie
+        // nicht" (`ask.export.protocol.argumentationMissing`) verneint eine Ersetzung. Fall C-6.
+        "|\\bersetzt\\s+(?:sie|dich|ihre|deine)\\b(?!\\s+nicht\\b)" +
         "|übernimmt\\s+(?:ihre|deine)\\s+(?:arbeit|stelle|aufgabe)" +
         "|can\\s+do\\s+it\\s+(?:itself|alone|on its own)" +
         "|replaces\\s+you" +
@@ -277,6 +280,27 @@ describe("JOB 1127 · C — jeder verbotene M-Satz beißt", () => {
     expect(pruefeText("de", "m3", "Sie bilden Ihren Nachfolger aus.").map((f) => f.regel)).toEqual([
       "C",
     ]);
+  });
+
+  it("C-6: „ersetzt Sie“ beißt weiter, „übersetzt sie“ und die Verneinung nicht", () => {
+    // Die Zusage bleibt rot, in jeder Schreibweise des Objekts.
+    for (const satz of [
+      "Klarwerk ersetzt Sie.",
+      "Die KI ersetzt dich bei der Übergabe.",
+      "Klara ersetzt Ihre Erfahrung.",
+    ]) {
+      expect(
+        pruefeText("de", "c6", satz).map((f) => f.regel),
+        satz,
+      ).toEqual(["C"]);
+    }
+    // Kein Ersetzen: ein anderes Wort, das „ersetzt“ nur enthält, und eine Verneinung.
+    for (const satz of [
+      "Hier passt du Texte an oder übersetzt sie — ohne Änderung am Code.",
+      "Für diese Antwort liegt keine Argumentationskette vor. Die Quellenliste ersetzt sie nicht.",
+    ]) {
+      expect(pruefeText("de", "c6", satz), satz).toEqual([]);
+    }
   });
 
   it("C-4: die Sprachgrenze hält — die M-Sätze beißen auch auf Englisch und Niederländisch", () => {

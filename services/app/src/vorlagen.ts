@@ -868,15 +868,6 @@ export interface SpaceVorgabe extends SpaceVorgabeEingabe {
   geaendertAm: string;
 }
 
-export const KEINE_VORGABE: SpaceVorgabeEingabe = {
-  verbindlicheVorlageId: null,
-  kategorien: [],
-  pflichtKategorie: false,
-  mindestensTags: 0,
-  tags: [],
-  hinweis: "",
-};
-
 /** Die Kategorie, die die Erfassung einsetzt, wenn niemand eine wählt — sie ist keine Angabe. */
 export const RUECKFALL_KATEGORIE = "Allgemein";
 

@@ -245,6 +245,7 @@ async function mount(): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
 }

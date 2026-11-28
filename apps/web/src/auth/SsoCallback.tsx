@@ -64,9 +64,12 @@ export function SsoCallback(): JSX.Element {
           </span>
           <span className="leading-tight">
             <span className="block text-[15px] font-bold tracking-[2px]">KLARWERK</span>
-            <span className="block font-mono text-klein uppercase tracking-[1.5px] text-white/50">
+            <abbr
+              title={t("fachwort.markenuntertitel")}
+              className="block no-underline font-mono text-klein uppercase tracking-[1.5px] text-white/50"
+            >
               {t("app.subtitle")}
-            </span>
+            </abbr>
           </span>
         </div>
         <div className="max-w-sm">

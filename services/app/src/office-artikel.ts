@@ -18,7 +18,6 @@
 // `users.manage` — dieselben wie an `revise` (`officeSchreibweg`).
 
 import type { EvidenceRecord, KnowledgeObject, KoVersionSnapshot } from "../../knowledge-object";
-import { officeFormatFuer } from "./office-wopi";
 import type { WopiArtikel, WopiArtikelZugriff } from "./office-wopi-host";
 
 // ------------------------------------------------------------------------------------------------
@@ -377,9 +376,4 @@ export function fehlerCode(fehler: unknown): string {
   return fehler && typeof fehler === "object" && "code" in fehler
     ? String((fehler as { code: unknown }).code)
     : "";
-}
-
-/** Die Endung eines Office-Anhangs, wenn er einer ist. */
-export function officeEndung(anhang: { name: string; mime: string }): string | undefined {
-  return officeFormatFuer(anhang.name, anhang.mime)?.endung;
 }

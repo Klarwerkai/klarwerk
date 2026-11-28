@@ -50,6 +50,14 @@ describe("KoService", () => {
     expect(ko.comments).toEqual([]);
   });
 
+  it("liefert auch ohne Kategorie einen lesbaren Bibliothekseintrag", async () => {
+    const input = base();
+    delete input.category;
+    const ko = await service.create(input);
+    expect(ko.category).toBe("");
+    expect((await service.get(ko.id))?.category).toBe("");
+  });
+
   it("FR-KO-01: create ohne sources → sources bleibt leer (Alt-Verhalten)", async () => {
     const ko = await service.create(base());
     expect(ko.sources).toEqual([]);

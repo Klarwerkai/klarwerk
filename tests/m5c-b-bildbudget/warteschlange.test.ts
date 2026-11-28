@@ -135,10 +135,8 @@ describe("JOB 3400 R2 · Laufzeit und Parallelität, an der nativen Arbeit gemes
       gewartet,
       `Die Zeitgrenze hat nicht gegriffen (ohne=${einzeln} ms, mit=${gewartet} ms)`,
     ).toBeLessThan(einzeln);
-    // Und das Bild ist trotzdem da — die Grenze wirft nichts weg, sie hört nur auf zu warten.
-    expect(raus, "Das abgelaufene Bild wurde verändert statt bei seiner Quelle belassen").toBe(
-      quelle,
-    );
+    // Nach Ablauf wird nur das feste Ersatzbild an den Import zurückgegeben.
+    expect(raus).toBe("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==");
     expect(v.bericht.uebersprungen).toEqual(["zeitgrenze"]);
   });
 });

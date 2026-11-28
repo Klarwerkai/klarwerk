@@ -76,11 +76,16 @@ function bau(start: readonly PruefEintrag[]) {
   return { ...q, repo, dienst };
 }
 
-/** Eine Anleitung mit Abschnitt ko-a@1 und ko-b@1, danach erscheint ko-a@2. */
+/**
+ * Eine Anleitung mit Abschnitt ko-a@1 und ko-b@1, danach erscheint ko-a@2. Beide Einträge sind
+ * ausdrücklich „intern" (aufnahme:20260922:gesamt-leserechte, Entscheidung 16: ohne Stufe wären sie
+ * ungeklärt und an der Tür für den Experten verborgen).
+ */
 async function mitNeuererFassung(entschieden = false) {
+  const intern = { confidentiality: "intern" } as const;
   const umgebung = bau([
-    eintrag({ id: "ko-a", title: "Druck einstellen", version: 1 }, [V1]),
-    eintrag({ id: "ko-b", title: "Ventil prüfen", version: 1 }, [{ version: 1 }]),
+    eintrag({ id: "ko-a", title: "Druck einstellen", version: 1, ...intern }, [V1]),
+    eintrag({ id: "ko-b", title: "Ventil prüfen", version: 1, ...intern }, [{ version: 1 }]),
   ]);
   const { dienst } = umgebung;
   let a = await dienst.anlegen({ titel: "Anfahren" }, "anna");
@@ -100,7 +105,10 @@ async function mitNeuererFassung(entschieden = false) {
     a = await dienst.vorlegen(a.id, a.version, ANNA);
     a = await dienst.entscheiden(a.id, a.version, "angenommen", ANNA);
   }
-  const neuere = eintrag({ id: "ko-a", title: "Druck einstellen", version: 2 }, [V1, V2]);
+  const neuere = eintrag({ id: "ko-a", title: "Druck einstellen", version: 2, ...intern }, [
+    V1,
+    V2,
+  ]);
   umgebung.veroeffentliche(neuere);
   return { ...umgebung, anweisung: a };
 }

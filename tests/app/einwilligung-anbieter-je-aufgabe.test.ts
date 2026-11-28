@@ -131,7 +131,7 @@ async function aufbau(jeAufgabe: () => Record<string, string>) {
         url: `/api/klara/sessions/${gebunden["x-klara-session"]}`,
         headers: gebunden,
       })
-    ).json() as { consentState?: string };
+    ).json() as { consentState: string; configurationVersion: string };
   /** Das `confidential`-Argument (Index 3) des letzten `assistText`-Aufrufs. */
   const bit = () => (assistText.mock.calls.at(-1) as unknown[] | undefined)?.[3];
   return { app, zustimmung, assist, status, bit };
@@ -154,16 +154,23 @@ describe("Bens B3 · eine Zustimmung für Anthropic öffnet keine Aufgabe, die a
     await k.app.close();
   });
 
-  it("C · Wechsel von `assist` auf OpenAI NACH der Zustimmung entwertet sie und sperrt", async () => {
+  it("C · nach Anbieterwechsel gilt die erneuerte Standardfreigabe nur für passende Aufgaben", async () => {
     let assistAnbieter = "anthropic";
     const k = await aufbau(() => ({ answer: "anthropic", assist: assistAnbieter }));
     expect(k.zustimmung.statusCode).toBe(200);
-    expect((await k.status()).consentState).toBe("granted");
+    const vorher = await k.status();
+    expect(vorher.consentState).toBe("granted");
     assistAnbieter = "openai";
     await k.assist();
     expect(k.bit()).toBe(true);
-    // Nicht stillschweigend weiter gültig: die Zustimmung ist entwertet, auch für `answer`.
-    expect((await k.status()).consentState).toBe("invalidated");
+    const nachher = await k.status();
+    expect(nachher.configurationVersion).not.toBe(vorher.configurationVersion);
+    expect(nachher.consentState).toBe("granted");
+    await k.assist();
+    expect(k.bit()).toBe(true);
+    assistAnbieter = "anthropic";
+    await k.assist();
+    expect(k.bit()).toBe(false);
     await k.app.close();
   });
 });

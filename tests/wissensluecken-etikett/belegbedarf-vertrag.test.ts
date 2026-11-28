@@ -4,10 +4,9 @@
 //
 // Gemessen am echten Serviceverbund (Bauart `tests/app/job2626-klara-torlage-vertrag.test.ts`):
 //   B1 · nichts in der Vorauswahl              → „wissensobjekt"
-//   B2 · Treffer mit drei zuen Toren            → „freigabe", „stufe", „volltext"
+//   B2 · interner Treffer ohne Freigabe und Volltext → „freigabe", „volltext"
 //   B3 · Treffer mit offenen Toren, keine Antwort → „unbestimmt" (nichts wird geraten)
-//   B4 · nur Vertrauliches getroffen            → „wissensobjekt" — Vertrauliches ist nie Grundlage
-//        und verrät sich auch hier nicht
+//   B4 · vertraulicher oder unklassifizierter Treffer → „wissensobjekt", ohne Trefferdetails
 //   B5 · Zusammenführen und Bearbeiten erhalten den Befund
 //   B6 · nur die berechtigte Sicht trägt ihn; die Häufigkeit reist in beiden Sichten
 //   B7 · die reine Regel, inklusive Reihenfolge
@@ -75,11 +74,11 @@ describe("R-0291 · der Belegbedarf entsteht mit der Lücke", () => {
     expect((await einzigeLuecke())?.belegbedarf).toEqual(["wissensobjekt"]);
   });
 
-  it("B2 · Treffer mit drei zuen Toren → alle drei Torbegriffe, in fester Reihenfolge", async () => {
-    await koAnlegen();
+  it("B2 · interner Treffer ohne Freigabe und Volltext nennt beide Gründe in fester Reihenfolge", async () => {
+    await koAnlegen({ confidentiality: "intern" });
     const out = await services.ask.ask(FRAGE, autorId, "de");
     expect(out.result.answered, "der Prüffall trägt nur als Nicht-Antwort").toBe(false);
-    expect(out.gap?.belegbedarf).toEqual(["freigabe", "stufe", "volltext"]);
+    expect(out.gap?.belegbedarf).toEqual(["freigabe", "volltext"]);
   });
 
   it("B3 · offene Tore und trotzdem keine Antwort → unbestimmt, nichts angedichtet", async () => {
@@ -99,33 +98,38 @@ describe("R-0291 · der Belegbedarf entsteht mit der Lücke", () => {
     expect(out.gap?.belegbedarf).toEqual(["unbestimmt"]);
   });
 
-  it("B4 · nur Vertrauliches getroffen → wissensobjekt; kein Tor verrät das vertrauliche Objekt", async () => {
-    const id = await koAnlegen({ confidentiality: "vertraulich" });
-    const ko = (await services.ko.get(id)) as { confidentiality?: string };
-    expect(ko.confidentiality, "KALIBRIERUNG: die Stufe ist persistiert").toBe("vertraulich");
-    const out = await services.ask.ask(FRAGE, autorId, "de");
-    expect(out.result.answered).toBe(false);
-    expect(out.gap?.belegbedarf).toEqual(["wissensobjekt"]);
-    expect(JSON.stringify(out.gap)).not.toContain(TITEL);
-  });
+  it.each(["vertraulich", null] as const)(
+    "B4 · Einstufung %s lässt keine Trefferdetails in der Lücke erkennen",
+    async (confidentiality) => {
+      const id = await koAnlegen(confidentiality === null ? {} : { confidentiality });
+      const ko = (await services.ko.get(id)) as { confidentiality?: string };
+      expect(ko.confidentiality ?? null, "KALIBRIERUNG: die Stufe ist persistiert").toBe(
+        confidentiality,
+      );
+      const out = await services.ask.ask(FRAGE, autorId, "de");
+      expect(out.result.answered).toBe(false);
+      expect(out.gap?.belegbedarf).toEqual(["wissensobjekt"]);
+      expect(JSON.stringify(out.gap)).not.toContain(TITEL);
+    },
+  );
 });
 
 describe("R-0291 · der Befund bleibt beim Zusammenführen und Bearbeiten erhalten", () => {
   it("B5 · dieselbe Frage zweimal, dann zuweisen und priorisieren → Befund unverändert", async () => {
-    await koAnlegen();
+    await koAnlegen({ confidentiality: "intern" });
     const erste = await services.ask.ask(FRAGE, autorId, "de");
     const zweite = await services.ask.ask(`${FRAGE.toUpperCase()}!!`, autorId, "de");
     expect(zweite.gap?.id, "KALIBRIERUNG: zusammengeführt, nicht neu").toBe(erste.gap?.id);
     let luecke = await einzigeLuecke();
     expect(luecke?.askCount).toBe(2);
-    expect(luecke?.belegbedarf).toEqual(["freigabe", "stufe", "volltext"]);
+    expect(luecke?.belegbedarf).toEqual(["freigabe", "volltext"]);
     const id = luecke?.id ?? "";
     await services.ask.assignGap(id, autorId);
     await services.ask.setGapPriority(id, "hoch", autorId);
     luecke = await einzigeLuecke();
     expect(luecke?.assignee).toBe(autorId);
     expect(luecke?.priority).toBe("hoch");
-    expect(luecke?.belegbedarf).toEqual(["freigabe", "stufe", "volltext"]);
+    expect(luecke?.belegbedarf).toEqual(["freigabe", "volltext"]);
   });
 
   it("B6 · nur die berechtigte Sicht trägt den Befund; die Häufigkeit reist in beiden", async () => {

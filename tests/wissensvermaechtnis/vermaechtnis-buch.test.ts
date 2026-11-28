@@ -28,6 +28,11 @@ function ko(teil: Partial<KnowledgeObject> & { id: string; title: string }): Kno
     type: "best_practice",
     category: "Allgemein",
     tags: [],
+    confidentiality: "intern",
+    history: [],
+    comments: [],
+    sources: [],
+    attachments: [],
     confidence: 80,
     trust: 80,
     status: "validiert",
@@ -39,7 +44,7 @@ function ko(teil: Partial<KnowledgeObject> & { id: string; title: string }): Kno
     asset: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     ...teil,
-  } as KnowledgeObject;
+  };
 }
 
 const NAMEN: Record<string, string> = { "u-jens": "Jens Jäger", "u-lea": "Lea Lindner" };

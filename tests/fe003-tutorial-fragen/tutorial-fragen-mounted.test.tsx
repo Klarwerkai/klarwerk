@@ -62,7 +62,7 @@ let m: Montiert | null = null;
 const sprache = {
   speak: vi.fn(),
   cancel: vi.fn(),
-  getVoices: vi.fn(() => []),
+  getVoices: vi.fn(() => [{ name: "Teststimme", lang: "de-DE", localService: true }]),
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),
 };
@@ -500,6 +500,7 @@ describe("E3 · Weiter/Zurück, Kapitelwahl, Fortschritt, Vorführen, Pause, Wie
     expect(sprache.speak).toHaveBeenCalledTimes(1);
     const gesagt = (sprache.speak.mock.calls[0]?.[0] as Aeusserung).text;
     expect(gesagt).toContain("Frage formulieren");
+    expect((sprache.speak.mock.calls[0]?.[0] as Aeusserung).voice).toEqual(sprache.getVoices()[0]);
     expect((sprache.speak.mock.calls[0]?.[0] as Aeusserung).lang).toBe("de-DE");
     expect(vorlesen.getAttribute("aria-pressed")).toBe("true");
     sprache.cancel.mockClear();

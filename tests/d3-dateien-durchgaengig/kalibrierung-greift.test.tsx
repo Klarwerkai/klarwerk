@@ -71,6 +71,13 @@ describe("JOB 4203 · T10 — die Kalibrierung der Ablesung", () => {
     expect(await frischLesen()).toContain(MARKE);
   });
 
+  it("erfasst jede Kopie in Aussage und Lesetext und stellt beide Stellen wieder her", async () => {
+    document.body.innerHTML = `<p>Aussage: ${MARKE}</p><article>${MARKE} und nochmals ${MARKE}.</article>`;
+    const vorher = document.body.innerHTML;
+    await ablesungKalibrieren(seite, MARKE, frischLesen);
+    expect(document.body.innerHTML).toBe(vorher);
+  });
+
   it("T10b · eine Ablesung, die einen ALTEN Wert festhält, wird ERTAPPT", async () => {
     // Genau der Fehler aus Runde 3: der Wert wurde einmal gelesen und danach nie wieder befragt.
     const eingefroren = await frischLesen();

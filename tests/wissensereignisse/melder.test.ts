@@ -54,6 +54,10 @@ async function anlegen(services: AppServices, titel: string): Promise<string> {
     type: "best_practice",
     category: "Wartung",
     author: "anna",
+    // aufnahme:20260922:gesamt-leserechte (Entscheidung 16): „intern" ausdrücklich — der Melder
+    // meldet nur, was ein Betrachter ohne Freigabeniveau sehen darf; ohne Stufe wäre das Objekt
+    // ungeklärt und nie meldefähig.
+    confidentiality: "intern",
   } as never);
   return ko.id;
 }

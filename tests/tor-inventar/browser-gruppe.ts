@@ -149,6 +149,15 @@ function loeseRelativAuf(vonDatei: string, spezifizierer: string): string | unde
   return undefined;
 }
 
+function istCreateRequireAufruf(knoten: ts.Node): boolean {
+  if (!ts.isCallExpression(knoten)) return false;
+  const fabrik = knoten.expression;
+  return (
+    (ts.isIdentifier(fabrik) && fabrik.text === "createRequire") ||
+    (ts.isPropertyAccessExpression(fabrik) && fabrik.name.text === "createRequire")
+  );
+}
+
 /**
  * Die Modulspezifizierer einer Datei — aus dem Syntaxbaum, nicht aus dem Rohtext.
  *
@@ -159,7 +168,7 @@ function loeseRelativAuf(vonDatei: string, spezifizierer: string): string | unde
  */
 export function spezifizierer(datei: string): string[] {
   const text = readFileSync(datei, "utf8");
-  const baum = ts.createSourceFile(datei, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX);
+  const baum = ts.createSourceFile(datei, text, ts.ScriptTarget.Latest, false);
 
   // ----------------------------------------------------------------------------------------------
   // GANG 1 — die Namen sammeln, unter denen in DIESER Datei `require` erreichbar ist.
@@ -176,15 +185,9 @@ export function spezifizierer(datei: string): string[] {
       ts.isVariableDeclaration(knoten) &&
       ts.isIdentifier(knoten.name) &&
       knoten.initializer !== undefined &&
-      ts.isCallExpression(knoten.initializer)
+      istCreateRequireAufruf(knoten.initializer)
     ) {
-      const ruf = knoten.initializer.expression;
-      const heisst =
-        (ts.isIdentifier(ruf) && ruf.text === "createRequire") ||
-        (ts.isPropertyAccessExpression(ruf) && ruf.name.text === "createRequire");
-      if (heisst) {
-        requireNamen.add(knoten.name.text);
-      }
+      requireNamen.add(knoten.name.text);
     }
     ts.forEachChild(knoten, sammleBindungen);
   };
@@ -200,7 +203,14 @@ export function spezifizierer(datei: string): string[] {
       knoten.moduleSpecifier !== undefined &&
       ts.isStringLiteralLike(knoten.moduleSpecifier)
     ) {
-      gefunden.push(knoten.moduleSpecifier.text);
+      // TypeScript entfernt diese Deklarationen vollständig. Laufzeitimporte und die
+      // Kette zum tatsächlichen Browserstarter bleiben auch bei gemischten Importen erhalten.
+      const nurTypen = ts.isImportDeclaration(knoten)
+        ? knoten.importClause?.isTypeOnly
+        : knoten.isTypeOnly;
+      if (!(nurTypen && istBrowserPaket(knoten.moduleSpecifier.text))) {
+        gefunden.push(knoten.moduleSpecifier.text);
+      }
     } else if (
       ts.isImportEqualsDeclaration(knoten) &&
       ts.isExternalModuleReference(knoten.moduleReference) &&
@@ -210,7 +220,8 @@ export function spezifizierer(datei: string): string[] {
     } else if (ts.isCallExpression(knoten)) {
       const istImport = knoten.expression.kind === ts.SyntaxKind.ImportKeyword;
       const istRequire =
-        ts.isIdentifier(knoten.expression) && requireNamen.has(knoten.expression.text);
+        (ts.isIdentifier(knoten.expression) && requireNamen.has(knoten.expression.text)) ||
+        istCreateRequireAufruf(knoten.expression);
       const erstes = knoten.arguments[0];
       if ((istImport || istRequire) && erstes !== undefined && ts.isStringLiteralLike(erstes)) {
         gefunden.push(erstes.text);

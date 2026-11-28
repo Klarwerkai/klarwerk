@@ -267,8 +267,6 @@ const QS = "docs/onboarding/user-quickstart.md";
 const DP = "docs/demo/stage-1-demo-path.md";
 const FE = "docs/Berater/FE-001_PRUEFPAKET_ARBEITSANLEITUNGEN_2026-09-26.md";
 const KEIN_KNOPF: Record<string, string> = {
-  [`${QS} · nicht eingerichtet`]:
-    "Zustandsname der Supportkarte; die Karte zeigt dazu einen ganzen Satz (help.support.notConfigured), keinen Knopf.",
   [`${QS} · IT-Servicedesk`]:
     "Beispielwert für KLARWERK_SUPPORT_LABEL, vom Betreiber frei gesetzt.",
   [`${DP} · Ventil X bei Überdruck manuell schließen.`]:
@@ -294,13 +292,16 @@ const KEIN_KNOPF: Record<string, string> = {
     "Beschreibung eines Prüffalls, kein Bedienelement.",
   [`${FE} · Entschieden`]:
     "Früherer Name des Standes, im Text ausdrücklich als „bisher“ genannt; heute „Freigegeben“ (ga.stand.entschieden).",
-  [`${FE} · noch nicht freigegeben`]:
-    "Satzteil aus dem angezeigten Bedeutungstext des Standes „Vorgelegt“ (Textmodul fe001).",
+  [`${FE} · Zur Entscheidung vorgelegt, aber noch nicht freigegeben.`]:
+    "Erster Satz der Erklärung für „Vorgelegt“ (fe001.status.bedeutung.vorgelegt).",
   [`${FE} · Inhaltsnachweis`]:
     "Wort aus der Feldbeschriftung „Für Fachleute: Inhaltsnachweis angeben (optional)“ (fe001.auswahl.fachleute).",
 };
 /** Satzteile, die wörtlich in einem angezeigten Text stehen müssen. */
-const SATZTEIL = [`${FE} · noch nicht freigegeben`, `${FE} · Inhaltsnachweis`];
+const SATZTEIL = [
+  `${FE} · Zur Entscheidung vorgelegt, aber noch nicht freigegeben.`,
+  `${FE} · Inhaltsnachweis`,
+];
 
 const SRC = join(process.cwd(), "apps/web/src");
 

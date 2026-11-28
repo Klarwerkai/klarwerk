@@ -727,11 +727,18 @@ describe("JOB 2661 D3: der err-Serializer gibt nur Werte aus geschlossenen Menge
     // überwiegend in Testdateien. Ein Sammler, der nichts findet, ist ein grüner Wächter ohne
     // Aussage; deshalb steht die Untergrenze darunter.
     const gefunden = new Set<string>();
-    const formen = [
-      /new\s+[A-Za-z]*Error\(\s*"([A-Z_]{2,})"/g,
-      /\bcode:\s*"([A-Z_]{2,})"/g,
-      /\bcode\s*=\s*"([A-Z_]{2,})"/g,
-    ];
+    // Ein bloßer Error erhält eine Meldung, PushKonfigurationError einen Variablennamen.
+    // Keiner der beiden Konstruktoren setzt daraus ein .code-Feld.
+    const konstruktorCode =
+      /new\s+(?!Error\(|PushKonfigurationError\()[A-Za-z]+Error\(\s*"([A-Z_]{2,})"/g;
+    expect(
+      [
+        ...'new KoError("NOT_FOUND"); new Error("SERVER_STOPPED"); new PushKonfigurationError("VAPID_PRIVATE_KEY")'.matchAll(
+          konstruktorCode,
+        ),
+      ].map((treffer) => treffer[1]),
+    ).toEqual(["NOT_FOUND"]);
+    const formen = [konstruktorCode, /\bcode:\s*"([A-Z_]{2,})"/g, /\bcode\s*=\s*"([A-Z_]{2,})"/g];
     for (const datei of quellDateien()) {
       // KOMMENTARZEILEN RAUS — gemessen nötig: Der erste Anlauf sammelte `ANNA_MEIER_KRANK` ein,
       // und der Wert stammte aus einem KOMMENTAR in `build-app.ts`, der genau diesen Angriffsfall

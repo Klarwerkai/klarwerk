@@ -45,11 +45,6 @@ export function beispielIstFiktiv(chip: AskExampleChip): boolean {
   return chip.kind === "example";
 }
 
-/** Gibt es unter den angebotenen Beispielen mindestens ein fiktives? */
-export function hatFiktiveBeispiele(chips: readonly AskExampleChip[]): boolean {
-  return chips.some(beispielIstFiktiv);
-}
-
 export const FRAGEN_EINSTIEG_KEYS = {
   erklaerung: "fragenEinstieg.erklaerung",
   ersterSchritt: "fragenEinstieg.ersterSchritt",

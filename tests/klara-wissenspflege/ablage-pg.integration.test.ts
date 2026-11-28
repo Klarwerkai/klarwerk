@@ -21,11 +21,11 @@ describe("AW20 · echte PG-Pflegewirkung auf vorhandener Zeit-/Notizablage", () 
   let nachNotiz: (() => Promise<void>) | undefined;
   beforeAll(async () => {
     container = await new GenericContainer("postgres:16-alpine")
-      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_pflege_test" })
+      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
       .withExposedPorts(5432)
       .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
       .start();
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_pflege_test`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     pool = createPool(url);
     zweiterPool = createPool(url);
     await migrate(pool);
@@ -284,7 +284,7 @@ describe("AW20 · echte PG-Pflegewirkung auf vorhandener Zeit-/Notizablage", () 
       "--username=postgres",
       "--format=custom",
       "--file=/tmp/pflege.dump",
-      "klarwerk_pflege_test",
+      "klarwerk_test",
     ]);
     expect(dump.exitCode, dump.output).toBe(0);
     const sha = await container.exec(["sha256sum", "/tmp/pflege.dump"]);

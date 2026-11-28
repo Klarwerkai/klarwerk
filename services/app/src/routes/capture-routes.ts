@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { FastifyError, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 // JOB 2671 D2: die erprobte Zip-Bibliothek statt eines eigenen Formatlesers (Begruendung bei
 // `pruefeDocxZip`). `jszip` lag bisher nur transitiv unter `mammoth` im Baum — dieser Durchgang
@@ -1017,12 +1018,9 @@ async function unbekannteDokumentkennung(
   return !(await dokumente.bekannt(dokumentId));
 }
 
-function sendeUnbekannteDokumentkennung(reply: FastifyReply): void {
-  reply.code(400).send({
-    error: "DOKUMENT_UNBEKANNT",
-    message:
-      "Diese Dokumentkennung wurde hier nicht vergeben — sie wird weder übernommen noch neu angelegt.",
-  });
+function sendeUnbekannteDokumentkennung(request: FastifyRequest, reply: FastifyReply): void {
+  const error = "DOKUMENT_UNBEKANNT";
+  reply.code(400).send({ error, message: meldung(error, sprache(request)) });
 }
 
 async function anWordDokumentBinden(
@@ -1101,6 +1099,27 @@ async function sichereDraftBilder(payload: DraftPayload): Promise<DraftPayload> 
     );
   }
   return { ...payload, bodyHtml: html + bodyHtml.slice(ende) };
+}
+
+/** Transportbeleg für Clients, die eingebettete Bilder vor und nach der Konvertierung vergleichen. */
+function bildNachweis(original: DraftPayload, gespeichert: DraftPayload) {
+  if (!original.bodyHtml?.includes("data:image/") || !gespeichert.bodyHtml) return {};
+  // Die Reihenfolge gehört zum Nachweis, alle übrigen HTML-Zeichen vergleicht der Client selbst.
+  const hash = (html: string) => {
+    const quellen = Array.from(
+      html.matchAll(
+        /<img\b[^>]*?\ssrc="(data:image\/(?:jpeg|png|gif|webp);base64,[a-zA-Z0-9+/=]+)"/g,
+      ),
+      (m) => m[1],
+    );
+    return createHash("sha256").update(JSON.stringify(quellen)).digest("hex");
+  };
+  return {
+    bildNachweis: {
+      eingang: hash(original.bodyHtml),
+      ausgabe: hash(gespeichert.bodyHtml),
+    },
+  };
 }
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
@@ -1365,7 +1384,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         const ausWord = gestalt.payload.origin === "word_addin";
         const dokumentId = ausWord ? gelieferteDokumentId(rohDokumentId) : undefined;
         if (ausWord && (await unbekannteDokumentkennung(dokumente, dokumentId))) {
-          sendeUnbekannteDokumentkennung(reply);
+          sendeUnbekannteDokumentkennung(request, reply);
           return;
         }
         // N11 (BEN, Nacharbeit 11): auch die Übernahme einer Word-MARKIERUNG ist eine Übernahme aus
@@ -1387,9 +1406,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // entscheidung:14ce8681 (Option A): `fortschreiben` erlaubt dem Dienst, einen unklar
           // gebliebenen ersten Vorgang mit dem geänderten Inhalt fortzuschreiben, statt mit 409 zu
           // antworten. Nur ein ausdrückliches `true` zählt; alles andere ist der Bestandsweg.
+          const bildsicher = await sichereDraftBilder(neuerEntwurf);
           const { draft, angelegt, fortgeschrieben } = await capture.createDraftVorgang(
             // JOB 2703 D2: die Aussage geht kanonisch gekuerzt in die Ablage — eine Regel, ein Ort.
-            mitKanonischerAussage(await sichereDraftBilder(neuerEntwurf)),
+            mitKanonischerAussage(bildsicher),
             user.id,
             vorgangsId,
             { fortschreiben: rohFortschreiben === true },
@@ -1410,13 +1430,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // gespeichert, kein zweiter Eintrag". Der Statuscode allein erreicht sie nicht (der Client
           // liefert nur den Rumpf aus), deshalb steht die Auskunft als TRANSPORTFELD neben dem
           // Entwurf — nur bei einer Wiederholung, nie im gespeicherten Dokument.
-          reply
-            .code(angelegt ? 201 : 200)
-            .send(
-              angelegt
-                ? antwort
-                : { ...antwort, anlage: fortgeschrieben ? "fortgeschrieben" : "bestehend" },
-            );
+          reply.code(angelegt ? 201 : 200).send({
+            ...antwort,
+            ...bildNachweis(neuerEntwurf, bildsicher),
+            ...(angelegt ? {} : { anlage: fortgeschrieben ? "fortgeschrieben" : "bestehend" }),
+          });
         } catch (error) {
           sendError(reply, error);
         }
@@ -1463,7 +1481,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           operationId,
         } = request.body ?? ({} as DocxDraftRequest);
         if (operationId !== undefined && typeof operationId !== "string") {
-          reply.code(400).send({ error: "BAD_REQUEST", message: "operationId muss Text sein." });
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: meldung("DRAFT_OPERATION_ID_INVALID", sprache(request)),
+          });
           return;
         }
         if (typeof data !== "string" || data.length === 0) {
@@ -1477,14 +1498,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (confidentiality !== undefined && !isValidConfidentiality(confidentiality)) {
           reply.code(400).send({
             error: "BAD_REQUEST",
-            message: "confidentiality muss intern, vertraulich oder streng_vertraulich sein.",
+            message: meldung("DRAFT_CONFIDENTIALITY_INVALID", sprache(request)),
           });
           return;
         }
         // R-0169 (Nacharbeit 5): dasselbe Tor wie an POST /api/drafts — vor jeder Umwandlung.
         const dokumentId = gelieferteDokumentId(rohDokumentId);
         if (await unbekannteDokumentkennung(dokumente, dokumentId)) {
-          sendeUnbekannteDokumentkennung(reply);
+          sendeUnbekannteDokumentkennung(request, reply);
           return;
         }
         // Nur `.docx`. Das alte Binärformat `.doc` liest mammoth nicht — eine ehrliche Absage ist
@@ -1845,21 +1866,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             )
           )
             return;
-          reply.code(200).send(
-            await entwurfAusgabe(
-              await capture.continueDraft(
-                request.params.id,
-                // JOB 2703 D2: auch beim Speichern — sonst holte der Speicherweg die ungekuerzte
-                // Rohaussage des Clients an der Anlage vorbei in die Ablage.
-                mitKanonischerAussage(await sichereDraftBilder(payload as DraftPayload)),
-                user.id,
-                {
-                  expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),
-                },
-              ),
-              user,
-            ),
-          );
+          const eingang = payload as DraftPayload;
+          const bildsicher = await sichereDraftBilder(eingang);
+          const draft = await capture.continueDraft(request.params.id, bildsicher, user.id, {
+            expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),
+          });
+          reply
+            .code(200)
+            .send({ ...(await entwurfAusgabe(draft, user)), ...bildNachweis(eingang, bildsicher) });
         } catch (error) {
           if (antwortBeiVeraltetemStand(reply, error)) {
             return;
@@ -2327,17 +2341,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
                 reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
                 return;
               }
-              // JOB 2703 D2: der Einreichen-Weg schreibt den Stand mit — auch hier kanonisch gekuerzt,
-              // sonst kaeme die Rohaussage der Vordertuer beim Einreichen ins Wissensobjekt.
-              await capture.continueDraft(
-                request.params.id,
-                mitKanonischerAussage(gestalt.payload),
-                user.id,
-                {
-                  expectedUpdatedAt,
-                  promotion,
-                },
-              );
+              // Erst nach dem Zusammenführen mit dem gespeicherten Entwurf steht auch bei einem
+              // Teilpatch fest, ob das Aussagefeld vom Menschen oder aus dem Dokument stammt.
+              await capture.continueDraft(request.params.id, gestalt.payload, user.id, {
+                expectedUpdatedAt,
+                promotion,
+              });
             } else if (expectedUpdatedAt !== undefined) {
               await capture.requireFresh(request.params.id, expectedUpdatedAt);
             }

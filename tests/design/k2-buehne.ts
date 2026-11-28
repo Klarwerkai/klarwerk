@@ -2,8 +2,8 @@
 // JOB 3057 · K2 — DIE GEMEINSAME BUEHNE der Chromium-Messungen der Erfassen-Flaeche.
 // ================================================================================================
 //
-// Kein Test, ein Helfer. Er laedt das AUSGELIEFERTE `apps/web/public/word-addin/taskpane.html`
-// (Markup, Stil und Inline-Skript — kein Nachbau) in Chromium bei 360 px Breite, bedient office.js
+// Die Bühne verbindet das Panel-Markup einschließlich seiner Kalibrierungen mit den gebauten
+// Modulen und Styles der Word-Leiste. In Chromium bei 360 px Breite bedient sie office.js
 // mit einer Attrappe (Markierung von aussen setzbar, `DocumentSelectionChanged` ausloesbar,
 // `Word.run` fuer den Dokument-Weg) und die `/api/*`-Aufrufe des Panels mit festen Antworten:
 // `/api/auth/me` liefert einen Namen, `/api/reasoner/status` den ruhigen Hausstand, `POST
@@ -16,13 +16,13 @@
 // `oeffnen()` derselben Seite mit anderem Plan.
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { panelQuelleAus } from "../support/panelquelle";
 
 export const WURZEL = resolve(process.cwd());
 export const TASKPANE = resolve(WURZEL, "apps/web/public/word-addin/taskpane.html");
-/** Das Zielbild vom 04.09.2026 (Pedi: „Gut."), im Steuerungsordner. */
-export const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klara/Erfassen.dc.html";
+/** Versionierte Kopie des Zielbilds vom 04.09.2026. */
+export const ZIELBILD = join(WURZEL, "tests/design/vorlagen/klara/Erfassen.dc.html");
 export const ORIGIN = "http://klara.test";
 export const SEITE_PFAD = "/word-addin/taskpane.html";
 /** JOB 3667: die zweite ausgelieferte Datei des Fensters (Block KW-RUECKWEG). */
@@ -40,7 +40,7 @@ export const NAME = "Pedi";
 export const HTML = panelQuelleAus(TASKPANE);
 export const RUECKWEG = readFileSync(RUECKWEG_DATEI, "utf8");
 export const zielbildDa = existsSync(ZIELBILD);
-export const ZIEL = zielbildDa ? readFileSync(ZIELBILD, "utf8") : "";
+export const ZIEL = readFileSync(ZIELBILD, "utf8");
 const ZIEL_ZEILEN = ZIEL.split("\n");
 
 // ---- Das Woerterbuch des Panels, aus dem Quelltext gelesen (wie w1-klara-vertrauenskopf) ---------
@@ -153,6 +153,8 @@ export interface Route {
   abort(grund?: string): Promise<void>;
 }
 export interface Seite {
+  click(selector: string): Promise<void>;
+  setViewportSize(size: { width: number; height: number }): Promise<void>;
   route(url: string, handler: (route: Route) => Promise<void>): Promise<void>;
   on(ereignis: string, handler: (e: { message?: string }) => void): void;
   goto(url: string, opts?: Record<string, unknown>): Promise<unknown>;
@@ -349,6 +351,18 @@ export async function buehneBauen(teil: Partial<Plan> = {}): Promise<Buehne> {
       await route.fulfill({ status: 200, body: "" });
       return;
     }
+    // Auch die sichtbare Navigation und ihre Styles kommen aus dem ausgelieferten Panel.
+    const asset = /^\/word-addin\/([A-Za-z0-9_-]+\.(js|css))$/.exec(url.pathname);
+    if (url.origin === ORIGIN && req.method() === "GET" && asset?.[1]) {
+      const datei = join(WURZEL, "apps/web/dist/word-addin", asset[1]);
+      const vorhanden = existsSync(datei);
+      await route.fulfill({
+        status: vorhanden ? 200 : 404,
+        body: vorhanden ? readFileSync(datei, "utf8") : "",
+        contentType: asset[2] === "css" ? "text/css" : "application/javascript",
+      });
+      return;
+    }
     const json = (status: number, body: unknown) =>
       route.fulfill({ status, body: JSON.stringify(body), contentType: "application/json" });
     if (url.pathname === "/api/auth/me") {
@@ -426,7 +440,9 @@ export async function buehneBauen(teil: Partial<Plan> = {}): Promise<Buehne> {
         erwartet,
         { timeout: 30_000 },
       );
-      await lies<boolean>(KLICK, "#tab-capture");
+      await seite.click(".mini-menu-button");
+      await seite.click("#mini-menu-functions");
+      await seite.click('[data-mini-tool="capture"]');
       await seite.waitForFunction(
         fn("() => document.getElementById('section-capture').className === ''"),
         undefined,

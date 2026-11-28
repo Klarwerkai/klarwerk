@@ -239,6 +239,7 @@ async function belegflaechenMarkup(): Promise<string> {
       );
       await flush();
     });
+    await act(() => vi.dynamicImportSettled());
     await act(flush);
 
     // „Mehr" aufklappen und den Abschnitt „Belege" öffnen — der Weg, den ein Mensch geht.

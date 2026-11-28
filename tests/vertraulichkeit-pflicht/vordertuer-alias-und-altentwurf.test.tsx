@@ -124,13 +124,33 @@ const flush = async (): Promise<void> => {
   }
 };
 
+// JOB 3611 (`tests/adresse-ist-kein-pfad`): ZWEI Sondenknoten und ZWEI Helfer — Route und
+// Abfrageteil getrennt, keine zusammengesetzte Zeichenkette.
 function Adresse(): JSX.Element {
   const ort = useLocation();
-  return createElement("span", { "data-testid": "adresse" }, `${ort.pathname}${ort.search}`);
+  return createElement(
+    "span",
+    null,
+    createElement("span", { key: "pfad", "data-testid": "ort-pfad" }, ort.pathname),
+    createElement("span", { key: "abfrage", "data-testid": "ort-abfrage" }, ort.search),
+  );
 }
 
-function adresse(): string {
-  return container.querySelector('[data-testid="adresse"]')?.textContent ?? "";
+/** Die Route allein — sie wirft, sobald ihr Knoten einen Abfrageteil trägt. */
+function routenPfad(): string {
+  const wert = container.querySelector('[data-testid="ort-pfad"]')?.textContent ?? "";
+  if (wert.includes("?")) {
+    throw new Error(`Der Pfadknoten trägt einen Abfrageteil: „${wert}"`);
+  }
+  return wert;
+}
+
+/** Die volle Adresse — beide Teile getrennt. */
+function adresse(): { pfad: string; abfrage: string } {
+  return {
+    pfad: routenPfad(),
+    abfrage: container.querySelector('[data-testid="ort-abfrage"]')?.textContent ?? "",
+  };
 }
 
 /** Auf einen Anker WARTEN — jede Seite wird nachgeladen (`routes.tsx`, `lazy`). */
@@ -142,7 +162,9 @@ async function warteAuf<T extends Element>(name: string, frist = 20_000): Promis
       return el;
     }
     if (Date.now() > ende) {
-      throw new Error(`Anker „${name}“ kam nicht innerhalb von ${frist} ms. Adresse: ${adresse()}`);
+      throw new Error(
+        `Anker „${name}“ kam nicht innerhalb von ${frist} ms. Adresse: ${JSON.stringify(adresse())}`,
+      );
     }
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));
@@ -242,13 +264,15 @@ describe("Q3 (b) · /erfassen/vordertuer führt zum Blatt, nicht nach /start", (
   it("A0 — KALIBRIERUNG: eine Adresse ohne Router-Zeile landet auf /start (so lief der Alias bisher)", async () => {
     // Ohne diesen Fall wäre A1 auch dann grün, wenn der `*`-Zweig gar nicht mehr umleitete.
     await montiere("/erfassen/vordertuer-gibt-es-nicht");
-    expect(adresse()).toBe("/start");
+    expect(routenPfad()).toBe("/start");
+    expect(adresse().abfrage).toBe("");
   });
 
   it("A1 — der Alias zeigt das Blatt und bleibt auf seiner Adresse", async () => {
     await montiere("/erfassen/vordertuer");
     await warteAuf("blatt-huelle");
-    expect(adresse()).toBe("/erfassen/vordertuer");
+    expect(routenPfad()).toBe("/erfassen/vordertuer");
+    expect(adresse().abfrage).toBe("");
   });
 
   it("A2 — der Alias trägt `?draft=<id>`: genau dieser Entwurf steht im Blatt", async () => {
@@ -257,7 +281,7 @@ describe("Q3 (b) · /erfassen/vordertuer führt zum Blatt, nicht nach /start", (
     const titel = await warteAuf<HTMLInputElement>("blatt-titel");
     await flush();
     expect(titel.value).toBe(TITEL);
-    expect(adresse()).toBe(`/erfassen/vordertuer?draft=${id}`);
+    expect(adresse()).toEqual({ pfad: "/erfassen/vordertuer", abfrage: `?draft=${id}` });
   });
 });
 

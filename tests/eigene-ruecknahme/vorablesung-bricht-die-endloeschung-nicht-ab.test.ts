@@ -187,8 +187,11 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
     expect(rufeInDerTransaktion).toBe(0);
 
     const meldungen = konsole.mock.calls.filter((args) => String(args[0]).includes("Rücknahme"));
-    expect(meldungen).toHaveLength(1);
-    expect((meldungen[0]?.[1] as Error).message).toBe("Verbindung verloren");
+    // Der Fehlerkanal nennt die Ursache und Klasse. Der möglicherweise sensible Fehlertext
+    // oder Stack darf auch nicht in einem zusätzlichen Konsolenargument erscheinen.
+    expect(meldungen).toEqual([
+      [`[kos] eigene Rücknahme vor der Endlöschung nicht ermittelbar (${a.id}): Error`],
+    ]);
   });
 
   // Dieser Fall läuft bewusst gegen die VORGABEFRIST der gebauten Komposition (2000 ms) und nicht
@@ -209,13 +212,16 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
       return new Promise<string | null>(() => undefined);
     };
 
+    const zeitgeber = vi.spyOn(globalThis, "setTimeout");
     expect(await laeuftDurch(services.ko.purgeTrashed(a.id, "admin"), 8_000)).toBe("fertig");
+    expect(zeitgeber.mock.calls.some(([, frist]) => frist === 2_000)).toBe(true);
     await wirkungIstVollstaendig(services, a.id, eintrag.id);
     expect(rufeInDerTransaktion).toBe(0);
 
     const meldungen = konsole.mock.calls.filter((args) => String(args[0]).includes("Rücknahme"));
-    expect(meldungen).toHaveLength(1);
-    expect((meldungen[0]?.[1] as Error).message).toContain("2000 ms");
+    expect(meldungen).toEqual([
+      [`[kos] eigene Rücknahme vor der Endlöschung nicht rechtzeitig ermittelbar (${a.id}): Error`],
+    ]);
   }, 30_000);
 
   // Die Frist ist übergebbar — sonst wäre sie im Betrieb nicht kalibrierbar und in Tests nur mit

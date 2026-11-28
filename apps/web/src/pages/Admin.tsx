@@ -82,7 +82,7 @@ import { useRole } from "../app/RoleContext";
 import { ALL_ITEMS, ROLES, type Role, anzeigeNameKey, canSee, roleAllows } from "../app/navigation";
 import { isAdminDetailId, verwaltungsPfadTeile } from "../app/navigationGliederung";
 import { HelpTip } from "../components/HelpTip";
-import { Fehlerbox } from "../components/einstellungen/Abfragehuelle";
+import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { UebersetzungenDetail } from "../components/einstellungen/UebersetzungsPflege";
@@ -1016,11 +1016,9 @@ export function Admin(): JSX.Element {
                   />
                 ))}
               </Zeilenkarte>
-              {/* R-0756: offene und erledigte Prüfaufträge je Person — dieselbe Ableitung wie in
-                  der Auswertung (`auftraegeJePerson`). Erst sichtbar, wenn die Übersicht antwortet. */}
-              {pruefOverview.data ? (
-                <>
-                  <Kicker>{t("prueferzuweisung.person.titel")}</Kicker>
+              <Kicker>{t("prueferzuweisung.person.titel")}</Kicker>
+              <Abfragehuelle abfrage={pruefOverview} testId="huelle-pruefauftraege">
+                {() => (
                   <Zeilenkarte testId="flaeche-pruefauftraege">
                     {auftragsZeilen.length === 0 ? (
                       <Zeile label={t("prueferzuweisung.person.leer")} />
@@ -1035,8 +1033,8 @@ export function Admin(): JSX.Element {
                       ))
                     )}
                   </Zeilenkarte>
-                </>
-              ) : null}
+                )}
+              </Abfragehuelle>
             </>
           ) : null}
 

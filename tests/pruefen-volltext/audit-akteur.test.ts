@@ -130,12 +130,41 @@ describe("JOB 3290 B/K · der Weg und die Messfläche funktionieren", () => {
   });
 
   it("K2 · der Actor-Filter des Protokolls funktioniert überhaupt — belegt an `ask.query`", async () => {
-    // Ohne diesen Fall wäre jedes leere Ergebnis unten mehrdeutig: fehlender Eintrag ODER kaputter
-    // Filter. `ask.query` trägt den Aufrufer seit FR-ANA-02 und stammt aus DERSELBEN Anfrage, die
-    // die Lücke erzeugt hat.
     const { app, admin } = await lage([]);
+    const frage = "Welches Drehmoment gilt für Ventil V12?";
+    const angelegt = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: admin.headers,
+      payload: {
+        title: "Drehmoment Ventil V12",
+        statement: "Das Drehmoment für Ventil V12 beträgt 20 Nm.",
+        type: "technik",
+        confidentiality: "intern",
+        neededValidations: 1,
+      },
+    });
+    expect(angelegt.statusCode).toBe(201);
+    const id = angelegt.json().id as string;
+    const freigabe = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: admin.headers,
+      payload: { action: "rate", verdict: "up" },
+    });
+    expect(freigabe.statusCode).toBe(200);
+    const antwort = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: admin.headers,
+      payload: { question: frage },
+    });
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json().result.sources).toContain(id);
+    // Die sichtbare Quelle macht diesen ask.query-Beleg in der Leseransicht zuordenbar.
+    // Die unbeantwortete Frage aus lage() trägt nur eine Bestandsbilanz ohne sichtbares Bezugsziel.
     const meine = await protokoll(app, admin.headers, { action: "ask.query", actor: admin.id });
-    expect(meine.length).toBeGreaterThan(0);
+    expect(meine.map((eintrag) => eintrag.target)).toEqual([id]);
     expect(await protokoll(app, admin.headers, { action: "ask.query", actor: "system" })).toEqual(
       [],
     );

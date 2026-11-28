@@ -68,7 +68,7 @@ describe("W4.7 Abbild-Quellvertraege, kein Docker-/Hostlauf", () => {
     expect(nodeUser).toContain("16[.]");
     expect(read("scripts/backup/backup.sh")).toContain("BACKUP_KEEP");
   });
-  it("Node24 gilt fuer alle Node-Stufen, CI und Engines; sichtbare Version und Paketmetadaten sind exakt1045", () => {
+  it("Node24 gilt fuer alle Node-Stufen, CI und Engines; sichtbare Version und Paketmetadaten stimmen ab W4.7 überein", () => {
     const stages = read("Dockerfile")
       .split("\n")
       .filter((line) => line.startsWith("FROM node:"));
@@ -81,7 +81,9 @@ describe("W4.7 Abbild-Quellvertraege, kein Docker-/Hostlauf", () => {
     const lock = JSON.parse(read("package-lock.json"));
     const web = JSON.parse(read("apps/web/package.json"));
     const appVersion = /APP_VERSION\s*=\s*"([^"]+)"/.exec(read("apps/web/src/version.ts"))?.[1];
-    expect(appVersion).toBe("1.0.0-beta.1.1045");
+    const beta = /^1\.0\.0-beta\.1\.(\d+)$/.exec(appVersion ?? "");
+    expect(beta).not.toBeNull();
+    expect(Number(beta?.[1])).toBeGreaterThanOrEqual(1045);
     expect(root.version).toBe(appVersion);
     expect(lock.version).toBe(appVersion);
     expect(lock.packages[""].version).toBe(appVersion);

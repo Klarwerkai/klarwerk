@@ -421,11 +421,11 @@ describe("Branchen-PoC · die drei Arbeitsgeschichten mit getrennten Rollen", ()
 
     // Folgeprüfung A: inhaltlich weiter gültig → bestätigt für genau den gesehenen Stand.
     const fallA = faelle.find((f) => f.koId === poc.a.id) as Fall;
-    const bestaetigt = await put(app, erik, `/api/kos/${poc.a.id}`, {
-      action: "revalidate",
-      stand: fallA.stand,
-      fassung: fallA.version,
-    });
+    const bestaetigungA = { action: "revalidate", stand: fallA.stand, fassung: fallA.version };
+    const alsExperte = await put(app, erik, `/api/kos/${poc.a.id}`, bestaetigungA);
+    expect(alsExperte.statusCode).toBe(403);
+    expect(alsExperte.json().error).toBe("PROPOSAL_REQUIRED");
+    const bestaetigt = await put(app, ada, `/api/kos/${poc.a.id}`, bestaetigungA);
     expect(bestaetigt.statusCode, bestaetigt.body).toBe(200);
 
     // Folgeprüfung B: an Fassung 2 angepasst → neue Fassung, dann für sie bestätigt.
@@ -466,7 +466,7 @@ describe("Branchen-PoC · die drei Arbeitsgeschichten mit getrennten Rollen", ()
     };
     expect(bUebernommen.statement).toBe(p.koAnlageBNeu);
     expect(bUebernommen.version).toBe(fallB.version + 1);
-    const alteFassung = await put(app, erik, `/api/kos/${poc.b.id}`, {
+    const alteFassung = await put(app, ada, `/api/kos/${poc.b.id}`, {
       action: "revalidate",
       stand: fallB.stand,
       fassung: fallB.version,
@@ -474,7 +474,7 @@ describe("Branchen-PoC · die drei Arbeitsgeschichten mit getrennten Rollen", ()
     expect(alteFassung.statusCode, "die alte Fassung zeichnet die neue nicht frei").toBe(409);
     const neueFassung = (await folgefaelle(app, erik)).find((f) => f.koId === poc.b.id) as Fall;
     expect(neueFassung.version).toBe(fallB.version + 1);
-    const bestaetigtB = await put(app, erik, `/api/kos/${poc.b.id}`, {
+    const bestaetigtB = await put(app, ada, `/api/kos/${poc.b.id}`, {
       action: "revalidate",
       stand: neueFassung.stand,
       fassung: neueFassung.version,

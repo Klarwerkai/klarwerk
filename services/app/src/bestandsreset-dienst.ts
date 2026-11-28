@@ -6,6 +6,7 @@ import {
   type Queryable,
   SQL_SPERRE_WIRD_GEHALTEN,
   bestandsresetBefund,
+  clientQueryable,
   fuehreBestandsresetAus,
   poolQueryable,
 } from "../../db-tx";
@@ -161,7 +162,7 @@ export function pgBestandsresetDienst(rohPool: Pool): BestandsresetDienst {
         // Dieselbe Vorschau wie im GET, aber auf dem Client der Löschtransaktion: unter der
         // exklusiven Sperre kann kein Schreiber mehr dazwischen.
         vorDemLoeschen: async (client) => {
-          const jetzt = await vorschauAus(client as unknown as Queryable);
+          const jetzt = await vorschauAus(clientQueryable(client));
           if (jetzt.kennung !== erwartet) {
             throw new BestandsresetVorschauVeraltetError();
           }

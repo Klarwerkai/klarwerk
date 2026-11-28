@@ -160,8 +160,10 @@ describe("WP-D7 Befund 4: ehrliches Ladefeedback beim Einreichen", () => {
     expect(occurrences).toBeGreaterThanOrEqual(2);
     expect(src).toContain('t("capture.submitBusy")');
     // Spinner an den Einreichen-Knöpfen (Loader2 animate-spin) beim Pending-Zustand.
-    expect(src).toContain("submit.isPending ? (");
-    expect(src).toContain('<Loader2 size={15} className="animate-spin" />');
+    const ladezustaende = src.match(
+      /submit\.isPending\s*\?\s*\(\s*<>\s*<Loader2\b[^>]*className="animate-spin"[^>]*\/>\s*\{submitBusyLabel\}/g,
+    );
+    expect(ladezustaende).toHaveLength(2);
   });
 
   it("der Busy-Text existiert in DE/EN/NL", () => {

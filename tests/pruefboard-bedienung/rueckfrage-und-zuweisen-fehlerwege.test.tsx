@@ -467,14 +467,14 @@ describe("R2 · scheitert schon die Begründung, wird nichts als gespeichert gem
 
 describe("Z1 · Zuweisen meldet sich", () => {
   it("Fehlschlag: eine Fehlermeldung mit dem Servertext", async () => {
-    antworten((b) => {
-      if (b.action === "assign") throw new ApiError(403, "forbidden", "Keine Berechtigung.");
-    });
+    vi.mocked(endpoints.ko.assign).mockRejectedValueOnce(
+      new ApiError(403, "forbidden", "Keine Berechtigung."),
+    );
     brett = await mounteBrett({ zeilen: [zeile()] });
     await klick(finde(brett.container, '[data-testid="pruefen-menue-karte"]'));
     await waehlen(zuweisenFeld(brett.container), "u1");
 
-    expect(putFolge()).toEqual([{ action: "assign", userIds: ["u1"] }]);
+    expect(vi.mocked(endpoints.ko.assign).mock.calls).toEqual([[zeile().id, ["u1"]]]);
     expect(stand.toasts).toEqual([
       {
         art: "error",

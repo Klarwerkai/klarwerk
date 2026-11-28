@@ -186,10 +186,10 @@ describe("gesamt-papierkorb · der Lauf ist im Server verdrahtet und sein Log is
   it("F6 · beim Start und im Takt des Papierkorb-Sweeps", () => {
     // Einmal direkt beim Start, einmal als `runSweep` des periodischen Schedulers.
     expect(server).toMatch(
-      /services\.capture\s*\.runDraftTrashSweep\(entwurfSweepFehler\)\s*\.then/,
+      /lifecycle\s*\.verfolge\(services\.capture\.runDraftTrashSweep\(entwurfSweepFehler\)\)\s*\.then\(entwuerfeEntfernt\("beim Start"\)\)/,
     );
     expect(server).toMatch(
-      /runSweep: \(\) => services\.capture\.runDraftTrashSweep\(entwurfSweepFehler\)/,
+      /runSweep: lifecycle\.lauf\(\(\) => services\.capture\.runDraftTrashSweep\(entwurfSweepFehler\)\)/,
     );
   });
 

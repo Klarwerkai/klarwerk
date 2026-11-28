@@ -23,8 +23,27 @@ const kandidatPfad = join(
 const { FE003_DATEIEN, oberflaechenBindung, pruefeBauvorbereitung, saubererBaustand } =
   await import(pathToFileURL(kandidatPfad).href);
 
+// Die Inselstrecke braucht launchd, die vollständige Kundeninstallation ihren eigenen
+// Compose-Stack. Beide haben einen obligatorischen Job mit demselben Git-Checkout.
+const FACHLAEUFE = [
+  {
+    key: "insel",
+    file: "tests/insel-auslieferung/release-update-rueckfall.integration.test.ts",
+    job: "integration-insel-macos",
+    env: "KLARWERK_CI_INSEL",
+  },
+  {
+    key: "kundeninstallation",
+    file: "tests/neuinstallation/kundeninstallation-strecke.integration.test.ts",
+    job: "integration-kundeninstallation",
+    env: "KLARWERK_CI_KUNDENINSTALLATION",
+  },
+];
+
 export function pgSelection(paths) {
-  return integrationSelection(paths);
+  return integrationSelection(paths).filter(
+    (path) => !FACHLAEUFE.some(({ file }) => file === path),
+  );
 }
 function assertFehlgeschlageneTests(report, tests, root) {
   assert(report && typeof report === "object" && report.success === false);
@@ -184,10 +203,20 @@ export function runPgSelection(root, base, output) {
   );
   const commit = git(root, "rev-parse", "HEAD");
   const tree = git(root, "rev-parse", "HEAD^{tree}");
-  const files = pgSelection(
-    git(root, "diff", "--name-only", "--diff-filter=ACMR", base, commit)
-      .split("\n")
-      .filter(Boolean),
+  const changedPaths = git(root, "diff", "--name-only", "--diff-filter=ACMR", base, commit)
+    .split("\n")
+    .filter(Boolean);
+  const files = pgSelection(changedPaths);
+  const fachnachweise = Object.fromEntries(
+    FACHLAEUFE.filter(({ file }) => changedPaths.includes(file)).map(({ key, file, job, env }) => [
+      key,
+      {
+        file,
+        job,
+        commit: process.env[`${env}_COMMIT`] ?? null,
+        status: process.env[`${env}_ERGEBNIS`] ?? null,
+      },
+    ]),
   );
   mkdirSync(output, { recursive: true });
   const result = {
@@ -195,7 +224,8 @@ export function runPgSelection(root, base, output) {
     tree,
     base,
     files,
-    applicable: files.length > 0,
+    ...fachnachweise,
+    applicable: files.length > 0 || Object.keys(fachnachweise).length > 0,
     success: false,
     startedAt: new Date().toISOString(),
     runs: [],
@@ -347,8 +377,18 @@ export function runPgSelection(root, base, output) {
           .join(", ")}`;
       }
     }
+    for (const nachweis of Object.values(fachnachweise)) {
+      assert.equal(nachweis.commit, commit, `${nachweis.job}: anderer oder fehlender Checkout`);
+      assert.equal(nachweis.status, "success", `${nachweis.job}: kein erfolgreicher Lauf`);
+    }
+    if (result.applicable && files.length === 0) {
+      result.success = true;
+      result.exit = 0;
+    }
   } catch (error) {
-    result.error = error.message;
+    result.error = [result.error, error.message].filter(Boolean).join("\n");
+    result.success = false;
+    result.exit = 1;
   }
   if (logBegonnen) result.logSha256 = hash(readFileSync(logPath));
   result.endedAt = new Date().toISOString();

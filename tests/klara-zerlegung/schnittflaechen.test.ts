@@ -27,10 +27,11 @@ import {
 import {
   type Block,
   CSS_DATEI,
+  EXTERNE_PANELSKRIPTE,
   JS_DATEI,
-  MARKE_DATEI,
+  OFFICE_JS,
   RUECKWEG_DATEI,
-  WV_DATEI,
+  STILBLAETTER,
   bloeckeVon,
   bytes,
   echterSchnitt,
@@ -130,55 +131,20 @@ describe("JOB 3014 · A — die Messung hat überhaupt etwas in der Hand", () =>
 // ------------------------------------------------------------------------------------------------
 
 describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
-  it("B1 · KEIN Inline-Stil, KEIN Inline-Skript; EINE fremde und ZWEI eigene Skriptquellen, EIN Stilblatt", () => {
+  it("B1 · KEIN Inline-Stil, KEIN Inline-Skript; nur Office.js extern, alle lokalen Skripte und Stile mit Fassungskennung", () => {
     expect(inline(bloecke, "style")).toHaveLength(0);
     expect(inline(bloecke, "script")).toHaveLength(0);
     const extern = bloecke.filter((b) => b.extern !== null).map((b) => b.extern);
-    // Office.js vom Microsoft-CDN — die einzige FREMDE Ressource, und genau sie steht in der
-    // Ersatz-CSP (`security-headers.ts`, `script-src`). Ein zweiter fremder Eintrag hier wäre eine
-    // Erweiterung der Angriffsfläche und muss auffallen.
-    //
-    // JOB 3667 (14.09.2026): dazu kam `rueckweg.js` (Block KW-RUECKWEG). R-1611: dazu kommt
-    // `taskpane.js`, das frühere Inline-Skript, an genau seiner Stelle. Beide relativ, gleicher
-    // Ursprung, von `script-src 'self'` gedeckt; die Cachekennung ist derselbe Fassungsplatzhalter,
-    // den der Server ins Meta stempelt (`stempleFassung`), also die Zahl des Manifests.
-    //
-    // ZERLEGUNGSAUFTRAG BESTANDSBLICK: eine DRITTE eigene Quelle mit denselben zwei Eigenschaften.
-    // Der Block KW-MARKE (das Ende des Skripts) wohnt in `marke.js`, geladen UNMITTELBAR NACH
-    // `taskpane.js` — er läuft also an derselben Stelle wie vorher. Anlass ist B3 unten: die
-    // Schranke an `taskpane.js` wird nicht angehoben.
-    //
-    // AUFTRAG firmenwoerterbuch: eine VIERTE eigene Quelle nach derselben Regel — der Block
-    // KW-BEGRIFFE wohnt in `begriffe.js` (relativ, gleichherkünftig). Grund ist wieder B3: das
-    // Fensterskript wird nicht vergrössert. Sie steht im KOPF hinter office.js und schliesst sich
-    // erst bei DOMContentLoaded an (Begründung im Kopf von `begriffe.js`).
-    //
-    // AUFTRAG gesamt-dokumenterzeugung (Pedi 28.09.): eine FÜNFTE eigene Quelle nach derselben
-    // Regel — der Block KW-ANLEITUNG wohnt in `anleitung.js` (relativ, gleichherkünftig), im Kopf
-    // direkt hinter `begriffe.js`. Grund ist wieder B3.
-    //
-    // AUFTRAG „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708): eine
-    // weitere nach der Regel von `marke.js` (in der Integration beider die SECHSTE) — der Block
-    // KW-WORDVERGLEICH, bis dahin das Ende von `taskpane.js`, wohnt in `wortvergleich.js`, geladen
-    // UNMITTELBAR NACH `taskpane.js` und vor `marke.js`. Grund ist wieder B3: der Auftrag baut an
-    // diesem Block weiter.
+    // Der einzige fremde Ursprung ist das Office-CDN. Alle lokalen Dateien tragen die vom
+    // Server eingesetzte Fassung, und die Reihenfolge erhält die Modulabhängigkeiten.
     expect(extern).toEqual([
-      "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
-      `begriffe.js?v=${FASSUNG}`,
-      `anleitung.js?v=${FASSUNG}`,
-      // AUFTRAG klara-office-mac-maskottchen (KLARA-OFFICE-02): der Block KW-BEGLEITER (dieses
-      // Fenster als Office-Adapter der Begleitapp) wohnt in `begleiter.js`, im Kopf direkt hinter
-      // `anleitung.js` — nach der Regel von `anleitung.js` (relativ, gleichherkünftig).
-      `begleiter.js?v=${FASSUNG}`,
-      `${RUECKWEG_DATEI}?v=${FASSUNG}`,
-      `${JS_DATEI}?v=${FASSUNG}`,
-      `${WV_DATEI}?v=${FASSUNG}`,
-      `${MARKE_DATEI}?v=${FASSUNG}`,
+      OFFICE_JS,
+      ...EXTERNE_PANELSKRIPTE.map((name) => `${name}?v=${FASSUNG}`),
     ]);
     const stilblaetter = [
       ...lieferung.seite.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
     ].map((m) => m[1]);
-    expect(stilblaetter).toEqual([`${CSS_DATEI}?v=${FASSUNG}`]);
+    expect(stilblaetter).toEqual(STILBLAETTER.map((name) => `${name}?v=${FASSUNG}`));
   });
 
   it("B2 · die Verteilung: das Skript trägt den weit überwiegenden Teil des Fensters", () => {

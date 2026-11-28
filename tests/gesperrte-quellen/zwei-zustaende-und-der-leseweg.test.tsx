@@ -167,9 +167,7 @@ async function dokument(
       : {}),
   } as never);
   const id = (ko as { id: string }).id;
-  if (tore.stufe) {
-    await services.ko.setConfidentiality(id, tore.stufe, autorId);
-  }
+  await services.ko.setConfidentiality(id, tore.stufe ?? "intern", autorId);
   if (tore.validiert) {
     await services.validation.adminValidate(id, autorId);
   }

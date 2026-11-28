@@ -58,7 +58,7 @@ function alleQuelldateien(unter = ""): readonly string[] {
     const rel = unter === "" ? eintrag : `${unter}/${eintrag}`;
     if (statSync(join(WURZEL, rel)).isDirectory()) {
       aus.push(...alleQuelldateien(rel));
-    } else if (/\.tsx?$/.test(rel)) {
+    } else if (/\.tsx?$/.test(rel) && !/\.(?:test|spec)\.tsx?$/.test(rel)) {
       aus.push(rel);
     }
   }

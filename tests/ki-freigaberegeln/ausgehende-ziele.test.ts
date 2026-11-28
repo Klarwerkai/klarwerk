@@ -77,9 +77,21 @@ const VERBINDUNGSMUSTER: readonly RegExp[] = [
 
 const HOST_MUSTER = /https?:\/\/([a-z0-9-]+(?:\.[a-z0-9-]+)+)/g;
 
+function bautVerbindungAuf(text: string): boolean {
+  // Eine reine Typdeklaration und der Konstruktor des eingehenden HTTPS-Servers
+  // erzeugen keine ausgehende Verbindung. Andere Importe desselben Moduls bleiben prüfbar.
+  const transport = nurCode(text)
+    .replace(/\bimport\s+type\s+[^;]+?\s+from\s+"node:(?:https?|http2|tls)"\s*;/g, "")
+    .replace(
+      /\bimport\s*\{\s*createServer(?:\s+as\s+\w+)?\s*,?\s*\}\s*from\s*"node:(?:https?|http2|tls)"\s*;/g,
+      "",
+    );
+  return VERBINDUNGSMUSTER.some((muster) => muster.test(transport));
+}
+
 function verbindungsdateien(): string[] {
   return serverQuellen(join(WURZEL, "services"))
-    .filter((pfad) => VERBINDUNGSMUSTER.some((muster) => muster.test(nurCode(lies(pfad)))))
+    .filter((pfad) => bautVerbindungAuf(lies(pfad)))
     .sort();
 }
 
@@ -102,6 +114,11 @@ describe("R-0586 · die deklarierte Liste der ausgehenden Ziele", () => {
       "const zweites = `https://${lang}.wikipedia.org`;",
     ].join("\n");
     const hosts = [...nurCode(probe).matchAll(HOST_MUSTER)].map((m) => m[1]);
+    const hoert = 'import { createServer } from "node:https";';
+    const typ = 'import type { ClientRequest } from "node:http";';
+    expect(bautVerbindungAuf(typ + hoert)).toBe(false);
+    expect(bautVerbindungAuf(`${hoert}import { request as hole } from "node:https";`)).toBe(true);
+    expect(bautVerbindungAuf(`${typ}fetch("https://code.example");`)).toBe(true);
     expect(hosts).toEqual(["code.example"]);
     expect(VERBINDUNGSMUSTER.some((m) => m.test(nurCode("// fetch(url)")))).toBe(false);
     expect(VERBINDUNGSMUSTER.some((m) => m.test("const f = cfg.fetchFn ?? fetch;"))).toBe(true);

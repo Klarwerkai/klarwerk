@@ -1846,7 +1846,13 @@ function sachtoken(question: string, nominal: Set<string>): string[] {
         token.push(...imRahmen.filter((t) => !bestandswoerter().has(t)));
         token.push(...tokenize(satz.slice(rahmen[0].length), nominal));
       } else {
-        token.push(...tokenize(satz, nominal));
+        // Eine Fälligkeitsfrage kann eine Quelle mit einem Datum oder Intervall beantworten.
+        // Bei einer Frage nach fälligen Objekten bleibt das Merkmal dagegen gebunden.
+        const sachfrage = satz.replace(
+          /^(\s*wann\s+(?:ist|sind)\s+[^.!?]+?)\s+fällig(?=\s*\?\s*$)/iu,
+          "$1",
+        );
+        token.push(...tokenize(sachfrage, nominal));
       }
     } else if (ANTWORTANWEISUNG.test(satz)) {
       token.push(...tokenize(satz, nominal).filter((t) => !anweisungswoerter().has(t)));

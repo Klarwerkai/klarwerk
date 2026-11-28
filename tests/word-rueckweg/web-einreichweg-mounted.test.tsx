@@ -111,7 +111,7 @@ import type { KnowledgeObject, KoProposal } from "../../apps/web/src/api/types";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ModalBoundaryProvider } from "../../apps/web/src/app/ModalBoundaryContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
-import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { RoleProvider, useRole } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { KnowledgeDetail } from "../../apps/web/src/pages/KnowledgeDetail";
@@ -185,12 +185,19 @@ const flush = async (): Promise<void> => {
 /** Die Shell-Hülle: scrollendes `<main>` als Anker der Modalgrenze plus echte Toast-Fläche. */
 function Huelle({ children }: { children: React.ReactNode }): JSX.Element {
   const mainRef = useRef<HTMLElement | null>(null);
+  const { role, kontoId } = useRole();
   return createElement(ModalBoundaryProvider, {
     hostRef: mainRef,
     children: [
       createElement(
         "main",
-        { key: "main", ref: mainRef, className: "flex-1 overflow-y-auto px-9 py-7" },
+        {
+          key: "main",
+          ref: mainRef,
+          "data-konto": kontoId,
+          "data-rolle": role,
+          className: "flex-1 overflow-y-auto px-9 py-7",
+        },
         children,
       ),
       createElement(ToastViewport, { key: "toasts" }),
@@ -247,8 +254,14 @@ async function mount(): Promise<void> {
     );
     await flush();
   });
-  await act(flush);
-  await act(flush);
+  const frist = Date.now() + 3000;
+  const sitzung = () =>
+    container.querySelector(`main[data-konto="${box.ichId}"][data-rolle="${box.rolle}"]`);
+  while ((!da("bib-meta") || !sitzung()) && Date.now() < frist) {
+    await act(flush);
+  }
+  expect(sitzung(), "Die gewählte Sitzung muss angemeldet sein.").not.toBeNull();
+  expect(da("bib-meta"), "Der Eintrag muss vor der Bedienung geladen sein.").not.toBeNull();
 }
 
 function da(testId: string): HTMLElement | null {

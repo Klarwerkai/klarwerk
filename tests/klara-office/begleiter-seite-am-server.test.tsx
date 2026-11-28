@@ -979,6 +979,8 @@ describe("Direktvergleich in der Klara-App", () => {
     );
     const retour = q(dialog, "begleiter-quelle-zurueck");
     expect(dialog.open).toBe(true);
+    expect(quelllink?.closest("[inert]")).toBeTruthy();
+    expect(dialog.closest("[inert]")).toBeNull();
     expect(document.activeElement).toBe(retour);
     expect(retour?.textContent).toBe("Back to the sentence comparison");
     expect(q(dialog, "quellenfokus-zitat")?.textContent).toBe(original);
@@ -988,6 +990,7 @@ describe("Direktvergleich in der Klara-App", () => {
     expect(q(dialog, "begleiter-quelle-heute")?.textContent).toContain(original);
     await klick(retour);
     expect(q(document, "begleiter-vergleich-quelle")).toBeNull();
+    expect(quelllink?.closest("[inert]")).toBeNull();
     expect(document.activeElement).toBe(quelllink);
     expect(q(document, "begleiter-direktvergleich")).toBe(widerspruch);
     expect(feld.value).toBe("My unsent question");

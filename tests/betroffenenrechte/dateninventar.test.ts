@@ -14,6 +14,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import datenschutzTexte from "../../apps/web/src/texte/datenschutz";
 import {
   DATENINVENTAR,
   erzeugeVerarbeitungsverzeichnis,
@@ -93,6 +94,32 @@ describe("I2 · jede Datenart ist vollständig beschrieben", () => {
       const d = DATENINVENTAR.find((x) => x.id === id);
       expect(d?.selbstauskunft.enthalten, `${id} fehlt in der Selbstauskunft`).toBe(true);
     }
+  });
+
+  it("jede Datenart hat ihren Namen in DE/EN/NL — Deutsch zeichengleich zum Servernamen", () => {
+    // Gesamtcheck R-1329 (h6-detail-zustandsweg S-inhalt-en/nl): die Verwaltungskarte zeigt den
+    // Namen je Kennung in der Oberflächensprache. Ohne diesen Fall liefe eine neue Datenart auf
+    // Englisch und Niederländisch wieder deutsch durch.
+    const texte = datenschutzTexte as unknown as Record<"de" | "en" | "nl", Record<string, string>>;
+    // Diese Begriffe werden auch in diesen Zielsprachen genauso geschrieben.
+    const gleichlautend = new Set(["teams.en", "teams.nl", "teamassistenten.nl"]);
+    for (const d of DATENINVENTAR) {
+      const schluessel = `datenschutz.datenart.${d.id}`;
+      expect(texte.de[schluessel], `${d.id}: deutscher Name weicht vom Server ab`).toBe(d.name);
+      for (const sprache of ["en", "nl"] as const) {
+        const wert = texte[sprache][schluessel];
+        expect(wert?.length ?? 0, `${d.id}: ${sprache} fehlt`).toBeGreaterThan(2);
+        if (!gleichlautend.has(`${d.id}.${sprache}`)) {
+          expect(wert, `${d.id}: ${sprache} ist deutsch geblieben`).not.toBe(d.name);
+        }
+      }
+    }
+    // Gegenrichtung: kein Name ohne Datenart (sonst veralten die Texte still).
+    const ids = new Set(DATENINVENTAR.map((d) => `datenschutz.datenart.${d.id}`));
+    const ueberzaehlig = Object.keys(texte.de).filter(
+      (k) => k.startsWith("datenschutz.datenart.") && !ids.has(k),
+    );
+    expect(ueberzaehlig).toEqual([]);
   });
 
   it("auch Daten ausserhalb der Datenbank sind erfasst (Sicherungen, Server-Protokolle, Endgerät)", () => {
@@ -185,8 +212,7 @@ describe("I4 · das Verarbeitungsverzeichnis entsteht aus dem System", () => {
   });
 
   it("Datenarten ohne Personenbezug erscheinen in keiner Tätigkeit — im Inventar aber schon", () => {
-    // Nacharbeit 1: im Produktinventar trägt seit der Korrektur keine Datenart mehr „nein"; die
-    // Regel wird deshalb an einem erweiterten Inventar gemessen, nicht an einer Behauptung.
+    // Eine zusätzliche Probe kalibriert die Filterung unabhängig vom tatsächlichen Tabellenbestand.
     const ohneBezug = {
       ...(DATENINVENTAR[0] as (typeof DATENINVENTAR)[number]),
       id: "probe_ohne_bezug",
@@ -217,6 +243,22 @@ describe("I4 · das Verarbeitungsverzeichnis entsteht aus dem System", () => {
     expect(empf(ohne, "konten")).not.toMatch(/SMTP/);
     expect(mit.taetigkeiten.find((t) => t.id === "ki")?.drittland).toMatch(/Möglich/);
     expect(ohne.taetigkeiten.find((t) => t.id === "ki")?.drittland).toMatch(/Keine Übermittlung/);
+  });
+
+  it("Geräte-Push erscheint als Empfänger nur beim eingerichteten Versand von Hinweisen", () => {
+    const mit = erzeugeVerarbeitungsverzeichnis({ ...ohneExtern, pushVersand: true }, zeit);
+    const ohne = erzeugeVerarbeitungsverzeichnis({ ...ohneExtern, pushVersand: false }, zeit);
+    const pruefung = mit.taetigkeiten.find((t) => t.id === "pruefung");
+    expect(pruefung?.empfaenger.join(" ")).toMatch(/Push-Dienst.*leere[mn] Nachrichtenrumpf/);
+    expect(pruefung?.drittland).toMatch(/Möglich/);
+    expect(
+      mit.taetigkeiten
+        .filter((t) => t.empfaenger.some((e) => e.includes("Push-Dienst")))
+        .map((t) => t.id),
+    ).toEqual(["pruefung"]);
+    expect(ohne.taetigkeiten.some((t) => t.empfaenger.some((e) => e.includes("Push-Dienst")))).toBe(
+      false,
+    );
   });
 
   it("die Markdown-Fassung trägt jede Tätigkeit und jede Datenart", () => {

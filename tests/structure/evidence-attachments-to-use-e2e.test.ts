@@ -16,6 +16,8 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 // Keine Fake-Quelle, keine Auto-Validierung, kein neues Upload-/Object-Store-System.
 const PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+const FRAGE = "Wie wird der Riemen am Förderband FB12 gespannt?";
+const AUSSAGE = "Den Riemen des Förderbands FB12 nach Herstellervorgabe spannen.";
 const PDF_DATA_URL = "data:application/pdf;base64,JVBERi0xLjQK"; // "%PDF-1.4" — Metadaten-Speicherung
 
 describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Object-Store + FE-Helfer)", () => {
@@ -61,7 +63,7 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
       payload: {
         confidentiality: "intern",
         title: "Förderband FB12 Riemen spannen",
-        statement: "Den Riemen des Förderbands FB12 nach Herstellervorgabe spannen.",
+        statement: AUSSAGE,
         bodyHtml: applyBodyTemplate("", "procedure", "de"),
         type: "best_practice",
         category: "Anlage 3",
@@ -168,7 +170,7 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
     //    gesamt-datenschutz-voreinstellung): Evidence ist keine Validierung, und der normale Frageweg
     //    antwortet nur aus geprüftem Wissen. Das offene KO trägt KEINE Antwort; Klara legt die Lücke
     //    an, meldet den ungeprüften Treffer (JOB 1591 W5) und die fehlende Freigabe (Torlage).
-    const askBefore = await ask(app, admin, "Wie wird der Riemen am Förderband FB12 gespannt?");
+    const askBefore = await ask(app, admin, FRAGE);
     const beforeBody = askBefore.json() as {
       result: AnswerResult;
       gap: unknown;
@@ -198,10 +200,13 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
     expect(ovAfter.hasEvidence).toBe(true);
 
     // 11) USE NACH Validierung: gesichert + quellengebunden auf genau dieses (belegte) KO.
-    const askAfter = await ask(app, admin, "Wie wird der Riemen am Förderband FB12 gespannt?");
+    const askAfter = await ask(app, admin, FRAGE);
     const afterBody = askAfter.json();
     const afterResult = afterBody.result as AnswerResult;
+    expect(askAfter.statusCode).toBe(200);
+    expect(afterResult.answered).toBe(true);
     expect(afterResult.knowledgeClass).toBe("gesichert");
+    expect(afterResult.answer).toContain(AUSSAGE);
     expect(afterResult.sources).toEqual([id]);
     expect(
       answerStatus(
@@ -218,6 +223,14 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
       ).key,
     ).toBe("verified");
     expect(afterBody.gap).toBeNull();
+    // Ein zusätzlicher unbelegter Sachbegriff bleibt auch bei passender Wortform bindend.
+    const ohneDrehmoment = await ask(
+      app,
+      admin,
+      "Mit welchem Drehmoment wird der Riemen am Förderband FB12 gespannt?",
+    );
+    expect(ohneDrehmoment.statusCode).toBe(200);
+    expect(ohneDrehmoment.json().result).toMatchObject({ answered: false, sources: [] });
     const refAfter = sourceRefs(afterResult.sources, [validated])[0];
     expect(refAfter?.validated).toBe(true);
     expect(refAfter?.usability).toBe("ready");

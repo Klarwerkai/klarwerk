@@ -1,15 +1,11 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
 // @vitest-environment jsdom
-import {
-  QueryClient,
-  QueryClientProvider,
-  onlineManager,
-} from "../../apps/web/node_modules/@tanstack/react-query";
-import { act, createElement } from "../../apps/web/node_modules/react";
-import { type Root, createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
-import App from "../../apps/web/src/App";
-import { SITZUNGSENDE_KEY } from "../../apps/web/src/lib/lokaleSitzung";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
+import { act, createElement } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import App from "../App";
+import { SITZUNGSENDE_KEY } from "../lib/lokaleSitzung";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | null = null;
 let qc: QueryClient | null = null;
@@ -18,10 +14,12 @@ let protectedCalls: string[] = [];
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
 async function settle(ok: () => boolean) {
-  for (let i = 0; i < 100 && !ok(); i++)
+  const frist = performance.now() + 10_000;
+  while (!ok() && performance.now() < frist) {
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 5));
+      await new Promise((resolve) => setTimeout(resolve, 25));
     });
+  }
   expect(ok()).toBe(true);
 }
 beforeEach(() => {

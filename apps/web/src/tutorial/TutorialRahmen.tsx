@@ -18,7 +18,9 @@ import { GraduationCap } from "lucide-react";
 import {
   type MutableRefObject,
   type ReactNode,
+  Suspense,
   createContext,
+  lazy,
   useCallback,
   useContext,
   useEffect,
@@ -30,7 +32,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useRoleOptional } from "../app/RoleContext";
-import { TutorialBereich } from "./TutorialBereich";
+import { mitFachtexten } from "../lib/fachtexte";
 import { type TutorialFernLage, type TutorialMeldung, TutorialMeldungCtx } from "./fernsteuerung";
 import { tutorialFuerPfad } from "./rahmen";
 import type { TutorialDefinition, TutorialSchrittstand } from "./typen";
@@ -41,6 +43,19 @@ interface TutorialUnterbrechung {
   titel: string;
   stand?: TutorialSchrittstand | undefined;
 }
+
+// Gesamtcheck R-1329 (Nacharbeit 57, Deckel R-0801): der aufgeklappte Bereich steht erst nach einem
+// Klick da und liegt deshalb nicht in der Eintritts-Hülle. Der Abruf beginnt beim Laden dieser
+// Datei, nicht erst beim Klick — der Bereich erscheint so ohne spürbare Wartezeit. Ein Fehlschlag
+// erreicht weiter die Fehlergrenze (über `lazy`); `catch` hält nur die Konsole frei von einer
+// unbehandelten Ablehnung, solange noch niemand den Bereich angefordert hat.
+const tutorialBereichLaden = import("./TutorialBereich").then((m) => ({
+  default: m.TutorialBereich,
+}));
+tutorialBereichLaden.catch(() => {});
+// R-0801 (Nacharbeit 58): der Bereich zeichnet erst mit seinen deutschen Fachtexten
+// (`lib/fachtexte.ts`); bleibt das Paket aus, erscheint er trotzdem.
+const TutorialBereich = lazy(() => mitFachtexten(tutorialBereichLaden, "flaeche"));
 
 interface TutorialLage {
   definition: TutorialDefinition | null;
@@ -297,13 +312,15 @@ export function TutorialFlaeche(): JSX.Element | null {
     return null;
   }
   return (
-    <TutorialBereich
-      key={ort}
-      definition={definition}
-      id={bereichId}
-      onSchliessen={schliessen}
-      startstand={startstand}
-      beiStand={beiStand}
-    />
+    <Suspense fallback={null}>
+      <TutorialBereich
+        key={ort}
+        definition={definition}
+        id={bereichId}
+        onSchliessen={schliessen}
+        startstand={startstand}
+        beiStand={beiStand}
+      />
+    </Suspense>
   );
 }

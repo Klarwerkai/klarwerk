@@ -242,6 +242,7 @@ function ko(id: string, trust: number): KnowledgeObject {
     id,
     title: `Urlaubsregelung ${id}`,
     statement: "Urlaubsregelung.",
+    confidentiality: "intern",
     status: "validiert",
     trust,
   } as unknown as KnowledgeObject;

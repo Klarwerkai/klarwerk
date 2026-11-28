@@ -66,6 +66,9 @@ const OBJEKTAUSSAGEN = [
   // (askStatusValidiert/-Offen), kein zweiter Wortlaut.
   "m5BildTitel",
   "m5BildLeer",
+  // Der erneute Satzvergleich und eine veraltete Textauswahl haben einen eigenen Wortlaut.
+  "askKorrekturBestaetigt",
+  "askVergleichVeraltet",
 ];
 
 // JOB 3093 (M3 „Haben wir das schon?"): EIN weiterer Schlüssel sagt etwas über ein OBJEKT — nicht
@@ -176,6 +179,23 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
     for (const { muster } of VERBOTEN) {
       expect(muster.test(zusammen), muster.source).toBe(muster.source !== "gesichert");
     }
+  });
+
+  it("der erneute Abgleich nennt die Quelle, die veraltete Stelle fordert eine neue Prüfung", () => {
+    const texte = (key: string) =>
+      i18nEintraege()
+        .filter((e) => e.key === key)
+        .map((e) => e.text);
+    expect(texte("askKorrekturBestaetigt")).toEqual([
+      "Erneut geprüft · stimmt mit der Quelle überein",
+      "Rechecked · matches the source",
+      "Opnieuw gecontroleerd · komt overeen met de bron",
+    ]);
+    const veraltet = texte("askVergleichVeraltet");
+    expect(veraltet).toHaveLength(3);
+    expect(veraltet[0]).toMatch(/Bitte prüfe den Text erneut/);
+    expect(veraltet[1]).toMatch(/check the text again/);
+    expect(veraltet[2]).toMatch(/Controleer de tekst opnieuw/);
   });
 
   it("Überschrift und Quellenzeile sind neutral — in allen drei Sprachen", () => {

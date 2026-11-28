@@ -181,13 +181,6 @@ export function eingabeAnKontoBinden(kontoId: string | null): void {
 /** Wo der aktuelle Entwurf begonnen wurde — `null` ohne Entwurf oder ohne bekannten Ort. */
 export const leseEingabeHerkunft = (): Herkunft | null => stand.herkunft;
 
-const leseStand = (): Gespeichert => stand;
-
-/** Der Entwurf samt Ursprung, für die Anzeige eines Zielwechsels. */
-export function useEingabeStand(): Gespeichert {
-  return useSyncExternalStore(abonnieren, leseStand, leseStand);
-}
-
 const leseAbgewiesen = (): AbgewiesenerEntwurf[] => stand.abgewiesen;
 
 /** Die abgewiesenen Entwürfe des aktuellen Kontos. */

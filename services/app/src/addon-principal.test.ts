@@ -20,7 +20,12 @@ const ADDON_KEY_HEADER = "x-klarwerk-addon-key";
 const KEY = "s3cr3t-addon-key";
 
 const SAVED: Record<string, string | undefined> = {};
-const KEYS = ["KLARWERK_ADDON_API", "KLARWERK_ADDON_API_KEY", "KLARWERK_ADDON_ORIGIN"];
+const KEYS = [
+  "KLARWERK_ADDON_API",
+  "KLARWERK_ADDON_API_KEY",
+  "KLARWERK_ADDON_ORIGIN",
+  "KLARWERK_AUDIT_KETTENEINSICHT",
+];
 beforeEach(() => {
   for (const k of KEYS) {
     SAVED[k] = process.env[k];
@@ -307,11 +312,25 @@ describe("SCRUM-490 D2: Key-Validierung genau einmal", () => {
       .map((f) => `${APP_SRC}/${f}`);
   }
 
+  // Diese drei Module prüfen eigene Signaturen für Word, WOPI und Programmanbindungen.
+  const ANDERE_SIGNATURPRUEFUNGEN = [
+    "office-wopi.ts",
+    "office-kontext.ts",
+    "programmadapter.ts",
+  ].map((name) => `${APP_SRC}/${name}`);
+
   it("timingSafeEqual (Key-Vergleich) steht nur in addon-principal.ts", () => {
     const withCompare = srcFiles().filter((f) =>
       readFileSync(f, "utf8").includes("timingSafeEqual"),
     );
-    expect(withCompare).toEqual([`${APP_SRC}/addon-principal.ts`]);
+    expect(withCompare.filter((f) => !ANDERE_SIGNATURPRUEFUNGEN.includes(f))).toEqual([
+      `${APP_SRC}/addon-principal.ts`,
+    ]);
+    for (const f of ANDERE_SIGNATURPRUEFUNGEN) {
+      expect(readFileSync(f, "utf8"), `${f} prüft den Add-on-Schlüssel`).not.toMatch(
+        /addon|x-api-key|apiKey/i,
+      );
+    }
   });
 
   it("Rate-Limiter und Ask-Route lesen authContext, prüfen den Key nicht selbst", () => {
@@ -346,7 +365,14 @@ describe("SCRUM-490 D1: count_only-Gap-Policy (addon-Actor)", () => {
       url: "/api/auth/login",
       payload: { email: "a@x.de", password: "secret123" },
     });
-    return { authorization: `Bearer ${login.json().token}` };
+    const headers = { authorization: `Bearer ${login.json().token}` };
+    // aufnahme:20260922:gesamt-leserechte (Auditweg, Ben Nacharbeit 28, `audit-routes.ts`): jeder
+    // Leser bekommt die Leseransicht — ohne Bestandsbilanzen, also ohne `ask.query` —, außer einem
+    // Konto mit ausdrücklich erteilter Ketteneinsicht. Diese Einsicht prüft die volle Kette; das
+    // Konto bekommt sie wie im Betrieb über `KLARWERK_AUDIT_KETTENEINSICHT` (je Anfrage gelesen).
+    const ich = await app.inject({ method: "GET", url: "/api/auth/me", headers });
+    process.env.KLARWERK_AUDIT_KETTENEINSICHT = (ich.json() as { id: string }).id;
+    return headers;
   }
 
   it("addon-Actor, answered=false → keine Wissenslücke, kein gap im Response, kein gap.created", async () => {

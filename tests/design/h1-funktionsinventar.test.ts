@@ -369,13 +369,20 @@ const INVENTAR: Zeile[] = [
           ),
           "das Zahnrad-Menü stand offen — das Kopfband wäre nicht allein",
         ).toBe(true);
+        const kiStatus = t("kilage.zeile.keine");
+        await warteBis(
+          seite(),
+          `(soll) => document.querySelector('header[data-testid="kopfband"] output[data-testid="kopfband-ki-lage"]')?.innerText.trim() === soll`,
+          kiStatus,
+        );
         const band = await lies<{
           woerter: string[];
           zaehler: string | null;
           initialen: string | null;
           knoepfe: string[];
         }>(
-          `() => { const b = document.querySelector('header[data-testid="kopfband"]'); const z = b.querySelector('.kw-kopfband-zaehler'); const k = b.querySelector('[data-testid="kopfband-konto"]'); return { woerter: b.innerText.split(/\\s+/).filter(Boolean), zaehler: z ? z.innerText.trim() : null, initialen: k ? k.innerText.trim() : null, knoepfe: [...b.querySelectorAll('button')].map((x) => x.getAttribute('data-testid') || x.type) }; }`,
+          `(kiStatus) => { const b = document.querySelector('header[data-testid="kopfband"]'); const z = b.querySelector('.kw-kopfband-zaehler'); const k = b.querySelector('[data-testid="kopfband-konto"]'); return { woerter: b.innerText.replace(kiStatus, '').split(/\\s+/).filter(Boolean), zaehler: z ? z.innerText.trim() : null, initialen: k ? k.innerText.trim() : null, knoepfe: [...b.querySelectorAll('button')].map((x) => x.getAttribute('data-testid') || x.type) }; }`,
+          kiStatus,
         );
         const fremd = band.woerter.filter(
           (w) => !inventar.has(w) && w !== band.zaehler && w !== band.initialen,

@@ -120,7 +120,7 @@ export async function neuesKo(
     category: "Betrieb",
     author: over.author ?? buehne.konto.controller.id,
     tags: [],
-    ...(over.confidentiality ? { confidentiality: over.confidentiality } : {}),
+    confidentiality: over.confidentiality ?? "intern",
   });
   return ko.id;
 }

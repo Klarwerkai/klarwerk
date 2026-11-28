@@ -47,7 +47,7 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    validation: { board: d.board.fn },
+    validation: { boardCount: d.board.fn },
     conflicts: { list: d.conflicts.fn },
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
@@ -151,7 +151,7 @@ describe("Block B → H1: ein gestörter Refetch zeigt KEINE alte Zahl — der Z
 
     // (1) Zahlen laden: Board mit 2 offenen Prüfungen.
     await act(async () => {
-      d.board.resolve([{ id: "a" }, { id: "b" }]);
+      d.board.resolve({ length: 2 });
       d.conflicts.resolve([]);
       d.duplicates.resolve([]);
       d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
@@ -192,7 +192,7 @@ describe("Block B → H1: ein gestörter Refetch zeigt KEINE alte Zahl — der Z
       await flush();
     });
     await act(async () => {
-      d.board.resolve([{ id: "a" }, { id: "b" }, { id: "c" }]);
+      d.board.resolve({ length: 3 });
       await flush();
     });
     expect(pruefenZaehler()?.textContent).toBe("3");
@@ -203,7 +203,7 @@ describe("Block B → H1: ein gestörter Refetch zeigt KEINE alte Zahl — der Z
   it("K3: scheitert der Neuabruf der Rückgabe-Quelle, verschwindet die Aufgabenzahl; gelingt er, steht sie wieder", async () => {
     await mount();
     await act(async () => {
-      d.board.resolve([]);
+      d.board.resolve({ length: 0 });
       d.conflicts.resolve([]);
       d.duplicates.resolve([]);
       d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });

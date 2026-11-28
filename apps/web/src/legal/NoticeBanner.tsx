@@ -23,7 +23,7 @@
 // Geschwister der Inhaltsfläche verdeckt er nichts, auf keinem Gerät, ohne Ausgleichs-Polsterung,
 // die irgendwann jemand vergisst.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type NoticeAck, authApi } from "../api/auth";
 import { useFeatures } from "../api/hooks";
@@ -37,27 +37,32 @@ import { LEGAL_PATHS, useRechtsseitenAn } from "./LegalPages";
  * `signOut()` lädt die Seite hart neu (AuthContext) — ohne diesen Merker stünde die Nutzerin danach
  * vor einer Anmeldemaske ohne Erklärung, und das wäre genau die Sackgasse, die der Auftrag
  * ausschließt. BEWUSST `sessionStorage` und kein zweiter Abmeldeweg: Der Abmeldeweg bleibt der eine
- * vorhandene. Der Merker lebt nur bis zum Schließen des Tabs und wird beim Lesen sofort gelöscht.
+ * vorhandene. Die Anmeldemaske entfernt den Merker nach der Anzeige im neuen Dokument.
  */
 export const DECLINE_MARKER = "kw_notice_declined";
 
-export function takeDeclineMarker(): boolean {
-  try {
-    if (window.sessionStorage.getItem(DECLINE_MARKER) === null) {
+// Beim Bereinigen der Sitzung kann die Anmeldemaske im alten Dokument kurz vor
+// location.assign erscheinen. Erst die Maske im neu geladenen Dokument verbraucht den Grund.
+let hierAbgelehnt = false;
+
+export function useAblehnungsgrund(): boolean {
+  const [anzeigen] = useState(() => {
+    try {
+      return !hierAbgelehnt && window.sessionStorage.getItem(DECLINE_MARKER) !== null;
+    } catch {
       return false;
     }
-    window.sessionStorage.removeItem(DECLINE_MARKER);
-    return true;
-  } catch {
-    // Speicher gesperrt (privater Modus, Richtlinie) — kein Grund, irgendetwas kaputtgehen zu
-    // lassen. Dann fehlt eben der erklärende Satz; die Abmeldung selbst ist davon unberührt.
-    return false;
-  }
+  });
+  useEffect(() => {
+    if (anzeigen) clearDeclineMarker();
+  }, [anzeigen]);
+  return anzeigen;
 }
 
 function setDeclineMarker(): void {
   try {
     window.sessionStorage.setItem(DECLINE_MARKER, "1");
+    hierAbgelehnt = true;
   } catch {
     // s. o. — bewusst folgenlos.
   }
@@ -72,6 +77,7 @@ function setDeclineMarker(): void {
  * nicht zugestimmt haben" zeigen — eine Erklärung für etwas, das nicht stattgefunden hat.
  */
 function clearDeclineMarker(): void {
+  hierAbgelehnt = false;
   try {
     window.sessionStorage.removeItem(DECLINE_MARKER);
   } catch {

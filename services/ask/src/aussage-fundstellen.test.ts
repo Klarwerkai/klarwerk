@@ -9,7 +9,6 @@ import {
   type InterneFundstelle,
   type ObjektFassung,
   aufKernaussagenBeschraenkt,
-  bestaetigungGilt,
   bindeAntworttext,
   bindeAussagen,
   fingerabdruck,
@@ -255,26 +254,32 @@ describe("REF-01 · Aussage → Quellenversion → Passage", () => {
 
   it("Prüfbeleg bindet Antwort, Quellenfassung und Prüfmodell — keine geerbte Bestätigung", () => {
     const beleg = binde("Am Ventil F3 gilt höchstens 80 °C. [1]", ["ko-ventil"], [VENTIL]);
+    // Gesamtcheck R-1329 (Aufrufer-Wächter): gemessen am Paketfingerabdruck selbst — er ist der
+    // Schlüssel, an dem die Referenzprüfung eine frühere Bestätigung übernimmt oder als
+    // `bestaetigung_abgelaufen` verwirft (`referenz-pruefung.ts`, Cache K8; gemessen in
+    // `tests/referenzki-pruefdienst/pruefdienst-simulation.test.ts`). Die frühere Hülle
+    // `bestaetigungGilt` hatte keinen Produktaufrufer und ist entfernt.
     const paket = pruefPaket(beleg, { modell: "modell-a", oeffentlich: false }, () => true);
-    const bestaetigung = { paketFingerabdruck: paket.paketFingerabdruck, modell: "modell-a" };
-    expect(bestaetigungGilt(bestaetigung, paket)).toBe(true);
+    const gleich = pruefPaket(beleg, { modell: "modell-a", oeffentlich: false }, () => true);
+    expect(gleich.paketFingerabdruck).toBe(paket.paketFingerabdruck);
+    expect(paket.pruefer.modell).toBe("modell-a");
 
     const anderesModell = pruefPaket(beleg, { modell: "modell-b", oeffentlich: false }, () => true);
-    expect(bestaetigungGilt(bestaetigung, anderesModell)).toBe(false);
+    expect(anderesModell.paketFingerabdruck).not.toBe(paket.paketFingerabdruck);
 
     const neueFassung = pruefPaket(
       binde("Am Ventil F3 gilt höchstens 80 °C. [1]", ["ko-ventil"], [{ ...VENTIL, version: 5 }]),
       { modell: "modell-a", oeffentlich: false },
       () => true,
     );
-    expect(bestaetigungGilt(bestaetigung, neueFassung)).toBe(false);
+    expect(neueFassung.paketFingerabdruck).not.toBe(paket.paketFingerabdruck);
 
     const andereAntwort = pruefPaket(
       binde("Am Ventil F3 gilt höchstens 80 °C laut Plan. [1]", ["ko-ventil"], [VENTIL]),
       { modell: "modell-a", oeffentlich: false },
       () => true,
     );
-    expect(bestaetigungGilt(bestaetigung, andereAntwort)).toBe(false);
+    expect(andereAntwort.paketFingerabdruck).not.toBe(paket.paketFingerabdruck);
   });
 
   it("enger Zuschnitt (Add-on): nur Kernaussagen, Deckung ehrlich neu gerechnet", () => {

@@ -133,7 +133,7 @@ import { Library } from "../../apps/web/src/pages/Library";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function mount(entry: string): void {
+async function mount(entry: string): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -147,6 +147,7 @@ function mount(entry: string): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 afterEach(() => {
@@ -188,10 +189,10 @@ function gruende(): string[] {
 }
 
 describe("A30 · Teil D · die Bibliothek zeigt, WARUM etwas in der Liste steht", () => {
-  it("D1 — ein reiner Schlagworttreffer erscheint MIT dem Fundstellengrund „in Schlagwort", () => {
+  it("D1 — ein reiner Schlagworttreffer erscheint MIT dem Fundstellengrund „in Schlagwort", async () => {
     lage.treffer = [KO_SCHLAGWORT];
 
-    mount("/bibliothek?q=schlagwortalpha");
+    await mount("/bibliothek?q=schlagwortalpha");
 
     // Das Objekt selbst ist da …
     expect(text()).toContain("Flanschmontage");
@@ -204,19 +205,19 @@ describe("A30 · Teil D · die Bibliothek zeigt, WARUM etwas in der Liste steht"
     expect(gruende()).toEqual([de("lib.match.tag")]);
   });
 
-  it("D2 — ein reiner Kategorietreffer erscheint MIT dem Fundstellengrund „in Kategorie", () => {
+  it("D2 — ein reiner Kategorietreffer erscheint MIT dem Fundstellengrund „in Kategorie", async () => {
     lage.treffer = [KO_KATEGORIE];
 
-    mount("/bibliothek?q=kategoriewortalpha");
+    await mount("/bibliothek?q=kategoriewortalpha");
 
     expect(text()).toContain("Pumpenkennlinie");
     expect(gruende()).toEqual([de("lib.match.category")]);
   });
 
-  it("D3 — ein ECHTER Nulltreffer trägt den ehrlichen Nulltreffer-Text, keine Rückstandsbehauptung", () => {
+  it("D3 — ein ECHTER Nulltreffer trägt den ehrlichen Nulltreffer-Text, keine Rückstandsbehauptung", async () => {
     lage.treffer = [];
 
-    mount("/bibliothek?q=wortdasesnirgendsgibt");
+    await mount("/bibliothek?q=wortdasesnirgendsgibt");
 
     // Der Wortlaut sagt nichts über den Zustand der Projektion. Ein Satz wie „möglicherweise noch
     // nicht durchsuchbar" wäre nach Korrekturpflicht 4 nur zulässig, wenn ein sichtbarer, nicht
@@ -236,10 +237,10 @@ describe("A30 · Teil D · die Bibliothek zeigt, WARUM etwas in der Liste steht"
     }
   });
 
-  it("D4 — KALIBRIERUNG: bei Treffern erscheint der Nulltreffer-Text NICHT", () => {
+  it("D4 — KALIBRIERUNG: bei Treffern erscheint der Nulltreffer-Text NICHT", async () => {
     lage.treffer = [KO_SCHLAGWORT];
 
-    mount("/bibliothek?q=schlagwortalpha");
+    await mount("/bibliothek?q=schlagwortalpha");
 
     // Ohne diesen Fall wäre D3 auch dann grün, wenn der Leerzustand IMMER stünde.
     expect(text()).not.toContain(de("lib.liste.leerSuche"));

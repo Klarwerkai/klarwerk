@@ -1289,17 +1289,8 @@ export function pruefPaket(
   };
 }
 
-/**
- * Gilt eine frühere Bestätigung für DIESES Paket? Nur bei identischem Paketfingerabdruck und
- * identischem Prüfmodell. Ein anderer Antworttext, eine geänderte Quelle oder ein anderes Modell
- * erben nichts.
- */
-export function bestaetigungGilt(
-  bestaetigung: { readonly paketFingerabdruck: string; readonly modell: string },
-  paket: PruefPaket,
-): boolean {
-  return (
-    bestaetigung.paketFingerabdruck === paket.paketFingerabdruck &&
-    bestaetigung.modell === paket.pruefer.modell
-  );
-}
+// Gesamtcheck R-1329 (Aufrufer-Wächter): hier stand `bestaetigungGilt` (gleicher Paketfingerabdruck
+// UND gleiches Modell). Entfernt, weil überholt: die Referenzprüfung übernimmt eine frühere
+// Bestätigung nur über ihren Cacheschlüssel aus Richtlinie, Mandant, Paket, Anbieter, Modell und
+// Quellenstand und verwirft sonst mit `bestaetigung_abgelaufen` (`referenz-pruefung.ts`, K8) —
+// strenger als die Hülle, die niemand rief.

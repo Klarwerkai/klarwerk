@@ -103,7 +103,7 @@ let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
 /** Fläche mit dieser Rolle öffnen und den einen Eintrag wählen — der echte Klickweg. */
-function flaecheMit(rolle: "viewer" | "experte"): void {
+async function flaecheMit(rolle: "viewer" | "experte"): Promise<void> {
   stand.rolle = rolle;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -129,6 +129,7 @@ function flaecheMit(rolle: "viewer" | "experte"): void {
   act(() => {
     zeile.click();
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 afterEach(() => {
@@ -154,8 +155,8 @@ function bearbeitenImMenue(): boolean {
 }
 
 describe(`JOB 3063 · H4 R6 · Rollenlage am Knopf „Fragen"`, () => {
-  it(`Viewerin: „Fragen" ist ein echter Link mit Ziel, Suchtext und Herkunftsmarker`, () => {
-    flaecheMit("viewer");
+  it(`Viewerin: „Fragen" ist ein echter Link mit Ziel, Suchtext und Herkunftsmarker`, async () => {
+    await flaecheMit("viewer");
     const knopf = fragenKnopf();
     // Die begehbare Fassung des Tores ist ein <a> MIT href; die gesperrte wäre ein <div>.
     expect(knopf).toBeInstanceOf(HTMLAnchorElement);
@@ -174,20 +175,20 @@ describe(`JOB 3063 · H4 R6 · Rollenlage am Knopf „Fragen"`, () => {
     );
   });
 
-  it(`KALIBRIERUNG: derselben Viewerin fehlt „Bearbeiten" im Menü — die Rolle ist wirklich angekommen`, () => {
-    flaecheMit("viewer");
+  it(`KALIBRIERUNG: derselben Viewerin fehlt „Bearbeiten" im Menü — die Rolle ist wirklich angekommen`, async () => {
+    await flaecheMit("viewer");
     expect(bearbeitenImMenue()).toBe(false);
   });
 
-  it(`KALIBRIERUNG: der Expertin steht „Bearbeiten" im Menü — der Vergleich oben misst etwas`, () => {
-    flaecheMit("experte");
+  it(`KALIBRIERUNG: der Expertin steht „Bearbeiten" im Menü — der Vergleich oben misst etwas`, async () => {
+    await flaecheMit("experte");
     expect(bearbeitenImMenue()).toBe(true);
     // Der Fragen-Knopf bleibt für beide Rollen derselbe Weg.
     expect(fragenKnopf()).toBeInstanceOf(HTMLAnchorElement);
   });
 
-  it("das Tor beantwortet die Rollenfrage AN DER ADRESSE MIT ABFRAGETEIL — und sagt auch Nein", () => {
-    flaecheMit("viewer");
+  it("das Tor beantwortet die Rollenfrage AN DER ADRESSE MIT ABFRAGETEIL — und sagt auch Nein", async () => {
+    await flaecheMit("viewer");
     const href = fragenKnopf().getAttribute("href") ?? "";
     expect(href).toContain("?");
     expect(routePathAllows(href, "viewer")).toBe(true);

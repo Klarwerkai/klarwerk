@@ -196,7 +196,7 @@ afterEach(() => {
 });
 
 /** Der echte Weg zur Adresse: Bibliothek mit Suchtext öffnen, Zeile anklicken, Knopf auslesen. */
-function fragenAdresse(koId: string): string {
+async function fragenAdresse(koId: string): Promise<string> {
   mount(`/bibliothek?q=${encodeURIComponent(SUCHTEXT)}`, createElement(Library));
   const zeile = container?.querySelector(`[data-testid="bib-zeile"][data-bib-id="${koId}"]`);
   if (!(zeile instanceof HTMLElement)) {
@@ -205,6 +205,7 @@ function fragenAdresse(koId: string): string {
   act(() => {
     zeile.click();
   });
+  await act(() => vi.dynamicImportSettled());
   const a = container?.querySelector('[data-testid="bib-fragen"]');
   if (!(a instanceof HTMLAnchorElement)) {
     throw new Error(`Knopf „Fragen" ist kein Link; DOM: ${container?.textContent}`);
@@ -235,6 +236,10 @@ function anfragevertrag(): unknown[][] {
   return askMock.mock.calls as unknown[][];
 }
 
+function erwarteterVertrag(frage: string): unknown[][] {
+  return [[frage, "de", [], undefined, expect.any(AbortSignal)]];
+}
+
 /** Dieselbe Adresse mit ausgetauschtem oder entferntem `ko` — sonst Zeichen für Zeichen gleich. */
 function mitMarker(href: string, wert: string | null): string {
   const url = new URL(href, "http://klarwerk.test");
@@ -248,7 +253,7 @@ function mitMarker(href: string, wert: string | null): string {
 
 describe("JOB 3063 · H4 R6 · `ko` auf /fragen ist Herkunft, nicht Einschränkung", () => {
   it("1 · Klick-durch: die Frage reist in den Anfragevertrag, die Kennung des Eintrags NICHT", async () => {
-    const href = fragenAdresse(KO_EINS.id);
+    const href = await fragenAdresse(KO_EINS.id);
     const url = new URL(href, "http://klarwerk.test");
     expect(url.pathname).toBe("/fragen");
     expect(url.searchParams.get("ko")).toBe(KO_EINS.id);
@@ -258,7 +263,7 @@ describe("JOB 3063 · H4 R6 · `ko` auf /fragen ist Herkunft, nicht Einschränku
     await askOeffnen(href);
     // Die Frage ist angekommen — vorbelegt im Feld und einmal gesendet.
     expect(frageFeld().value).toBe(SUCHTEXT);
-    expect(anfragevertrag()).toEqual([[SUCHTEXT, "de"]]);
+    expect(anfragevertrag()).toEqual(erwarteterVertrag(SUCHTEXT));
     // DER KERN: die Kennung steht in KEINEM Argument der Anfrage …
     expect(JSON.stringify(anfragevertrag())).not.toContain(KO_EINS.id);
     // … und die Fläche behauptet auch nirgends einen Bezug auf diesen Eintrag.
@@ -266,7 +271,7 @@ describe("JOB 3063 · H4 R6 · `ko` auf /fragen ist Herkunft, nicht Einschränku
   });
 
   it("2 · derselbe Marker, ein fremder Marker und gar kein Marker ergeben DENSELBEN Anfragevertrag", async () => {
-    const href = fragenAdresse(KO_EINS.id);
+    const href = await fragenAdresse(KO_EINS.id);
     const vertraege: unknown[][][] = [];
     for (const marker of [KO_EINS.id, KO_ZWEI.id, null]) {
       await askOeffnen(mitMarker(href, marker));
@@ -275,19 +280,19 @@ describe("JOB 3063 · H4 R6 · `ko` auf /fragen ist Herkunft, nicht Einschränku
       vi.clearAllMocks();
     }
     for (const vertrag of vertraege) {
-      expect(vertrag).toEqual([[SUCHTEXT, "de"]]);
+      expect(vertrag).toEqual(erwarteterVertrag(SUCHTEXT));
     }
     expect(vertraege[1]).toEqual(vertraege[0]);
     expect(vertraege[2]).toEqual(vertraege[0]);
   });
 
   it("3 · KALIBRIERUNG: eine andere Frage ändert den Anfragevertrag sofort — der Spy ist scharf", async () => {
-    const href = fragenAdresse(KO_EINS.id);
+    const href = await fragenAdresse(KO_EINS.id);
     const andere = new URL(href, "http://klarwerk.test");
     andere.searchParams.set("q", "Wie oft wird das Rührwerk gewartet?");
     await askOeffnen(`${andere.pathname}${andere.search}`);
-    expect(anfragevertrag()).toEqual([["Wie oft wird das Rührwerk gewartet?", "de"]]);
-    expect(anfragevertrag()).not.toEqual([[SUCHTEXT, "de"]]);
+    expect(anfragevertrag()).toEqual(erwarteterVertrag("Wie oft wird das Rührwerk gewartet?"));
+    expect(anfragevertrag()).not.toEqual(erwarteterVertrag(SUCHTEXT));
   });
 
   it("4 · die drei Leser der /fragen-Adresse kennen `ko` nicht — es gibt keinen Zweig über ihn", () => {

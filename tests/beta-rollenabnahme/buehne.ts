@@ -31,6 +31,7 @@ import {
   buildApp,
   inMemoryRepos,
 } from "../../services/app/src/build-app";
+import type { KioskProfil } from "../../services/app/src/kiosk-profil";
 import type { PublicUser, Role } from "../../services/auth";
 import { ORIGIN, PFAD, TESTSEITE } from "../klara-browser-aktionen/testseite";
 import { type Routenmitschrift, schreibeRouterentscheidungMit } from "./registrierte-routen";
@@ -184,8 +185,8 @@ export async function anmelden(app: FastifyInstance, email: string): Promise<str
  * im Betrieb — es gibt keinen zweiten Weg, und ein direkt in die Ablage geschriebenes Konto würde
  * die Abnahme gegen einen Zustand fahren, den das Produkt selbst nie herstellt.
  */
-export async function baueBuehne(): Promise<Buehne> {
-  return (await baueInstanz()).buehne;
+export async function baueBuehne(optionen: { mitKiosk?: boolean } = {}): Promise<Buehne> {
+  return (await baueInstanz(optionen.mitKiosk)).buehne;
 }
 
 // ================================================================================================
@@ -221,7 +222,7 @@ export async function baueFrischeBuehne(): Promise<FrischeBuehne> {
   return { ...buehne, schliesse: () => schliesse(eintrag) };
 }
 
-async function baueInstanz(): Promise<{ buehne: Buehne; eintrag: OffeneInstanz }> {
+async function baueInstanz(mitKiosk = false): Promise<{ buehne: Buehne; eintrag: OffeneInstanz }> {
   const vorher: Record<string, string | undefined> = {};
   for (const [name, wert] of Object.entries(SCHALTER)) {
     vorher[name] = process.env[name];
@@ -233,7 +234,9 @@ async function baueInstanz(): Promise<{ buehne: Buehne; eintrag: OffeneInstanz }
   // Takt, damit eine Messung nicht 20 s auf einen Schritt wartet; Abhol- und Antwortfrist lang genug,
   // dass ein hergestellter Lauf zwischen Herstellen, Nachlesen und Messen auch unter Last nicht von
   // selbst weiterspringt.
+  let kioskProfil: KioskProfil | null = null;
   const app = buildApp(services, {
+    kioskProfil: async () => kioskProfil,
     browserAktion: {
       seitenprofile: [TESTSEITE],
       fristen: { abholMs: 15000, antwortMs: 15000, taktMs: 300 },
@@ -266,6 +269,30 @@ async function baueInstanz(): Promise<{ buehne: Buehne; eintrag: OffeneInstanz }
     konto[rolle] = await services.auth.changeRole(frisch.id, rolle, admin.id);
   }
 
+  if (mitKiosk) {
+    const quelle = await services.ko.create({
+      title: "Rollenabnahme Lesekiosk",
+      statement: "Die Testkarte ist eckig.",
+      type: "best_practice",
+      category: "Rollenabnahme",
+      author: admin.id,
+      confidentiality: "intern",
+      neededValidations: 1,
+    });
+    await services.validation.rate(quelle.id, konto.controller.id, "up");
+    const bestaetigt = await services.ko.get(quelle.id);
+    if (bestaetigt?.status !== "validiert")
+      throw new Error("Die Kiosk-Prüfquelle ist nicht bestätigt.");
+    kioskProfil = {
+      id: "rollenabnahme",
+      revision: 1,
+      zugang: "sitzung",
+      leserId: konto.viewer.id,
+      freigabebeleg: "Isolierte Rollenprüfung",
+      gueltigBis: new Date(Date.now() + 3_600_000).toISOString(),
+      quellen: [{ koId: bestaetigt.id, fassung: bestaetigt.version }],
+    };
+  }
   const sitzung = {} as Record<Rolle, string>;
   for (const rolle of ROLLEN) {
     sitzung[rolle] = await anmelden(app, konto[rolle].email);

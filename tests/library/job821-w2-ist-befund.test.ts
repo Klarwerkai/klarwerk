@@ -1,99 +1,160 @@
-// ================================================================================================
-// JOB 821 · D2 — WAS DER CODE ÜBER `candidateItemId` HEUTE WIRKLICH SAGT.
-// ================================================================================================
-//
-// BEN hat D1 in einem Punkt widersprochen, und der Widerspruch trägt (BEN-PRUEFUNG-JOB-821-D1.md):
-//
-//   „Der bloße Feldname `candidateItemId` und ein Kommentar in der Websicht definieren nicht, auf
-//    welche Domänenentität diese ID referenziert. … Im Produktcode gibt es keinen nachgewiesenen
-//    Aufruf von `appendItemRefs`, der `candidateItemId` einer neuen Itementität zuordnet."
-//
-// Daraus folgt Mangel 1: „Referenzziel von `candidateItemId` ungeklärt. Es ist NICHT BELEGT, ob die
-// ID auf den bestehenden `ImportCandidate`, eine künftige `ImportCandidateItem`-Entität oder einen
-// reinen Laufbezeichner zeigt."
-//
-// DIESE DATEI ENTSCHEIDET DAS NICHT. Sie hält den Ist-Befund fest, aus dem die offene Frage
-// überhaupt erst folgt — damit die Ownerentscheidung auf einer Messung fußt und nicht auf einer
-// Namensinferenz. Wird morgen ein Erzeuger gebaut, wird dieser Wächter rot und zwingt dazu, die
-// Semantik zusammen mit ihm zu benennen. Genau das ist sein Zweck.
-//
-// Die Entität selbst bleibt ungebaut (Mangel 2: `ENTSCHEIDUNG_NOETIG`).
+// JOB 821 dokumentierte zunächst einen Laufvertrag ohne Schreiber. R-0142 hat den Importentscheid
+// an den Lauf gebunden. Der Referenzwert ist die ID des entschiedenen ImportCandidate.
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { join, relative } from "node:path";
+import ts from "typescript";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import { buildServices } from "../../services/app/src/build-app";
 import { pruefeSnapshotKette } from "../../services/ask/src/repo";
-// `AskError` wird in `src/repo` nur lokal importiert; exportiert ist sie in `src/types`.
 import { AskError } from "../../services/ask/src/types";
+import type { ImportItem, ImportRunItemRef } from "../../services/library-analytics";
+import { repoPfad } from "../support/repoPfad";
 
-const SERVICES = join(__dirname, "../../services");
-const APPS = join(__dirname, "../../apps");
-
-/** Alle Produktdateien (ohne Tests) unterhalb eines Wurzelverzeichnisses. */
 function produktdateien(wurzel: string): string[] {
-  const treffer: string[] = [];
-  const lauf = (verzeichnis: string) => {
-    for (const eintrag of readdirSync(verzeichnis, { withFileTypes: true })) {
-      if (eintrag.name === "node_modules" || eintrag.name === "dist") {
-        continue;
-      }
-      const voll = join(verzeichnis, eintrag.name);
-      if (eintrag.isDirectory()) {
-        lauf(voll);
-      } else if (/\.(ts|tsx)$/.test(eintrag.name) && !/\.test\.tsx?$/.test(eintrag.name)) {
-        treffer.push(voll);
-      }
-    }
-  };
-  lauf(wurzel);
-  return treffer;
+  return readdirSync(wurzel, { withFileTypes: true }).flatMap((eintrag) => {
+    if (eintrag.name === "node_modules" || eintrag.name === "dist") return [];
+    const pfad = join(wurzel, eintrag.name);
+    if (eintrag.isDirectory()) return produktdateien(pfad);
+    return /(?<!\.test)\.tsx?$/.test(pfad) ? [pfad] : [];
+  });
 }
 
-describe("JOB 821 · Auflage 1 — der Ist-Befund zum Referenzziel, gemessen statt inferiert", () => {
-  it("kein Produktpfad RUFT `appendItemRefs` auf — die Laufdomäne wird nie befüllt", () => {
-    // Das ist der Kern von BENs Einwand. Die Methode existiert (repo-pg.ts) und ist getestet, aber
-    // niemand im Produktcode übergibt ihr Referenzen. Solange das so ist, gibt es keinen Erzeuger,
-    // aus dem sich die Bedeutung von `candidateItemId` ablesen ließe.
-    const aufrufer = [...produktdateien(SERVICES), ...produktdateien(APPS)]
-      .filter((datei) => {
-        const text = readFileSync(datei, "utf8");
-        // Die Definition selbst und reine Namenslisten (dev-persist führt Methodennamen als
-        // Zeichenketten) sind keine Aufrufe.
-        return /\bappendItemRefs\s*\(/.test(text) && !/async appendItemRefs\s*\(/.test(text);
-      })
-      .map((datei) => datei.slice(datei.indexOf("/services") + 1));
-    expect(aufrufer).toEqual([]);
+describe("JOB 821 · Referenzziel der Importlauf-Elemente", () => {
+  it("die Entscheidung baut die Referenz, Repo und Ergebnisroute reichen die ID weiter", () => {
+    const aufrufe: string[] = [];
+    const zuweisungen: string[] = [];
+    for (const pfad of [
+      ...produktdateien(repoPfad("services")),
+      ...produktdateien(repoPfad("apps")),
+    ]) {
+      const text = readFileSync(pfad, "utf8");
+      if (!/appendItemRefs|candidateItemId/.test(text)) continue;
+      const datei = relative(repoPfad("."), pfad);
+      const baum = ts.createSourceFile(pfad, text, ts.ScriptTarget.Latest, true);
+      const besuche = (knoten: ts.Node): void => {
+        if (
+          ts.isCallExpression(knoten) &&
+          ts.isPropertyAccessExpression(knoten.expression) &&
+          knoten.expression.name.text === "appendItemRefs"
+        ) {
+          aufrufe.push(datei);
+        }
+        if (
+          (ts.isPropertyAssignment(knoten) || ts.isShorthandPropertyAssignment(knoten)) &&
+          knoten.name.getText(baum) === "candidateItemId"
+        ) {
+          const wert = ts.isPropertyAssignment(knoten) ? knoten.initializer : knoten.name;
+          zuweisungen.push(`${datei}: ${wert.getText(baum)}`);
+        }
+        ts.forEachChild(knoten, besuche);
+      };
+      besuche(baum);
+    }
+    expect(aufrufe).toEqual(["services/library-analytics/src/service.ts"]);
+    expect(zuweisungen.sort()).toEqual([
+      "services/app/src/routes/import-run-routes.ts: ref.candidateItemId",
+      "services/library-analytics/src/repo.ts: ref.candidateItemId",
+      "services/library-analytics/src/service.ts: candidateId",
+    ]);
   });
 
-  it("kein Produktpfad SETZT `candidateItemId` auf einen erzeugten Wert", () => {
-    // Gelesen und durchgereicht wird das Feld (Route, Websicht, Repo-Validierung) — erzeugt nicht.
-    // Ein Erzeuger wäre eine Zuweisung aus etwas anderem als einer vorhandenen Referenz.
-    const erzeuger = [...produktdateien(SERVICES), ...produktdateien(APPS)]
-      .flatMap((datei) => {
-        const text = readFileSync(datei, "utf8");
-        return [...text.matchAll(/candidateItemId:\s*([^,\n]+)/g)].map((m) => ({
-          datei: datei.slice(datei.indexOf("/services") + 1),
-          wert: (m[1] as string).trim(),
-        }));
-      })
-      // Ein Wert, der selbst wieder `candidateItemId` liest, ist DURCHREICHEN — auch in der
-      // Ternärform der Websicht (`geliefert(item.candidateItemId) ? item.candidateItemId : null`).
-      // `string` ist die Typdeklaration. Ein Erzeuger wäre alles andere: eine neue Kennung, eine
-      // Ableitung aus dem Kandidaten, ein Laufbezeichner — und genau der fehlt.
-      .filter((t) => !t.wert.includes("candidateItemId") && !/^string/.test(t.wert))
-      .map((t) => `${t.datei}: ${t.wert}`);
-    expect(erzeuger).toEqual([]);
+  it("nur eine endgültige Entscheidung bindet Kandidat, Laufposition und gegebenenfalls Wissensobjekt", async () => {
+    const { library, importRuns } = buildServices();
+    const importId = "job821-quelllauf";
+    await importRuns.insertIfAbsent({
+      importId,
+      sourceSystem: "datei",
+      externalId: null,
+      sourceScope: "Betriebsdaten",
+      requestedSourceVersion: null,
+      status: "COMPLETED",
+      sourceRecordId: null,
+      startedAt: "2026-01-01T10:00:00Z",
+      completedAt: "2026-01-01T10:01:00Z",
+      failureCode: null,
+      failureReason: null,
+      counters: { itemsTotal: 3, itemsCreated: 0, itemsBound: 0, itemsSkipped: 0, itemsFailed: 0 },
+    });
+    const items: ImportItem[] = [
+      {
+        title: "Wasserstand",
+        externalId: "quelle-wasserstand",
+        sourceScope: "Betriebsdaten",
+        statement: "Der Pegel beträgt zwei Meter.",
+        type: "technik",
+        category: "Messung",
+      },
+      {
+        title: "Spannung",
+        statement: "Der Messwert beträgt zwölf Volt.",
+        type: "technik",
+        category: "Labor",
+      },
+      {
+        title: "Messgerät",
+        statement: "Der Sensor braucht ein Kalibrierblatt.",
+        type: "technik",
+        category: "Beschaffung",
+      },
+    ];
+    const [ja, nein, rueckfrage] = await library.createImportCandidates(
+      items,
+      "import",
+      undefined,
+      {
+        quellangabenEingereicht: true,
+        lauf: { importId },
+      },
+    );
+    if (!ja || !nein || !rueckfrage)
+      throw new Error("Drei unterschiedliche Importkandidaten erwartet.");
+    await library.reviewImportCandidate(rueckfrage.id, "info", "pruefer", "Welche Quelle?");
+    expect(await importRuns.listItemRefs(importId)).toEqual([]);
+    await library.reviewImportCandidate(nein.id, "reject", "pruefer");
+    const angenommen = await library.reviewImportCandidate(ja.id, "accept", "pruefer");
+    expect(angenommen.status, angenommen.note ?? undefined).toBe("angenommen");
+    expect(angenommen.koId).toBeTruthy();
+    expect(angenommen.koId).not.toBe(ja.id);
+    expect(await library.zieheLaufReferenzenNach()).toBe(0);
+    expect(await importRuns.listItemRefs(importId)).toEqual([
+      {
+        importId,
+        ordinal: 0,
+        sourceRecordId: null,
+        candidateItemId: ja.id,
+        knowledgeObjectId: angenommen.koId,
+        itemOutcome: "CREATED",
+        itemFailureCode: null,
+      },
+      {
+        importId,
+        ordinal: 1,
+        sourceRecordId: null,
+        candidateItemId: nein.id,
+        knowledgeObjectId: null,
+        itemOutcome: "SKIPPED",
+        itemFailureCode: null,
+      },
+    ]);
   });
 
-  it("der pflichtige Verweis wird erzwungen, obwohl es nichts zu verweisen gibt", () => {
-    // Beide Seiten des Befunds in einem Fall: `candidateItemId` ist NICHT optional (types.ts), und
-    // das Repo lehnt eine leere Referenz ausdrücklich ab. Die Strenge ist real — nur ihr Ziel ist
-    // offen. Genau diese Spannung ist der Gegenstand der Ownerentscheidung.
-    const typen = readFileSync(join(SERVICES, "library-analytics/src/types.ts"), "utf8");
-    expect(typen).toContain("readonly candidateItemId: string;");
-    expect(typen).not.toContain("readonly candidateItemId?: string");
-
-    const repo = readFileSync(join(SERVICES, "library-analytics/src/repo.ts"), "utf8");
-    expect(repo).toContain("Eine Elementreferenz ohne candidateItemId referenziert nichts.");
+  it("die Ablage weist eine leere Kandidaten-ID ab", async () => {
+    expectTypeOf<ImportRunItemRef["candidateItemId"]>().toEqualTypeOf<string>();
+    const { importRuns } = buildServices();
+    await expect(
+      importRuns.appendItemRefs([
+        {
+          importId: "job821",
+          ordinal: 0,
+          sourceRecordId: null,
+          candidateItemId: " ",
+          knowledgeObjectId: null,
+          itemOutcome: "SKIPPED",
+          itemFailureCode: null,
+        },
+      ]),
+    ).rejects.toThrow("Eine Elementreferenz ohne candidateItemId referenziert nichts.");
+    expect(await importRuns.listItemRefs("job821")).toEqual([]);
   });
 });
 

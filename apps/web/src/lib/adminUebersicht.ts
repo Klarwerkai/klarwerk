@@ -101,6 +101,7 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
       { art: "verwaltung", section: "ki", detail: "ki" },
       { art: "verwaltung", section: "ki", detail: "kiZugaenge" },
       { art: "verwaltung", section: "ki", detail: "kiFunktionen" },
+      { art: "verwaltung", section: "ki", detail: "kiReferenz" },
       { art: "verwaltung", section: "ki", detail: "kiGrenzen" },
       { art: "verwaltung", section: "ki", detail: "kiExtern" },
       // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets der KI-Anbieter.
@@ -135,6 +136,7 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
     ziele: [
       { art: "verwaltung", section: "system" },
       { art: "verwaltung", section: "system", detail: "bereitschaft" },
+      { art: "verwaltung", section: "system", detail: "uebersetzungen" },
       { art: "verwaltung", section: "system", detail: "sicherung" },
       { art: "verwaltung", section: "vorfuehrdaten" },
       { art: "verwaltung", section: "vorfuehrdaten", detail: "demo" },

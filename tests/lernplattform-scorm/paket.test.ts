@@ -60,7 +60,7 @@ function standardBestand() {
       }),
       beispielKo({ id: "KO-B", title: "Druck ablassen", version: 3 }),
     ],
-    { "OBJ-BILD": { mime: "image/png", data: PNG_1X1 } },
+    { "OBJ-BILD": { mime: "image/png", data: PNG_1X1, confidentiality: "intern" } },
   );
 }
 
@@ -251,7 +251,11 @@ describe("K5 · fehlende Medien, nicht Unterstütztes, fehlende Rechte — vor d
 
   it("nicht unterstütztes Medienformat blockiert mit MEDIA_UNSUPPORTED und nennt das Format", async () => {
     const { dienst } = bestand([mitBild()], {
-      "OBJ-BILD": { mime: "application/pdf", data: Buffer.from("%PDF-1.4") },
+      "OBJ-BILD": {
+        mime: "application/pdf",
+        data: Buffer.from("%PDF-1.4"),
+        confidentiality: "intern",
+      },
     });
     const p = await dienst.pruefe(eingabe(["KO-M"]), ALLES_SICHTBAR);
     expect(p.exportierbar).toBe(false);
@@ -419,13 +423,20 @@ describe("K7 · keine geschützten Inhalte, Empfängerfreigabe getrennt, Kontore
     }
   });
 
-  it("vertraulich eingestuftes Bild blockiert mit MEDIA_CONFIDENTIAL", async () => {
-    const { dienst } = bestand([beispielKo({ id: "KO-B2", bodyHtml: BILD_HTML })], {
-      "OBJ-BILD": { mime: "image/png", data: PNG_1X1, confidentiality: "streng_vertraulich" },
-    });
-    const p = await dienst.pruefe(eingabe(["KO-B2"]), ALLES_SICHTBAR);
-    expect(p.befunde.map((b) => b.code)).toContain("MEDIA_CONFIDENTIAL");
-  });
+  it.each([undefined, "streng_vertraulich"])(
+    "Bild mit Schutzstufe %s blockiert mit MEDIA_CONFIDENTIAL",
+    async (confidentiality) => {
+      const { dienst } = bestand([beispielKo({ id: "KO-B2", bodyHtml: BILD_HTML })], {
+        "OBJ-BILD": {
+          mime: "image/png",
+          data: PNG_1X1,
+          ...(confidentiality ? { confidentiality } : {}),
+        },
+      });
+      const p = await dienst.pruefe(eingabe(["KO-B2"]), ALLES_SICHTBAR);
+      expect(p.befunde.map((b) => b.code)).toContain("MEDIA_CONFIDENTIAL");
+    },
+  );
 
   it("der Fremdauszug einer Quelle steht in keiner Paketdatei", async () => {
     const { dienst } = standardBestand();

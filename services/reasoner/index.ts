@@ -11,6 +11,7 @@ export {
   // Die Route bildet AUSSCHLIESSLICH diesen Typ auf 409/CONFIDENTIAL_CLOUD_BLOCKED ab — jeder andere
   // Fehler bleibt, was er ist (Begründung am Typ selbst).
   ConfidentialCloudBlockedError,
+  AssistOhneVorschlagFehler,
   // WP-BILD-1c: die eine Task-Liste + der Bild-Daten-Deckel des describe-Aufrufs (Route/Tests).
   REASONER_TASKS,
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
@@ -69,7 +70,6 @@ export {
   parseDuplicateResponse,
   // PMO-FEA-0006: DOM-freies Extract-Parsing inkl. G-2-Belegstellen-Gate (testbar).
   parseExtractResponse,
-  excerptFoundInDocument,
   findExcerptInDocument,
   MAX_EXTRACT_POINTS,
   MAX_EXCERPT_LENGTH,

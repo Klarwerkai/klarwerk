@@ -55,10 +55,10 @@ const OPTIONEN_RUMPF = rumpf(WURZEL, "export function assembleServices(", "} = {
 const SPEICHER_RUMPF = rumpf(WURZEL, "export function inMemoryRepos(): AppRepos {");
 const POSTGRES_RUMPF = rumpf(WURZEL, "export function buildPgServices(");
 
-const ABLAGEN = namen(/^ {2}(\w+): /gm, REPOS_RUMPF);
+const ABLAGEN = namen(/^ {2}(\w+)\??: /gm, REPOS_RUMPF);
 const OPTIONEN = namen(/^ {4}(\w+)\?: /gm, OPTIONEN_RUMPF);
 const SPEICHER = paare(/^ {4}(\w+): new (\w+)\(/gm, SPEICHER_RUMPF);
-const POSTGRES = paare(/^ {6}(\w+): new (Pg\w+)\(pool\)/gm, POSTGRES_RUMPF);
+const POSTGRES = paare(/^ {6}(\w+): (?:new )?([Pp]g\w+)\(\s*(?:pool|rohPool)\b/gm, POSTGRES_RUMPF);
 const MODULE = readdirSync(repoPfad("services")).filter((name) =>
   existsSync(repoPfad(`services/${name}/index.ts`)),
 );
@@ -120,7 +120,12 @@ describe("R-1141 · der Zusammenschaltungsvertrag deckt die Verdrahtung", () => 
     const pg = rumpf(WURZEL, "export function buildPgServices(");
     expect(pg).toContain("gatedPool(rohPool)");
     expect(pg).toContain("withTx: (fn) => withPgTx(pool, fn)");
-    expect(pg).toContain("return assembleServices(");
+    const erzeugt = pg.indexOf("const services = assembleServices(");
+    const bereitschaft = pg.indexOf("services.readiness = datenbankBereitschaft(pool);");
+    const geliefert = pg.indexOf("return services;");
+    expect(erzeugt).toBeGreaterThanOrEqual(0);
+    expect(bereitschaft).toBeGreaterThan(erzeugt);
+    expect(geliefert).toBeGreaterThan(bereitschaft);
     const journal = rumpf(JOURNAL, "export async function buildDevPersistServices(");
     expect(journal).toContain("inMemoryRepos()");
     expect(journal).toContain("assembleServices(");
@@ -135,7 +140,7 @@ describe("R-1141 · der Zusammenschaltungsvertrag deckt die Verdrahtung", () => 
     // Jede Ablage hat in beiden Sätzen genau einen Adapter, und keiner nennt eine fremde.
     expect([...SPEICHER.keys()].sort()).toEqual([...ABLAGEN].sort());
     for (const ablage of ABLAGEN) {
-      expect(POSTGRES.get(ablage), ablage).toMatch(/^Pg\w+Repo$/);
+      expect(POSTGRES.get(ablage), ablage).toMatch(/^Pg[A-Z]\w+$/);
     }
   });
 
@@ -149,7 +154,11 @@ describe("R-1141 · der Zusammenschaltungsvertrag deckt die Verdrahtung", () => 
       .join("\n");
     expect(luecken(ohneZeile)).toContain("Ablage koRepo: keine Zeile");
     const falscherAdapter = VERTRAG.replace("`PgKantenRepo`", "`PgIrgendwasRepo`");
-    expect(luecken(falscherAdapter)).toContain("Option kanten: Postgresadapter PgKantenRepo");
+    expect(luecken(falscherAdapter)).toContain("Ablage kantenRepo: Postgresadapter PgKantenRepo");
+    const falscheOption = VERTRAG.replace("`PgKoSearchProjectionRepo`", "`AndererAdapter`");
+    expect(luecken(falscheOption)).toContain(
+      "Option searchProjections: Postgresadapter PgKoSearchProjectionRepo",
+    );
     const ohneModul = VERTRAG.replace("| `services/db-tx` |", "| db-tx |");
     expect(luecken(ohneModul)).toContain("Modul services/db-tx: keine Zeile");
   });

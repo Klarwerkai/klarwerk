@@ -342,8 +342,24 @@ describe("D — durch den Draht: Excel → Prüfliste → Befunde je Kandidat", 
       payload: { items: [...ausExcel, ...ausJson] },
     });
     expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const kandidaten = angelegt.json<{ id: string; item: { confidentiality: string } }[]>();
+    expect(kandidaten.map((k) => k.item.confidentiality)).toEqual([
+      "vertraulich",
+      "streng_vertraulich",
+    ]);
+    const vorFreigabe = await befundeVon(app, headers);
+    expect(vorFreigabe.befunde.map((b) => b.id)).toEqual([kandidaten[0]?.id]);
+    const me = await app.inject({ method: "GET", url: "/api/auth/me", headers });
+    expect(me.statusCode, me.body).toBe(200);
+    const freigabe = await app.inject({
+      method: "PUT",
+      url: `/api/users/${me.json<{ id: string }>().id}`,
+      headers,
+      payload: { freigabe: "streng_vertraulich" },
+    });
+    expect(freigabe.statusCode, freigabe.body).toBe(200);
     const { befunde } = await befundeVon(app, headers);
-    expect(befunde).toHaveLength(2);
+    expect(befunde.map((b) => b.id).sort()).toEqual(kandidaten.map((k) => k.id).sort());
     for (const befund of befunde) {
       expect(befund.schutz).toEqual({ bewertet: true, gruende: ["einstufung"], schutzdaten: [] });
     }

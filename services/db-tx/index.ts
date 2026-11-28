@@ -9,7 +9,14 @@
 // Überschneidungsbefund beantwortet das Produkt heute über das versionsbedingte Einfügen
 // (`services/conflicts/src/repo-pg.ts`, `insertIfVersionsCurrent`) und den fail-closed Leseweg; die
 // volle Schreib-Serialisierung ist dort als eigene Scheibe „Job-Queue“ vorgemerkt.
-export { type TxContext, type Queryable, poolQueryable, pgQueryable, withPgTx } from "./src/tx";
+export {
+  type TxContext,
+  type Queryable,
+  poolQueryable,
+  clientQueryable,
+  pgQueryable,
+  withPgTx,
+} from "./src/tx";
 // R-1437 / I10: der Vertrag für eng begrenzte, nur lesende, nichtinteraktive Prüfungen.
 export {
   HaengendeSitzungError,

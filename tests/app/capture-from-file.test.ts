@@ -228,7 +228,10 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     // Original geht als Daten + Ref-Cache in den Finalizer (Phase A lädt höchstens einmal hoch).
     expect(captureSource).toContain("cache: fileOriginalRef.current");
     expect(captureSource).toContain("fileLinkHtml({");
-    expect(captureSource).toContain("setFileOriginal({");
+    expect(captureSource).toMatch(
+      /const original = \{\s*name: f\.name,\s*mime: f\.type [^}]+data: originalDataUrl \?\? \(await readFileAsDataUrl\(f\)\),\s*\};/,
+    );
+    expect(captureSource).toContain("setFileOriginal(original)");
     // Fehlergrund „zu groß" wird gesondert gemeldet (spezifische i18n-Meldung, kein Generik-Fehler).
     expect(captureSource).toContain('"capture.attachTooLarge"');
     expect(captureSource).toContain('"capture.originalAttachFailed"');

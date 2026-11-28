@@ -161,6 +161,14 @@ const WOCHEN_ZUSAGEN: readonly string[] = [];
  * wird er ebenfalls rot — eine tote Ausnahme ist ein Fehler, keine Bequemlichkeit.
  */
 const KEINE_AUFBEWAHRUNGSFRIST: Record<string, string> = {
+  "kalender.agenda.leer": "Die Agenda in EigenerKalender zeigt 60 Tage ab dem gewählten Tag.",
+  "klarakalender.termineLesen": "KalenderAnbindung liest Termine für die nächsten 14 Tage.",
+  "klaraerinnerung.routine.abschnitt.erledigte_aufgaben":
+    "Die Aufgabenübersicht einer Routine verwendet ROUTINE_RUECKBLICK_TAGE vor dem Termin.",
+  "klaraerinnerung.routine.abschnitt.neue_notizen":
+    "Für neue und geänderte Notizen gilt derselbe Rückblick vor dem Termin.",
+  "klaragedaechtnis.ausnahmeHilfe":
+    "Die verlängerte Frist des eigenen Gedächtniseintrags ist auf das Maximum von GEDAECHTNIS_FRISTEN_TAGE begrenzt.",
   "lib.facet.ageBucket.d30":
     "Altersfacette des Suchfilters („≤ 30 Tage“). Die Zahl steht im Schlüsselnamen und hat mit " +
     "der Aufbewahrung im Papierkorb nichts zu tun.",

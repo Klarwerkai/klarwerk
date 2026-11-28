@@ -22,7 +22,7 @@ import { DIENST_ROUTEN, DIENST_SCHLUESSEL_HEADER, type DienstRecht } from "./die
 // Fassung 1.2.0 — Aufnahme gesamt-mcp (R-0713): der MCP-Zugang `/mcp` (Recht `mcp.werkzeug`,
 // `routes/mcp-routes.ts`) steht mit seinen Zuständen in derselben Tabelle.
 
-export const VERTRAGSFASSUNG = "1.2.0";
+export const VERTRAGSFASSUNG = "1.3.0";
 
 export interface Antwortzustand {
   readonly status: number;
@@ -52,7 +52,8 @@ export interface Vertragsroute {
     | "Kandidatenliste"
     | "Betriebszustand"
     | "KiZustand"
-    | "McpAntwort";
+    | "McpAntwort"
+    | "Mailannahme";
   readonly zustaende: readonly Antwortzustand[];
 }
 
@@ -102,6 +103,62 @@ const FALSCHER_INHALTSTYP: Antwortzustand = {
 };
 
 export const INTEGRATIONS_VERTRAG: readonly Vertragsroute[] = [
+  {
+    methode: "POST",
+    pfad: "/api/eingang/email",
+    recht: "mail.entwurf",
+    zweck:
+      "Der konfigurierte Mailadapter liefert eine Nachricht als privaten Entwurf mit Originalbeleg ein.",
+    erfolg: "Mailannahme",
+    zustaende: [
+      { status: 201, bedeutung: "Neuer Entwurf angelegt." },
+      { status: 200, bedeutung: "Frühere Zustellung bestätigt oder abgeschlossen." },
+      SCHEMAFEHLER,
+      { status: 400, fehler: "EMAIL_FORM", bedeutung: "Nachrichtenfelder oder Klartext ungültig." },
+      {
+        status: 400,
+        fehler: "EMAIL_ADRESSE",
+        bedeutung: "Empfänger gehört nicht zum konfigurierten Eingang.",
+      },
+      {
+        status: 400,
+        fehler: "DRAFT_STALE",
+        bedeutung: "Der Entwurf änderte sich während der Originalbindung.",
+      },
+      {
+        status: 404,
+        fehler: "NOT_FOUND",
+        bedeutung: "Der wartende Entwurf ist nicht mehr vorhanden.",
+      },
+      {
+        status: 409,
+        fehler: "CONFLICT",
+        bedeutung: "Die Herkunft des wartenden Entwurfs hat sich geändert.",
+      },
+      {
+        status: 409,
+        fehler: "IDEMPOTENCY_PAYLOAD_MISMATCH",
+        bedeutung: "Die Nachrichtenkennung wurde bereits mit anderem Inhalt verwendet.",
+      },
+      { ...ZU_GROSS, bedeutung: "Rumpf größer als 1 MiB." },
+      FALSCHER_INHALTSTYP,
+      {
+        status: 422,
+        fehler: "EMAIL_ANHAENGE",
+        bedeutung: "Der Eingang akzeptiert ausschließlich Klartext ohne Anhänge.",
+      },
+      {
+        status: 503,
+        fehler: "EMAIL_NICHT_KONFIGURIERT",
+        bedeutung: "Für diese Instanz ist kein gültiger Eingang konfiguriert.",
+      },
+      {
+        status: 503,
+        fehler: "EMAIL_ZUSTAENDIGKEIT_FEHLT",
+        bedeutung: "Das zuständige Konto kann keine Entwürfe anlegen.",
+      },
+    ],
+  },
   {
     methode: "POST",
     pfad: "/api/ask",
@@ -668,6 +725,30 @@ export const SCHEMAS: Readonly<Record<string, unknown>> = {
     },
   },
   // R-0713 — die Nachrichten des MCP-Zugangs (`routes/mcp-routes.ts`).
+  EmailNachricht: {
+    type: "object",
+    additionalProperties: false,
+    required: ["recipient", "messageId", "from", "subject", "sentAt", "text"],
+    properties: {
+      recipient: { type: "string", minLength: 1, maxLength: 254 },
+      messageId: { type: "string", minLength: 1, maxLength: 180 },
+      from: { type: "string", minLength: 1, maxLength: 200 },
+      subject: { type: "string", minLength: 1, maxLength: 200 },
+      sentAt: { type: "string", format: "date-time", maxLength: 35 },
+      text: { type: "string", minLength: 1, maxLength: 100_000 },
+      attachments: { type: "array", maxItems: 0 },
+    },
+  },
+  Mailannahme: {
+    type: "object",
+    required: ["entwurfId", "neu"],
+    properties: { entwurfId: { type: "string" }, neu: { type: "boolean" } },
+  },
+  Mailfehler: {
+    type: "object",
+    required: ["error"],
+    properties: { error: { type: "string" }, message: { type: "string" } },
+  },
   McpNachricht: {
     type: "object",
     required: ["jsonrpc"],
@@ -705,6 +786,7 @@ export const SCHEMAS: Readonly<Record<string, unknown>> = {
 };
 
 const ANFRAGE_SCHEMAS: Readonly<Record<string, string>> = {
+  "POST /api/eingang/email": "EmailNachricht",
   "POST /api/ask": "Frage",
   "POST /api/check-text": "Textpruefung",
   "POST /api/library/import/candidates": "Einlieferung",
@@ -746,7 +828,12 @@ function antwortAus(zustaende: readonly Antwortzustand[], erfolg: Vertragsroute[
   const ohneRumpf = zustaende.every((z) => z.ohneRumpf);
   // Die Fehlerkennung(en) dieses Status — genau die aus der Tabelle, keine andere.
   const kennung = fehler.length === 1 ? { const: fehler[0] } : { enum: fehler };
-  const fehlerSchema = { allOf: [ref("Fehler"), { properties: { error: kennung } }] };
+  const fehlerSchema = {
+    allOf: [
+      ref(erfolg === "Mailannahme" ? "Mailfehler" : "Fehler"),
+      { properties: { error: kennung } },
+    ],
+  };
   const content =
     status >= 400 ? { "application/json": { schema: fehlerSchema } } : erfolgsinhalt(erfolg);
   return {
@@ -767,6 +854,13 @@ function antwortenFuer(route: Vertragsroute): Record<string, unknown> {
   const alle = [...nachStatus.keys(), ...GEMEINSAME_ZUSTAENDE.map((z) => z.status)];
   for (const status of alle.sort((a, b) => a - b)) {
     const gemeinsam = GEMEINSAME_ANTWORTNAMEN[status];
+    if (route.erfolg === "Mailannahme" && (status === 401 || status === 403)) {
+      antworten[String(status)] = antwortAus(
+        GEMEINSAME_ZUSTAENDE.filter((z) => z.status === status),
+        route.erfolg,
+      );
+      continue;
+    }
     antworten[String(status)] = gemeinsam
       ? { $ref: `#/components/responses/${gemeinsam}` }
       : antwortAus(nachStatus.get(status) ?? [], route.erfolg);

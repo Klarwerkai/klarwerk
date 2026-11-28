@@ -270,6 +270,7 @@ describe("JOB 3366 · T4 · der Fragment-Hinweis im Klara-Panel", () => {
 
   it("P5 · der Sprachwechsel nimmt den GEHALTENEN Satz mit, ohne die Antwort neu zu holen", async () => {
     await ladeFenster(BEFUND);
+    await spracheWaehlen("de");
     await fragen();
     const abfragenVorher = askAbgesetzt;
     expect(el("ask-fragment").textContent).toBe(wortlaut("askFragment", "de"));

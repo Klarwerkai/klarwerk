@@ -184,7 +184,14 @@ describe("mega51 G2 · Trust — die Scheibe ist in mega52 geschnitten", () => {
     // zurückgekommen, und es wurde kein Bezeichner angefasst (die Schlüssel heissen weiter
     // `pilot.obs.source.*`). Dass DE und NL unverändert bleiben, ist der Gegenbeleg: dort stand
     // „Vertrauen"/„vertrouwen" schon vorher und steht es weiter.
-    expect(zaehlung).toEqual(["de: 27", "en: 88", "nl: 28"]);
+    //
+    // AUFNAHME 20260922 · Antwort-Erklärung (Gesamtcheck R-1329, Nacharbeit 63): en 88 → 93, de und
+    // nl UNVERÄNDERT. Die fünf Nennungen stehen in den englischen WERTEN der neuen Belastbarkeit
+    // (`ask.belastbarkeit.vertrauenswert`, `…vertrauenswertKeiner`, `…vertrauenswertKurz`,
+    // `…hinweis`, `…woerterbuch.titel`: „trust value") — der von E2 erlaubte Fall. Dieselben
+    // Schlüssel sagen auf DE „Vertrauenswert" und auf NL „vertrouwenswaarde"; kein deutscher oder
+    // niederländischer Anzeigewert ist zurückgekommen (Beweis über die Werte: mega52-Sammler).
+    expect(zaehlung).toEqual(["de: 27", "en: 93", "nl: 28"]);
   });
 });
 
@@ -192,7 +199,11 @@ describe("mega51 H · der Beispielklick sagt vorher, dass er eine echte Anfrage 
   it("der Hinweis steht an der Beschriftung UND an jedem Chip", () => {
     const ask = readFileSync(join(WEB_SRC, "pages/Ask.tsx"), "utf8");
     expect(ask).toContain('{t("ask.examplesSendHint")}');
-    expect(ask).toContain('title={t("ask.examplesSendHint")}');
+    // produkt:20261010:fragen-pruefen-einstieg (K1): ein erfundenes Beispiel trägt vor dem Hinweis
+    // zusätzlich „fiktiv"; der Sofort-Hinweis steht in BEIDEN Zweigen des Chip-Titels.
+    expect(ask).toMatch(
+      /title=\{\s*fiktiv\s*\?\s*`\$\{t\(FRAGEN_EINSTIEG_KEYS\.fiktivTitel\)\} \$\{t\("ask\.examplesSendHint"\)\}`\s*:\s*t\("ask\.examplesSendHint"\)\s*\}/,
+    );
     // Kein Bestätigungsdialog — der Klick bleibt EIN Klick.
     expect(ask).toContain("onClick={() => askExample(question)}");
     expect(ask).not.toContain("window.confirm");

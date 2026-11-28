@@ -362,6 +362,9 @@ const nl: typeof de = {
   "audit.action.user_approve": "Account vrijgegeven",
   "audit.action.user_account_corrected": "Accountgegevens gecorrigeerd",
   "audit.action.user_freigabe_set": "Vrijgaveniveau gewijzigd",
+  "audit.action.user_ausgeschieden": "Persoon als uit dienst gemarkeerd",
+  "audit.action.user_ausscheiden_beendet": "Status ‘uit dienst’ opgeheven",
+  "audit.action.user_weisungsbefugnis_set": "Instructiebevoegdheid gewijzigd",
   "audit.action.auth_login": "Aangemeld",
   "audit.action.auth_logout": "Afgemeld",
   "audit.action.notice_acknowledged": "Kennisgeving bevestigd",
@@ -5974,7 +5977,7 @@ const nl: typeof de = {
   "ai.generatedNotice":
     "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
   "ai.surfaceNotice": "Hier kan een AI meewerken — door haar gegenereerde inhoud wordt gemarkeerd.",
-  "ergebnisStufe.entwurf": "Reasoner-concept, niet gevalideerd",
+  "ergebnisStufe.entwurf": "AI-voorstel (Reasoner-concept, niet gevalideerd)",
   "ergebnisStufe.empfehlung": "Aanbeveling, ongetoetst",
   "ergebnisStufe.validiert": "Gevalideerd",
   "ai.costHint": "Eén klik kan een echte, betaalde cloud-AI-aanvraag veroorzaken.",

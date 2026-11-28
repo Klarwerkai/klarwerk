@@ -47,6 +47,13 @@ function render(node: ReturnType<typeof createElement>): string {
   return container.textContent ?? "";
 }
 
+function konfidenzbeispiele(): string {
+  render(createElement(UiKit));
+  const abschnitt = container.querySelector('[data-testid="bausteine-abschnitt-konfidenz"]');
+  if (!abschnitt) throw new Error("Konfidenzbeispiele fehlen im UI-Kit");
+  return abschnitt.textContent ?? "";
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
 });
@@ -59,7 +66,7 @@ afterEach(() => {
 
 describe("mega35 E1 · /ui-kit zeigt das prozentbasierte Qualitätswort nicht mehr", () => {
   it("die Seite trägt bei 91 kein „Gesichert“ — und die Zahlen stehen noch da", () => {
-    const text = render(createElement(UiKit));
+    const text = konfidenzbeispiele();
     expect(text).not.toContain(GESICHERT);
     // Der Balken bleibt vollständig: alle drei Schwellen-Beispiele mit ihrer Rohzahl.
     expect(text).toContain("42");
@@ -68,7 +75,7 @@ describe("mega35 E1 · /ui-kit zeigt das prozentbasierte Qualitätswort nicht me
   });
 
   it("auch die beiden anderen Stufen der Skala stehen dort nicht mehr", () => {
-    const text = render(createElement(UiKit));
+    const text = konfidenzbeispiele();
     expect(text).not.toContain(i18n.t("quality.reliable"));
     expect(text).not.toContain(i18n.t("quality.preliminary"));
   });

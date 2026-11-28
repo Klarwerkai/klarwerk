@@ -12,6 +12,7 @@ import { assertWordAddinFassung } from "./word-addin-fassung.mjs";
 export { policyHash } from "./release-ausnahmen.mjs";
 
 export const hash = (value) => createHash("sha256").update(value).digest("hex");
+export const schmalansichtsTest = "tests/smoke/frontdoor-schmalansicht-lauf.test.ts";
 export const contractHash = hash(JSON.stringify(contract));
 export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const controls = {
@@ -138,12 +139,15 @@ export function assertProof(proof, tree) {
     assessFindings(proof.exceptions).accepted,
     "unbekannte, geänderte oder abgelaufene Ausnahme",
   );
+  assertStages(proof, contract.stages);
+}
+export function assertStages(proof, stages) {
   const began = Date.parse(proof.startedAt);
   const ended = Date.parse(proof.endedAt);
   assert(ended >= began && ended - began <= contract.maxSeconds * 1000);
-  assert.equal(proof.stages.length, contract.stages.length, "fehlende Pflichtstufe");
+  assert.equal(proof.stages.length, stages.length, "fehlende Pflichtstufe");
   let previous = began;
-  for (const [i, stage] of contract.stages.entries()) {
+  for (const [i, stage] of stages.entries()) {
     const actual = proof.stages[i];
     assert.equal(actual.name, stage.name);
     assert(same(actual.command, stageCommand(stage, proof.tests, proof.output)));
@@ -159,20 +163,28 @@ export function assertProof(proof, tree) {
     assert(/^[a-f0-9]{64}$/.test(actual.logSha));
     previous = end;
   }
-  assertTests(proof.testReport, proof.tests, proof.root);
+  if (stages.some((stage) => stage.name === "test")) {
+    assertTests(proof.testReport, proof.tests, proof.root);
+  }
 }
 export function assertEvidence(proof) {
+  assertStageEvidence(proof, undefined, true);
+}
+export function assertStageEvidence(proof, directory, testExpected) {
   for (const stage of proof.stages) {
-    const log = readFileSync(stage.log);
+    const log = readFileSync(directory ? join(directory, `${stage.name}.log`) : stage.log);
     assert.equal(hash(log), stage.logSha, "verändertes Laufprotokoll");
     const assessment = assessStage(stage.name, stage.exit, log.toString("utf8"), proof.root);
     assert(assessment.accepted, "neue, geänderte oder abgelaufene Diagnose");
     assert(same(assessment.approved, stage.approvedExceptions ?? []));
   }
-  assert.equal(hash(readFileSync(proof.testReportPath)), proof.testReportSha);
-  assert(same(JSON.parse(readFileSync(proof.testReportPath, "utf8")), proof.testReport));
+  if (testExpected) {
+    const reportPath = directory ? join(directory, "tests.json") : proof.testReportPath;
+    assert.equal(hash(readFileSync(reportPath)), proof.testReportSha);
+    assert(same(JSON.parse(readFileSync(reportPath, "utf8")), proof.testReport));
+  }
 }
-export function runRelease(root, base, output) {
+export function releaseInputs(root, base) {
   assert.equal(
     git(root, "status", "--porcelain=v1", "--untracked-files=all"),
     "",
@@ -184,23 +196,37 @@ export function runRelease(root, base, output) {
     .split("\n")
     .filter(Boolean);
   assertWordAddinFassung(root, base, commit, git);
-  const tests = selection(changedPaths);
+  return {
+    base,
+    commit,
+    tree,
+    changedPaths,
+    tests: selection(changedPaths),
+    integrationTests: integrationSelection(changedPaths),
+    deferredTests: deferredSelection(changedPaths),
+    contractHash,
+    policyHash,
+  };
+}
+export function runRelease(root, base, output) {
+  const inputs = releaseInputs(root, base);
   const startedAt = new Date().toISOString();
-  const limit = Date.now() + contract.maxSeconds * 1000;
   mkdirSync(output, { recursive: true });
-  writeFileSync(join(output, "einmaliger-start.txt"), `${commit} ${tree}\n`, { flag: "wx" });
+  writeFileSync(join(output, "einmaliger-start.txt"), `${inputs.commit} ${inputs.tree}\n`, {
+    flag: "wx",
+  });
   const proof = {
     version: contract.version,
     contractHash,
     root,
     output,
     base,
-    commit,
-    tree,
-    changedPaths,
-    tests,
-    integrationTests: integrationSelection(changedPaths),
-    deferredTests: deferredSelection(changedPaths),
+    commit: inputs.commit,
+    tree: inputs.tree,
+    changedPaths: inputs.changedPaths,
+    tests: inputs.tests,
+    integrationTests: inputs.integrationTests,
+    deferredTests: inputs.deferredTests,
     policyHash,
     writer:
       process.env.GITHUB_ACTIONS === "true"
@@ -211,14 +237,37 @@ export function runRelease(root, base, output) {
     exceptions: [],
     success: false,
   };
+  runStages(proof, contract.stages);
+  proof.approvalBasis =
+    proof.exceptions.length > 0 ? "specific_temporary_exceptions" : "no_exceptions";
+  proof.deferred = contract.deferred.map((d) => ({
+    ...d,
+    due: new Date(Date.parse(startedAt) + d.withinHours * 3600000).toISOString(),
+  }));
+  writeFileSync(join(output, "pflicht.json"), `${JSON.stringify(proof, null, 2)}\n`, {
+    flag: "wx",
+  });
+  return proof;
+}
+// Einzelvertrag und PR-Teil laufen mit denselben Befehlen, Prozessgrenzen und Belegprüfungen.
+export function runStages(proof, stages) {
+  const { root, output, commit, tests } = proof;
+  const limit = Date.parse(proof.startedAt) + contract.maxSeconds * 1000;
   try {
-    for (const stage of contract.stages) {
+    for (const stage of stages) {
       const command = stageCommand(stage, tests, output);
       const start = new Date().toISOString();
       console.log(
         JSON.stringify({ event: "stage-invocation", name: stage.name, at: start, command }),
       );
-      const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
+      // Vitest hält den hostweiten Platz bis zum Ende der Stufe und arbeitet mit einem Worker.
+      // Der delegierte Smoke nimmt für seine eigenen seriellen Aufrufe einen Platz innerhalb
+      // dieses Pflichtlaufs. Ansonsten würde das Kind auf seinen wartenden Elternprozess warten.
+      const kindBefehl =
+        stage.name === "test" && tests.includes(schmalansichtsTest)
+          ? ["env", `KLARWERK_BROWSERDECKEL_LOCK=${join(output, "browser-kind.lock")}`, ...command]
+          : command;
+      const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...kindBefehl], {
         cwd: root,
         env: environment(),
         encoding: "utf8",
@@ -279,16 +328,6 @@ export function runRelease(root, base, output) {
     proof.error = error.message;
   }
   proof.endedAt = new Date().toISOString();
-  proof.approvalBasis =
-    proof.exceptions.length > 0 ? "specific_temporary_exceptions" : "no_exceptions";
-  proof.deferred = contract.deferred.map((d) => ({
-    ...d,
-    due: new Date(Date.parse(startedAt) + d.withinHours * 3600000).toISOString(),
-  }));
-  writeFileSync(join(output, "pflicht.json"), `${JSON.stringify(proof, null, 2)}\n`, {
-    flag: "wx",
-  });
-  return proof;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");

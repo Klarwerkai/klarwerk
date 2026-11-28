@@ -11,12 +11,12 @@ import { workflowUmfeld } from "./definition-fixture";
 
 it("weist eine bereits vorbereitete Fachbuchung zurück, wenn vor dem atomaren Schreibzugriff ein Quellenkonflikt entsteht", async () => {
   const container = await new GenericContainer("postgres:16-alpine")
-    .withEnvironment({ POSTGRES_PASSWORD: "workflow-synthetic", POSTGRES_DB: "workflow_conflict" })
+    .withEnvironment({ POSTGRES_PASSWORD: "workflow-synthetic", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
   const pool = createPool(
-    `postgresql://postgres:workflow-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/workflow_conflict`,
+    `postgresql://postgres:workflow-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
   );
   const schliessen = poolAbschluss(pool);
   try {

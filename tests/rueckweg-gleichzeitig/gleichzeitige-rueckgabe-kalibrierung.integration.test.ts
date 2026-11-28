@@ -53,9 +53,10 @@
 // EIGENE WEGWERF-DATENBANK, wie die Abnahme und aus demselben Grund (Lehre JOB 4321 R1): eine
 // Erweiterung ist je Datenbank, und in dieser gibt es genau einen Anleger.
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import { migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { pgKalibrierung } from "../pg-laufbeleg/kalibrierung";
 import { FASSUNGSBELEG, FREIGABEBELEG, belegeFuer, pruefeKette } from "./kette";
 import {
   type Fallbefund,
@@ -82,7 +83,17 @@ const WIEDERHOLUNGEN = 5;
 /** Die Betriebsart des Laufs (`--mode`), ohne `vite/client`-Typen gelesen. */
 const BETRIEBSART = (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE ?? "";
 
-const EINGESCHALTET = process.env.KLARWERK_KALIBRIERUNG === "1" || BETRIEBSART === "kalibrierung";
+const { aktiv: EINGESCHALTET, it } = pgKalibrierung(
+  process.env.KLARWERK_KALIBRIERUNG === "1" || BETRIEBSART === "kalibrierung",
+  {
+    K1: /^K1 ist GRÜN — der Erwartungssatz.+to deeply equal \[\]/u,
+    K2: /^K2 ist GRÜN — die Konfliktfassung.+to deeply equal \[\]/u,
+    K3: /^K3 ist GRÜN — derselbe Abnahmefall erkennt vollständig fehlende Belege.+to deeply equal \[\]/u,
+    K4: /^K4 ist GRÜN — derselbe Abnahmefall erkennt einen verfälschten Fassungs-Schnappschuss.+to deeply equal \[\]/u,
+    K5: /^K5 ist GRÜN — derselbe Abnahmefall erkennt einen fehlenden Fassungs-Schnappschuss.+to deeply equal \[\]/u,
+    K6: /^K6 ist GRÜN — derselbe Abnahmefall erkennt Belege mit FREMDEM Akteur.+to deeply equal \[\]/u,
+  },
+);
 
 describe("JOB 4325 · Kalibrierung: dem Erwartungssatz wird der Boden entzogen", () => {
   let verwaltung: Pool | undefined;
@@ -142,10 +153,13 @@ describe("JOB 4325 · Kalibrierung: dem Erwartungssatz wird der Boden entzogen",
     await instanz?.schliessen().catch(() => undefined);
     await lese?.end().catch(() => undefined);
     if (verwaltung) {
-      await verwaltung
-        .query(`DROP DATABASE IF EXISTS ${datenbank} WITH (FORCE)`)
-        .catch(() => undefined);
-      await verwaltung.end().catch(() => undefined);
+      try {
+        // pg-pool kann end() bereits auflösen, während die Client-Sockets noch schließen.
+        // PostgreSQL wartet beim regulären DROP auf sie. Ein zurückgelassener Client ist ein Prüffehler.
+        await verwaltung.query(`DROP DATABASE IF EXISTS ${datenbank}`);
+      } finally {
+        await verwaltung.end();
+      }
     }
   }, 300_000);
 

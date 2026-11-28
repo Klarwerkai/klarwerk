@@ -364,6 +364,29 @@ describe("K2/K5 · Vorschau, Rechtewirkung, Zugang", () => {
     await klicken(q("ablauf-zugang-behalten"));
     expect(q("ablauf-vorschau")).toBeNull();
   });
+
+  // Gesamtcheck R-1329 (Aufrufer-Wächter): R-0554 Ü3 stand bisher nur an der nie montierten
+  // Altfläche `Wissensuebergabe` („ein Wechsel des Nachfolgers verwirft die Vorschau“). Hier am
+  // Einstieg, der beide Wege trägt: wer einen Eintrag nach der Vorschau einem ANDEREN Nachfolger
+  // gibt, bestätigt nicht die alte Menge — die Vorschau verfällt, die neue nennt den neuen.
+  it("Ü3 · ein Wechsel des Nachfolgers nach der Vorschau verwirft sie", async () => {
+    await klicken(q("ablauf-oeffnen"));
+    await verteilen();
+    await klicken(q("ablauf-vorschau-holen"));
+    expect(q("ablauf-vorschau")?.getAttribute("data-bestaetigbar")).toBe("ja");
+
+    // a1 lag bei Nora — jetzt Ada.
+    await anhaken("beitrag", "a1");
+    await waehlen("ablauf-ziel", "ada");
+    await klicken(q("ablauf-zuteilen"));
+    expect(q("ablauf-vorschau")).toBeNull();
+    expect(q("ablauf-bestaetigen")).toBeNull();
+
+    await klicken(q("ablauf-vorschau-holen"));
+    const letzte = netz.aufrufe.filter((a) => a.weg === "vorschau").at(-1);
+    expect(letzte?.eingabe?.beitraege).toContainEqual({ koId: "a1", an: "ada" });
+    expect(alle("ablauf-paket").map((p) => p.getAttribute("data-an"))).toContain("ada");
+  });
 });
 
 describe("K4/K6 · Teilfehler, Wiederaufnahme, Bilanz und Abbruch", () => {

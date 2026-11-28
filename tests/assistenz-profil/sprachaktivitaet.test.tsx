@@ -93,7 +93,7 @@ function mitSprache(): void {
     cancel: () => {
       ausgabe.abgebrochen += 1;
     },
-    getVoices: () => [],
+    getVoices: () => [{ name: "Teststimme", lang: "de-DE", localService: true }],
     addEventListener: () => {},
     removeEventListener: () => {},
   };
@@ -248,6 +248,7 @@ describe("Zuhören — erst bei bestätigter Tonaufnahme", () => {
 describe("Sprechen — erst bei bestätigter Wiedergabe", () => {
   it("P1/P2 · Anforderung ist kein Sprechen; start, pause, resume, end", () => {
     expect(vorlesen("a", "Hallo", "de")).toBe(true);
+    expect(aeusserung(0).voice).toMatchObject({ lang: "de-DE", localService: true });
     // Eingereiht, noch nicht begonnen: Stoppknopf ja, Sprechen nein.
     expect(leseVorlesen().liest).toBe("a");
     expect(leseVorlesen().spielt).toBeNull();

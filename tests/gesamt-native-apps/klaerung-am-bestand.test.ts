@@ -2,7 +2,7 @@
 //
 // `docs/aufnahme/20260922-gesamt-native-apps.md` dokumentiert die offene Umfangsfrage zu eigenen
 // Store-Apps (R-1052, Teil von R-2193) und stützt sich auf Tatsachen am Produkt: Das Pflichtenheft
-// schließt Store-Apps für v1 aus, es gibt kein natives Projekt, ausgeliefert wird die installierbare
+// schließt Store-Apps für v1 aus, der native Begleiter läuft auf macOS, mobil ausgeliefert wird die installierbare
 // Web-App. Dieser Test hält diese Tatsachen fest. Ändert sich eine, etwa weil eine App-Hülle
 // dazukommt, wird er rot, und das Dokument muss nachgezogen werden.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -51,8 +51,13 @@ describe("Native Store-Apps: Klärung am Bestand", () => {
     expect(frage).toContain("**Eindeutig bestellter Anteil:** nur diese Dokumentation.");
   });
 
-  it("K2 · kein natives Projekt, keine App-Hülle: ausgeliefert wird die Web-App", () => {
-    expect(eintraege("apps"), NACHZIEHEN).toEqual(["web"]);
+  it("K2 · mobil wird die Web-App ausgeliefert, der native Begleiter hat ausschließlich das macOS-Ziel", () => {
+    expect(eintraege("apps").sort(), NACHZIEHEN).toEqual(["desktop", "web"]);
+    expect(eintraege("apps/desktop"), NACHZIEHEN).toEqual(["klara-begleiter"]);
+    const paket = lies("apps/desktop/klara-begleiter/Package.swift");
+    expect(paket).toMatch(/platforms:\s*\[\s*\.macOS\(\.v13\)\s*\]/);
+    expect(paket).toContain(".executableTarget(");
+    expect(abschnitt("3. Klärung R-1052")).toContain("apps/desktop/klara-begleiter/Package.swift");
     const web = eintraege("apps/web");
     expect(web, NACHZIEHEN).not.toContain("android");
     expect(web, NACHZIEHEN).not.toContain("ios");

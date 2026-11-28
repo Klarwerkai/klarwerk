@@ -255,7 +255,11 @@ describe("JOB 4303 · der Trefferdeckel greift auf der sichtbaren Grundmenge", (
     // letzte Parameter, davor stehen die Werte des Trims.
     const ersterTrimplatz = params.length - trim.params.length;
     const erwartet = trim.sql("k", ersterTrimplatz);
-    expect(sql, "die Anweisung trägt das Trimprädikat nicht").toContain("k.confidentiality_key");
+    // Entscheidung 16: die Stufengrenze liest die ROHE Stufe aus `data`, nicht die generierte
+    // Spalte `confidentiality_key` (die eine unbekannte Stufe als 'intern' auslegt).
+    expect(sql, "die Anweisung trägt das Trimprädikat nicht").toContain(
+      "k.data->>'confidentiality'",
+    );
     expect(sql).toContain("k.deleted_at_key IS NULL");
 
     // UND ES STEHT VOR DEM DECKEL: das `LIMIT` kommt in der Anweisung NACH dem Prädikat.
@@ -288,7 +292,7 @@ describe("JOB 4303 · der Trefferdeckel greift auf der sichtbaren Grundmenge", (
     expect(
       sql,
       "ohne Trim steht trotzdem ein Sichtbarkeitsprädikat in der Anweisung",
-    ).not.toContain("confidentiality_key");
+    ).not.toContain("data->>'confidentiality'");
     // Fassung, Generation, EIN Begriff, Deckel — mehr Parameter hat der Altvertrag nicht.
     expect(params).toHaveLength(4);
   });

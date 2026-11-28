@@ -81,13 +81,15 @@ async function wegAufbauen(opt: {
   }
   const koService = new KoService({ repo: new InMemoryKoRepo() });
   await koService.activateSearchProjectionV2();
-  await koService.create({
+  const quelle = await koService.create({
     title: "Zylinderkopfdichtung XQ42 wechseln",
     statement: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet und gereinigt.",
     type: "best_practice",
     category: "Betrieb",
     author: "anna",
+    confidentiality: "intern",
   });
+  await koService.setValidationState(quelle.id, { status: "validiert", trust: 90 });
   const ask = new AskService({
     reasoner,
     koService,
@@ -108,7 +110,7 @@ async function wegAufbauen(opt: {
       zentralFreigegeben: reasoner.configStatus().taskConfig.kiFreigabe?.oeffentlicheKi === true,
       vertraulichFreigegeben: reasoner.vertraulicheAusleitungFreigegeben(),
     }),
-    ...(opt.riegelOffen ? { dokumenttextRiegelOffen: true } : {}),
+    dokumenttextRiegelOffen: opt.riegelOffen,
   });
   const zeilen: string[] = [];
   const app = Fastify({

@@ -20,6 +20,7 @@
 //  · H4: echter Tab-Stopp, native Button-Semantik (Tagname BUTTON, type="button", kein tabIndex=-1).
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Auch die kleinste Rolle soll die Darstellung ändern können.
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
@@ -46,26 +47,13 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     external: {
       policy: vi.fn(async () => ({ stage: "blocked" })),
     },
-    validation: { board: vi.fn(async () => []) },
+    validation: { boardCount: vi.fn(async () => ({ length: 0 })) },
     conflicts: { list: vi.fn(async () => []) },
     duplicates: { list: vi.fn(async () => []) },
     gaps: { summary: vi.fn(async () => ({ open: 0, byPriority: {} })) },
     lifecycle: { pending: vi.fn(async () => []) },
     features: { get: vi.fn(async () => ({ features: {} })) },
   },
-}));
-
-// Die KLEINSTE Rolle: der Umschalter ist Anwender-Komfort, kein Admin-Werkzeug.
-vi.mock("../../apps/web/src/app/RoleContext", () => ({
-  useRole: () => ({
-    role: "viewer",
-    setRole: () => {},
-    stufe2: false,
-    setStufe2: () => {},
-    isSessionRole: true,
-    canPreview: false,
-    previewActive: false,
-  }),
 }));
 
 import {
@@ -77,6 +65,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider, useNavGuard } from "../../apps/web/src/app/NavGuardContext";
+import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { DESIGN_THEME_STORAGE_KEY } from "../../apps/web/src/lib/designTheme";
@@ -131,7 +120,7 @@ async function mountKopfband(): Promise<{ container: HTMLElement; unmount: () =>
                 null,
                 createElement(SchmutzigeSeite),
                 createElement(OrtsAnzeige),
-                createElement(Kopfband),
+                createElement(RoleProvider, null, createElement(Kopfband)),
               ),
             ),
           ),

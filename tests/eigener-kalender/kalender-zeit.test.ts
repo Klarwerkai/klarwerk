@@ -6,9 +6,8 @@
 // gemessen: ein Termin mit Uhrzeit fällt auf den Tag SEINER LOKALEN ZEITZONE, und eine ganztägige
 // Frist bleibt auf ihrem Datum — gleich, in welcher Zone sie gelesen wird.
 import { describe, expect, it } from "vitest";
+import { isoZuProfilzeit, profilzeitZuIso } from "../../apps/web/src/lib/kalenderProfilzeit";
 import {
-  isoZuOrtszeit,
-  ortszeitZuIso,
   tagVon,
   tageVon,
   uhrzeit,
@@ -71,9 +70,11 @@ describe("K2 · lokale Zeitzone und ganztägige Fristen", () => {
   });
 
   it("Formularwerte (Ortszeit) und gespeicherte Zeitpunkte (UTC) lassen sich verlustfrei umrechnen", () => {
-    const iso = ortszeitZuIso("2026-10-12T09:15");
+    const zone = "Europe/Berlin";
+    const iso = profilzeitZuIso("2026-10-12T09:15", zone);
+    expect(iso).toBe("2026-10-12T07:15:00.000Z");
     expect(iso).not.toBeNull();
-    expect(isoZuOrtszeit(iso as string)).toBe("2026-10-12T09:15");
-    expect(ortszeitZuIso("")).toBeNull();
+    expect(isoZuProfilzeit(iso as string, zone)).toBe("2026-10-12T09:15");
+    expect(profilzeitZuIso("", zone)).toBeNull();
   });
 });

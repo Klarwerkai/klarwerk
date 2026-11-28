@@ -18,9 +18,9 @@
 // gelaufen und bestanden sind. Ein Lauf, der nichts findet (falscher Filter, umbenannter Titel,
 // fehlendes Projekt), ist rot und nicht still grün.
 //
-// WARUM DER TYP-IMPORT AUS `@playwright/test/reporter`: er ordnet die Datei über den Importgraphen
-// (`tests/tor-inventar/browser-gruppe.ts`) der seriellen Browsergruppe zu — sie startet über den
-// Kindprozess tatsächlich Chromium und zwei Smoke-Server und darf nicht parallel laufen.
+// Die Typen aus `@playwright/test/reporter` beschreiben den fertigen Bericht. Der Kindprozess
+// nimmt den globalen Browserplatz über `smoke:ui:gate`. Der lesende Vitest läuft im Rest-Aufruf,
+// damit er diesen Platz beim Warten auf den Kindprozess freilässt.
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

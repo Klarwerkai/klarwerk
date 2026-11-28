@@ -71,7 +71,8 @@
 // WAS DIESE DATEI NICHT TUT: keine Empfehlung, keine Aussage, ob eine verbliebene Abweichung
 // „behoben werden sollte" — das entscheidet Pedi. Kopfband (Z.17-20, D4) und Frage-Pille
 // (Z.22-25, D1) sind ausdruecklich nicht Gegenstand.
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
@@ -83,10 +84,8 @@ import { type Bruecke, bruecke } from "../library/job2703-bruecke";
 // TEIL 1 — DIE SOLLWERTTABELLE, aus KeinWissen.dc.html gelesen und kanonisiert.
 // ================================================================================================
 
-const ZIELBILD =
-  "/Users/peterkohnert/Documents/Projekt_klarwerk/DESIGN_ZIELBILD_20260827/KeinWissen.dc.html";
-const zielbildDa = existsSync(ZIELBILD);
-const ZEILEN: readonly string[] = zielbildDa ? readFileSync(ZIELBILD, "utf8").split("\n") : [];
+const ZIELBILD = join(process.cwd(), "tests/design/vorlagen/20260827/KeinWissen.dc.html");
+const ZEILEN: readonly string[] = readFileSync(ZIELBILD, "utf8").split("\n");
 
 /**
  * Der Zeilensatz, aus dem die Leser gerade lesen. Im Regelfall die Vorlage von der Platte; in der
@@ -535,8 +534,8 @@ function sollwerte(zeilen: readonly string[]): SollZeile[] {
   }
 }
 
-/** Die Sollwerttabelle der Vorlage von der Platte. Leer, wenn das Zielbild nicht lesbar ist. */
-const SOLL: readonly SollZeile[] = zielbildDa ? sollwerte(ZEILEN) : [];
+/** Die Sollwerttabelle der versionierten Vorlage. */
+const SOLL: readonly SollZeile[] = sollwerte(ZEILEN);
 
 /**
  * DER PIN auf das Zielbild vom 27.08.2026. Aendert Pedi die Vorlage (Klick, „Save"), meldet S1 den
@@ -1163,18 +1162,10 @@ const SATZ_NEU = "Dazu liegt kein freigegebenes Firmenwissen vor.";
 const KNOPF_NEU = "Frage ändern";
 const AKTION_NEU = "Als offene Frage an KLARWERK geben";
 const FUSS_NEU = "Klara erfindet keine Antworten — eine Lücke ist eine ehrliche Auskunft.";
-/**
- * Die Klara-Regel an ihrer EINEN Stelle #ask-rule-note. NACHGEZOGEN in JOB 3017 D4 (Nachzug):
- * die Stelle ist die Fusszeile #kw-fuss des Grundpanels (SchlankesPanel.dc.html Z.48), und der
- * Wortlaut traegt seit JOB 3017 den Leitsatz „Keine KI-Antwort ohne Beleg · Vertrauliches bleibt
- * vertraulich" vor den beiden belegten Halbsaetzen (woertlich / nicht an eine externe KI —
- * mega75/mega77-Pins). Bis dahin: „So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen
- * wörtlich, statt eine Antwort zu formulieren. Dein markierter Text wird dabei nicht an eine
- * externe KI gesendet." — sichtbar in der Luecke ist die Regel weiterhin (M20).
- */
+// Die Einstellung erläutert Quellenprüfung, aktive Vorgabe und Ausschaltmöglichkeit.
 const REGEL =
-  "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich. Klara zitiert validiertes " +
-  "KLARWERK-Wissen wörtlich; dein markierter Text wird nicht an eine externe KI gesendet.";
+  "Klara prüft deine Frage und die markierte Passage anhand bestätigten Firmenwissens. " +
+  "Externe KI ist für die Demo standardmäßig an und kann in den Einstellungen ausgeschaltet werden.";
 
 interface Traeger {
   traeger: string;
@@ -1335,8 +1326,8 @@ const luecke = (): boolean => sichtbarBis(dom("#ask-gap-block"), null);
 const warnung = (): boolean =>
   sichtbarBis(dom("#ask-status"), null) && klassen(dom("#ask-status")).includes("warn");
 
-describe.runIf(zielbildDa)(
-  "JOB 3010/3046 · D2 „KeinWissen“ — Messung am laufenden Panel gegen das Zielbild",
+describe.each([ZIELBILD])(
+  "JOB 3010/3046 · D2 „KeinWissen“ — Messung am laufenden Panel gegen die Vorlage %s",
   () => {
     beforeAll(async () => {
       b = await bruecke();
@@ -2047,10 +2038,6 @@ describe.runIf(zielbildDa)(
   },
 );
 
-describe.runIf(!zielbildDa)("JOB 3010/3046 · D2 Messung uebersprungen", () => {
-  it("meldet den fehlenden Kontrollordner statt eine Pruefung vorzutaeuschen", () => {
-    expect(zielbildDa, `Zielbild nicht lesbar: ${ZIELBILD} — Abgleich hier nicht messbar.`).toBe(
-      false,
-    );
-  });
+it("liest die versionierte Vorlage für den Abgleich", () => {
+  expect(ZEILEN.join("\n")).toContain(SATZ_NEU);
 });

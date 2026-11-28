@@ -118,6 +118,8 @@ interface Lage {
   dokScroll: number;
   fenster: number;
   kaesten: Kasten[];
+  seitenleistenPunkte: string[];
+  seitenleistenGruppen: number;
   suchfeldSichtbar: boolean;
   suchfeldBreite: number;
   meldungenWort: boolean;
@@ -231,6 +233,8 @@ const LAGE = fn(`() => {
     dokScroll: document.documentElement.scrollWidth,
     fenster: window.innerWidth,
     kaesten,
+    seitenleistenPunkte: Array.from(document.querySelectorAll('[data-testid="arbeitsbereichsleiste"] nav > ul [data-seitenleiste-punkt]')).filter(sichtbar).map(a => a.getAttribute('data-seitenleiste-punkt')),
+    seitenleistenGruppen: Array.from(document.querySelectorAll('[data-seitenleiste-gruppe]')).filter(sichtbar).length,
     suchfeldSichtbar: sichtbar(feld),
     suchfeldBreite: sichtbar(feld) ? feld.getBoundingClientRect().width : 0,
     meldungenWort: sichtbar(wort),
@@ -360,9 +364,19 @@ function pruefeLage(l: Lage, kennung: string, sprache = "de"): void {
     expect(namen, `${kennung}: ${pflicht} fehlt`).toContain(pflicht);
   }
   if (l.fenster >= 900) {
-    expect(namen, `${kennung}: Arbeitsbereiche fehlt`).toContain("arbeitsbereiche");
     expect(namen, `${kennung}: Suche fehlt`).toContain("suche");
-    expect(namen.filter((n) => n.startsWith("punkt:")).length, `${kennung}: Punkte`).toBe(6);
+    const punkte = ["start", "fragen", "bibliothek", "erfassen", "entwuerfe", "validierung"];
+    const kopfpunkte = namen.filter((n) => n.startsWith("punkt:")).map((n) => n.slice(6));
+    if (l.fenster >= 1440) {
+      expect(l.seitenleistenPunkte, `${kennung}: Hauptziele in der Seitenleiste`).toEqual(punkte);
+      expect(l.seitenleistenGruppen, `${kennung}: weitere Arbeitsbereiche`).toBeGreaterThan(0);
+      expect(kopfpunkte).toEqual([]);
+      expect(namen).not.toContain("arbeitsbereiche");
+    } else {
+      expect(kopfpunkte, `${kennung}: Hauptziele im Kopfband`).toEqual(punkte);
+      expect(namen, `${kennung}: Arbeitsbereiche fehlt`).toContain("arbeitsbereiche");
+      expect(l.seitenleistenPunkte).toEqual([]);
+    }
   } else {
     expect(namen, `${kennung}: Menü-Knopf fehlt`).toContain("menue");
   }

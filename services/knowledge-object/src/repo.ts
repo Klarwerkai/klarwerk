@@ -103,6 +103,39 @@ export interface KoPapierkorbBedingung {
 /** Die eine Meldung, wenn die Bedingung nicht (mehr) gilt — derselbe Wortlaut wie `restore`. */
 export const NICHT_IM_PAPIERKORB = "Wissensobjekt nicht im Papierkorb.";
 
+/** Angaben für Rückgaben und Autorenübergaben, einschließlich der zweiten Leseprüfung. */
+export type AufgabenKo = Pick<
+  KnowledgeObject,
+  "id" | "author" | "category" | "confidentiality" | "quellrechte" | "spaceId"
+>;
+
+export interface AufgabenAuswahl {
+  objektIds: readonly string[];
+  /** Bei Übergaben kommen auch Objekte mit fehlendem oder ausgeschiedenem Autor in Betracht. */
+  erreichbareAutoren?: readonly string[];
+}
+
+export function aufgabenProjektion(
+  kos: readonly KnowledgeObject[],
+  auswahl: AufgabenAuswahl,
+): AufgabenKo[] {
+  const ids = new Set(auswahl.objektIds);
+  const autoren = auswahl.erreichbareAutoren && new Set(auswahl.erreichbareAutoren);
+  return kos
+    .filter(
+      (ko) =>
+        !ko.deletedAt && !ko.mergedInto && (ids.has(ko.id) || (autoren && !autoren.has(ko.author))),
+    )
+    .map(({ id, author, category, confidentiality, spaceId, quellrechte }) => ({
+      id,
+      author,
+      category,
+      ...(confidentiality != null ? { confidentiality } : {}),
+      ...(spaceId != null ? { spaceId } : {}),
+      ...(quellrechte != null ? { quellrechte } : {}),
+    }));
+}
+
 export interface KoRepo {
   /**
    * JOB 2706 D1 (Review R2-30, Neubau nach 2685 D5): der SCHREIBSTAND des Bestands — eine
@@ -217,6 +250,10 @@ export interface KoRepo {
   // Sweep (`runTrashSweep`) und die Quellanker (`trashedSourceAnchors`). Ein Default hier bräche
   // alle vier in einem Zug. Nur die normale Listenroute übergibt den Trim.
   list(filter: KoFilter, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]>;
+  listAufgabenKandidaten?(
+    auswahl: AufgabenAuswahl,
+    trim: KoSichtbarkeitstrim,
+  ): Promise<AufgabenKo[]>;
   // WP-BILD-1g (bens sammel14-ROT): PROJEKTION für den Suchpfad — dieselbe Filterlogik wie list(),
   // aber OHNE bodyHtml (Pg: SELECT data - 'bodyHtml'; InMemory: Feld weggelassen). Die Suche
   // arbeitet über title/statement/captionTexts und traversiert nie megabyte-große Body-Strings.
@@ -567,6 +604,16 @@ export class InMemoryKoRepo implements KoRepo {
       [...this.items.values()]
         .filter((ko) => matches(ko, filter))
         .filter((ko) => trim === undefined || trim.trifftZu(ko)),
+    );
+  }
+
+  async listAufgabenKandidaten(
+    auswahl: AufgabenAuswahl,
+    trim: KoSichtbarkeitstrim,
+  ): Promise<AufgabenKo[]> {
+    return aufgabenProjektion(
+      [...this.items.values()].filter((ko) => trim.trifftZu(ko)),
+      auswahl,
     );
   }
 

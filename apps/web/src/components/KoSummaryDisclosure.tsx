@@ -9,20 +9,17 @@
 // Kennzeichnung, kein zusätzlicher Abruf, dieselbe Vorschau wie bisher. Die Zuordnung läuft über
 // `source.id`; ein Import-Kandidat (Stufe2) trägt keine Wissensobjekt-Kennung und bleibt deshalb
 // unverändert beim Original.
+import type { TFunction } from "i18next";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { LesevarianteKurz } from "../api/types";
 import { type KoPreviewSource, koPreviewText } from "../lib/koPreview";
-import { useLesevariante } from "../lib/lesevariante";
+import { useListenLesevarianten } from "../lib/lesevariante";
 import { bindungsText } from "./LesevarianteHinweis";
 import { cx } from "./ui";
 
-export function KoSummaryDisclosure({
-  source,
-  text,
-  defaultOpen = false,
-  className,
-}: {
+interface VorschauProps {
   // JOB 3326: `id` ist optional und rein zur Zuordnung der Leseübersetzung — die Vorschau selbst
   // liest weiter nur `statement`/`bodyHtml`. Aufrufer ohne Kennung (Import-Kandidaten) sind davon
   // nicht betroffen.
@@ -34,10 +31,23 @@ export function KoSummaryDisclosure({
   // Für aktive Review-Karten (Status „neu") bereits offen — der Prüfer verliert keinen Klick.
   defaultOpen?: boolean;
   className?: string;
-}): JSX.Element | null {
-  const { t } = useTranslation();
+}
+
+export function KoSummaryDisclosure(props: VorschauProps): JSX.Element | null {
+  const { t, i18n } = useTranslation();
+  const lesevariante = useListenLesevarianten(i18n?.language, !!props.source.id);
+  return <KoSummaryVorschau {...props} t={t} variante={lesevariante(props.source.id)} />;
+}
+
+export function KoSummaryVorschau({
+  source,
+  text,
+  defaultOpen = false,
+  className,
+  variante,
+  t,
+}: VorschauProps & { variante: LesevarianteKurz | undefined; t: TFunction }): JSX.Element | null {
   const [open, setOpen] = useState(defaultOpen);
-  const variante = useLesevariante(source.id);
   const override = text?.replace(/\s+/g, " ").trim();
   // Die Übersetzung tritt an die Stelle der VORSCHAU, nie an die des Volltext-Overrides: wo die
   // Fläche den echten Wortlaut zeigt (Import-Review), bleibt der echte Wortlaut stehen.

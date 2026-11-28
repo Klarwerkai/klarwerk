@@ -500,6 +500,11 @@ export interface BrowserSeitenadapter {
     tabId: number,
     a: { formular: string; fingerabdruck: string; label: string; wert: string; erwartet?: string },
   ): Promise<SeitenAntwort<{ wert: string }>>;
+  /** Nur der Seitenausführer kennt den vor Klaras Eintrag vorhandenen Inhalt. */
+  feldZuruecksetzen(
+    tabId: number,
+    a: { formular: string; fingerabdruck: string; label: string; erwartet: string },
+  ): Promise<SeitenAntwort<null>>;
   /** `werte`: nur klicken, wenn diese Felder unmittelbar vorher genau diese Werte zeigen. */
   klicke(
     tabId: number,
@@ -626,7 +631,6 @@ export class BrowserAusfuehrung {
   private stand: BrowserLaufStand = "bereit";
   private readonly schritte: Schritt[];
   private bindung: Bindung | null = null;
-  private readonly vorherWerte = new Map<string, string>();
   private vorherEntwuerfe: readonly string[] = [];
   private ergebnis: BrowserErgebnis | null = null;
   private klaerung: string | null = null;
@@ -1062,7 +1066,6 @@ export class BrowserAusfuehrung {
         this.gibAb(uebergabe("gesperrte_handlung", this.ort(), `Das Feld „${x.label}"`), s.nr);
         return "halt";
       }
-      this.vorherWerte.set(x.label, feld[0]?.wert ?? "");
     }
     this.bindung = {
       tabId: lage.tabId,
@@ -1443,15 +1446,13 @@ export class BrowserAusfuehrung {
           `„${label}" wurde seit Klaras Eintrag geändert; Klara überschreibt das nicht.`,
         );
       }
-      const alt = this.vorherWerte.get(label) ?? "";
-      const antwort = await this.deps.adapter.fuelle(z.tabId, {
+      const antwort = await this.deps.adapter.feldZuruecksetzen(z.tabId, {
         formular: z.formular,
         fingerabdruck: bindung.fingerabdruck,
         label,
-        wert: alt,
         erwartet: eigen,
       });
-      if (!antwort.ok || antwort.wert.wert !== alt) {
+      if (!antwort.ok) {
         return halt("unklar", `„${label}" ließ sich nicht zurücksetzen.`);
       }
       this.setze(s, "zurueckgenommen", "vorheriger Wert nachgelesen");

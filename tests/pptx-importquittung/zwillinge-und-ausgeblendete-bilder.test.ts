@@ -126,14 +126,19 @@ describe("A · Zwillinge und ausgeblendete Bilder — gezählt nach ihrer Bedeut
   });
 
   for (const sprache of SPRACHEN) {
-    it(`${sprache}: die Quittung am Entwurf nennt 5 übernommen, 1 nicht übernommen`, () => {
+    it(`${sprache}: die Quittung am Entwurf nennt 5 übernommen, 1 nicht übernommen`, async () => {
       expect(
-        rumpfBefunde(entwurfAusImport(sprache).bodyHtml ?? "", sprache, ZWILLINGSDECK),
+        await rumpfBefunde(
+          entwurfAusImport(sprache).bodyHtml ?? "",
+          sprache,
+          ZWILLINGSDECK,
+          "import",
+        ),
       ).toEqual([]);
     });
   }
 
-  it("eine Zählung über VERSCHIEDENE Quellen verdeckt einen verlorenen Zwilling — diese hier nicht", () => {
+  it("eine Zählung über VERSCHIEDENE Quellen verdeckt einen verlorenen Zwilling — diese hier nicht", async () => {
     const html = entwurfAusImport("de").bodyHtml ?? "";
     // Die Zählweise aus JOB 4269 (`BILDER_AM_EINTRAG`): drei verschiedene Quellen bei fünf Bildern.
     expect(verschiedeneQuellen(html)).toBe(3);
@@ -145,7 +150,9 @@ describe("A · Zwillinge und ausgeblendete Bilder — gezählt nach ihrer Bedeut
     // Die deduplizierte Zählung merkt davon NICHTS …
     expect(verschiedeneQuellen(ohneZwilling)).toBe(verschiedeneQuellen(html));
     // … der Nachweis Bild für Bild schon (dazu die verschobene Reihenfolge der übrigen Bilder).
-    expect(rumpfBefunde(ohneZwilling, "de", ZWILLINGSDECK)).toContain("4 Bilder im Rumpf statt 5");
+    expect(await rumpfBefunde(ohneZwilling, "de", ZWILLINGSDECK, "import")).toContain(
+      "4 Bilder im Rumpf statt 5",
+    );
   });
 });
 
@@ -153,7 +160,7 @@ describe("A · Zwillinge und ausgeblendete Bilder — gezählt nach ihrer Bedeut
 // B · SPEICHERN, ANNEHMEN, NEU LADEN — ÜBER DIE ECHTEN ROUTEN
 // ================================================================================================
 describe("B · der gespeicherte und angenommene Bildnachweis über die echten Routen", () => {
-  it("POST /api/drafts → GET → promote → GET /api/kos/:id: Bilanz und Bildbytes wie im Original", async () => {
+  it("POST /api/drafts → GET → promote → GET /api/kos/:id: Bilanz und Pixel wie im Original", async () => {
     const app = buildApp(buildServices());
     const zugang = {
       name: "Bildnachweis",
@@ -181,7 +188,23 @@ describe("B · der gespeicherte und angenommene Bildnachweis über die echten Ro
     const geladen = await app.inject({ method: "GET", url: `/api/drafts/${id}`, headers });
     const imEntwurf =
       ((geladen.json() as { payload: { bodyHtml?: string } }).payload.bodyHtml as string) ?? "";
-    expect(rumpfBefunde(imEntwurf, "de", ZWILLINGSDECK), "am gespeicherten Entwurf").toEqual([]);
+    expect(
+      await rumpfBefunde(imEntwurf, "de", ZWILLINGSDECK, "speicher"),
+      "am gespeicherten Entwurf",
+    ).toEqual([]);
+
+    // Die Anzahl bleibt gleich, aber ein übernommenes Bild hat die falschen Pixel.
+    const bilder = bilderImRumpf(imEntwurf);
+    const erstes = bilder[0];
+    const letztes = bilder.at(-1);
+    if (!erstes || !letztes) throw new Error("Bild fehlt im gespeicherten Entwurf");
+    const vertauscht = imEntwurf.replace(
+      Buffer.from(letztes.bytes).toString("base64"),
+      Buffer.from(erstes.bytes).toString("base64"),
+    );
+    expect(await rumpfBefunde(vertauscht, "de", ZWILLINGSDECK, "speicher")).toEqual([
+      "Bild 5 (versteckt-folie.png) hat andere Pixel als die Originaldatei",
+    ]);
 
     const angenommen = await app.inject({
       method: "POST",
@@ -193,7 +216,11 @@ describe("B · der gespeicherte und angenommene Bildnachweis über die echten Ro
     const eintrag = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
     expect(eintrag.statusCode, eintrag.body).toBe(200);
     const amEintrag = (eintrag.json() as { bodyHtml?: string }).bodyHtml ?? "";
-    expect(rumpfBefunde(amEintrag, "de", ZWILLINGSDECK), "am angenommenen Eintrag").toEqual([]);
+    expect(
+      await rumpfBefunde(amEintrag, "de", ZWILLINGSDECK, "speicher"),
+      "am angenommenen Eintrag",
+    ).toEqual([]);
+    expect(amEintrag).toBe(imEntwurf);
     await app.close();
   });
 });

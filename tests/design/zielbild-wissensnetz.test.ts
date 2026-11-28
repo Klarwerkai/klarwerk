@@ -62,8 +62,7 @@ import { WERTE_WISSENSNETZ, farbeKanon, vergleiche } from "../../tools/design-ve
 const WURZEL = resolve(process.cwd());
 const DIST = resolve(WURZEL, "apps/web/dist");
 const THEMES = resolve(WURZEL, "apps/web/src/styles/themes.css");
-const ZIELBILD =
-  "/Users/peterkohnert/Documents/Projekt_klarwerk/DESIGN_ZIELBILD_20260827/Wissensnetz.dc.html";
+const ZIELBILD = join(WURZEL, "tests/design/vorlagen/20260827/Wissensnetz.dc.html");
 const ORIGIN = "http://klarwerk.test";
 
 // ---- Der Bestand: Themen so gesetzt, dass jede Farbe, eine Kante und ein klarer Groesster entstehen --

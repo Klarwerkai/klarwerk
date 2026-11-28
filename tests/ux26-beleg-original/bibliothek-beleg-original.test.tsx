@@ -254,6 +254,7 @@ async function mount(k: KnowledgeObject, belege: EvidenceRecord[]): Promise<void
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
 }
@@ -460,9 +461,12 @@ for (const sprache of SPRACHEN) {
       pruefeBedeutung(sprache, "keinAnlass", frischeLabel(abschnitt9, sprache));
       expect(text(abschnitt9)).toContain(i18n.getFixedT(sprache)("ko.evidenceEmpty"));
       expect(abschnitt9.querySelector("[data-bib-beleg-leer-weg]")).toBeNull();
-      expect(abschnitt9.querySelectorAll("button")).toHaveLength(
-        // Einzig der Nachladeweg des Abschnitts (JOB 3430) — er schreibt nichts.
-        abschnitt9.querySelectorAll('[data-bib-nachladen="belege"]').length,
+      const nachladen = abschnitt9.querySelector('[data-bib-nachladen="belege"]');
+      const bestaetigen = abschnitt9.querySelector('[data-testid="frische-stimmt-weiterhin"]');
+      expect(nachladen).not.toBeNull();
+      expect(bestaetigen?.textContent).toBe(i18n.getFixedT(sprache)("frische.stimmtWeiterhin"));
+      expect(new Set(abschnitt9.querySelectorAll("button"))).toEqual(
+        new Set([nachladen, bestaetigen]),
       );
     });
   });

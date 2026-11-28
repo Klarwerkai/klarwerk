@@ -34,8 +34,8 @@ import {
   bodyHtmlWieAusWord,
   erwartetePunkteRGBA,
   fotoInnenmass,
-  nutzlastWieRwLadung,
   pngBytes,
+  sendeplatzFuerWordVorschlag,
   sha256,
 } from "./pruefbilder";
 
@@ -279,7 +279,7 @@ describe("JOB 4329 · Kalibrierung der Prüfbilder und der Nutzlast", () => {
 
   it("K7 · die Nutzlast trägt GENAU die vier Felder von rwLadung (rueckweg.js:606-614)", () => {
     const rumpf = bodyHtmlWieAusWord();
-    const ladung = nutzlastWieRwLadung({
+    const ladung = sendeplatzFuerWordVorschlag()({
       statement: `  ${STATEMENT}  `,
       bodyHtml: rumpf,
       baseVersion: 3,
@@ -289,10 +289,10 @@ describe("JOB 4329 · Kalibrierung der Prüfbilder und der Nutzlast", () => {
     //     action: "propose",
     //     proposal: { statement: statement, bodyHtml: koerper,
     //                 baseVersion: version, origin: "word_addin" } });
-    expect(Object.keys(ladung), "die Nutzlast hat nicht genau { action, proposal }").toEqual([
-      "action",
-      "proposal",
-    ]);
+    expect(
+      Object.keys(ladung),
+      "die Nutzlast braucht Aktion, Vorgangskennung und Vorschlag",
+    ).toEqual(["action", "operationId", "proposal"]);
     expect(
       Object.keys(ladung.proposal),
       "der Vorschlag trägt nicht genau statement, bodyHtml, baseVersion, origin — in dieser Reihenfolge",
@@ -305,7 +305,7 @@ describe("JOB 4329 · Kalibrierung der Prüfbilder und der Nutzlast", () => {
     // Die Zeichenkette selbst — `JSON.stringify` folgt der Einfügereihenfolge, also ist auch der
     // gesendete Körper zeichengleich zu dem des Add-ins.
     expect(JSON.stringify(ladung)).toBe(
-      `{"action":"propose","proposal":{"statement":${JSON.stringify(STATEMENT)},"bodyHtml":${JSON.stringify(rumpf)},"baseVersion":3,"origin":"word_addin"}}`,
+      `{"action":"propose","operationId":"${ladung.operationId}","proposal":{"statement":${JSON.stringify(STATEMENT)},"bodyHtml":${JSON.stringify(rumpf)},"baseVersion":3,"origin":"word_addin"}}`,
     );
     // Und der gesendete Körper trägt BEIDE Bildquellen — sonst reiste nur eines mit.
     const wiederGelesen = JSON.parse(JSON.stringify(ladung)) as {

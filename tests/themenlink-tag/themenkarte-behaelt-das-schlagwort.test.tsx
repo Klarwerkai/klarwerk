@@ -216,6 +216,7 @@ function Adresse(): JSX.Element {
 }
 
 async function ruhe(): Promise<void> {
+  await act(async () => vi.dynamicImportSettled());
   for (let i = 0; i < 4; i += 1) {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));

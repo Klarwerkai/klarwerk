@@ -183,9 +183,10 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
           "Offene, ablaufende Profile sind zu bevorzugen; vollverschweisste Hohlprofile sind in Spritzzonen zu vermeiden.",
         type: "best_practice",
         category: "Konstruktion",
+        confidentiality: "intern",
         author: autorId,
         tags: ["Profile", "Spritzzone", "Hohlprofile"],
-      } as never);
+      });
       await services.ko.setValidationState((ko as { id: string }).id, {
         trust: 92,
         status: "validiert",

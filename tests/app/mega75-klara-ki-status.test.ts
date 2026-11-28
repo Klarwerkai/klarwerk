@@ -372,13 +372,12 @@ describe("AUFTRAG-mega75 BLOCK A: Klara holt den öffentlichen Status über den 
 });
 
 describe("AUFTRAG-mega75 BLOCK C: Klara sagt, unter welcher Regel sie steht", () => {
-  it("die Regel steht dreisprachig im Wörterbuch und nennt beide Hälften", () => {
+  it("die Regel nennt in allen drei Sprachen Wissensbasis, Grundeinstellung und Abschaltmöglichkeit", () => {
     const html = read(TASKPANE);
     const erwartet: Record<string, string[]> = {
-      // wörtlich zitieren statt formulieren + der markierte Text verlässt das Haus nicht
-      de: ["wörtlich", "nicht an eine externe KI"],
-      en: ["word for word", "not sent to an external AI"],
-      nl: ["woordelijk", "niet naar een externe AI"],
+      de: ["bestätigten Firmenwissens", "standardmäßig an", "ausgeschaltet"],
+      en: ["approved company knowledge", "on by default", "switched off"],
+      nl: ["goedgekeurde bedrijfskennis", "standaard aan", "uitgeschakeld"],
     };
     for (const [sprache, teile] of Object.entries(erwartet)) {
       const start = html.indexOf(`      ${sprache}: {`);

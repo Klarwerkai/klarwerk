@@ -173,7 +173,7 @@ export function PruefenKnopf({
     // (tailwind.config.ts) kennt ihn nicht und liegt nicht in den Zielpfaden. Siehe ABWEICHUNGEN.
     primaer: "bg-[#C2500A] font-semibold text-white hover:opacity-90",
     neutral: "border border-hairline bg-surface text-text hover:bg-hairline-soft",
-    gut: "bg-trust-pos-fill font-semibold text-white hover:opacity-90",
+    gut: "bg-trust-pos-text font-semibold text-white hover:opacity-90",
     kritisch: "border border-hairline bg-surface text-trust-crit-text hover:bg-hairline-soft",
   };
   return (

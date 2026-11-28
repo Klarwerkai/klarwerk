@@ -95,6 +95,8 @@ import {
 // R-0750/R-1741: Prüfzeitpunkt der geltenden Fassung, an jedem Statuswechsel.
 import { mitPruefzeitpunkt } from "./pruefzeitpunkt";
 import {
+  type AufgabenAuswahl,
+  type AufgabenKo,
   type EvidenceRepo,
   type KoCandidateQuery,
   type KoFilter,
@@ -103,6 +105,7 @@ import {
   type KoSichtbarkeitstrim,
   type KoVersionRepo,
   NICHT_IM_PAPIERKORB,
+  aufgabenProjektion,
 } from "./repo";
 // R-0658: Schutzdaten erkennen, bevor ein Objekt durchsuchbar wird (Begründung in der Datei).
 import { inSchutzdatenQuarantaene, mitSchutzdatenBefund } from "./schutzdaten";
@@ -563,7 +566,7 @@ export interface CreateKoInput {
   title: string;
   statement: string;
   type: KnowledgeType;
-  category: string;
+  category?: string;
   // R-0431 (K2): das Fachgebiet, unabhängig von der Kategorie (Begründung am Modell, types.ts).
   // Leer oder fehlend = kein Fachgebiet angegeben; es wird nichts abgeleitet.
   domain?: string | null;
@@ -2699,7 +2702,7 @@ export class KoService {
       conditions: input.conditions ?? [],
       measures: input.measures ?? [],
       type: input.type,
-      category: input.category,
+      category: input.category ?? "",
       // R-0431 (K2): nur speichern, wenn jemand ein Fachgebiet mitbringt — kein Leerwert, keine
       // Ableitung aus der Kategorie.
       ...(domain ? { domain } : {}),
@@ -4950,6 +4953,15 @@ export class KoService {
     return this.lesefassungen(
       (await this.repo.list(filter, trim)).filter((k) => !k.deletedAt && !k.mergedInto),
     );
+  }
+
+  async listAufgabenKandidaten(
+    auswahl: AufgabenAuswahl,
+    trim: KoSichtbarkeitstrim,
+  ): Promise<AufgabenKo[]> {
+    if (!auswahl.objektIds.length && !auswahl.erreichbareAutoren) return [];
+    if (this.repo.listAufgabenKandidaten) return this.repo.listAufgabenKandidaten(auswahl, trim);
+    return aufgabenProjektion(await this.repo.listForSearch({}, trim), auswahl);
   }
 
   /**

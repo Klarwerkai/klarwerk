@@ -160,7 +160,10 @@ function mitSprachausgabe(): void {
     cancel: () => {
       ausgabe.abgebrochen += 1;
     },
-    getVoices: () => [],
+    getVoices: () => [
+      { name: "Teststimme", lang: "de-DE", localService: true },
+      { name: "Test voice", lang: "en-US", localService: true },
+    ],
     addEventListener: () => {},
     removeEventListener: () => {},
   };

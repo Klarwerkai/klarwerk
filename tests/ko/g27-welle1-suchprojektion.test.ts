@@ -41,11 +41,15 @@ import {
   dropConfidential,
 } from "../../services/knowledge-object";
 
+// aufnahme:20260922:gesamt-leserechte (Entscheidung 16): ein Objekt OHNE Stufe ist „ungeklärt“ und
+// wird wie vertraulich geschützt; `KoService.create` schreibt bewusst keine Vorgabe. Die Fälle unten
+// meinen mit „offen“ ein ausdrücklich internes Objekt — deshalb steht die Stufe hier ausdrücklich.
 const EINGABE = {
   statement: "Vor dem Entlüften den Systemdruck ablassen.",
   type: "best_practice" as const,
   category: "Wartung",
   author: "anna",
+  confidentiality: "intern" as const,
 };
 
 /** Ein in Betrieb genommener Stapel — dieselbe Inbetriebnahme wie in den übrigen G27-Dateien. */
@@ -117,16 +121,22 @@ describe("JOB 527 · K — genau ein führender Repository-/DDL-Vertrag", () => 
 //
 // `sichtbarkeit.ts:146-150` schreibt die Regel als Kommentar:
 //
-//   „(1) DIE LEBENDE ZEILE IST DIE TRIMQUELLE (Gate `G-TRIM-LIVE`). Das Prädikat liest
-//    ausschließlich `confidentiality_key`, `author_key` und `deleted_at_key` …
+//   „(1) DIE LEBENDE ZEILE IST DIE TRIMQUELLE (Gate `G-TRIM-LIVE`). …
 //    `ko_search_projection.classification_snapshot` ist AUSDRÜCKLICH VERBOTENE Trimquelle."
+//   „(2) DIE STUFENGRENZE … liest die ROHE Stufe aus `data`" (seit gesamt-leserechte Nacharbeit 19
+//    statt der generierten Spalte `confidentiality_key`).
 //
 // Ein Kommentar ist kein Wächter. Ab hier ist er einer.
 describe("JOB 527 · T — die Projektion ist NIEMALS Trimquelle", () => {
-  it("T1 · das Trim-SQL liest die drei lebenden Schlüsselspalten — und nur sie", () => {
+  it("T1 · das Trim-SQL liest die lebende Zeile — Papierkorb, Stufe und Autor", () => {
     const sql = sqlSichtbarkeitFuer(BETRACHTER).sql("k", 1);
     expect(sql).toContain("k.deleted_at_key");
-    expect(sql).toContain("k.confidentiality_key");
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, `sichtbarkeit.ts` Grenze (2)): die Stufe
+    // kommt seither ROH aus der lebenden Zeile (`k.data->>'confidentiality'`), nicht mehr aus der
+    // generierten Spalte `confidentiality_key`, die eine unbekannte Stufe als „intern“ auslegt
+    // (Entscheidung 16 verlangt „ungeklärt = vertraulich“). Lebende Zeile bleibt die Trimquelle.
+    expect(sql).toContain("k.data->>'confidentiality'");
+    expect(sql).not.toContain("k.confidentiality_key");
     expect(sql).toContain("k.author_key");
   });
 

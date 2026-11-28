@@ -1652,10 +1652,10 @@ function reichtWertDurch(huelle: ts.Node, kind: ts.Node): boolean {
 /**
  * Ein Textattribut an einem INTRINSISCHEN Element (`<span title="dialog" />`) — nicht `role`.
  * Ein kleingeschriebener Tag ist ein DOM-Element; seine übrigen Attribute sind Text und bauen
- * keine Fläche. Ein Bauteil (`<Huelle as="dialog" />`) kann seine Props dagegen zu einem Element
- * machen und bleibt deshalb ausserhalb dieser Ausnahme.
+ * keine Fläche. Am GuardedLink beschreibt aria-haspopup den Typ des Linkziels; der Link
+ * reicht dieses Attribut an den Anker weiter. Andere Bauteile können ihre Props als Tag nutzen.
  */
-function istTextattributIntrinsisch(literal: ts.Node): boolean {
+function istTextattribut(literal: ts.Node, umfeld?: Typumfeld): boolean {
   let k: ts.Node = literal;
   while (k.parent !== undefined && (istWerthuelle(k.parent) || ts.isJsxExpression(k.parent))) {
     k = k.parent;
@@ -1668,10 +1668,30 @@ function istTextattributIntrinsisch(literal: ts.Node): boolean {
     return false;
   }
   const element = attribut.parent.parent;
+  if (!(ts.isJsxOpeningElement(element) || ts.isJsxSelfClosingElement(element))) {
+    return false;
+  }
+  const tag = element.tagName;
+  if (!ts.isIdentifier(tag)) {
+    return false;
+  }
+  if (/^[a-z]/.test(tag.text)) {
+    return true;
+  }
+  if (
+    attribut.name.getText() !== "aria-haspopup" ||
+    !istZeichenkettenLiteral(literal) ||
+    literal.text !== "dialog" ||
+    !umfeld ||
+    sichtbareDeklarationen(umfeld.deklarationen, tag).length > 0
+  ) {
+    return false;
+  }
+  const ziel = importZiel(tag, umfeld.modul);
   return (
-    (ts.isJsxOpeningElement(element) || ts.isJsxSelfClosingElement(element)) &&
-    ts.isIdentifier(element.tagName) &&
-    /^[a-z]/.test(element.tagName.text)
+    ziel?.art === "modul" &&
+    ziel.datei === "apps/web/src/app/NavGuardContext.tsx" &&
+    ziel.name === "GuardedLink"
   );
 }
 
@@ -1681,12 +1701,12 @@ function istTextattributIntrinsisch(literal: ts.Node): boolean {
  * Textattribut an einem DOM-Element (`<span title="dialog" />`) ist Oberflächentext (Nacharbeit 3).
  * Alles andere, das keiner erkannten Bauform zugeflossen ist, bleibt eine unbekannte Bauform.
  */
-export function istReinerDialogText(literal: ts.Node): boolean {
+export function istReinerDialogText(literal: ts.Node, umfeld?: Typumfeld): boolean {
   const p = literal.parent;
   if (!p) {
     return false;
   }
-  if (istTextattributIntrinsisch(literal)) {
+  if (istTextattribut(literal, umfeld)) {
     return true;
   }
   if (ts.isLiteralTypeNode(p)) {
@@ -1887,10 +1907,26 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
   // ist `role` sicher die ARIA-Rolle — sonst ist es in diesem Produkt meist die Benutzerrolle.
   // Nacharbeit 3 (ben): das Objekt wird auch über lokale Bindungen und Objekt-Spreads verfolgt —
   // `const p = { role: x }; <div {...p} />` und `const q = { ...p }; createElement("div", q)`.
+  // Rückzuweisungen wie `stand = { ...stand }` erreichen denselben Knoten über viele Wege.
+  // Bis zur Tiefengrenze hängt das Ergebnis nur vom Knoten und der verbleibenden Tiefe ab.
+  const propsObjekteNachTiefe = Array.from(
+    { length: MAX_TIEFE + 1 },
+    () => new WeakMap<ts.Node, boolean>(),
+  );
   const istPropsObjekt = (objekt: ts.Node, tiefe = 0): boolean => {
-    if (tiefe > MAX_TIEFE) {
+    const ergebnisse = propsObjekteNachTiefe[tiefe];
+    if (!ergebnisse) {
       return false;
     }
+    const bekannt = ergebnisse.get(objekt);
+    if (bekannt !== undefined) {
+      return bekannt;
+    }
+    const ergebnis = berechnePropsObjekt(objekt, tiefe);
+    ergebnisse.set(objekt, ergebnis);
+    return ergebnis;
+  };
+  const berechnePropsObjekt = (objekt: ts.Node, tiefe: number): boolean => {
     let k: ts.Node = objekt;
     let p: ts.Node | undefined = k.parent;
     // Nacharbeit 19: nur hinauf, wo der WERT durchgereicht wird — nicht aus der Bedingung von
@@ -2566,7 +2602,10 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
   // Bauform. Ausgenommen ist nur, was nachweislich nichts baut: Typdeklarationen und Vergleiche
   // (`istReinerDialogText`, Nacharbeit nach bens Befund zur Typdeklaration).
   for (const literal of dialogLiteralKnoten) {
-    if (kandidatTokens.has(literal) || istReinerDialogText(literal)) {
+    if (
+      kandidatTokens.has(literal) ||
+      istReinerDialogText(literal, { deklarationen, modul: umfeld })
+    ) {
       continue;
     }
     unbekannteBauformen.push(

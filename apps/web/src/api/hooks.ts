@@ -24,12 +24,12 @@ export const useKos = (f?: KoFilter, enabled = true) =>
 // ohne ihn liefe bei JEDEM Öffnen eines Eintrags eine Suche mit leerem Begriff los und holte den
 // ganzen sichtbaren Bestand, bevor jemand ein Zeichen getippt hat. Ein eigener `useQuery` dort wäre
 // der zweite Ausdruck DESSELBEN Cache-Schlüssels gewesen (LEHREN.md, JOB 3081 R2).
+export const librarySearchQuery = (params: KoFilter & { q?: string }) => ({
+  queryKey: ["library", "search", params],
+  queryFn: () => endpoints.library.search(params),
+});
 export const useLibrarySearch = (params: KoFilter & { q?: string }, enabled = true) =>
-  useQuery({
-    queryKey: ["library", "search", params],
-    queryFn: () => endpoints.library.search(params),
-    enabled,
-  });
+  useQuery({ ...librarySearchQuery(params), enabled });
 // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler.
 export const useMyImpact = () =>
   useQuery({ queryKey: ["me", "impact"], queryFn: () => endpoints.me.impact() });

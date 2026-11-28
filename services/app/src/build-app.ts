@@ -711,7 +711,7 @@ import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
-import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+import { STARTVERTRAG, ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
 // produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg; im Postgres-Betrieb haltbar.
 import {
   InMemoryTeamassistentRepo,
@@ -735,7 +735,7 @@ import {
   type TeamworkflowRepo,
 } from "./teamworkflows";
 import { quellenlageAus, quellsperreAus } from "./technische-daten-quellen";
-import { type TransportTls, tlsServerFabrik } from "./transport-tls";
+import { type TransportTls, tlsServerOptionen } from "./transport-tls";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
 import {
   InMemoryUebersetzungRepo,
@@ -2868,6 +2868,10 @@ function createSemanticPrefilterFromEnv(
   };
 }
 
+class AddonRateLimitError extends Error {
+  override readonly name = "AddonRateLimitError";
+}
+
 // Gemeinsamer globaler Fehlerweg: bekannte Modellkapazität und Klara-Zustimmung behalten
 // ihren festen Vertrag; unerwartete Fehler gehen durch dieselbe Maskierung wie sendError.
 // Fastifys eigene Validierungs-4xx bleiben erhalten.
@@ -2876,6 +2880,12 @@ export function modelBusyErrorHandler(
   _request: FastifyRequest,
   reply: FastifyReply,
 ): void {
+  if (error instanceof AddonRateLimitError) {
+    reply
+      .code(429)
+      .send({ error: "RATE_LIMITED", message: "Zu viele Anfragen — bitte später erneut." });
+    return;
+  }
   if (error instanceof ModelCapacityError) {
     reply
       .code(503)
@@ -3094,6 +3104,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "EvalError",
   "URIError",
   // Haus (erhoben aus `class …Error extends` unter `services/`)
+  "AddonRateLimitError",
   "AskError",
   "AuthError",
   "BestandsresetGesperrtError",
@@ -3158,6 +3169,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // Klassenname, keine Profilwerte.
   "ManagementProfileError",
   "MediaAnalysisError",
+  "ModelBudgetError",
   "ModelCapacityError",
   "ModelEmptyResponseError",
   "ModelHttpError",
@@ -3231,6 +3243,13 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // geht (`http.ts` sendet ihn mit Grund) UND weil er im Betriebsprotokoll die eine Zeile ist, an
   // der ein Betreiber diese Lage erkennt — als `UNBEKANNT` sagte sie über den Vorfall nichts.
   "ANWEISUNG_ABLAGE_FLUECHTIG",
+  "EMAIL_FORM",
+  "EMAIL_ANHAENGE",
+  "EMAIL_ADRESSE",
+  "GRUNDLAGE_GEAENDERT",
+  "INVALID_LAGEBILD_WERTE",
+  "LAGEBILD_KONFLIKT",
+  "VORHERIGER_SCHRITT",
   "BAD_REQUEST",
   "BESTANDSRESET_GESPERRT",
   "BESTANDSRESET_LAEUFT",
@@ -3591,6 +3610,7 @@ export function serialisiereFehler(fehler: Error & { code?: unknown }): {
  * auf das eine Überwachung filtern soll.
  */
 const DOMAENEN_CODE = /^[A-Z_]+$/;
+const STARTWERT_NAMEN = new Set(STARTVERTRAG.map(({ name }) => name));
 
 function istEinfachesObjekt(wert: object): boolean {
   const prototyp = Object.getPrototypeOf(wert);
@@ -3616,7 +3636,10 @@ export function senkeUeberWert(
   tiefe = 0,
 ): unknown {
   if (typeof wert === "string") {
-    return DOMAENEN_CODE.test(wert) ? wert : sanitizeLogText(wert, env);
+    if (DOMAENEN_CODE.test(wert)) return wert;
+    // Bekannte Konfigurationsnamen mit Ziffern sind öffentliche Bezeichnungen.
+    if (STARTWERT_NAMEN.has(wert)) return entferneGeheimeEnvWerte(wert, env);
+    return sanitizeLogText(wert, env);
   }
   if (wert === null || typeof wert !== "object") {
     return wert;
@@ -3897,7 +3920,7 @@ export function buildApp(
     // ab; Fastifys Vorgabe von 10 s riss ihn ab rund 2.300 Objekten bei jedem Start. Begründung und
     // Nachfolge (Hintergrundlauf) an der Konstante.
     pluginTimeout: SUCHPROJEKTION_STARTFRIST_MS,
-    ...(opts.tls ? { serverFactory: tlsServerFabrik(opts.tls) } : {}),
+    ...(opts.tls ? { https: tlsServerOptionen(opts.tls) } : {}),
   });
   // GHSA-3m5p-2c4r-xxw2: eine Hop-Anzahl wird verworfen (resolveTrustProxy). Ohne diese Zeile sähe ein
   // Betreiber nur, dass alle Drosseln plötzlich gegen die Proxy-IP zählen.
@@ -4178,7 +4201,10 @@ export function buildApp(
     // `config.rateLimit` (POST /api/ask; Slice 5: /api/check-text), nicht app-weit. Die eigentliche
     // Enge (nur addon-Principal, gekeyt auf den Actor; Session-Requests exempt) steckt in
     // addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
-    app.register(rateLimit, { global: false });
+    app.register(rateLimit, {
+      global: false,
+      errorResponseBuilder: () => new AddonRateLimitError(),
+    });
     const addonOrigin = addonApiEnabled() ? resolveAddonOrigin() : null;
     if (addonOrigin !== null) {
       app.register(
@@ -6978,6 +7004,7 @@ export function buildApp(
             lokalesModell: zuordnung.includes("local"),
             externeSuche: services.externalSearch !== undefined,
             mailVersand: !(services.mailer instanceof ConsoleMailer),
+            pushVersand: services.push !== undefined,
             aufbewahrung: aufbewahrungsangabenAusEnv(process.env),
           };
         },

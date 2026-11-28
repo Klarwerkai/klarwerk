@@ -92,7 +92,7 @@ const CHIP = '[data-testid="ko-origin-word-addin"]';
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function mount(objekt: KnowledgeObject): void {
+async function mount(objekt: KnowledgeObject): Promise<void> {
   lage.ko = objekt;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -118,6 +118,7 @@ function mount(objekt: KnowledgeObject): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 afterEach(() => {
@@ -165,31 +166,31 @@ function de(key: string): string {
 }
 
 describe("JOB 679 D2 · KO-Detail — der Chip erscheint genau bei der Word-Herkunft", () => {
-  it("ein aus Word erfasstes Objekt traegt den Chip", () => {
-    mount(ko({ origin: "word_addin" }));
+  it("ein aus Word erfasstes Objekt traegt den Chip", async () => {
+    await mount(ko({ origin: "word_addin" }));
     expect(chips()).toHaveLength(1);
   });
 
-  it("der Chip nennt die Herkunft im Klartext und erklaert sie im Titel", () => {
-    mount(ko({ origin: "word_addin" }));
+  it("der Chip nennt die Herkunft im Klartext und erklaert sie im Titel", async () => {
+    await mount(ko({ origin: "word_addin" }));
     const chip = chips()[0];
     expect(chip?.textContent?.trim()).toBe(de("ko.originWordAddin.label"));
     expect(chip?.getAttribute("title")).toBe(de("ko.originWordAddin.hint"));
   });
 
-  it("ein Objekt ohne Herkunft traegt ihn NICHT — Altbestand ist nicht „aus Word“", () => {
-    mount(ko({}));
+  it("ein Objekt ohne Herkunft traegt ihn NICHT — Altbestand ist nicht „aus Word“", async () => {
+    await mount(ko({}));
     expect(chips()).toHaveLength(0);
   });
 
-  it("ein Objekt aus der Vordertuer traegt ihn NICHT", () => {
-    mount(ko({ origin: "frontdoor" }));
+  it("ein Objekt aus der Vordertuer traegt ihn NICHT", async () => {
+    await mount(ko({ origin: "frontdoor" }));
     expect(chips()).toHaveLength(0);
   });
 
-  it("die uebrigen Herkuenfte loesen ihn ebenfalls nicht aus", () => {
+  it("die uebrigen Herkuenfte loesen ihn ebenfalls nicht aus", async () => {
     for (const herkunft of ["tell", "studio", "expert"] as const) {
-      mount(ko({ origin: herkunft }));
+      await mount(ko({ origin: herkunft }));
       expect(chips(), `Herkunft ${herkunft} zeigt faelschlich den Word-Chip`).toHaveLength(0);
       act(() => {
         root.unmount();
@@ -197,7 +198,7 @@ describe("JOB 679 D2 · KO-Detail — der Chip erscheint genau bei der Word-Herk
       container.remove();
     }
     // Der abschliessende afterEach braucht einen gemounteten Baum — den letzten wieder aufbauen.
-    mount(ko({}));
+    await mount(ko({}));
   });
 });
 

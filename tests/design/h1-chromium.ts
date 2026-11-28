@@ -22,7 +22,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 export const WURZEL = resolve(process.cwd());
 export const DIST = resolve(WURZEL, "apps/web/dist");
 /** Das Mockup der Hülle (alle acht Artboards tragen dasselbe Kopfband; Main.dc.html ist die Quelle). */
-export const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Main.dc.html";
+export const ZIELBILD = join(WURZEL, "tests/design/vorlagen/klarwerk/Main.dc.html");
 export const ORIGIN = "http://klarwerk.test";
 
 // ---- Das Zielbild lesen ---------------------------------------------------------------------------

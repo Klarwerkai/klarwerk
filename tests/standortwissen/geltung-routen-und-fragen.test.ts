@@ -8,9 +8,8 @@
 //
 //   R1  Geltung setzen, ändern, ungültig abweisen, mit `null` entfernen — samt Prüfprotokoll.
 //   F1  KERN R-1633: zwei gleich relevante, validierte Quellen (Frühschicht / Nachtschicht). Wer
-//       für die Frühschicht fragt, bekommt die Frühschicht-Antwort, wer für die Nachtschicht fragt,
-//       die Nachtschicht-Antwort — dieselbe Frage, derselbe Bestand. Die Antwort trägt die
-//       Auskunft `geltung` mit Kontext und Passung der Quelle.
+//       nach einer Schicht fragt, bekommt deren Quelle zuerst. Der modellfreie Vergleich nennt
+//       beide Wortlaute mit ihrer Quelle. Die Geltung ordnet beide der passenden Schicht zu.
 //   F2  „falls relevant" steht als Rangfolgeregel in `geltung-rangfolge.test.ts` (der Frageweg
 //       bindet alle Fragebegriffe, R-0473 — dort ist der Fall direkt messbar).
 //   F3  Ohne Fragekontext fehlt die Auskunft; der Word-Weg (retrieval-only) lässt den Kontext
@@ -138,46 +137,52 @@ describe("R-1632 · Geltung am Wissensobjekt über die öffentliche Route", () =
 });
 
 describe("R-1633 · Schicht- und Rollen-Filter beim Fragen", () => {
-  it("F1 · KERN: die Quelle der eigenen Schicht trägt die Antwort, die Auskunft sagt es", async () => {
+  it("F1 · die eigene Schicht steht zuerst, beide Temperaturangaben bleiben ihren Quellen zugeordnet", async () => {
     const { app, validiert, fragen } = await bestand();
     try {
-      const frueh = await validiert(
-        "Presse anfahren",
-        "Beim Anfahren der Presse wird das Werkzeug auf 60 Grad vorgewärmt.",
-        FRUEH,
-      );
-      const nacht = await validiert(
-        "Presse anfahren",
-        "Beim Anfahren der Presse wird das Werkzeug auf 80 Grad vorgewärmt.",
-        NACHT,
-      );
+      const fruehText = "Beim Anfahren der Presse wird das Werkzeug auf 60 Grad vorgewärmt.";
+      const nachtText = "Beim Anfahren der Presse wird das Werkzeug auf 80 Grad vorgewärmt.";
+      const frueh = {
+        id: await validiert("Presse anfahren", fruehText, FRUEH),
+        text: fruehText,
+        geltung: FRUEH,
+      };
+      const nacht = {
+        id: await validiert("Presse anfahren", nachtText, NACHT),
+        text: nachtText,
+        geltung: NACHT,
+      };
 
-      const ausFrueh = await fragen({
-        question: FRAGE,
-        fragekontext: { werk: "Werk Nord", schicht: "Frühschicht" },
-      });
-      expect(ausFrueh.statusCode, ausFrueh.body).toBe(200);
-      // Der deterministische Antwortweg meldet nur die TRAGENDE Quelle (`sources: [best.id]`) —
-      // welche das ist, entscheidet die Rangfolge. Dass die andere Kandidat bleibt, misst
-      // `geltung-rangfolge.test.ts` (P1).
-      const a = ausFrueh.json();
-      expect(a.result.answered).toBe(true);
-      expect(a.result.sources).toEqual([frueh]);
-      expect(a.result.answer).toContain("60 Grad");
-      expect(a.geltung).toEqual({
-        fragekontext: { werk: "Werk Nord", schicht: "Frühschicht" },
-        quellen: [{ id: frueh, passung: "eigene_schicht", geltung: FRUEH }],
-      });
-
-      // Gegenprobe mit derselben Frage und demselben Bestand: nur der Kontext ist ein anderer.
-      const ausNacht = await fragen({
-        question: FRAGE,
-        fragekontext: { werk: "Werk Nord", schicht: "Nachtschicht" },
-      });
-      const n = ausNacht.json();
-      expect(n.result.sources).toEqual([nacht]);
-      expect(n.result.answer).toContain("80 Grad");
-      expect(n.geltung.quellen).toEqual([{ id: nacht, passung: "eigene_schicht", geltung: NACHT }]);
+      // P05-AC08: ohne Modell bleiben beide bestätigten, verschiedenen Wortlaute sichtbar.
+      // Bei identischer Frage und identischem Bestand tauscht nur ihre Passung die Reihenfolge.
+      for (const [eigene, andere] of [
+        [frueh, nacht],
+        [nacht, frueh],
+      ] as const) {
+        const fragekontext = { werk: "Werk Nord", schicht: eigene.geltung.schicht };
+        const res = await fragen({ question: FRAGE, fragekontext });
+        expect(res.statusCode, res.body).toBe(200);
+        const { result, geltung } = res.json();
+        expect(result).toMatchObject({
+          answered: true,
+          knowledgeClass: "ungeprueft",
+          sources: [eigene.id, andere.id],
+          citedSources: [eigene.id, andere.id],
+          steps: [
+            { sourceId: eigene.id, snippet: eigene.text },
+            { sourceId: andere.id, snippet: andere.text },
+          ],
+        });
+        expect(result.answer).toContain(eigene.text);
+        expect(result.answer).toContain(andere.text);
+        expect(geltung).toEqual({
+          fragekontext,
+          quellen: [
+            { id: eigene.id, passung: "eigene_schicht", geltung: eigene.geltung },
+            { id: andere.id, passung: "andere", geltung: andere.geltung },
+          ],
+        });
+      }
     } finally {
       await app.close();
     }

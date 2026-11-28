@@ -25,6 +25,7 @@
 // Kostenhinweis gebunden. Eine pauschale Ausnahme gibt es nicht.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
@@ -40,6 +41,9 @@ const TRAEGER = ["AiCostHint", "AiModelInfo"];
 const KENNZEICHNUNG = ["AiGeneratedNotice", "AiSurfaceNotice", "AiModelInfo"];
 
 const AUSNAHMEN: Record<string, string> = {
+  [join(WEB, "components", "klara-vorschau", "BegleiterDirektvergleich.tsx")]:
+    "Zeigt das Ergebnis eines abgeschlossenen Vergleichs und liest dessen Belegfassungen. Die Frage löst der Nutzer im Formular auf pages/Begleiter.tsx aus.",
+
   [join(WEB, "app", "ImageDescribeContext.tsx")]:
     "KEINE Fläche, sondern der WEG zur Bildbeschreibung für die ganze App (mega50 Block A). Er " +
     "rendert nichts Sichtbares; den Hinweis tragen die beiden Stellen, die den Vorschlag anbieten " +
@@ -72,6 +76,45 @@ const AUSNAHMEN: Record<string, string> = {
 /** Der Sofort-Hinweis der Fragenfläche (seit mega69 B1 OHNE Kostenbehauptung — die trägt der
  * zentrale, bedingte AiCostHint daneben). */
 const ASK_SCHLUESSEL = "ask.examplesSendHint";
+
+/**
+ * Jeder `title={…}`, der den Sofort-Satz irgendwo nennt — zerlegt in seine Zweige: ein bedingter
+ * Ausdruck liefert je Ausgang einen Eintrag (verschachtelt rekursiv), alles andere sich selbst.
+ */
+function titelMitSofortSatz(quelltext: string): string[][] {
+  const quelle = ts.createSourceFile(
+    "Ask.tsx",
+    quelltext,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const zweigeVon = (n: ts.Expression): string[] => {
+    let e = n;
+    while (ts.isParenthesizedExpression(e)) {
+      e = e.expression;
+    }
+    return ts.isConditionalExpression(e)
+      ? [...zweigeVon(e.whenTrue), ...zweigeVon(e.whenFalse)]
+      : [e.getText().replace(/\s+/g, " ")];
+  };
+  const funde: string[][] = [];
+  const besuche = (n: ts.Node): void => {
+    if (
+      ts.isJsxAttribute(n) &&
+      n.name.getText() === "title" &&
+      n.initializer &&
+      ts.isJsxExpression(n.initializer) &&
+      n.initializer.expression &&
+      n.initializer.expression.getText().includes(ASK_SCHLUESSEL)
+    ) {
+      funde.push(zweigeVon(n.initializer.expression));
+    }
+    ts.forEachChild(n, besuche);
+  };
+  besuche(quelle);
+  return funde;
+}
 
 function quelldateien(verzeichnis: string): string[] {
   const gefunden: string[] = [];
@@ -159,7 +202,34 @@ describe("mega62 F · der Kostenhinweis an jeder Auslösestelle", () => {
     const ask = readFileSync(join(WURZEL, WEB, "pages", "Ask.tsx"), "utf8");
     expect(ask).toContain("<AiCostHint");
     expect(ask).toContain(`t("${ASK_SCHLUESSEL}")`);
-    expect(ask).toContain(`title={t("${ASK_SCHLUESSEL}")}`);
+    // Gesamtcheck R-1329: der Chip-`title` ist seit dem Fiktiv-Hinweis bedingt
+    // (`fiktiv ? \`${…} ${t(KEY)}\` : t(KEY)`). Verlangt bleibt: es gibt einen `title`, der den
+    // Sofort-Satz trägt — und zwar in JEDEM Zweig, nicht nur in einem.
+    const titel = titelMitSofortSatz(ask);
+    expect(titel.length, "kein title trägt den Sofort-Satz").toBeGreaterThan(0);
+    for (const zweige of titel) {
+      for (const zweig of zweige) {
+        expect(zweig, "ein Zweig des title ohne Sofort-Satz").toContain(`t("${ASK_SCHLUESSEL}")`);
+      }
+    }
+  });
+
+  it("die Kostenangabe für Klara steht vor dem Absenden in der App und beiden Panelansichten", () => {
+    for (const datei of ["pages/Begleiter.tsx", "components/klara-vorschau/KlaraVorschau.tsx"]) {
+      const quelltext = readFileSync(join(WURZEL, WEB, datei), "utf8");
+      const formulare = quelltext.match(/<form\b[\s\S]*?<\/form>/g) ?? [];
+      expect(formulare.length, datei).toBe(datei.startsWith("pages/") ? 1 : 2);
+      for (const formular of formulare) {
+        expect(formular).toContain("<AiCostHint");
+        expect(formular).toContain("ki.kostenpflichtig");
+      }
+    }
+  });
+
+  it("Kalibrierung des title-Lesers: ein Zweig ohne Sofort-Satz fällt auf", () => {
+    const probe = `const x = <b title={a ? t("x") : t("${ASK_SCHLUESSEL}")} />;`;
+    const zweige = titelMitSofortSatz(probe).flat();
+    expect(zweige).toEqual(['t("x")', `t("${ASK_SCHLUESSEL}")`]);
   });
 
   it("die sechs nachgerüsteten Auslösestellen tragen ihn — namentlich, weil sie der Befund waren", () => {

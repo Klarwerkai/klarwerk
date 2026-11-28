@@ -366,8 +366,12 @@ describe(
 
     afterAll(async () => {
       await browser?.close();
-      await app?.close();
-      await code?.stop();
+      // CODE kann beim Schließen noch WOPI-Rückrufe an die Anwendung senden.
+      try {
+        await code?.stop();
+      } finally {
+        await app?.close();
+      }
     });
 
     const faelle = [

@@ -26,9 +26,14 @@ function lies(...teile: string[]): string {
 describe("mega61 B · der Banner sitzt in der Anwendungshülle", () => {
   it("die Hülle montiert ihn — auf BEIDEN Zuschnitten und auf der shell-losen Route", () => {
     const shell = lies(WEB, "shell", "AppShell.tsx");
-    // Drei Rückgaben (/mobile, schmal, breit) — der Banner darf in keiner davon fehlen, sonst
-    // gäbe es eine Bildschirmbreite, auf der die Pflichtinformation still verschwindet.
-    expect(shell.split("<NoticeBanner").length - 1).toBe(3);
+    // /mobile hat einen eigenen Rückgabepfad. Schmale und breite Fenster verwenden
+    // denselben Hauptbereich und wechseln dort lediglich die Navigation.
+    const mobil = shell.indexOf('if (location.pathname === "/mobile")');
+    const gemeinsam = shell.indexOf("<ModalBoundaryProvider", mobil);
+    expect(mobil).toBeGreaterThanOrEqual(0);
+    expect(gemeinsam).toBeGreaterThan(mobil);
+    expect(shell.slice(mobil, gemeinsam)).toContain("<NoticeBanner");
+    expect(shell.slice(gemeinsam)).toContain("<NoticeBanner");
     // JOB 3060 · H1: der Fußbereich steht auf beiden Zuschnitten der Hülle als Zeile „Rechtliches"
     // im Zahnrad-Menü (dasselbe Menü auf breit und schmal, im Drawer erneut) — und weiterhin im
     // Fluss auf der shell-losen Route /mobile, die kein Zahnrad hat. Nirgends fehlt er.

@@ -169,15 +169,16 @@ function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
         <span className={`block text-[15px] font-bold tracking-[2px] ${hell ? "" : "text-ink"}`}>
           KLARWERK
         </span>
-        <span
-          className={`block font-mono text-klein uppercase tracking-[1.5px] ${
+        <abbr
+          title={t("fachwort.markenuntertitel")}
+          className={`block no-underline font-mono text-klein uppercase tracking-[1.5px] ${
             hell ? "text-white/50" : "text-muted-2"
           }`}
         >
           {/* R-1169: der Markenuntertitel kommt aus dem Katalog (`app.subtitle`, seit Entscheidung 53
               „Knowledge OS"). */}
           {t("app.subtitle")}
-        </span>
+        </abbr>
       </span>
       {profil === null || marke === null ? null : (
         // Der Abstand kommt aus dem `gap-2.5` des Umschlags — kein eigener Rand, der neben der

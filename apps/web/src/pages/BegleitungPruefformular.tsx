@@ -53,7 +53,7 @@ export function BegleitungPruefformular(): JSX.Element {
     <div className="mx-auto max-w-2xl pt-6" data-testid="page-begleitung-pruefformular">
       <span
         data-testid="pruefformular-kennzeichen"
-        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-trust-warn-text"
+        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-trust-warn-text"
       >
         {t("begleitung.formular.kennzeichen")}
       </span>

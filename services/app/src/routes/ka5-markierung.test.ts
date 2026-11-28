@@ -94,13 +94,15 @@ async function aufbauen(): Promise<Aufbau> {
         neededValidations: 1,
       },
     });
+    expect(res.statusCode, res.body).toBe(201);
     const id = res.json().id as string;
-    await app.inject({
+    const rating = await app.inject({
       method: "PUT",
       url: `/api/kos/${id}`,
       headers: kopf,
-      payload: { action: "rate", verdict: "up" },
+      payload: { action: "rate", verdict: "up", duplicateAcknowledged: true },
     });
+    expect(rating.statusCode, rating.body).toBe(200);
     return id;
   };
 
@@ -151,13 +153,16 @@ const fragen = (a: Aufbau, extra: Record<string, unknown> = {}) =>
     payload: { question: FRAGE, locale: "de", questionSource: "manual", ...extra },
   });
 
-/**
- * Der Antwortkörper OHNE die Felder, die von Natur aus je Lauf verschieden sind: `answerId` ist eine
- * frische Kennung, `receipt` eine Signatur über die Uhrzeit. Alles andere MUSS gleich bleiben.
- */
+/** Laufkennungen, Signatur und gemessene Laufzeit unterscheiden sich bei derselben Fachantwort. */
 function stabil(koerper: Record<string, unknown>): Record<string, unknown> {
-  const { answerId: _kennung, receipt: _beleg, ...rest } = koerper;
-  return rest;
+  const { answerId: _kennung, receipt: _beleg, referenzpruefung, ...rest } = koerper;
+  expect(referenzpruefung).toBeTypeOf("object");
+  const { pruefId, messung, ...pruefRest } = referenzpruefung as Record<string, unknown>;
+  expect(pruefId).toBeTypeOf("string");
+  const { dauerMs, ...messwerte } = messung as Record<string, unknown>;
+  expect(Number.isSafeInteger(dauerMs)).toBe(true);
+  expect(dauerMs).toBeGreaterThanOrEqual(0);
+  return { ...rest, referenzpruefung: { ...pruefRest, messung: messwerte } };
 }
 
 describe("KA5 · die Markierung schärft die Suche", () => {

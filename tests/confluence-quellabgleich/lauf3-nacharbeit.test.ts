@@ -57,6 +57,7 @@ function seite(
     title: `Seite ${id}`,
     body: { storage: { value: `<p>Inhalt ${id}.</p>` } },
     version: { number: version },
+    ancestors: [],
     _links: { webui: `/spaces/K/pages/${id}` },
     restrictions: {
       read: {
@@ -78,6 +79,15 @@ function quelle() {
     ({ ok: status < 300, status, json: async () => body }) as Response;
   const fetchFn = (async (u: string) => {
     const url = new URL(String(u));
+    if (url.pathname.endsWith("/rest/api/space/K")) {
+      // Die Seitenrechte in diesen Fällen liegen in einem lesbaren Space.
+      return antwort(200, {
+        key: "K",
+        permissions: [
+          { operation: { operation: "read", targetType: "space" }, anonymousAccess: true },
+        ],
+      });
+    }
     if (/\/child\/attachment$/.test(url.pathname)) {
       return antwort(200, { results: [] });
     }
@@ -234,7 +244,11 @@ describe("B5 · eine geänderte Leserestriktion bei gleicher Seitenfassung wird 
     expect((await laufUndAnnehmen(q, d)).sourceSync?.restrictionsUpdated).toEqual([]);
   });
 
-  it("hr → offen: die Angabe am Anker entfällt, die Vertraulichkeit bleibt (keine Herabstufung)", async () => {
+  // Die spätere Regel R-2197 (confluence-import-rechte, Ben Nacharbeit 3, Befund F5;
+  // `KoService.setQuellrechte`) hat die vorläufige Lauf-3-Regel „nie herabsetzen" verfeinert: ein
+  // QUELLGEFÜHRTES Objekt folgt der Quelle auch nach unten — „nicht restringiert" gilt nicht mehr
+  // als vertraulich. Nie automatisch herabgesetzt wird eine MENSCHLICHE Einstufung (Gegenfall).
+  it("hr → offen: die Angabe am Anker entfällt, das quellgeführte Objekt folgt der Quelle (R-2197)", async () => {
     const q = quelle();
     const d = dienste();
     q.bereich.set("P-1", seite("P-1", 1, undefined, ["hr"]));
@@ -246,6 +260,23 @@ describe("B5 · eine geänderte Leserestriktion bei gleicher Seitenfassung wird 
     expect(summary.sourceSync?.restrictionsUpdated).toMatchObject([
       { externalId: "P-1", restrictionChanged: true, raisedTo: null, synced: true },
     ]);
+    const nachher = await objekt(d, "P-1");
+    expect(nachher.anker?.readRestriction).toBeUndefined();
+    expect(nachher.ko?.confidentiality).toBe("intern");
+  });
+
+  it("GEGENFALL hr → offen nach menschlicher Einstufung: keine Herabstufung", async () => {
+    const q = quelle();
+    const d = dienste();
+    q.bereich.set("P-1", seite("P-1", 1, undefined, ["hr"]));
+    await laufUndAnnehmen(q, d);
+    const vorher = await objekt(d, "P-1");
+    expect(vorher.ko?.confidentiality).toBe("vertraulich");
+    // Ein Mensch bestätigt die Stufe — derselbe Wert, aber jetzt SEINE Entscheidung.
+    await d.koService.setConfidentiality(vorher.ko?.id ?? "", "vertraulich", "admin");
+
+    q.bereich.set("P-1", seite("P-1", 1));
+    await laufUndAnnehmen(q, d);
     const nachher = await objekt(d, "P-1");
     expect(nachher.anker?.readRestriction).toBeUndefined();
     expect(nachher.ko?.confidentiality).toBe("vertraulich");
@@ -427,6 +458,7 @@ describe("B10 · Restriktionsnachzug an einem Altanker ohne Provider", () => {
     const q = quelle();
     q.bereich.set("P-1", seite("P-1", 1));
     await laufUndAnnehmen(q, d);
+    expect((await objekt(d, "P-1")).ko?.confidentiality).toBe("intern");
     // Altbestand: der Anker trägt keinen Provider (vor Einführung des Provider-Schlüssels).
     const ko = (await objekt(d, "P-1")).ko;
     if (!ko) {
@@ -447,7 +479,7 @@ describe("B10 · Restriktionsnachzug an einem Altanker ohne Provider", () => {
     q.bereich.set("P-1", seite("P-1", 1, undefined, ["hr"]));
     const erster = await laufUndAnnehmen(q, d);
     expect(erster.sourceSync?.restrictionsUpdated).toMatchObject([
-      { externalId: "P-1", restrictionChanged: true, raisedTo: "vertraulich", synced: true },
+      { externalId: "P-1", restrictionChanged: true, raisedTo: null, synced: true },
     ]);
     expect(erster.sourceSync?.syncFailed).toEqual([]);
     const nachher = await objekt(d, "P-1");
@@ -462,13 +494,16 @@ describe("B10 · Restriktionsnachzug an einem Altanker ohne Provider", () => {
     const d = dienste();
     q.bereich.set("P-1", seite("P-1", 1));
     await laufUndAnnehmen(q, d);
+    expect((await objekt(d, "P-1")).ko?.confidentiality).toBe("intern");
     q.bereich.set("P-1", seite("P-1", 1, undefined, ["hr"]));
     d.koService.replaceSourceReadRestriction = async () => false;
     const lauf = await laufUndAnnehmen(q, d);
     expect(lauf.sourceSync?.restrictionsUpdated).toEqual([]);
     expect(lauf.sourceSync?.syncFailed).toEqual(["P-1"]);
-    // Nichts halb: die Vertraulichkeit wurde nicht ohne die Restriktion heraufgesetzt.
-    expect((await objekt(d, "P-1")).ko?.confidentiality).toBe("intern");
+    // Der Rechteabgleich schützt das Objekt schon vor dem fehlgeschlagenen Nachzug am Anker.
+    const nachher = await objekt(d, "P-1");
+    expect(nachher.ko?.confidentiality).toBe("vertraulich");
+    expect(nachher.anker?.readRestriction).toBeUndefined();
   });
 });
 

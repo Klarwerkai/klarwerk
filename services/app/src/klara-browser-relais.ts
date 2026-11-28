@@ -36,7 +36,7 @@ import {
 export const BROWSER_ABHOLFRIST_MS = 15_000;
 export const BROWSER_ANTWORTFRIST_MS = 30_000;
 
-export type BrowserBefehlArt = "lage" | "fuelle" | "klicke" | "loesche";
+export type BrowserBefehlArt = "lage" | "fuelle" | "feldZuruecksetzen" | "klicke" | "loesche";
 
 export interface BrowserBefehl {
   readonly nr: number;
@@ -245,6 +245,18 @@ export class BrowserBefehlsrelais implements BrowserSeitenadapter {
       const x = w as Record<string, unknown> | undefined;
       return x && istText(x.wert, 4000) ? { wert: x.wert } : undefined;
     });
+  }
+
+  async feldZuruecksetzen(
+    tabId: number,
+    a: { formular: string; fingerabdruck: string; label: string; erwartet: string },
+  ): Promise<SeitenAntwort<null>> {
+    const roh = await this.stelle("feldZuruecksetzen", tabId, {
+      ...a,
+      lesefreigabe: this.lesefreigabe,
+    });
+    if (istAusfall(roh)) return { ok: false, grund: roh.ausfall };
+    return antwortAus(roh, (w) => (w === null ? null : undefined));
   }
 
   async klicke(

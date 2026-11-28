@@ -1,12 +1,14 @@
+import type { TFunction } from "i18next";
 import { Languages, Search, Trash2 } from "lucide-react";
 import { type ReactNode, type UIEvent, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import type { LesevarianteKurz } from "../../api/types";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
 import type { KoPreviewSource } from "../../lib/koPreview";
-import { useLesevariante } from "../../lib/lesevariante";
+import { useListenLesevarianten } from "../../lib/lesevariante";
 import { statusSchluessel } from "../../lib/wissensstatus";
 import { leerzustandsRahmen } from "../EmptyStateCtas";
-import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
+import { KoSummaryVorschau } from "../KoSummaryDisclosure";
 import { bindungsText } from "../LesevarianteHinweis";
 import { Button, cx } from "../ui";
 import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from "./zustand";
@@ -106,7 +108,7 @@ const LAGE_DARUEBER =
 // Liegt für dieses Wissensobjekt eine Leseübersetzung in der Oberflächensprache vor, trägt die Zeile
 // den übersetzten Titel — mit derselben Kennzeichnung wie überall sonst („Übersetzung · Original:
 // Englisch"). Die ENTSCHEIDUNG darüber fällt nicht hier, sondern an der einen Stelle aus JOB 3326
-// (`lib/lesevariante.ts`, `useLesevariante` → `anzuzeigendeVariante`): andere Sprache als das
+// (`lib/lesevariante.ts`, `useListenLesevarianten` → `anzuzeigendeVariante`): andere Sprache als das
 // Original, Variante vorhanden — sonst `undefined`, und dann steht das Original ohne jeden Hinweis
 // da. Diese Datei zeichnet nur, sie entscheidet nichts.
 //
@@ -128,9 +130,12 @@ const LAGE_DARUEBER =
 // (der Werkzeugtipp an der abgeschnittenen Zeile), und Suche, Reihung und Gruppierung entstehen
 // unverändert in `BibliothekFlaeche.tsx` aus `ko.title` — diese Datei bekommt `posten` fertig
 // gereicht und ändert daran nichts.
-function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }): JSX.Element {
-  const { t } = useTranslation();
-  const variante = useLesevariante(zeile.id);
+function zeilenTitel(
+  zeile: BibZeile,
+  gewaehlt: boolean,
+  variante: LesevarianteKurz | undefined,
+  t: TFunction,
+): JSX.Element {
   // Eine Variante OHNE Titel ist für diese Zeile keine: dann steht das Original da, ohne
   // Kennzeichnung. Ein leerer Titel mit dem Vermerk „Übersetzung" wäre die Behauptung einer
   // Übersetzung, die man nicht lesen kann.
@@ -153,7 +158,7 @@ function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }
         data-bib-text="zeile-titel"
         title={zeile.titel}
         className={cx(
-          "block truncate text-[14px] text-text",
+          "block break-words text-[14px] text-text",
           gewaehlt ? "font-semibold" : "font-medium",
         )}
       >
@@ -305,7 +310,8 @@ export function BibliothekListe({
   // R-0959: der Papierkorb je Treffer samt ruhiger Rückfrage. Ohne ihn zeichnet die Liste keinen.
   loeschen?: BibZeilenLoeschen | null;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lesevariante = useListenLesevarianten(i18n?.language, posten.length > 0);
   const spur = useRef<HTMLDivElement | null>(null);
 
   // Nachladen beim Scrollen ans Ende — und einmal nach dem Zeichnen, falls die sichtbaren Zeilen
@@ -588,8 +594,9 @@ export function BibliothekListe({
             <div className="mt-2">{leerAktion}</div>
           </div>
         ) : null}
-        {posten.map((p) =>
-          p.art === "gruppe" ? (
+        {posten.map((p) => {
+          const variante = p.art === "eintrag" ? lesevariante(p.id) : undefined;
+          return p.art === "gruppe" ? (
             <div
               key={p.id}
               data-testid="bib-gruppenkopf"
@@ -675,7 +682,7 @@ export function BibliothekListe({
                 <span className="flex min-w-0 flex-col gap-[3px]">
                   {/* JOB 3362: der Titel in der Lesesprache, wenn es eine Übersetzung gibt — samt
                     Kennzeichnung. Die Begründung steht am Bauteil selbst. */}
-                  <ZeilenTitel zeile={p} gewaehlt={p.id === gewaehlt} />
+                  {zeilenTitel(p, p.id === gewaehlt, variante, t)}
                   <span data-bib-text="zeile-meta" className="block text-[12px] text-muted">
                     {`${p.bereich} · ${p.zustandWort}`}
                   </span>
@@ -703,13 +710,15 @@ export function BibliothekListe({
                   Treffer, und sein Umschalter hält Klick und Vorgabe an (`:60-62`): weder wechselt
                   die Auswahl mit, noch wandert die Adresse. Ohne Kernaussage gibt er `null` zurück —
                   dann steht hier nichts, und die Zeile behauptet auch nicht, es gäbe nichts.
-                  `id` reicht die Kennung nur für die Leseübersetzung durch (JOB 3326).
+                  Den übersetzten Titel und die Vorschau bindet die Liste an dieselbe Variante.
                   DAS POLSTER: der Umschalter rückt in das Fusspolster des Zeilenknopfs (`-mt-2`) und
                   beginnt an der Textspalte (34 px = 16 px Polster + 8 px Punkt + 10 px Abstand) —
                   so bleiben die gemessenen Zeilenmaße unangetastet und der Block fällt trotzdem
                   nicht auseinander. */}
-              <KoSummaryDisclosure
-                source={{ ...p.vorschau, id: p.id }}
+              <KoSummaryVorschau
+                t={t}
+                variante={variante}
+                source={p.vorschau ?? {}}
                 className="-mt-2 pb-3 pl-[34px] pr-4"
               />
               {/* R-0959: der Papierkorb — nur für Berechtigte, ruhig in der Textfarbe der Meta-Zeile;
@@ -729,7 +738,7 @@ export function BibliothekListe({
                   aria-expanded={loeschen.offen === p.id}
                   disabled={loeschen.laeuft}
                   onClick={() => loeschen.onFragen(p.id)}
-                  className="absolute right-2 top-2.5 rounded-btn p-1.5 text-muted outline-none hover:bg-hairline-soft hover:text-text focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-45"
+                  className="absolute right-2 top-2.5 rounded-btn p-1.5 text-muted outline-none hover:bg-hairline-soft hover:text-text disabled:opacity-45"
                 >
                   <Trash2 size={15} aria-hidden="true" />
                 </button>
@@ -779,8 +788,8 @@ export function BibliothekListe({
                 </div>
               ) : null}
             </div>
-          ),
-        )}
+          );
+        })}
       </div>
 
       <div

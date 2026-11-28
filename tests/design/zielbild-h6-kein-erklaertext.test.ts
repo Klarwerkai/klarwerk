@@ -106,7 +106,18 @@ const KARTEN = `(async ([reiterLabel]) => {
     const oeffner = i < zeilen.length ? zeilen[i] : document.querySelectorAll('[data-einst="flaechenknopf"]')[i - zeilen.length];
     if (!oeffner) { karten.push({ id: 'Öffner ' + i + ' fehlt', sichtbar: '', hilfe: [] }); continue; }
     const name = (oeffner.textContent || '').replace(/\\s+/g, ' ').trim();
+    const profilZiele = { 'zeile-kommunikation': 'kommunikation', 'zeile-kalender': 'kalender-anbindung' };
+    const ziel = !reiterLabel && profilZiele[oeffner.getAttribute('data-testid')];
     oeffner.click();
+    if (ziel) {
+      const angekommen = await warte(() => location.pathname === '/' + ziel && document.querySelector('[data-testid="page-' + ziel + '"] h1'));
+      if (!angekommen) throw new Error(name + ': Profilziel ' + ziel + ' fehlt');
+      history.back();
+      const zurueck = await warte(() => location.pathname === '/profil' && document.querySelector('[data-testid="zeile-kontodaten"]'));
+      if (!zurueck) throw new Error(name + ': Rückweg zum Profil fehlt');
+      karten.push({ id: name, sichtbar: '', hilfe: [], profilZiel: ziel });
+      continue;
+    }
     const auf = await warte(() => document.querySelector('[data-einst="detail"]') !== null);
     if (!auf) { karten.push({ id: name + ' — Karte ging nicht auf', sichtbar: '', hilfe: [] }); continue; }
     const karte = document.querySelector('[data-einst="detail"]');
@@ -157,6 +168,7 @@ interface Karte {
   sichtbar: string;
   hilfe: string[];
   menueOffen?: boolean;
+  profilZiel?: string;
 }
 
 // EINE Chromium-Instanz für beide Flächen: /admin wird gemessen, danach führt dieselbe Seite auf
@@ -347,6 +359,11 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
     "auditprotokoll.technik.hilfe",
     "adm.ready.note",
     "adm.backup.help",
+    "teams.wege.text",
+    "referenzpruefung.admin.rolle",
+    "referenzpruefung.admin.quelle",
+    "produktbudget.hilfe",
+    "uebersetzungen.hilfe",
   ];
 
   it("D-soll · Sollmenge des H6-Inventars gegen sämtliche Detailhilfen — in beide Richtungen", async () => {
@@ -438,6 +455,10 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
     // Auch die Karten des Profils: kein verlegter Text im Sichtfeld (dort gibt es keine „?“-Menüs,
     // also darf auch nichts fehlen — die Messung hält fest, dass die Karten sich öffnen lassen).
     const profilKarten = await karten(adminStand, "");
+    expect(profilKarten.flatMap((k) => k.profilZiel ?? []).sort()).toEqual([
+      "kalender-anbindung",
+      "kommunikation",
+    ]);
     expect(profilKarten.length, "keine Detailkarte auf /profil").toBeGreaterThan(0);
     expect(
       profilKarten.filter((k) => k.id.includes("ging nicht auf") || k.id.includes("fehlt")),

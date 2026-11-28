@@ -149,7 +149,7 @@ function ErklaerKnopf({ satz }: { satz: string }): JSX.Element {
       <p
         data-testid="task-erklaerung"
         hidden={!offen}
-        className="basis-full pl-5 text-[12.5px] leading-relaxed text-muted-2"
+        className="order-last basis-full pl-5 text-[12.5px] leading-relaxed text-muted-2"
       >
         {satz}
       </p>

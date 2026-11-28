@@ -11,12 +11,12 @@ import { reworkHref } from "../../lib/reviewReworkContext";
 
 export function Weiterarbeiten({
   kontoId,
-  role,
+  kontorolle,
   board,
   meldungen,
 }: {
   kontoId: string;
-  role: Role;
+  kontorolle: Role;
   board: readonly KnowledgeObject[];
   meldungen: readonly Notification[];
 }): JSX.Element | null {
@@ -36,7 +36,7 @@ export function Weiterarbeiten({
     if (!k) return [];
     const rueckgabe = m.kind === "return";
     const to = rueckgabe ? reworkHref(k.id) : pruefHref(k.id, k.version);
-    return routePathAllows(to, role)
+    return routePathAllows(to, kontorolle)
       ? [
           {
             to,

@@ -19,7 +19,7 @@ import type { IntervalHandle } from "./trash-sweep-scheduler";
 // rief nur ein Test. Gemessen wird hier der Produktpfad in drei Gliedern: der Zeitgeber startet den
 // Lauf (Start und Tick), `buildApp` reicht den Lauf SEINER Dienstinstanz heraus, und `server.ts`
 // verdrahtet beides. Die Fehlerkombination selbst (Rennen, Ausfall) misst
-// `services/klara-consent-protokoll.test.ts`; hier steht ihr Endzustand: eine abgelaufene Sitzung
+// `services/app/src/services/klara-consent-protokoll.test.ts`; hier steht ihr Endzustand: eine abgelaufene Sitzung
 // mit einem Erteilungseintrag, zu dem keine Zustimmungszeile und kein Endeintrag existiert.
 
 const TAGE_32 = 32 * 24 * 60 * 60 * 1000;
@@ -178,8 +178,10 @@ describe("Bens B13 · `buildApp` reicht den Lauf seiner Dienstinstanz heraus —
 describe("Bens B13 · `server.ts` verdrahtet den Lauf", () => {
   it("buildApp bekommt `klaraAufraeumen`, und der Lauf geht an `starteKlaraAufraeumen`", () => {
     const quelle = readFileSync(new URL("./server.ts", import.meta.url), "utf8");
-    expect(quelle).toMatch(/buildApp\(services, \{[^}]*klaraAufraeumen: \(lauf\) => \{/);
-    expect(quelle).toMatch(/klaraAufraeumLauf = lauf;/);
-    expect(quelle).toMatch(/starteKlaraAufraeumen\(\{\s*lauf: klaraAufraeumLauf,/);
+    const optionen = /buildApp\(services, \{([\s\S]*?)^\s*\}\);/m.exec(quelle)?.[1];
+    expect(optionen).toMatch(/klaraAufraeumen: \(lauf\) => \{\s*klaraAufraeumLauf = lauf;/);
+    expect(quelle).toMatch(
+      /starteKlaraAufraeumen\(\{\s*lauf: lifecycle\.lauf\(klaraAufraeumLauf\),/,
+    );
   });
 });

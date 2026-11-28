@@ -1,6 +1,8 @@
 import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import {
+  type AufgabenAuswahl,
+  type AufgabenKo,
   type EvidenceRepo,
   type FassungsSuche,
   type KoCandidateQuery,
@@ -687,6 +689,37 @@ export class PgKoRepo implements KoRepo {
       anhangTraegerParameter(objectIds),
     );
     return res.rows.map((row) => row.data);
+  }
+
+  async listAufgabenKandidaten(
+    auswahl: AufgabenAuswahl,
+    trim: KoSichtbarkeitstrim,
+  ): Promise<AufgabenKo[]> {
+    const params: unknown[] = [auswahl.objektIds];
+    let kandidat = "kos.id = ANY($1::text[])";
+    if (auswahl.erreichbareAutoren) {
+      params.push(auswahl.erreichbareAutoren);
+      // author_key enthält Text auch für fehlerhafte alte JSON-Werte. Solche Autoren haben kein Konto.
+      kandidat +=
+        " OR kos.author_key IS NULL OR NOT (kos.author_key = ANY($2::text[])) OR jsonb_typeof(data->'author') IS DISTINCT FROM 'string'";
+    }
+    const sichtbar = trim.sql("kos", params.length + 1);
+    params.push(...trim.params);
+    // Die Objektliste hat keine fachliche Sortierung. Die bisherige Bestandsreihenfolge bleibt auch
+    // bei gezielten Primärschlüsselabfragen erhalten. Keine Aussage, Anhänge oder Textkörper laden.
+    const res = await this.pool.query<{
+      data: AufgabenKo & Pick<KnowledgeObject, "mergedInto" | "deletedAt">;
+    }>(
+      `SELECT jsonb_strip_nulls(jsonb_build_object(
+         'id', data->'id', 'author', data->'author', 'category', data->'category',
+         'confidentiality', data->'confidentiality', 'spaceId', data->'spaceId',
+         'quellrechte', data->'quellrechte', 'mergedInto', data->'mergedInto', 'deletedAt', data->'deletedAt'
+       )) AS data FROM kos WHERE (${kandidat}) AND ${sichtbar} ORDER BY kos.ctid`,
+      params,
+    );
+    return res.rows
+      .filter(({ data }) => !data.deletedAt && !data.mergedInto)
+      .map(({ data: { deletedAt: _deletedAt, mergedInto: _mergedInto, ...ko } }) => ko);
   }
 
   // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Projektion AN DER DATENQUELLE — Postgres entfernt

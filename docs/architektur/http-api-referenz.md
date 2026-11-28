@@ -1,6 +1,6 @@
 # HTTP-API-Referenz
 
-*R-2076 / NFR-MNT-02 (Aufnahme 20260922, zentrale-module-aufteilen). Stand: Kandidat `69ac08a3`.
+*R-2076 / NFR-MNT-02 (Aufnahme 20260922, zentrale-module-aufteilen). Der Abgleich am 28. November 2026 erfasst die 700 Routen der Produktfassung `1.0.0-beta.1.1155`.
 Gilt für die App, die `buildApp` (`services/app/src/build-app.ts`) baut — dieselbe Wurzel für
 Server, Tests und Rollenabnahme. Die statische Auslieferung der Web-Oberfläche (`web-static.ts`,
 nur `server.ts`) ist keine API und hier nicht geführt.*
@@ -14,14 +14,13 @@ nicht gibt. Ändert jemand eine Route, wird der Prüfstand rot, bis diese Datei 
 **Was die Spalten bedeuten.** *Recht* ist das serverseitige Tor der Route (`requirePermission`,
 `requireUser`, `requireAdmin` oder keines). *Eingaben* sind die Parameter, die die Route liest — aus
 den Typangaben der Registrierung und dem Rumpf der Route abgeschrieben. *Erfolg* nennt Status und,
-wo der Rumpf nicht offensichtlich ist, den Dienstaufruf, der ihn liefert. *Fehler* nennt die
-Codes, die die Route **selbst** setzt; dazu kommen immer die allgemeinen Fälle aus Abschnitt 2.
+wo der Rumpf nicht offensichtlich ist, den Dienstaufruf, der ihn liefert. *Fehler* nennt konkrete Fehlerstatus der Route und ihrer Dienste. Die allgemeinen Fälle stehen in Abschnitt 2.
 
 ## 1 Anmeldung und Rechte
 
 **Sitzung.** `POST /api/auth/login` liefert `{ user, token }` und setzt das Cookie `kw_session`
 (HttpOnly, `Path=/`, `SameSite=Lax`, `Secure` in Produktion — `services/app/src/csrf.ts`,
-`COOKIE_STRATEGY`). Jede geschützte Route nimmt den Token aus `Authorization: Bearer <token>` oder
+`COOKIE_STRATEGY`). Für eine Benutzeranmeldung kommt der Token aus `Authorization: Bearer <token>` oder
 aus diesem Cookie (`tokenFromRequest`, `services/app/src/http.ts`). Der Web-Client nutzt nur das
 Cookie; der Token im Rumpf ist der Weg für Clients ohne Cookies.
 
@@ -51,10 +50,12 @@ Route antwortet ihm `403 FORBIDDEN`; ein ungültiger Schlüssel bekommt `401 UNA
 Fehlversuche werden je IP gedrosselt (`429 RATE_LIMITED` mit `retry-after`). CORS gilt nur für
 diese zwei Pfade und nur für die eine eingestellte Add-in-Herkunft.
 
+**Dienstzugang.** `x-klarwerk-service-key` kennzeichnet einen separat eingerichteten Dienst. Die zugelassenen Routen und Fähigkeiten stehen in `DIENST_ROUTEN` in [dienst-schluessel.ts](../../services/app/src/dienst-schluessel.ts). Für den E-Mail-Eingang müssen außerdem die Dienstkennung der Eingangskonfiguration und die Fähigkeit `mail.entwurf` passen.
+
 ## 2 Fehler, die jede Route haben kann
 
-Jede Fehlerantwort ist JSON `{ "error": "<CODE>", "message": "<Text>" }`. Der Text folgt dem Kopf
-`Accept-Language` (de/en/nl), wo er aus dem Meldungskatalog kommt.
+Die JSON-API meldet Fehler üblicherweise als `{ "error": "<CODE>", "message": "<Text>" }`. Der Text folgt dem Kopf
+`Accept-Language` (de/en/nl), wo er aus dem Meldungskatalog kommt. WOPI meldet Protokollfehler über den HTTP-Status und bei Sperrkonflikten zusätzlich über den Antwortkopf `X-WOPI-Lock`.
 
 | Status | `error` | Wann |
 | --- | --- | --- |
@@ -68,7 +69,8 @@ Jede Fehlerantwort ist JSON `{ "error": "<CODE>", "message": "<Text>" }`. Der Te
 | 503 | `KI_ABGESCHALTET`, `JOURNAL_AUSGANG_UNGEWISS` | `STATUS_BY_CODE` — Betriebszustand, kein Fehler des Aufrufers. |
 | 503 | Modell ausgelastet | `modelBusyErrorHandler` (`build-app.ts`): Kapazitätsüberlauf des Modells, mit `Retry-After`. |
 | 500 | `INTERNAL` | Alles Übrige, auch Datenbankfehler und der rein interne Code `SEARCH_PROJECTION_NOT_READY` — ohne Ursache im Text. `CREATE_ROLLBACK_FAILED` ist der eine Domänencode mit 500. |
-| 400 | Fastify-Formfehler | Rumpf kein JSON oder grösser als die Grenze der Route (Standard 1 MiB; eigene Grenzen tragen `PUT /api/kos/:id`, `POST /api/objects`, `POST /api/drafts`, `POST /api/reasoner/describe`, `POST /api/capture/slides`). |
+| 400 | Fastify-Formfehler | Rumpf ist kein gültiges JSON. |
+| 413 | Fastify-Größenlimit | Der Rumpf überschreitet die Grenze der Route (Standard 1 MiB; eigene Grenzen tragen `PUT /api/kos/:id`, `POST /api/objects`, `POST /api/drafts`, `POST /api/reasoner/describe`, `POST /api/capture/slides`). |
 
 ## 3 Endpunkte
 
@@ -569,6 +571,733 @@ wird jede Seite zur Übergabe „nicht unterstützt".
 | `GET` | `/api/me/klara/browser-auftraege/:id` | `ko.read`; eigene Anmeldesitzung | — | 200 `{ auftrag }` — der lebende Lauf dieser Anmeldung oder der Eintrag im eigenen Gespräch | 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`, auch fremd); Dienstfehler |
 | `POST` | `/api/me/klara/browser-auftraege/:id/takt` | `ko.read`; eigene Anmeldesitzung, Lauf derselben Anmeldung | Rumpf `{ folge, antwort?: { nr, ergebnis }, seite?: { adapter?, recht? } }` — `folge` streng steigend | 200 `{ auftrag, befehl }` — wartet bis zum nächsten Befehl oder zur Ruhe des Laufs (höchstens 20 s) | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`, auch fremd); 409 `CONFLICT` (`andere_sitzung`, `veraltet`); Dienstfehler |
 | `POST` | `/api/me/klara/browser-auftraege/:id/steuerung` | `ko.read`; eigene Anmeldesitzung, Lauf derselben Anmeldung | Rumpf `{ art: "pause" \| "fortsetzen" \| "abbruch" \| "bestaetigen" \| "ruecknahme" \| "widerruf", fingerabdruck? }` | 200 `{ auftrag, befehl }` | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`); 409 `CONFLICT` (`andere_sitzung`, `keine_bestaetigung`, `bestaetigung_passt_nicht`, `laeuft`); Dienstfehler |
+
+### 3.13 Weitere Endpunkte nach Fachbereich
+
+Die Tabellen ergänzen die Arbeitsabläufe aus Abschnitt 3.1 bis 3.12. Unter jedem Fachbereich steht der Link zum zuständigen Routenmodul. Rumpf und Query nennen die Eingabefelder. Welche davon erforderlich sind, hängt bei mehrstufigen Aufträgen von der gewählten Aktion ab. Die Fehler aus Abschnitt 2 gelten zusätzlich.
+
+#### Administrative Betriebsfunktionen
+
+[Implementierung](../../services/app/src/routes/admin-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/admin/bestandsreset` | `users.manage` | — | 200 `{ verfuegbar }`<br>200 `{ verfuegbar, vorschau, letzterLauf }` | 401, 403 |
+| `POST` | `/api/admin/bestandsreset` | `users.manage` | Rumpf `{ ok, folgenBestaetigt, vorschauKennung, passwort, passwortWiederholung }` | 200 `{ ok, laufId, befund, protokolliert }` | 400, 401 (`INVALID_PASSWORD`), 403, 409 (`BESTANDSRESET_NICHT_VERFUEGBAR`, `VORSCHAU_VERALTET`), 500 (`BESTANDSRESET_FEHLGESCHLAGEN`) |
+| `POST` | `/api/admin/factory-reset/sso` | `users.manage` | Rumpf `{ code, state, verwerfen }` | 200 `{ bestaetigt }` | 400 (`SSO_VORGANG_UNBEKANNT`), 401, 403 (`FORBIDDEN`), 409 |
+| `GET` | `/api/admin/factory-reset/sso/start` | `users.manage` | Query `{ schritt }` | 302 Weiterleitung zum Identitätsanbieter, Ziel im Kopf `Location` | 400 (`SSO_SCHRITT_UNGUELTIG`), 401, 403 (`FORBIDDEN`), 409 (`SSO_NICHT_VORGESEHEN`) |
+| `GET` | `/api/admin/funktionen` | `users.manage` | — | 200 `Funktionskatalog` | 401, 403 |
+
+#### Anmeldung und Konten
+
+[Implementierung](../../services/auth/src/routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `PUT` | `/api/auth/me` | angemeldetes Konto | Rumpf `{ name, email, currentPassword }` | 202 `{ id, createdAt, name, email, role, approved, noticeAckAt?, noticeAckVersion?, oidcIssuer?, oidcSubject?, accessExpiresAt?, freigabe?, verzeichnisGruppen?, weisungsbefugnis?, emailChangePending }`<br>200 `PublicUser` | 400, 401 |
+| `POST` | `/api/auth/me/email/confirm` | angemeldetes Konto | Rumpf `{ token }` | 200 `PublicUser` | 400 (`BAD_REQUEST`), 401 |
+
+#### Assistenzfähigkeiten
+
+[Implementierung](../../services/app/src/routes/assistenz-faehigkeiten-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/faehigkeiten` | angemeldetes Konto | — | 200 `{ faehigkeiten, vormerkungen }` | 401 |
+| `GET` | `/api/me/faehigkeiten/auftraege` | angemeldetes Konto | — | 200 `{ auftraege }` | 401 |
+| `POST` | `/api/me/faehigkeiten/auftraege` | `ko.read` | Rumpf `{ zweck, gewaehlt, eingabe, arbeitsbereich, kontext, ausloeser, auftragId, bestaetigt, vorschauFingerabdruck, hintergrund }` | 200 `{ vorbereitung, ergebnis }`<br>202 `{ vorbereitung, hintergrund, ergebnis }` | 400, 401, 403, 404, 409 (`CONFLICT`) |
+| `GET` | `/api/me/faehigkeiten/auftraege/:id` | angemeldetes Konto | — | 200 `{ auftrag }` | 400, 401, 403, 404 |
+| `POST` | `/api/me/faehigkeiten/auftraege/:id/abbrechen` | angemeldetes Konto | — | 200 `{ abgebrochen }` | 401 |
+| `POST` | `/api/me/faehigkeiten/vormerkungen` | angemeldetes Konto | Rumpf `{ faehigkeitId, art, zweck, bestaetigt }` | 200 `{ vormerkung, vormerkungen }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/faehigkeiten/vormerkungen/:id/deaktivieren` | angemeldetes Konto | — | 200 `{ vormerkungen }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/faehigkeiten/vorschau` | `ko.read` | Rumpf `{ zweck, gewaehlt, eingabe, arbeitsbereich, kontext, ausloeser, auftragId }` | 200 `{ vorbereitung, auftragId, fingerabdruck }` | 400, 401, 403, 404 |
+
+#### Assistenzprofil
+
+[Implementierung](../../services/app/src/routes/assistenz-profil-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/assistenz` | angemeldetes Konto | — | 200 `{ profil, einrichtungOffen }` | 401, 403 |
+| `PUT` | `/api/me/assistenz` | angemeldetes Konto | Rumpf `{ einfuehrung, name, avatar, bewegung, bildAutomatik, datenkontrolleOffenePunkte, einrichtungAbschliessen, fassung }` | 200 `{ profil, einrichtungOffen }` | 400, 401, 403, 409 |
+| `GET` | `/api/me/assistenz/bildkorrekturen` | angemeldetes Konto | — | 200 `{ darfBearbeiten, korrekturen }` | 401, 403 |
+| `PUT` | `/api/me/assistenz/bildkorrekturen` | `ko.create` | Rumpf `{ aktion, quelle, inhaltskennung, text, ort }` | 200 `{ darfBearbeiten, korrekturen }` | 400, 401, 403, 409 |
+| `GET` | `/api/me/assistenz/eigeninitiative` | angemeldetes Konto | — | 200 `{ modus, gewaehlt, geaendertAm, hinweise }` | 400, 401, 403, 409 |
+| `PUT` | `/api/me/assistenz/eigeninitiative` | angemeldetes Konto | Rumpf `{ modus }` | 200 `{ modus, gewaehlt, geaendertAm, hinweise }` | 400, 401, 403, 409 |
+| `POST` | `/api/me/assistenz/eigeninitiative/hinweise` | angemeldetes Konto | Rumpf `{ schluessel, stand }` | 200 `{ modus, gewaehlt, geaendertAm, hinweise }` | 400, 401, 403, 409 |
+| `GET` | `/api/me/assistenz/tastenkuerzel` | angemeldetes Konto | — | 200 `{ aktionen, geaendertAm }` | 401, 403 |
+| `PUT` | `/api/me/assistenz/tastenkuerzel` | angemeldetes Konto | Rumpf `{ alleZuruecksetzen, aktion, belegung }` | 200 `{ aktionen, geaendertAm }` | 400, 401, 403, 409 |
+
+#### Ausgangsprüfung
+
+[Implementierung](../../services/app/src/routes/ausgangspruefung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/ausgangspruefung` | `ko.validate` | — | 200 `{ aktiv, wartezeitMs, offen }` | 401, 403 |
+| `POST` | `/api/ausgangspruefung/:id/ablehnen` | `ko.validate` | — | 200 `{ id, entscheidung }` | 401, 403, 404 |
+| `POST` | `/api/ausgangspruefung/:id/freigeben` | `ko.validate` | — | 200 `{ id, entscheidung }` | 401, 403, 404 |
+
+#### Begriffe und Fassungen
+
+[Implementierung](../../services/app/src/routes/begriffe-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/begriffe` | `ko.read` | — | 200 `{ begriffe }` | 401, 403 |
+| `POST` | `/api/begriffe` | `ko.validate` | Rumpf `{ geltungsbereich, verantwortlich, definition, bezeichnungen }` | 201 `BegriffFassung` | 401, 403, 409 (`BEGRIFF_DOPPELT`) |
+| `GET` | `/api/begriffe/:id` | `ko.read` | — | 200 `{ aktuell, fassungen }` | 401, 403, 404 (`NOT_FOUND`) |
+| `PUT` | `/api/begriffe/:id` | `ko.validate` | Rumpf `{ version, geltungsbereich, verantwortlich, definition, bezeichnungen }` | 200 `BegriffFassung` | 400 (`VERSION_FEHLT`), 401, 403, 404 (`NOT_FOUND`), 409 (`BEGRIFF_DOPPELT`, `VERSION_VERALTET`) |
+| `GET` | `/api/begriffe/:id/fassungen/:version` | `ko.read` | — | 200 `BegriffFassung` | 401, 403, 404 (`NOT_FOUND`) |
+| `POST` | `/api/begriffe/pruefen` | `ko.read` | Rumpf `{ segmente, kontext }` | 200 `BegriffsPruefung` | 400 (`PRUEFUNG_UNGUELTIG`), 401, 403 |
+
+#### Betriebsbereitschaft
+
+[Implementierung](../../services/app/src/build-app.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/ki-lage` | `ko.read` | — | 200 `ReasonerKiLage` | 401, 403 |
+| `GET` | `/ready` | keines | — | 200 `{ status: "ok" }` | 503 `{ status: "unavailable" }` |
+
+#### Bibliothek
+
+[Implementierung](../../services/app/src/routes/library-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/library/existenzhinweise` | `ko.read`, `darfSehen` | Query `{ q }` | 200 `{ hinweise }` | 400 (`BEGRIFF_UNGUELTIG`), 401, 403 |
+
+#### Chat und Erwähnungen
+
+[Implementierung](../../services/app/src/routes/chat-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/chat/erwaehnungen` | `ko.read`, `darfSehen` | — | 200 `{ erwaehnungen }` | 401, 403 |
+| `GET` | `/api/chat/gespraeche` | `ko.read`, `darfSehen` | — | 200 `{ gespraeche, spaces }` | 401, 403 |
+| `POST` | `/api/chat/gespraeche` | `ko.read`, `darfSehen` | Rumpf `{ art, titel, teilnehmer, spaceId, koId }` | 201 `{ id, art, sichtbarkeit, titel, teilnehmer, space, artikel, angelegtAm }`<br>200 `{ id, art, sichtbarkeit, titel, teilnehmer, space, artikel, angelegtAm }` | 400 (`CHAT_UNGUELTIG`), 401, 403, 404, 409 |
+| `GET` | `/api/chat/gespraeche/:id` | `ko.read`, `darfSehen` | Query `{ vor }` | 200 `{ gespraech, nachrichten, aelterVorhanden }` | 401, 403, 404 |
+| `POST` | `/api/chat/gespraeche/:id/auffrischen` | `ko.read`, `darfSehen` | Rumpf `{ ids }` | 200 `{ nachrichten }` | 400 (`CHAT_UNGUELTIG`), 401, 403, 404 |
+| `POST` | `/api/chat/gespraeche/:id/nachrichten` | `ko.read`, `darfSehen` | Rumpf `{ text, sendeKennung, erwaehnungen, verweise, anhaenge, ausschnitt, ausKlara }` | 201 `{ nachricht, neu }`<br>200 `{ nachricht, neu }` | 400, 401, 403, 404, 409 (`SENDEKENNUNG_BELEGT`) |
+| `GET` | `/api/chat/konten` | `ko.read` | — | 200 `{ ich, konten }` | 401, 403 |
+| `GET` | `/api/chat/nachrichten/:id` | `ko.read`, `darfSehen` | — | 200 `{ gespraech, nachricht }` | 401, 403, 404 |
+| `POST` | `/api/chat/nachrichten/:id/wissen` | `ko.create`, `darfSehen` | — | 201 `{ entwurfId, neu, herkunft }`<br>200 `{ entwurfId, neu, herkunft }` | 401, 403, 404 |
+
+#### Datenschutz und Löschanträge
+
+[Implementierung](../../services/app/src/routes/datenschutz-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/datenschutz/auskunft/:nutzerId` | `users.manage`, `sichtbarkeitsfilterFuer` | — | 200 `Selbstauskunft` | 401, 403 |
+| `GET` | `/api/datenschutz/loeschantraege` | `users.manage` | — | 200 `{ antraege }` | 401, 403 |
+| `POST` | `/api/datenschutz/loeschantraege/:id/ablehnen` | `users.manage` | Rumpf `{ grund }` | 200 `{ id, nutzerId, gestelltAm, fristBis, begruendung, status, entschiedenVon, entschiedenAm, entscheidungsgrund, uebernahme?, nutzer, ueberfaellig, wiederaufnehmbar }` | 401, 403 |
+| `POST` | `/api/datenschutz/loeschantraege/:id/erledigen` | `users.manage` | — | 200 `{ id, nutzerId, gestelltAm, fristBis, begruendung, status, entschiedenVon, entschiedenAm, entscheidungsgrund, uebernahme?, nutzer, ueberfaellig, wiederaufnehmbar }` | 401, 403, 409 (`LETZTER_ADMIN`) |
+| `GET` | `/api/datenschutz/verarbeitungsverzeichnis` | `users.manage` | Query `{ format }` | 200 Text<br>200 `Verarbeitungsverzeichnis` | 400 (`FORMAT_UNBEKANNT`), 401, 403 |
+| `GET` | `/api/me/daten` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | — | 200 `Selbstauskunft` | 401 |
+| `GET` | `/api/me/loeschantrag` | angemeldetes Konto | — | 200 `{ antraege }` | 401 |
+| `POST` | `/api/me/loeschantrag` | angemeldetes Konto | Rumpf `{ begruendung }` | 201 `{ id, nutzerId, gestelltAm, fristBis, begruendung, status, entschiedenVon, entschiedenAm, entscheidungsgrund, uebernahme?, ueberfaellig }` | 400 (`BEGRUENDUNG_UNGUELTIG`), 401 |
+| `POST` | `/api/me/loeschantrag/:id/zurueckziehen` | angemeldetes Konto | — | 200 `{ id, nutzerId, gestelltAm, fristBis, begruendung, status, entschiedenVon, entschiedenAm, entscheidungsgrund, uebernahme?, ueberfaellig }` | 401 |
+
+#### E-Mail-Eingang
+
+[Implementierung](../../services/app/src/routes/email-eingang-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/eingang/email` | zugeordneter Dienstschlüssel mit `mail.entwurf` | Rumpf `{ attachments, recipient, messageId, from, subject, sentAt, text }` · Kopf `x-klarwerk-service-key` | 200 `{ entwurfId, neu }`<br>201 `{ entwurfId, neu }` | 400, 401 (`UNAUTHENTICATED`), 403 (`FORBIDDEN`), 409 (`IDEMPOTENCY_PAYLOAD_MISMATCH`), 422, 429, 503 (`EMAIL_NICHT_KONFIGURIERT`, `EMAIL_ZUSTAENDIGKEIT_FEHLT`) |
+
+#### Fachliche Prüfung
+
+[Implementierung](../../services/app/src/routes/validation-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/validation/board/count` | `ko.read`, `sichtbarkeitsfilterFuer` | — | 200 `{ length }` | 401, 403 |
+
+#### Folienaufbau
+
+[Implementierung](../../services/app/src/routes/praesentation-aufbau-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/kos/:id/office/:anhangId/folienaufbau/uebernehmen` | `ko.create`, `darfSehen` | Rumpf `{ expectedVersion, titel, ziel, publikum, dauerMinuten, datenpunkte, design, diagramm, planId }` | 200 `{ zustand, fassung, status, belegOffen, bindungenOffen, dateiFassung, deck, hinweis }` | 400, 401, 403, 404, 409, 413, 500 |
+| `POST` | `/api/kos/:id/office/:anhangId/folienaufbau/vorschau` | `ko.create`, `darfSehen` | Rumpf `{ expectedVersion, titel, ziel, publikum, dauerMinuten, datenpunkte, design, diagramm, planId }` | 200 `{ vertrag, planId, kontrolliertAm, basis, auftrag, fakten, diagramm, hinweise, folien }` | 400, 401, 403, 404, 409, 413, 500 |
+
+#### Fragen und Firmenwissen
+
+[Implementierung](../../services/app/src/routes/ask-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/klara/sessions/:sessionId/execute` | `ko.read`, `sichtbarkeitsfilterFuer` | Rumpf `{ question, locale, selection, selectionConfidentiality, questionSource }` | 200 `{ result, answerId, gap, receipt, quellenStand?, ungeprueft?, verschlossen?, zweitmeinung?, geltung?, pruefrahmen?, antwortZuschnitt?, geloesteLuecke?, aussagen?, zweitmeinungAussagen?, absaetze, referenzpruefung?, referenzpruefungZweitmeinung? }` | 401 (`UNAUTHENTICATED`), 403 (`FORBIDDEN`), 404 (`NOT_FOUND`), 409 |
+
+#### Gemeinsame Workflows
+
+[Implementierung](../../services/app/src/routes/teamworkflow-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/teamworkflows` | `ko.read` | — | 200 `{ teams, workflows }` | 401, 403 |
+| `POST` | `/api/teamworkflows` | `ko.create` | Rumpf `{ teamId, definition }` | 201 `{ veroeffentlicht?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktivName, aktiv }` | 400, 401, 403, 404, 409 |
+| `DELETE` | `/api/teamworkflows/:id` | `ko.create` | Rumpf `{ revision }` | 204 ohne Antwortkörper | 400, 401, 403, 404, 409 |
+| `GET` | `/api/teamworkflows/:id` | `ko.read` | — | 200 `{ veroeffentlicht?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktivName, aktiv }` | 401, 403, 404 |
+| `PUT` | `/api/teamworkflows/:id` | `ko.create` | Rumpf `{ revision, teamId, definition }` | 200 `{ veroeffentlicht?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktivName, aktiv }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamworkflows/:id/freigeben` | `ko.create` | Rumpf `{ revision, version }` | 200 `{ veroeffentlicht?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktivName, aktiv }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamworkflows/:id/pruefen` | `ko.create` | Rumpf `{ revision, sprache }` | 200 `{ veroeffentlicht?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktivName, aktiv }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamworkflows/:id/zurueckziehen` | `ko.create` | Rumpf `{ revision }` | 200 `{ veroeffentlicht?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktivName, aktiv }` | 400, 401, 403, 404, 409 |
+
+#### Gesamtanweisungen
+
+[Implementierung](../../services/app/src/routes/gesamtanweisung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen` | `ko.create`, `sichtbarkeitsfilterFuer` | Rumpf `{ version, aufVersion, nachweisHash }` | 200 `dienst.fassungUebernehmen` | 400 (`VALIDATION`), 401, 403 |
+
+#### Importläufe und Herkunft
+
+[Implementierung](../../services/app/src/routes/import-run-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/admin/import/knowledge/:koId` | `users.manage`, `darfSehen` | — | 200 `{ knowledgeObjectId, source, run, item, knowledgeGapRelationState, knowledgeGapIds, knowledgeGaps, knowledgeGapScope, knowledgeGapUnavailableReason }` | 401, 403, 404 |
+
+#### KI-Arbeitsbegleitung
+
+[Implementierung](../../services/app/src/routes/ki-arbeitsbegleitung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/gespraeche/:id/ki-auftraege` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | — | 200 `{ auftraege }` | 401, 404 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-auftraege` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ ziel, ergebnisformat, offenePunkte, anbieter, faehigkeit, quellen, freigegebeneQuellen }` | 201 `{ auftrag }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ dateien, aktionen }` | 200 `{ auftrag }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ inhalt, anbieter }` | 200 `{ auftrag }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/freigabe-schliessen` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ quelleId }` | 200 `{ auftrag }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | — | 201 `{ auftrag }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | — | 200 `{ auftrag, text }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ erneutSendenBestaetigt }` | 200 `KiUebergabeErgebnis` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ teilergebnis }` | 200 `{ auftrag }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/ki-vergleich` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ jobA, jobB, aussagenA, aussagenB }` | 200 `{ zeilen }` | 401, 404, 409 |
+| `GET` | `/api/me/klara/ki-faehigkeiten` | angemeldetes Konto | — | 200 `{ faehigkeiten, fremdeChatsteuerung, mcpText, lage }` | 401 |
+| `POST` | `/api/me/klara/ki-verbindung/:anbieter/pruefen` | `users.manage` | — | 200 `{ ok, detail }` | 401, 403, 409 |
+
+#### Kenntnisnahmen
+
+[Implementierung](../../services/app/src/routes/kenntnisnahme-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/kenntnisnahmen/:anforderungId/bestaetigen` | `ko.read`, `darfSehen` | Rumpf `{ fassung }` | 200 `{ anforderungId, fassung, status, bestaetigtAm, bereits }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/kenntnisnahmen/:anforderungId/erinnern` | `ko.assign`, `darfSehen` | — | 200 `{ erinnert }` | 401, 403, 404 |
+| `GET` | `/api/kenntnisnahmen/meine` | `ko.read`, `darfSehen` | — | 200 `{ eintraege }` | 401, 403 |
+| `GET` | `/api/kos/:id/kenntnisnahmen` | `ko.assign`, `darfSehen` | — | 200 `{ koId, aktuelleFassung, gueltig, moeglicheEmpfaenger, anforderungen }` | 401, 403, 404 |
+| `POST` | `/api/kos/:id/kenntnisnahmen` | `ko.assign`, `darfSehen` | Rumpf `{ fassung, empfaenger, frist }` | 201 `AnforderungsErgebnis`<br>200 `AnforderungsErgebnis` | 400, 401, 403, 404, 409 |
+
+#### Kioskprofile und Kioskfragen
+
+[Implementierung](../../services/app/src/routes/kiosk-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/kiosk/fragen` | `ko.read`, eigene Sitzung des im Kioskprofil eingetragenen Lesekontos | Rumpf `{ question, locale, profilId, revision }` | 200 `{ result, answerId, gap, receipt, quellenStand?, ungeprueft?, verschlossen?, zweitmeinung?, geltung?, pruefrahmen?, antwortZuschnitt?, geloesteLuecke?, aussagen?, zweitmeinungAussagen?, absaetze, referenzpruefung?, referenzpruefungZweitmeinung? }` | 400 (`BAD_REQUEST`), 401, 403, 409 |
+| `GET` | `/api/kiosk/profil` | `ko.read`, eigene Sitzung des im Kioskprofil eingetragenen Lesekontos | — | 200 `{ profilId, revision, zugang }` | 401, 403 |
+
+#### Klara-Aufgaben
+
+[Implementierung](../../services/app/src/routes/klara-aufgabe-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/aufgaben` | angemeldetes Konto | Query `{ status }` | 200 `{ aufgaben }` | 401 |
+| `POST` | `/api/me/klara/aufgaben` | angemeldetes Konto | Rumpf `{ vorgang, weg, bereich, quelle, titel, inhalt, prioritaet, notizFassung }` | 200 `{ aufgabe, wiederholt }`<br>201 `{ aufgabe, wiederholt }` | 401, 404, 409 |
+| `DELETE` | `/api/me/klara/aufgaben/:id` | angemeldetes Konto | — | 200 `{ geloescht }` | 401, 404 (`NOT_FOUND`) |
+| `GET` | `/api/me/klara/aufgaben/:id` | angemeldetes Konto | — | 200 `{ aufgabe }` | 401, 404 |
+| `PUT` | `/api/me/klara/aufgaben/:id` | angemeldetes Konto | Rumpf `{ fassung, titel, inhalt, prioritaet, status }` | 200 `{ aufgabe, wiederholt }` | 401, 404 |
+
+#### Klara-Besprechungen
+
+[Implementierung](../../services/app/src/routes/klara-besprechung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/besprechungen/:id/audio` | angemeldetes Konto | — | 200 Audioinhalt als Binärdaten | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/besprechungen/:id/fristquelle` | angemeldetes Konto | Rumpf `{ bewusst, fassung, auswahl }` | 200 `{ notizId, fassung, wiederholt }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/besprechungen/:id/korrektur` | angemeldetes Konto | Rumpf `{ fassung, segmentId, text }` | 200 `{ notiz, ergebnisse, verarbeitung, fristenNormen }` oder neue Transkriptfassung mit `wiederholt` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/besprechungen/:id/lesen` | angemeldetes Konto | — | 200 `{ notiz, ergebnisse, verarbeitung, fristenNormen }` | 401, 404 |
+| `POST` | `/api/me/klara/besprechungen/:id/teilschritt` | angemeldetes Konto | Rumpf `{ aktion, fassung }` | 200 `{ notiz, ergebnisse, verarbeitung, fristenNormen }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/besprechungen/:id/uebernehmen` | angemeldetes Konto | Rumpf `{ bewusst, fassung, auswahl, eigeneAufgaben }` | 200 `{ notizId, aufgaben, privat, gemeinsam, fristenNormen }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/besprechungen/import` | angemeldetes Konto | Rumpf `{ berechtigt, meetingId, vtt, text, meetingDatum, zeitzone, titel, audioId, vorherigeNotiz, transkription, segmentiert, weg }` | 200 `{ notiz, wiederholt, verarbeitung, ergebnisse, fristenNormen }` | 400, 401, 403, 404, 409 |
+
+#### Klara-Erinnerungen
+
+[Implementierung](../../services/app/src/routes/klara-erinnerung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/erinnerungen` | angemeldetes Konto | — | 200 `{ erinnerungen, uebernommen }` | 401 |
+| `POST` | `/api/me/klara/erinnerungen` | angemeldetes Konto | Rumpf `{ vorgang, bereich, titel, notiz, bezug, zeitzone, zeitplan, sommerzeit, verpasst, aktion, ziel, routine }` | 200 `{ erinnerung, wiederholt }`<br>201 `{ erinnerung, wiederholt }` | 400, 401, 404, 409 |
+| `DELETE` | `/api/me/klara/erinnerungen/:id` | angemeldetes Konto | — | 200 `{ geloescht }` | 401, 404 (`NOT_FOUND`) |
+| `GET` | `/api/me/klara/erinnerungen/:id` | angemeldetes Konto | — | 200 `{ erinnerung }` | 401, 404 |
+| `PUT` | `/api/me/klara/erinnerungen/:id` | angemeldetes Konto | Rumpf `{ fassung, titel, notiz, zeitzone, zeitplan, sommerzeit, verpasst }` | 200 `{ erinnerung }` | 400, 401, 404 |
+| `POST` | `/api/me/klara/erinnerungen/:id/ab/:termin` | angemeldetes Konto | Rumpf `{ fassung, titel, notiz, zeitzone, zeitplan, sommerzeit, verpasst, vorgang }` | 200 `{ bisher, neu }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/klara/erinnerungen/:id/laeufe/:lauf/ergebnis-zuruecknehmen` | angemeldetes Konto | — | 200 `{ erinnerung }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/erinnerungen/:id/laeufe/:lauf/klaeren` | angemeldetes Konto | Rumpf `{ entscheidung, fassung }` | 200 `{ erinnerung }` | 400, 401, 404 |
+| `POST` | `/api/me/klara/erinnerungen/:id/routine` | angemeldetes Konto | Rumpf `{ fassung, text, routine, anwenden }` | 200 `{ deutung, angewendet, erinnerung }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/klara/erinnerungen/:id/status` | angemeldetes Konto | Rumpf `{ fassung, aktion }` | 200 `{ erinnerung }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/klara/erinnerungen/:id/uebergabe` | angemeldetes Konto | Rumpf `{ fassung, an }` | 200 `{ erinnerung }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/erinnerungen/:id/uebergabe/zurueckgeben` | angemeldetes Konto | — | 200 `{ zurueckgegeben }` | 401, 404 |
+| `POST` | `/api/me/klara/erinnerungen/:id/vorkommen/:termin` | angemeldetes Konto | Rumpf `{ fassung, aktion, datum, uhrzeit }` | 200 `{ erinnerung }` | 400, 401, 404, 409 |
+| `GET` | `/api/me/klara/erinnerungen/einstellungen` | angemeldetes Konto | — | 200 `{ einstellungen }` | 401 |
+| `PUT` | `/api/me/klara/erinnerungen/einstellungen` | angemeldetes Konto | Rumpf `{ fassung, zeitzone, sommerzeit, verpasst, abschliessen }` | 200 `{ einstellungen }` | 401 |
+| `GET` | `/api/me/klara/erinnerungen/ueberwachung` | angemeldetes Konto | — | 200 `{ rueckstau, laeufe, steuerung }` | 401 |
+| `POST` | `/api/me/klara/erinnerungen/vorschau` | angemeldetes Konto | Rumpf `{ text, zeitzone, zeitplan, sommerzeit, aktion }` | 200 `KlaraErinnerungVorschau` | 401 |
+| `POST` | `/api/me/klara/erinnerungen/wissenspflege/vorschau` | angemeldetes Konto | Rumpf `{ wissenspflege }` | 200 `{ auftrag, ergebnis, wirkung }` | 400, 401, 404, 409 |
+
+#### Klara-Fristen
+
+[Implementierung](../../services/app/src/routes/klara-fristen-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/fristen` | angemeldetes Konto | — | 200 `FristenStand` | 401 |
+| `POST` | `/api/me/klara/fristen/:id/aktion` | angemeldetes Konto | Rumpf `{ fassung, aktion, datum }` | 200 `{ id, fassung, stand }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/klara/fristen/aktualisieren` | angemeldetes Konto | — | 200 `FristenStand` | 400, 401, 404, 409 |
+| `PUT` | `/api/me/klara/fristen/regel` | angemeldetes Konto | Rumpf `{ fassung, regel }` | 200 `FristenStand` | 400, 401, 404, 409 |
+| `POST` | `/api/me/klara/fristen/vorschau` | angemeldetes Konto | Rumpf `{ regel }` | 200 `FristenStand` | 400, 401, 404, 409 |
+
+#### Klara-Gespräche und Aufträge
+
+[Implementierung](../../services/app/src/routes/klara-gespraech-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/gespraech` | angemeldetes Konto | — | 200 `{ gespraech }` | 401 |
+| `POST` | `/api/me/klara/gespraeche` | angemeldetes Konto | Rumpf `{ objektbezug }` | 201 `{ gespraech }` | 401, 409 |
+| `DELETE` | `/api/me/klara/gespraeche/:id` | angemeldetes Konto | — | 200 `{ geloescht }` | 401, 404 (`NOT_FOUND`) |
+| `GET` | `/api/me/klara/gespraeche/:id` | angemeldetes Konto | — | 200 `{ gespraech }` | 401, 404 |
+| `GET` | `/api/me/klara/gespraeche/:id/auftraege` | angemeldetes Konto | — | 200 `{ auftraege }` | 401, 404 |
+| `POST` | `/api/me/klara/gespraeche/:id/auftraege` | angemeldetes Konto | Rumpf `{ plan, beschaffung }` | 201 `{ auftrag }` | 400, 401, 404, 409 |
+| `PUT` | `/api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch` | angemeldetes Konto | — | 200 `{ auftrag }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen` | angemeldetes Konto | Rumpf `{ beschaffung, plan, erlaubteAktionen, erlaubteZiele, erlaubteQuellen, ergebnis, geplanteSchritte, grund, auftragFassung }` | 200 `{ auftrag }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/auftraege/:auftragId/fortsetzen` | angemeldetes Konto | Rumpf `{ auftragFassung }` | 200 `{ auftrag }` | 401, 404, 409 |
+| `GET` | `/api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll` | angemeldetes Konto | — | 200 `{ auftrag, aktionskennungen, eintraege }` | 401, 404 |
+| `PUT` | `/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel` | angemeldetes Konto | Rumpf `{ nr, aktion, ziel, auftragFassung, stand, ergebnis, ruecknehmbar, grund }` | 200 `{ auftrag, schritt, wiederholt }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung` | angemeldetes Konto | Rumpf `{ nr, auftragFassung }` | 200 `{ auftrag, schritt, wiederholt }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme` | angemeldetes Konto | — | 200 `{ auftrag, schritt, wiederholt }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/auftraege/:auftragId/unterbrechen` | angemeldetes Konto | Rumpf `{ auftragFassung }` | 200 `{ auftrag }` | 401, 404, 409 |
+| `PUT` | `/api/me/klara/gespraeche/:id/einwilligung` | angemeldetes Konto | Rumpf `{ erteilt }` | 200 `{ gespraech }` | 401, 404, 409 |
+| `POST` | `/api/me/klara/gespraeche/:id/nachrichten` | angemeldetes Konto | Rumpf `{ von, modus, text, objektbezug, antwortId, quellen, quellenAngaben, wissensklasse, grund }` | 201 `{ nachricht, gespraech }` | 401, 404, 409 |
+| `PUT` | `/api/me/klara/gespraeche/:id/schritt` | angemeldetes Konto | Rumpf `{ art, text, objektbezug, stand }` | 200 `{ gespraech }` | 401, 404, 409 |
+
+#### Klara-Kalenderanbindungen
+
+[Implementierung](../../services/app/src/routes/klara-kalender-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/kalender` | angemeldetes Konto | — | 200 `{ auswahl, anbindungen }` | 401 |
+| `POST` | `/api/me/klara/kalender/anbindungen` | angemeldetes Konto | Rumpf `{ kalenderId, umfang, felder, privatProjektion }` | 201 `{ anbindung }` | 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/kalender/anbindungen/:id/abgleich` | angemeldetes Konto | — | 200 `{ ergebnisse }` | 401, 404 |
+| `POST` | `/api/me/klara/kalender/anbindungen/:id/entfernen` | angemeldetes Konto | Rumpf `{ bestaetigt }` | 200 `{ entfernt }` | 401, 404 |
+| `GET` | `/api/me/klara/kalender/anbindungen/:id/termine` | angemeldetes Konto | Query `{ von, bis }` | 200 `{ ok }` | 400 (`VALIDATION`), 401, 404 |
+| `POST` | `/api/me/klara/kalender/anbindungen/:id/termine` | angemeldetes Konto | Rumpf `{ eigenerEintragId, termin, teilnehmerAuftrag }` | 200 `{ ok, zuordnung, termin?, stand?, grund?, meldung? }`<br>202 `{ ok, zuordnung, termin?, stand?, grund?, meldung? }` | 401, 403, 404, 409 |
+| `GET` | `/api/me/klara/kalender/anbindungen/:id/zuordnungen` | angemeldetes Konto | — | 200 `{ zuordnungen }` | 401, 404 |
+| `GET` | `/api/me/klara/kalender/lauf` | angemeldetes Konto | Query `{ auftragId, ereignisId }` | 200 `{ auftragId, ereignisId, stand }` | 400 (`VALIDATION`), 401 |
+| `POST` | `/api/me/klara/kalender/zuordnungen/:schluessel/entscheidung` | angemeldetes Konto | Rumpf `{ wahl, umfang }` | 200 `{ laufWirkung, ergebnis }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/kalender/zuordnungen/:schluessel/loeschen` | angemeldetes Konto | Rumpf `{ umfang, fassung }` | 200 `{ ok, zuordnung, termin?, stand?, grund?, meldung? }`<br>202 `{ ok, zuordnung, termin?, stand?, grund?, meldung? }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/kalender/zuordnungen/:schluessel/loeschvorschau` | angemeldetes Konto | Rumpf `{ umfang }` | 200 `{ ok }` | 400, 401, 403, 404, 409 |
+
+#### Klara-Normereignisse
+
+[Implementierung](../../services/app/src/routes/klara-normereignis-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/normereignisse` | angemeldetes Konto | — | 200 `{ fassung, normen, fachannahmeErlaubt }` | 401 |
+| `POST` | `/api/me/klara/normereignisse/:id/annahme` | `ko.validate` | Rumpf `{ bestaetigt, fassung, geltung, begruendung, bisher, nachfolger }` | 200 `{ fassung, annahme, wiederholt }` | 400, 401, 403, 404, 409 |
+| `GET` | `/api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag` | angemeldetes Konto | — | 200 `{ automatisch?, gebunden, auftraege }` | 401, 404 |
+| `POST` | `/api/me/klara/normereignisse/:id/ereignisse/:ereignisId/pruefauftrag` | angemeldetes Konto | Rumpf `{ fassung, gespraechId, auftragId, bestaetigt }` | 200 `{ pruefauftrag, wiederholt }` | 400, 401, 404, 409 |
+| `GET` | `/api/me/klara/normereignisse/:id/fachoptionen` | `ko.validate` | — | 200 `{ fassungen }` | 401, 403, 404 |
+| `GET` | `/api/me/klara/normereignisse/:id/fassungen/:koId/:fassung` | angemeldetes Konto | — | 200 `{ koId, fassung, titel, aussage, freigegebenAm }` | 401, 403, 404 |
+| `POST` | `/api/me/klara/normereignisse/:id/klaerung` | `ko.validate` | Rumpf `{ bestaetigt, fassung, begruendung, auswahl }` | 200 `{ fassung, klaerung, wiederholt }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/normereignisse/erfassen` | angemeldetes Konto | Rumpf `{ bekanntmachungErlaubt, quellen }` | 200 `{ fassung, normen, fachannahmeErlaubt, ungeprueft }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/klara/normereignisse/vorschau` | angemeldetes Konto | Rumpf `{ bekanntmachungErlaubt, quellen }` | 200 `{ folgepruefung?, ereignisse, ungeprueft, wirkung }` | 400, 401, 404, 409 |
+
+#### Klara-Notizen
+
+[Implementierung](../../services/app/src/routes/klara-notiz-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/klara/notizen` | angemeldetes Konto | Query `{ q, art }` | 200 `{ notizen }` | 401 |
+| `POST` | `/api/me/klara/notizen` | angemeldetes Konto | Rumpf `{ vorgang, weg, art, titel, inhalt, offeneFragen, objektbezug, quelle }` | 200 `{ notiz, wiederholt }`<br>201 `{ notiz, wiederholt }` | 401, 404, 409 |
+| `DELETE` | `/api/me/klara/notizen/:id` | angemeldetes Konto | — | 200 `{ geloescht }` | 401, 404 (`NOT_FOUND`) |
+| `GET` | `/api/me/klara/notizen/:id` | angemeldetes Konto | — | 200 `{ notiz }` | 401, 404 |
+| `PUT` | `/api/me/klara/notizen/:id` | angemeldetes Konto | Rumpf `{ fassung, art, titel, inhalt, offeneFragen }` | 200 `{ notiz, wiederholt }` | 401, 404, 409 |
+
+#### Klara-Wissensübernahme und Quellenprüfung
+
+[Implementierung](../../services/app/src/routes/klara-wissen-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/me/klara/notizen/:id/wissen/pruefen` | `ko.create` | Rumpf `{ fassung }` · Kopf `accept-language` | 200 `{ vorheriger, naechster, modellherkunft, ergebnis, fassung, geprueftAm, beleg, quelltitel, herkunftUnveraendert }` | 400, 401, 403, 404, 409 |
+| `GET` | `/api/me/klara/notizen/:id/wissen/stand` | `ko.read` | Query `{ pruefstand }` | 200 `{ pruefung }`<br>200 `{ beitraege, regelvorschlaege }` | 400, 401, 403, 404 |
+| `POST` | `/api/me/klara/notizen/:id/wissen/uebernehmen` | `ko.create` | Rumpf `{ fassung, ziel, bewusst, stempel, modus, koId, basis, aussage, auszug }` | 200 `{ beitrag, wiederholt }`. Bei einem Regelvorschlag `{ koId, basis, vorschlagId, status }`. | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/notizen/:id/wissen/vorschau` | `ko.create` | Rumpf `{ fassung, ziel, modus, koId, basis, aussage, auszug }` | 200 `{ notizId, fassung, original, offeneFragen, herkunft, ziel, space, verantwortlich, kontoregel, stempel, input, bezug }`. Bei einem Regelvorschlag `{ koId, titel, basis, bisher, aussage, auszug, stempel, stufe, space }`. | 400, 401, 403, 404, 409 |
+| `POST` | `/api/me/klara/wissen/import` | angemeldetes Konto | Rumpf `{ inhalt, projekt, abschnitt, antwortFassung, aussagen, vorherigeNotiz, anbieter, modell, titel }` | 200 `{ notiz, wiederholt }`<br>201 `{ notiz, wiederholt }` | 400, 401, 404, 409 |
+| `GET` | `/api/me/klara/wissen/ziele` | `ko.create` | — | 200 `{ spaces }` | 401, 403 |
+
+#### Kommunikation und Versandregeln
+
+[Implementierung](../../services/app/src/routes/kommunikation-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/admin/kommunikation/fassungen` | `users.manage` | — | 200 `{ fassungen }` | 401, 403 |
+| `PUT` | `/api/admin/kommunikation/regeln` | `users.manage` | Rumpf `{ version, vorgaben }` | 200 `{ geaendert, darfAendern, version, geaendertVon, geaendertAm, mailEingerichtet, ereignisse }` | 400, 401, 403, 409 |
+| `GET` | `/api/kommunikation/regeln` | angemeldetes Konto | — | 200 `{ darfAendern, version, geaendertVon, geaendertAm, mailEingerichtet, ereignisse }` | 401 |
+| `GET` | `/api/meldungsregeln/meine` | angemeldetes Konto | — | 200 `{ zeilen }` | 401 |
+| `PUT` | `/api/meldungsregeln/meine` | angemeldetes Konto | Rumpf `{ ereignis, abgewaehlt }` | 200 `{ zeilen }` | 400, 401, 409 |
+
+#### Modellzugänge
+
+[Implementierung](../../services/app/src/routes/reasoner-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/reasoner/ausfuehrung` | `ko.read` | — | 200 `{ aufgaben }` | 401, 403 |
+| `GET` | `/api/reasoner/verhaltensartefakte` | `users.manage` | — | 200 `{ geltend, verlauf }` | 401, 403 |
+| `POST` | `/api/reasoner/verhaltensartefakte` | `users.manage` | Rumpf `{ herkunftsfall }` | 201 `Verhaltensartefakt` | 400 (`BAD_REQUEST`), 401, 403, 409 (`VERHALTEN_KONFLIKT`) |
+
+#### Office-Dateien und WOPI
+
+[Implementierung](../../services/app/src/routes/office-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/kos/:id/office/:anhangId` | `ko.read`, `darfSehen` | — | 200 `{ anwendung, endung, bearbeitbar, schreibweg, editorEingerichtet, fassung, status, verlauf, belegstellen, sitzung, gesichert }` | 400, 401, 403, 404 |
+| `POST` | `/api/kos/:id/office/:anhangId/ergaenzung/uebernehmen` | `ko.create`, `darfSehen` | Rumpf `{ kandidatId, token, ort, luecke, quellArtikelIds }` | 200 `{ datenpunktId, dokument, bindung: "gespeichert" }` | 400, 401, 403, 404, 409 (`PP06_VORSCHAU_GEAENDERT`, `PP06_NICHT_UEBERNOMMEN`, `PP06_BINDUNG_OFFEN`), 413, 500 (`PP06_TEILFEHLER`), 503 (`PP06_NICHT_ANGEBUNDEN`) |
+| `POST` | `/api/kos/:id/office/:anhangId/gesichert` | `ko.create`, `darfSehen` | Rumpf `{ objectId, expectedVersion }` | 200 `{ fassung, status, belegOffen }` | 400 (`BAD_REQUEST`), 401, 403, 409 |
+| `POST` | `/api/kos/:id/office/:anhangId/nachbearbeitung` | `ko.create`, `darfSehen` | Rumpf `{ laufId, basisFassung, schritte, sprechernotizen, folgeprodukte }` | 200 `{ laufId, koId, anhangId, zustand, ruecknahme?, wiederholt }`<br>200 `NachbearbeitungsErgebnis` | 400 (`NACHBEARBEITUNG_FORMAT`), 401, 403, 409 (`LAUF_KENNUNG_BELEGT`, `LAUF_LAEUFT`, `KO_STALE`), 413, 500 (`NACHBEARBEITUNG_TEILFEHLER`) |
+| `POST` | `/api/kos/:id/office/:anhangId/nachbearbeitung/:laufId/stopp` | `ko.create`, `darfSehen` | — | 202 `{ gestoppt, message }` | 400, 401, 403, 404 (`NOT_FOUND`), 409 (`LAUF_BEENDET`) |
+| `POST` | `/api/kos/:id/office/:anhangId/sitzung` | `ko.read`, `darfSehen` | — | 200 `{ editorUrl, editorHerkunft, accessToken, accessTokenTtl, schreibweg, fassung }` | 400, 401, 403, 404, 502 (`OFFICE_EDITOR_NICHT_ERREICHBAR`, `OFFICE_FORMAT_NICHT_ANGEBOTEN`), 503 |
+| `POST` | `/api/kos/:id/office/:anhangId/uebernahme` | `ko.create`, `darfSehen` | — | 200 `{ fassung, status }` | 400, 401, 403, 404, 409 (`KO_STALE`, `OFFICE_KEINE_SITZUNG`, `OFFICE_NICHTS_GESPEICHERT`), 503 |
+| `POST` | `/api/kos/:id/office/:anhangId/zurueckholen` | `ko.create`, `darfSehen` | Rumpf `{ ausFassung, expectedVersion }` | 200 `{ fassung, status, belegOffen }` | 400 (`BAD_REQUEST`, `INVALID`), 401, 403, 409 |
+| `GET` | `/wopi/files/:anhangId` | dateigebundene WOPI-Zugangsmarke und aktuelles Zugriffsrecht | Query `access_token` | 200 WOPI-Dateiauskunft mit u. a. `BaseFileName`, `Size`, `Version` und `UserCanWrite` | 401, 404, 503 |
+| `POST` | `/wopi/files/:anhangId` | dateigebundene WOPI-Zugangsmarke und aktuelles Zugriffsrecht | Query `access_token`. Kopf `X-WOPI-Override` (LOCK, UNLOCK, REFRESH_LOCK oder GET_LOCK). Je Vorgang `X-WOPI-Lock` und für eine Umsperrung `X-WOPI-OldLock`. | 200 Sperrergebnis gemäß WOPI, ggf. mit `X-WOPI-Lock` | 401, 404, 409 (Sperrkonflikt), 501 (unbekannte Operation), 503 |
+| `GET` | `/wopi/files/:anhangId/contents` | dateigebundene WOPI-Zugangsmarke und aktuelles Zugriffsrecht | Query `access_token` | 200 Dateiinhalt als Binärdaten und `X-WOPI-ItemVersion` | 401, 404, 503 |
+| `POST` | `/wopi/files/:anhangId/contents` | dateigebundene WOPI-Zugangsmarke und aktuelles Zugriffsrecht | Query `access_token`, Kopf `X-WOPI-Lock`, Rumpf mit den neuen Dateibytes | 200 `{}` und neue `X-WOPI-ItemVersion` | 401, 404, 409 (Sperrkonflikt), 413 (Größenlimit), 503 |
+
+#### Paarpflichten
+
+[Implementierung](../../services/app/src/routes/paarpflichten-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/paarpflichten/laeufe` | `ko.validate`, `darfSehen` | Rumpf `{ aussagen }` | 202 `{ laufId, bilanz }` | 400 (`PAARPFLICHT_AUSWAHL_UNGUELTIG`), 401, 403, 404, 409 |
+| `GET` | `/api/paarpflichten/laeufe/:laufId` | `ko.validate`, `darfSehen` | — | 200 `{ laufId, bilanz }` | 401, 403, 404 |
+| `POST` | `/api/paarpflichten/laeufe/:laufId/fortsetzen` | `ko.validate`, `darfSehen` | — | 202 `{ laufId, bilanz }` | 401, 403, 404 |
+
+#### Persönliche Funktionen und Zeitaufträge
+
+[Implementierung](../../services/app/src/routes/persoenliche-funktionen-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/funktionen` | angemeldetes Konto | — | 200 `{ funktionen }` | 401 |
+| `POST` | `/api/me/funktionen` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ text, eingabeweg, art, name, quellen, gespraech, gespraechFassung, abschnitt, vorschauQuellen, vorschauName, vorschauAusgangstext }` | 201 `{ funktion, beispielwerte, nichtUebernommen }` | 400, 401, 404, 409 |
+| `GET` | `/api/me/funktionen/:id` | angemeldetes Konto | — | 200 `{ funktion }` | 401, 404 |
+| `PUT` | `/api/me/funktionen/:id` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ rev, name, zweck, quellen, stand, gespraech, abschnitt }` | 200 `{ funktion }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/funktionen/:id/laeufe` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ parameter }` | 201 `{ funktion, lauf }` | 400, 401, 404, 409 |
+| `DELETE` | `/api/me/funktionen/:id/zeitauftrag` | angemeldetes Konto | Query `{ rev }` | 200 `{ funktion }` | 400, 401, 404, 409 |
+| `PUT` | `/api/me/funktionen/:id/zeitauftrag` | angemeldetes Konto | Rumpf `{ rev, rhythmus, beginn, ende, uhrzeit, zeitzone, nachholen }` | 200 `{ funktion }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/funktionen/entwurf` | angemeldetes Konto, `sichtbarkeitsfilterFuer` | Rumpf `{ text, eingabeweg, quellen, gespraech, abschnitt }` | 200 `{ entwurf, herkunft, bindung, quellen, nichtUebernommen, offeneFaehigkeiten }` | 400, 401, 404, 409 |
+
+#### Persönliche Programmabläufe
+
+[Implementierung](../../services/app/src/routes/vormachen-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `DELETE` | `/api/me/vormachen` | angemeldetes Konto | — | 200 `{ geloescht }` | 401 |
+| `GET` | `/api/me/vormachen` | angemeldetes Konto | Query `{ anzeige }` | 200 `{ sitzungen, routinen, sichtbar, katalog }` | 401 |
+| `POST` | `/api/me/vormachen` | angemeldetes Konto | Rumpf `{ host, vorgaenge, zweck, abbruchRegel, auftrag }` | 201 `{ sitzung }` | 400, 401, 409, 422 |
+| `DELETE` | `/api/me/vormachen/:id` | angemeldetes Konto | — | 200 `{ geloescht }` | 401, 404 |
+| `POST` | `/api/me/vormachen/:id/abbruch` | angemeldetes Konto | — | 200 `AbbruchErgebnis` | 401, 404, 409 |
+| `POST` | `/api/me/vormachen/:id/beobachtungen` | angemeldetes Konto | Rumpf `{ host, vorgang, beschreibung, rohwert }` | 201 `{ nr }` | 400, 401, 404, 409, 422 |
+| `POST` | `/api/me/vormachen/:id/bestaetigung` | angemeldetes Konto | Rumpf `{ stand, titel }` | 201 `{ routine }` | 400, 401, 404, 409 |
+| `PUT` | `/api/me/vormachen/:id/korrektur` | angemeldetes Konto | Rumpf `{ nr, beschreibung, entfernen, ableitung }` | 200 `{ vorschau }` | 400, 401, 404, 409, 422 |
+| `GET` | `/api/me/vormachen/:id/vorschau` | angemeldetes Konto | — | 200 `{ vorschau }` | 401, 404, 409 |
+| `PUT` | `/api/me/vormachen/:id/zustand` | angemeldetes Konto | Rumpf `{ zustand }` | 200 `{ sitzung }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/vormachen/routinen/:id/firmenuebergabe` | `ko.create` | — | 200 `{ routine, neu }`<br>201 `{ routine, neu }` | 401, 403, 404, 409 |
+| `POST` | `/api/me/vormachen/routinen/:id/schritte/:schrittId/freigabe` | angemeldetes Konto | Rumpf `{ bestaetigung }` | 200 `{ freigabe }` | 401, 404, 409 |
+
+#### Persönliche Routinen
+
+[Implementierung](../../services/app/src/routes/assistenz-lernen-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `PUT` | `/api/me/vormachen/routinen/:id/ausfuehrung` | angemeldetes Konto | Rumpf `{ ausfuehrung }` | 200 `{ routine }` | 400, 401, 404, 409 |
+| `PUT` | `/api/me/vormachen/routinen/:id/host` | angemeldetes Konto | Rumpf `{ bindung, aktuell, hostVersion, zeitplanImHost }` | 200 `{ routine }` | 400, 401, 404, 409, 503 |
+| `POST` | `/api/me/vormachen/routinen/:id/korrektur` | angemeldetes Konto | Rumpf `{ fassung, ableitung }` | 200 `{ routine, ableitung, korrektur }` | 400, 401, 404, 409, 422 |
+| `POST` | `/api/me/vormachen/routinen/:id/lauf` | angemeldetes Konto | Rumpf `{ gespraech, lauf, fassung, eingaben }` | 200 `{ auftrag, wiederholt }`<br>201 `{ auftrag, plan, wiederholt }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/vormachen/routinen/:id/word-lauf` | angemeldetes Konto | Rumpf `{ lauf, fassung, host, automatisch, gespraech, eingaben }` | 201 bei Ausführung, 200 bei Abweichung, 202 bei offenem oder bereits bekanntem Lauf, jeweils `{ ergebnis, pfad }` | 400, 401, 404, 409, 503 |
+| `PUT` | `/api/me/vormachen/routinen/:id/zeitplan` | angemeldetes Konto | Rumpf `{ zeitplan, eingaben }` | 200 `{ routine }` | 400, 401, 404, 409, 422 |
+| `PUT` | `/api/me/vormachen/routinen/:id/zustand` | angemeldetes Konto | Rumpf `{ zustand }` | 200 `{ routine }` | 400, 401, 404, 409 |
+| `GET` | `/api/me/vormachen/word-routinen` | angemeldetes Konto | — | 200 `{ routinen }` | 401 |
+
+#### Persönlicher und gemeinsamer Kalender
+
+[Implementierung](../../services/app/src/routes/eigener-kalender-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/me/kalender` | angemeldetes Konto | Query `{ bereich, ausgeblendete }` | 200 `KalenderAnsicht` | 401 |
+| `PUT` | `/api/me/kalender/einstellungen` | angemeldetes Konto | Rumpf `{ sichtmodus }` | 200 `{ einstellungen }` | 401 |
+| `POST` | `/api/me/kalender/eintraege` | angemeldetes Konto | Rumpf `{ titel, art, notiz, ganztaegig, beginn, ende, zeitzone, status, fristId, auftrag, serie, lauf, bereich, teamId, verantwortlich, herkunft }` | 201 `{ eintrag }` | 401, 403, 404, 409 |
+| `DELETE` | `/api/me/kalender/eintraege/:id` | angemeldetes Konto | — | 200 `{ geloescht }` | 401, 403, 404 |
+| `GET` | `/api/me/kalender/eintraege/:id` | angemeldetes Konto | — | 200 `{ eintrag }` | 401, 404 |
+| `PUT` | `/api/me/kalender/eintraege/:id` | angemeldetes Konto | Rumpf `{ fassung, titel, art, notiz, ganztaegig, beginn, ende, zeitzone, status, fristId, auftrag, serie, lauf, verantwortlich }` | 200 `{ eintrag }` | 401, 403, 404, 409 |
+| `POST` | `/api/me/kalender/eintraege/:id/aktionen` | angemeldetes Konto | Rumpf `{ aktion, bestaetigt }` | 200 `{ eintrag, folgen }` | 400, 401, 404, 409 |
+| `POST` | `/api/me/kalender/eintraege/:id/folgen` | angemeldetes Konto | Rumpf `{ aktion }` | 200 `{ folgen }` | 401, 404 |
+
+#### Persönliches Gedächtnis
+
+[Implementierung](../../services/app/src/routes/gedaechtnis-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `DELETE` | `/api/me/gedaechtnis` | angemeldetes Konto | — | 200 `{ geloescht }` | 401 |
+| `GET` | `/api/me/gedaechtnis` | angemeldetes Konto | — | 200 `{ eintraege, fristenTage, standardFristTage, standardVertraulichkeit, bereich, restoreJournalKonfiguriert, restkopien }` | 401 |
+| `POST` | `/api/me/gedaechtnis` | angemeldetes Konto | Rumpf `{ art, inhalt, antwort, antwortId, vertraulichkeit, aufbewahrungTage, darstellung, fassung, aufbewahrungAusnahme }` | 201 `{ eintrag }` | 400, 401, 404, 409 |
+| `DELETE` | `/api/me/gedaechtnis/:id` | angemeldetes Konto | — | 200 `{ geloescht }` | 401, 404 (`NOT_FOUND`) |
+| `PUT` | `/api/me/gedaechtnis/:id` | angemeldetes Konto | Rumpf `{ art, inhalt, antwort, antwortId, vertraulichkeit, aufbewahrungTage, darstellung, fassung, aufbewahrungAusnahme }` | 200 `{ eintrag }` | 400, 401, 404, 409 |
+
+#### Präsentationsdaten und Folienabgleich
+
+[Implementierung](../../services/app/src/routes/praesentation-daten-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/datenpunkte/:dpId` | `ko.read`, `darfSehen` | Query `{ fassung }` | 200 `KontrollierteSicht` | 400 (`INVALID`), 401, 403, 404 |
+| `POST` | `/api/datenpunkte/:dpId/bindungen` | `ko.create`, `darfSehen` | Rumpf `{ koId, ort }` | 200 `kontrollierteSicht` | 400 (`INVALID`), 401, 403, 404, 409 |
+| `POST` | `/api/datenpunkte/:dpId/korrektur` | `ko.create`, `darfSehen` | Rumpf `{ fassung, grund, wert, einheit, waehrung, zeitraum, bezugsgroesse, neuBerechnen, quelleAktualisieren }` | 200 `kontrollierteSicht` | 400, 401, 403, 409 |
+| `POST` | `/api/datenpunkte/:dpId/pruefungen` | `ko.create`, `darfSehen` | Rumpf `{ dimension, ergebnis, grund, fassung }` | 200 `kontrollierteSicht` | 400 (`INVALID`), 401, 403 (`FORBIDDEN`), 409 |
+| `GET` | `/api/kos/:id/datenpunkte` | `ko.read`, `darfSehen` | — | 200 `{ datenpunkte }` | 401, 403, 404 |
+| `POST` | `/api/kos/:id/datenpunkte` | `ko.create`, `darfSehen` | Rumpf `{ art, erfassung, wert, ort, ocr, rechenweg, annahmen, einheit, waehrung, zeitraum, bezugsgroesse, quelleKoId, zitat, beleg, modellbezug }` | 201 `kontrollierteSicht` | 401, 403, 404, 409 (`DATENPUNKT_VORHANDEN`) |
+| `POST` | `/api/kos/:id/office/:anhangId/aenderungsvorschau` | `ko.read`, `darfSehen` | Rumpf `{ dateiFassung, artikelFassung, aenderungen }` | 200 `{ koId, anhangId, anhangName, artikelFassung, dateiFassung, art, gespeichert, basis, aenderungen, wirkungen, konflikte, abdruck, uebernahme, grenzen }` | 401, 403, 404, 409 (`VORSCHAU_VERALTET`) |
+| `POST` | `/api/kos/:id/office/:anhangId/ergaenzung/vorschau` | `ko.read`, `darfSehen` | Rumpf `{ ort, luecke, quellArtikelIds }` | 200 `ErgaenzungsVorschau` | 401, 403 |
+| `POST` | `/api/kos/:id/office/:anhangId/folien-abgleich` | `ko.read`, `darfSehen` | Rumpf `{ datei }` | 200 `{ koId, anhangId, anhangName, objectId, artikelFassung, dateiFassung, geoeffnet, datenpunkte, hostLagen, darfErfassen, darfFreigeben }` | 400 (`KEINE_PRAESENTATION`, `INVALID`), 401, 403, 404, 413 (`PAYLOAD_TOO_LARGE`), 429 |
+| `GET` | `/api/kos/:id/office/:anhangId/folien-daten` | `ko.read`, `darfSehen` | — | 200 `{ koId, anhangId, anhangName, objectId, artikelFassung, dateiFassung, folien, datenpunkte, datenlage, darfErfassen, darfFreigeben }` | 400 (`KEINE_PRAESENTATION`), 401, 403, 404 |
+| `POST` | `/api/kos/:id/office/:anhangId/vortrag` | `ko.read`, `darfSehen` | Rumpf `{ modus, basis, zielSekunden, notizen, nachbereitung, probe, frage }` | 200 `VortragsErgebnis` | 401, 403, 404, 409 (`CONFLICT`) |
+
+#### Quellrevisionen
+
+[Implementierung](../../services/app/src/routes/quellrevision-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/kos/:id/quellrevisionen/:sourceRecordId` | `ko.read`, `darfSehen` | — | 200 `{ sourceRecordId, quelle, uebernommenInFassung, uebernommenAm, inhalt, abgleich }` | 401, 403, 404 |
+
+#### SharePoint-Import
+
+[Implementierung](../../services/app/src/routes/sharepoint-import-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/import/sharepoint/testbibliothek` | `ko.create` | — | 200 `{ zugeordnet, benutzbar }` | 401, 403 |
+
+#### Spaces
+
+[Implementierung](../../services/app/src/routes/spaces-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/spaces` | `ko.read`, `sichtbareFuer` | Query `{ kontext }` | 200 `{ spaces, darfAnlegen, darfBestandZuordnen }` | 400, 401, 403 |
+| `POST` | `/api/spaces` | `ko.validate` | Rumpf `{ name, zweck, verantwortlich, zugang, mitglieder, ansichten, teams, teamMitglieder, gruppe, regeln, kontext, partner, existenz }` | 201 `spaceSicht` | 401, 403 |
+| `GET` | `/api/spaces/:id` | `ko.read` | — | 200 `{ space, fassungen }` | 401, 403, 404 |
+| `PUT` | `/api/spaces/:id` | `ko.read` | Rumpf `{ version, kontext, partner, existenz }` | 200 `spaceSicht` | 400 (`VERSION_FEHLT`), 401, 403 (`FORBIDDEN`), 404, 409 (`VERSION_VERALTET`) |
+| `POST` | `/api/spaces/:id/archivieren` | `ko.read`, `darfSehen` | Rumpf `{ version, grundlage, begruendung }` | 200 `spaceSicht` | 400 (`VORSCHAU_FEHLT`), 401, 403 (`FORBIDDEN`), 404, 409 (`VORSCHAU_VERALTET`, `OFFENE_VERANTWORTUNG`) |
+| `POST` | `/api/spaces/:id/archivierung/vorschau` | `ko.read`, `darfSehen` | — | 200 `ArchivFolgen` | 401, 403 (`FORBIDDEN`), 404 |
+| `GET` | `/api/spaces/:id/artikel` | `ko.read`, `sichtbareFuer` | Query `{ ansicht }` | 200 `{ space, ansicht, artikel }` | 401, 403, 404 (`NOT_FOUND`) |
+| `POST` | `/api/spaces/:id/loeschung` | `ko.read`, `darfSehen` | Rumpf `{ version }` | 200 `{ id, version, geloescht }` | 400, 401, 403, 409 |
+| `POST` | `/api/spaces/:id/loeschung/vorschau` | `ko.read`, `darfSehen` | — | 200 `Loeschvorschau` | 401, 403 |
+| `POST` | `/api/spaces/:id/wiederaufnehmen` | `ko.read` | Rumpf `{ version, begruendung }` | 200 `spaceSicht` | 401, 403 (`FORBIDDEN`), 404, 409 (`SPACE_AKTIV`) |
+| `GET` | `/api/spaces/:id/zugriff` | `ko.read` | — | 200 `Zugriffsuebersicht` | 401, 403, 404 |
+| `GET` | `/api/spaces/artikel` | `ko.read`, `sichtbareFuer` | Query `{ kontext, partner }` | 200 `{ kontext, partner, artikel, partnerBereiche }` | 400, 401, 403 |
+| `GET` | `/api/spaces/bestand/protokoll` | `users.manage` | — | 200 `{ laeufe }` | 401, 403 |
+| `POST` | `/api/spaces/bestand/vorschau` | `users.manage`, `darfSehen` | Rumpf `{ regeln }` | 200 `BestandsPlan` | 400 (`REGELN_UNGUELTIG`), 401, 403 |
+| `POST` | `/api/spaces/bestand/zuordnung` | `users.manage`, `darfSehen` | Rumpf `{ regeln, grundlage }` | 200 `{ regeln, bilanz, zugeordnet, ausnahmen, fehlgeschlagen }` | 400 (`REGELN_UNGUELTIG`, `VORSCHAU_FEHLT`), 401, 403, 409 (`VORSCHAU_VERALTET`) |
+| `GET` | `/api/spaces/konten` | `ko.read` | — | 200 `{ konten }` | 401, 403 |
+| `GET` | `/api/spaces/kontext/artikel/:koId` | `ko.read`, `darfSehen` | — | 200 `{ koId, version, title, tags, space, artikelVerantwortung, autor, darfVerschieben, ziele }` | 401, 403, 404 |
+| `GET` | `/api/spaces/teams` | `ko.read` | — | 200 `{ teams }` | 401, 403 |
+| `POST` | `/api/spaces/verschiebung` | `ko.read`, `darfSehen` | Rumpf `{ koId, basis, zielSpaceId }` | 200 `{ koId, version, author, historyEintraege, spaceId, vorschau, pruefzuweisung }` | 400, 401, 403, 409 |
+| `POST` | `/api/spaces/verschiebung/vorschau` | `ko.read`, `darfSehen` | Rumpf `{ koId, zielSpaceId }` | 200 `Vorschau` | 400 (`ZIEL_FEHLT`), 401, 403, 404 |
+
+#### Teamassistenten
+
+[Implementierung](../../services/app/src/routes/teamassistenten-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/office/teamassistenten/:id/fragen` | `ko.read` | Rumpf `{ version, sprache, frage }` | 200 `{ assistentId, version, antwort }` | 400, 401, 403, 404, 409 |
+| `GET` | `/api/teamassistenten` | `ko.read` | — | 200 `{ teams, assistenten }` | 401, 403 |
+| `POST` | `/api/teamassistenten` | `ko.create` | Rumpf `{ teamId, definition }` | 201 `{ definition?, pruefung?, freigegebeneVersionen?, entwurf?, revision?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktiv, aktivName }` | 400, 401, 403, 404, 409 |
+| `DELETE` | `/api/teamassistenten/:id` | `ko.create` | Rumpf `{ revision }` | 204 ohne Antwortkörper | 400, 401, 403, 404, 409 |
+| `GET` | `/api/teamassistenten/:id` | `ko.read` | — | 200 `{ definition?, pruefung?, freigegebeneVersionen?, entwurf?, revision?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktiv, aktivName }` | 401, 403, 404 |
+| `PUT` | `/api/teamassistenten/:id` | `ko.create` | Rumpf `{ revision, teamId, definition }` | 200 `{ definition?, pruefung?, freigegebeneVersionen?, entwurf?, revision?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktiv, aktivName }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamassistenten/:id/fragen` | `ko.read` | Rumpf `{ version, sprache, frage }` | 200 `{ assistentId, version, antwort }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamassistenten/:id/freigeben` | `ko.create` | Rumpf `{ revision, version }` | 200 `{ definition?, pruefung?, freigegebeneVersionen?, entwurf?, revision?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktiv, aktivName }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamassistenten/:id/pruefen` | `ko.create` | Rumpf `{ revision, sprache }` | 200 `{ definition?, pruefung?, freigegebeneVersionen?, entwurf?, revision?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktiv, aktivName }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamassistenten/:id/zurueckziehen` | `ko.create` | Rumpf `{ revision }` | 200 `{ definition?, pruefung?, freigegebeneVersionen?, entwurf?, revision?, id, teamId, verantwortlich, bearbeitbar, nutzbar, name, aktiv, aktivName }` | 400, 401, 403, 404, 409 |
+
+#### Teams
+
+[Implementierung](../../services/app/src/routes/teams-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/teams` | `users.manage` | — | 200 `{ teams }` | 401, 403 |
+| `POST` | `/api/teams` | `users.manage` | Rumpf `{ name, zweck, verantwortlich, mitglieder }` | 201 `{ verantwortlichName, mitglieder, spaces, id, version, archiviert, vorgang, angelegtVon, angelegtAm, geaendertVon, geaendertAm, name, zweck, verantwortlich }` | 401, 403 |
+| `GET` | `/api/teams/:id` | `users.manage` | — | 200 `{ team, verlauf }` | 401, 403, 404 |
+| `PUT` | `/api/teams/:id` | `users.manage` | Rumpf `{ version, grundlage, name, zweck, verantwortlich, mitglieder }` | 200 `{ verantwortlichName, mitglieder, spaces, id, version, archiviert, vorgang, angelegtVon, angelegtAm, geaendertVon, geaendertAm, name, zweck, verantwortlich }` | 400 (`VERSION_FEHLT`, `VORSCHAU_FEHLT`), 401, 403, 404, 409 (`VERSION_VERALTET`, `VORSCHAU_VERALTET`) |
+| `POST` | `/api/teams/:id/archivieren` | `users.manage` | Rumpf `{ version, grundlage }` | 200 `{ verantwortlichName, mitglieder, spaces, id, version, archiviert, vorgang, angelegtVon, angelegtAm, geaendertVon, geaendertAm, name, zweck, verantwortlich }` | 400 (`VORSCHAU_FEHLT`), 401, 403, 404, 409 (`VERSION_VERALTET`, `VORSCHAU_VERALTET`) |
+| `POST` | `/api/teams/:id/vorschau` | `users.manage` | Rumpf `{ archivieren, mitglieder }` | 200 `TeamWirkung` | 400 (`TEAM_UNGUELTIG`), 401, 403, 404, 409 |
+
+#### Technische Datenpunkte
+
+[Implementierung](../../services/app/src/routes/technische-daten-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/technische-daten/quellenabgleich` | `ko.create`, `darfSehen` | Rumpf `{ beleg, zustand }` | 200 `{ zustand, aktuelleFassung, betroffen, unveraendert }` | 401, 403 |
+| `POST` | `/api/technische-daten/quellenrechte` | `ko.validate` | Rumpf `{ url, abschnitt, anker, zustand }` | 200 `{ zustand, wissensobjekte, weiterhinGesperrt, entwuerfe }` | 401, 403 |
+| `POST` | `/api/technische-daten/uebernahme` | `ko.create`, `darfSehen` | Rumpf `{ belege, ziel, schutzklasse, vorschaubeleg, vorschauBelege }` | 200 `{ wiederholung, wissensobjekt, stand, geschuetzteKlaerung, belege, geraete, abweichungen, klaerungen, bewertung, verarbeitung }`<br>201 `{ entwurf, wiederholung, stand, geschuetzteKlaerung, belege, geraete, abweichungen, klaerungen, bewertung, verarbeitung }`<br>200 `{ entwurf, wiederholung, stand, geschuetzteKlaerung, belege, geraete, abweichungen, klaerungen, bewertung, verarbeitung }` | 401, 403 |
+| `POST` | `/api/technische-daten/vorschau` | `ko.create` | Rumpf `{ belege, ziel }` | 200 `{ belege, geraete, abweichungen, klaerungen, bewertung, verarbeitung, vorschaubeleg }` | 401, 403 |
+
+#### Unternehmensprofil und Richtlinien
+
+[Implementierung](../../services/app/src/routes/unternehmen-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/admin/richtlinien` | `users.manage` | — | 200 `{ richtlinien }` | 401, 403 |
+| `POST` | `/api/admin/richtlinien` | `users.manage` | Rumpf `{ titel, text, verantwortlich, gueltigAb, rollen, anforderung }` | 201 `{ fassung, wirkung }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/admin/richtlinien/:id/fassungen` | `users.manage` | Rumpf `{ titel, text, verantwortlich, gueltigAb, rollen, anforderung }` | 201 `{ fassung, wirkung }` | 400, 401, 403, 404, 409 |
+| `GET` | `/api/admin/richtlinien/:id/protokoll` | `users.manage` | — | 200 `{ fassungen, eintraege }` | 401, 403, 404 |
+| `POST` | `/api/admin/richtlinien/wirkung` | `users.manage` | Rumpf `{ id, anforderung, rollen }` | 200 `Wirkung` | 400, 401, 403, 404 |
+| `GET` | `/api/admin/unternehmensprofil` | `users.manage` | — | 200 `{ fassungen, akzente, grenzen }` | 401, 403 |
+| `PUT` | `/api/admin/unternehmensprofil` | `users.manage` | Rumpf `{ name, logo, akzent }` | 200 `ProfilFassung` | 400, 401, 403, 404, 409 |
+| `GET` | `/api/richtlinien` | angemeldetes Konto | — | 200 `{ richtlinien }` | 401 |
+| `POST` | `/api/richtlinien/:id/handlungen` | angemeldetes Konto | Rumpf `{ fassung, handlung }` | 201 `{ richtlinieId, fassung, personId, handlung, am, bereits }`<br>200 `{ richtlinieId, fassung, personId, handlung, am, bereits }` | 400, 401, 404, 409 |
+| `GET` | `/api/unternehmensprofil` | angemeldetes Konto | — | 200 `{ version, profil }` | 401 |
+
+#### Verantwortung
+
+[Implementierung](../../services/app/src/routes/verantwortung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/verantwortung/ablauf` | `users.manage`, `darfSehen` | Rumpf `{ person, umfang, zugang, beitraege, vorgaenge }` | 200 `{ person, umfang, vorher, nachher, nachfolger, uebertragen, bereitsErledigt, offen, zugang, abschlussOffen, nachgeholt, vollstaendig, protokolliert }`<br>207 `{ person, umfang, vorher, nachher, nachfolger, uebertragen, bereitsErledigt, offen, zugang, abschlussOffen, nachgeholt, vollstaendig, protokolliert }` | 401, 403, 409 (`NICHT_BESTAETIGBAR`), 503 (`PROTOKOLL_NICHT_VERFUEGBAR`) |
+| `POST` | `/api/verantwortung/ablauf/vorschau` | `users.manage`, `darfSehen` | Rumpf `{ person, umfang, zugang, beitraege, vorgaenge }` | 200 `{ person, umfang, vorher, prognose, pakete, abgelehnt, nichtZugeteilt, ausgeschlossen, zugang, vertretung, hindernisse, bestaetigbar, unveraendert }` | 401, 403, 503 |
+| `POST` | `/api/verantwortung/deaktivierung` | `users.manage`, `darfSehen` | Rumpf `{ person, zuteilung }` | 200 `{ konto, bereitsInaktiv, uebergabe }` | 400 (`SELBST`), 401, 403, 404 (`NOT_FOUND`), 409 (`BESTAND_OFFEN`) |
+| `GET` | `/api/verantwortung/person/:id` | `users.manage`, `darfSehen` | — | 200 `{ person, nachfolgeBeiBefristung, anzahl, nichtEinsehbar, beitraege, ziele, vertretung }` | 401, 403 |
+| `GET` | `/api/verantwortung/person/:id/ablaeufe` | `users.manage` | — | 200 `{ ausstehend, ablaeufe }` | 401, 403, 503 (`NICHT_VERFUEGBAR`) |
+| `GET` | `/api/verantwortung/person/:id/vorgaenge` | `users.manage`, `darfSehen` | — | 200 `{ entwuerfe, luecken, pruefaufgaben }` | 401, 403, 503 (`NICHT_VERFUEGBAR`) |
+| `POST` | `/api/verantwortung/uebergabe` | `users.manage`, `darfSehen` | Rumpf `{ von, zuteilung }` | 200 `{ von, uebertragen, bereitsErledigt, abgelehnt, fehlgeschlagen, vollstaendig, verbleibt, gruppen }`<br>207 `{ von, uebertragen, bereitsErledigt, abgelehnt, fehlgeschlagen, vollstaendig, verbleibt, gruppen }` | 401, 403 |
+| `GET` | `/api/verantwortung/uebersicht` | `users.manage` | — | 200 `{ erhobenAm, personen }` | 401, 403 |
+| `GET` | `/api/verantwortung/ungeklaert` | `users.manage` | — | 200 `{ personen, vertretung }` | 401, 403 |
+| `POST` | `/api/verantwortung/vorschau` | `users.manage`, `darfSehen` | Rumpf `{ von, zuteilung }` | 200 `{ von, gesamt, bereit, gruppen, abgelehnt, bereitsErledigt, verbleibt }` | 401, 403 |
+
+#### Veröffentlichung und Zustellung
+
+[Implementierung](../../services/app/src/routes/veroeffentlichung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/kos/:id/veroeffentlichung` | `ko.read`, `darfSehen` | — | 200 `{ darfVeroeffentlichen, art, hinderungsgrund, sichtbarkeit, empfaenger, kenntnisnahmen, meldungswirkung, mailEingerichtet, koId, aktuelleFassung, gueltig, veroeffentlichteFassung, aktuelleIstVeroeffentlicht, verlauf }`<br>200 `{ darfVeroeffentlichen, koId, aktuelleFassung, gueltig, veroeffentlichteFassung, aktuelleIstVeroeffentlicht, verlauf }` | 401, 403, 404 |
+| `POST` | `/api/kos/:id/veroeffentlichung` | `ko.validate`, `darfSehen` | Rumpf `{ fassung, meldung }` | 201 `VeroeffentlichungsErgebnis` | 400 (`VALIDATION`), 401, 403, 404, 409 |
+| `GET` | `/api/kos/:id/veroeffentlichung/zustellung/:vermerkId` | `ko.validate`, `darfSehen` | — | 200 `ZustellAuskunft` | 401, 403, 404 |
+| `POST` | `/api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen` | `ko.validate`, `darfSehen` | — | 200 `ZustellAuskunft` | 401, 403, 404 |
+
+#### Vorführung
+
+[Implementierung](../../services/app/src/routes/vorfuehrung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/vorfuehrung` | keines | — | 200 `{ fiktiv, kennzeichnung, eintraege }` | 404 |
+| `GET` | `/api/vorfuehrung/frage` | keines | Query `{ q }` | 200 `{ fiktiv, kennzeichnung, treffer }` | 404 |
+
+#### Vorlagen und Vorgaben
+
+[Implementierung](../../services/app/src/routes/vorlagen-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/vorlagen` | `ko.read` | — | 200 `{ vorlagen, standardId, spaces, darf, vorgabenSpaces }` | 401, 403 |
+| `POST` | `/api/vorlagen` | `ko.create` | Rumpf `{ name, beschreibung, geltung, spaceId, felder }` | 201 `sicht` | 401, 403 (`FORBIDDEN`) |
+| `GET` | `/api/vorlagen/:id` | `ko.read` | — | 200 `{ vorlage, fassungen }` | 401, 403, 404 |
+| `PUT` | `/api/vorlagen/:id` | `ko.create` | Rumpf `{ version, name, beschreibung, geltung, spaceId, felder }` | 200 `{ vorlage, wirkung }` | 400 (`VERSION_FEHLT`), 401, 403 (`FORBIDDEN`), 409 |
+| `POST` | `/api/vorlagen/:id/ausmustern` | `ko.create` | Rumpf `{ version, begruendung }` | 200 `sicht` | 401, 403, 409 |
+| `POST` | `/api/vorlagen/:id/vorschau` | `ko.create` | Rumpf `{ name, beschreibung, geltung, spaceId, felder }` | 200 `Aenderungswirkung` | 401, 403, 409 |
+| `POST` | `/api/vorlagen/begriffe/ausfuehren` | `users.manage`, `darfSehen` | Rumpf `{ grundlage, art, vorgang, name, ziel, spaceId, begruendung }` | 200 `{ art, vorgang, name, ziel, spaceId, begruendung, geaendert, fehlgeschlagen, unberuehrt, spaceAnsichtenGeaendert, spaceAnsichtenUnveraendert, spaceVorgabenGeaendert, spaceVorgabenUnveraendert, spaceVorgabenUebersprungen, geaendertIds, fehlgeschlagenIds, eintrag }` | 400 (`VORSCHAU_FEHLT`), 401, 403, 409 (`VORSCHAU_VERALTET`) |
+| `POST` | `/api/vorlagen/begriffe/vorschau` | `users.manage`, `darfSehen` | Rumpf `{ art, vorgang, name, ziel, spaceId, begruendung }` | 200 `BegriffsPlan` | 401, 403 |
+| `GET` | `/api/vorlagen/nutzung/:koId` | `ko.read`, `darfSehen` | — | 200 `{ koId, nutzung }` | 401, 403, 404 |
+| `POST` | `/api/vorlagen/pruefung` | `ko.read` | Rumpf `{ vorlage, bodyHtml, category, tags }` | 200 `{ ok, befunde }` | 400, 401, 403, 404, 409 |
+| `GET` | `/api/vorlagen/space-vorgaben/:spaceId` | `ko.read` | — | 200 `{ space, darfBearbeiten, fassungen }` | 401, 403, 404 |
+| `PUT` | `/api/vorlagen/space-vorgaben/:spaceId` | `ko.read` | Rumpf `{ verbindlicheVorlageId, kategorien, pflichtKategorie, mindestensTags, tags, hinweis, version }` | 200 `SpaceVorgabe` | 401, 403 (`FORBIDDEN`), 404, 409 (`SPACE_ARCHIVIERT`, `VERSION_VERALTET`) |
+| `PUT` | `/api/vorlagen/standard` | `ko.create` | Rumpf `{ vorlageId }` | 200 `{ standardId }` | 400 (`BAD_REQUEST`), 401, 403, 404, 409 (`VORLAGE_NICHT_ANWENDBAR`, `VERSION_VERALTET`) |
+| `GET` | `/api/vorlagen/start` | `ko.read` | Query `{ spaceId }` | 200 `{ vorlage, quelle, grund, ersatzFuer, verdraengt, space, vorgabe, verbindlichNichtVerfuegbar }` | 401, 403, 404 |
+| `GET` | `/api/vorlagen/verwaltung` | `users.manage`, `sichtbareFuer` | — | 200 `{ vorlagen, persoenlich, kategorien, tags, nichtEinsehbar, spaceVorgaben, begriffe }` | 401, 403 |
+
+#### Wissensauskunft
+
+[Implementierung](../../services/app/src/routes/wissensauskunft-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/kos/:id/wissensauskunft` | `ko.validate`, `darfSehen` | Query `{ zeitpunkt }` | 200 `Wissensauskunft` | 400 (`VALIDATION`), 401, 403, 404 (`NOT_FOUND`) |
+
+#### Wissensempfehlungen
+
+[Implementierung](../../services/app/src/routes/wissensempfehlung-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/kos/:id/empfehlungen` | `ko.read`, `darfSehen`, `sichtbarkeitsfilterFuer` | — | 200 `Wissensempfehlungen` | 401, 403, 404 |
+| `POST` | `/api/kos/:id/mitgelesen` | `ko.read`, `darfSehen` | Rumpf `{ zuvor }` | 200 `{ gezaehlt }` | 400 (`VALIDATION`), 401, 403, 404 |
+
+#### Workflow-Läufe und Übernahme ins Wissen
+
+[Implementierung](../../services/app/src/routes/teamworkflow-lauf-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/teamworkflows/:id/laeufe` | `ko.read` | — | 200 `{ laeufe }` | 401, 403, 404 |
+| `POST` | `/api/teamworkflows/:id/laeufe` | `ko.read` | Rumpf `{ version, vorgang, sprache, fall }` | 200 `{ stand, grund?, fall, schritt, aktionen, verlauf, ergebnisse, zustaendig, naechsteWirkung, id, workflowId, version, revision, index, gestartetVon, aktualisiertAm }` | 400, 401, 403, 404, 409 |
+| `GET` | `/api/teamworkflows/:id/laeufe/:laufId` | `ko.read` | — | 200 `{ stand, grund?, fall, schritt, aktionen, verlauf, ergebnisse, zustaendig, naechsteWirkung, id, workflowId, version, revision, index, gestartetVon, aktualisiertAm }` | 401, 403, 404, 409 |
+| `GET` | `/api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag` | `ko.read` | — | 200 `{ entschiedenVon?, entschiedenAm?, vorgeschlagenVon?, vorgeschlagenAm?, koId?, koVersion?, grund?, zustaendig, zustaendigName, kannVorschlagen, kannPruefen, stempel, beschluss?, stand, titel, aussage, quellen }` | 401, 403, 404, 409 |
+| `POST` | `/api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag` | `ko.read` | Rumpf `{ titel, aussage, stempel }` | 200 `{ entschiedenVon?, entschiedenAm?, vorgeschlagenVon?, vorgeschlagenAm?, koId?, koVersion?, grund?, zustaendig, zustaendigName, kannVorschlagen, kannPruefen, stempel, beschluss?, stand, titel, aussage, quellen }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamworkflows/:id/laeufe/:laufId/ergebnisse/:ergebnisId/wissensvorschlag/entscheiden` | `ko.validate` | Rumpf `{ entscheidung, grund, stempel }` | 200 `{ entschiedenVon?, entschiedenAm?, vorgeschlagenVon?, vorgeschlagenAm?, koId?, koVersion?, grund?, zustaendig, zustaendigName, kannVorschlagen, kannPruefen, stempel, beschluss?, stand, titel, aussage, quellen }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/teamworkflows/:id/laeufe/:laufId/weiter` | `ko.read` | Rumpf `{ revision, aktion, notiz }` | 200 `{ stand, grund?, fall, schritt, aktionen, verlauf, ergebnisse, zustaendig, naechsteWirkung, id, workflowId, version, revision, index, gestartetVon, aktualisiertAm }` | 400, 401, 403, 404, 409 |
+| `GET` | `/api/teamworkflows/wissenspruefungen` | `ko.read` | — | 200 `{ vorschlaege }` | 401, 403 |
+
+#### Änderungen an Präsentationsdaten
+
+[Implementierung](../../services/app/src/routes/praesentation-aenderungs-routes.ts)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/kos/:id/office/:anhangId/datenaktualisierung/fassungen` | `ko.create`, direkter Schreibweg am Artikel und geschlossene Editorsitzung | Rumpf `{ expectedVersion, dateiFassung }` | 200 `{ zustand, dateien, hinweis }` | 400, 401, 403, 404, 409, 500 (`PP07_FASSUNGEN_TEILWIRKUNG`) |
+| `POST` | `/api/kos/:id/office/:anhangId/datenaktualisierung/ruecknahme` | `ko.create`, direkter Schreibweg am Artikel und geschlossene Editorsitzung | Rumpf `{ expectedVersion, vorschauId }` | 200 `{ zustand, fassung, status, dateiFassung, vorschauId, belegOffen, aktualisiert, konflikteOffen, hinweis }` | 400, 401, 403, 404, 409, 500 |
+| `GET` | `/api/kos/:id/office/:anhangId/datenaktualisierung/stand` | `ko.read` | — | 200 `{ fassung, dateiFassung, uebernahme, fassungen, hinweis }` | 400, 401, 403, 404, 409 |
+| `POST` | `/api/kos/:id/office/:anhangId/datenaktualisierung/uebernehmen` | `ko.create`, direkter Schreibweg am Artikel und geschlossene Editorsitzung | Rumpf `{ expectedVersion, dateiFassung, aenderungen, vorschauId, bestaetigteKonflikte }` | 200 `{ zustand, fassung, wiederholt, vorschauId, basisFassung, punkte, konflikteOffen, ruecknahmeMoeglich }`<br>200 `{ zustand, fassung, status, dateiFassung, vorschauId, belegOffen, aktualisiert, konflikteOffen, hinweis }` | 400, 401, 403, 404, 409, 500 |
+| `POST` | `/api/kos/:id/office/:anhangId/datenaktualisierung/vorschau` | `ko.create`, direkter Schreibweg am Artikel und geschlossene Editorsitzung | Rumpf `{ expectedVersion, dateiFassung, aenderungen }` | 200 `{ art, gespeichert, basis, aenderungen, wirkungen, konflikte, abdruck, uebernahme, grenzen, vorschauId, expectedVersion, dateiFassung, dateiwirkungen, dateikonflikte }` | 400, 401, 403, 404, 409 |
 
 ## 4 Testabdeckung und Abdeckungsziel
 

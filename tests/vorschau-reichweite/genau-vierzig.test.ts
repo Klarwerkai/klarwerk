@@ -48,6 +48,7 @@ beforeAll(async () => {
     await ko.create({
       type: "best_practice",
       category: "Werkstatt",
+      confidentiality: "intern",
       author: "anna",
       title: `Kondensatableiter Merkblatt ${String(i).padStart(2, "0")}`,
       statement: "Ablage im Archivraum, Register gelb.",

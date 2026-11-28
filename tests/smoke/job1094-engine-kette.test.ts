@@ -46,7 +46,10 @@
 // Chromium (volle Suite) und je einen eigenen Firefox- und WebKit-Lauf über die Kern-Rauchproben.
 // K1, K3 und K7 halten diese Drei-Engine-Deckung fest; K5 und K8 wachen unverändert über den
 // Verlust einer Engine.
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const lies = (pfad: string): string => readFileSync(pfad, "utf8");
@@ -335,23 +338,32 @@ describe("JOB1094 D2 · K — die Kette von tools/check bis zur Engine", () => {
     expect(engineMengeVon("smoke:ui:gate:kern:webkit")).toEqual(["webkit"]);
   });
 
-  it("K4 · DER SHIP-WEG: drei Engines, und die Kette dorthin ist wirklich aufgelöst", () => {
-    // `klarwerk-ship.command` ruft den Runner; der Runner ruft das Skript. Beide Glieder werden
-    // aufgelöst, nicht angenommen — sonst bliebe unbemerkt, wenn jemand den Runner austauscht.
-    const runner = SHIP_KOMMANDOS.find((b) => /paul-runner\.sh/.test(b));
-    expect(
-      runner,
-      `klarwerk-ship.command ruft keinen Runner: ${JSON.stringify(SHIP_KOMMANDOS)}`,
-    ).toBeDefined();
-    const runnerPfad = "docs/team2-austausch/paul-runner.sh";
-    const runnerSkript = gerufenesNpmSkript(ausfuehrbareKommandos(lies(runnerPfad)));
-    expect(runnerSkript).toBe("smoke:ui");
-    expect(engineMengeVon(runnerSkript as string)).toEqual(ALLE_ENGINES);
+  it("K4 · das volle CLI-Smoke prüft drei Engines und der Ship-Einstieg delegiert an den Publisher", () => {
+    expect(engineMengeVon("smoke:ui")).toEqual(ALLE_ENGINES);
+    expect(SHIP_KOMMANDOS.at(-1)).toBe('exec node tools/publish.mjs "$@"');
+
+    // Der dokumentierte Lesemodus mit einer lokalen Absicht ohne Transportverzeichnis.
+    // Der Dateiname mit Leerzeichen prüft, dass der Einstieg die Argumente einzeln weitergibt.
+    const ordner = mkdtempSync(join(tmpdir(), "klarwerk-ship-status-"));
+    try {
+      const datei = join(ordner, "lokale Absicht.json");
+      const absicht = { state: "prepared", commit: "teststand" };
+      writeFileSync(datei, JSON.stringify(absicht));
+      const status = spawnSync(
+        "bash",
+        [resolve("scripts/deploy/klarwerk-ship.command"), "status", datei],
+        { cwd: ordner, encoding: "utf8", timeout: 10_000 },
+      );
+      expect(status.status, status.stderr).toBe(0);
+      expect(JSON.parse(status.stdout)).toEqual(absicht);
+    } finally {
+      rmSync(ordner, { recursive: true, force: true });
+    }
   });
 
   it("K5 · PROSA GEGEN WIRKLICHKEIT: jedes als Drei-Engine-Weg benannte Skript ist auch eines", () => {
-    // DER EIGENTLICHE WÄCHTER. `tools/check:69` und `:77` sowie `klarwerk-ship.command:33` nennen
-    // `npm run smoke:ui` und behaupten dabei „drei Engines". Diese Zusicherung prüft die Behauptung
+    // Die Bedienhinweise in `tools/check` nennen `npm run smoke:ui` für drei Engines.
+    // Jede solche Aussage im Tor oder im Lieferweg prüfen wir
     // gegen die aufgelöste Wirklichkeit — verschwindet WebKit oder Firefox aus der Konfiguration,
     // während die Prosa unverändert stehen bleibt, wird genau hier rot.
     const prosaQuellen = ["tools/check", "scripts/deploy/klarwerk-ship.command"];

@@ -27,6 +27,7 @@ import {
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
 } from "../../services/reasoner";
+import { mitKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import { PRUEF_FAELLE, type PruefFall, belegDes } from "./faelle";
 
 type Umgebung = Record<string, string | undefined>;
@@ -121,12 +122,11 @@ export async function beobachte(wahl: ReasonerReferenzWahl, env: Umgebung) {
   );
   // Nur die Grundfreigabe für öffentliche KI — die Fälle sind fiktiv und nicht vertraulich. Die
   // gewählte Option ist aktiv: `deterministic` wäre die administrative Abschaltung (D5).
-  await reasoner.setTaskConfig({
-    global: wahl,
-    perTask: {},
-    kiFreigabe: { oeffentlicheKi: true },
-    referenzpruefung: [wahl],
-  });
+  // Gesamtcheck R-1329 (Nacharbeit 57): über den Freigabehelfer statt von Hand — derselbe Inhalt
+  // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`, F2).
+  await reasoner.setTaskConfig(
+    mitKiFreigabe({ global: wahl, perTask: {}, referenzpruefung: [wahl] }),
+  );
   const dienst = (zeitlimitMs?: number) =>
     new ReferenzPruefdienst({
       waehlePruefer: (antwort, vertraulich) => reasoner.referenzPruefer(antwort, vertraulich),

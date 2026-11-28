@@ -234,7 +234,7 @@ describe("R-0305/R-1099 · die Zweitmeinung trägt den Kontext der stehenden Ant
     const c = await montiere();
     await kontext(c, "Werk Nord", "Frühschicht");
     await frage(c);
-    expect(askMock.mock.calls).toEqual([[FRAGE, "de", [], FRUEH]]);
+    expect(askMock.mock.calls).toEqual([[FRAGE, "de", [], FRUEH, expect.any(AbortSignal)]]);
 
     // Die Auswahl ändert sich — es wird NICHT neu gefragt.
     await kontext(c, "Werk Nord", "Spätschicht");
@@ -325,7 +325,7 @@ describe("R-0305/R-1099 · die Zweitmeinung trägt den Kontext der stehenden Ant
   it("B3 · ohne Kontext gefragt: die Zweitmeinung trägt keinen", async () => {
     const c = await montiere();
     await frage(c);
-    expect(askMock.mock.calls).toEqual([[FRAGE, "de"]]);
+    expect(askMock.mock.calls).toEqual([[FRAGE, "de", [], undefined, expect.any(AbortSignal)]]);
     await klicke(c, '[data-testid="ask-zweitmeinung-knopf"]');
     expect(zweitMock).toHaveBeenCalledTimes(1);
     expect(zweitMock.mock.calls[0]?.[3]).toBeUndefined();

@@ -78,7 +78,7 @@ interface Befund {
 const LEER_BEFUND =
   "{ gefunden: false, tag: '', rolle: '', name: '', gedrueckt: null, deaktiviert: false, ansage: null, bezieht: [] }";
 
-/** Die zwei Bausteine, die beide Ableser unten teilen: Namenstext und Live-Region-Suche. */
+/** Bausteine für den Befund im Browser: Namenstext, Live-Region und ARIA-Beziehungen. */
 const BAUSTEINE = `
   const falte = (s) => (s || '').replace(/\\s+/g, ' ').trim();
   // Elementgrenzen trennen mit einem Leerzeichen; aria-hidden zaehlt nicht mit.
@@ -153,32 +153,6 @@ const BEFUND = `(arg) => {
     deaktiviert: el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true',
     ansage: liveRegion(el),
     bezieht: beziehungen(el),
-  };
-}`;
-
-/**
- * Die Anleitung unter den Auswahlkarten. Sie trägt kein Merkmal, über das ein Selektor sie fassen
- * könnte — sie wird deshalb über denselben Baumweg gefunden wie in
- * `tastatur-importart-chromium.test.ts:41-49`: Kartenknopf → Raster → ChoiceCards-Wurzel → der
- * unmittelbare Nachbar. Dass es keinen Selektor gibt, ist selbst schon der halbe Befund: der Knoten
- * hat weder Rolle noch Kennung.
- */
-const ANLEITUNG_BEFUND = `() => {
-  ${BAUSTEINE}
-  const karte = document.querySelector('button[aria-pressed]');
-  const raster = karte ? karte.closest('div') : null;
-  const wurzel = raster ? raster.parentElement : null;
-  const zeile = wurzel ? wurzel.nextElementSibling : null;
-  if (!zeile) { return ${LEER_BEFUND}; }
-  return {
-    gefunden: true,
-    tag: zeile.tagName.toLowerCase(),
-    rolle: zeile.getAttribute('role') || '',
-    name: falte(namensText(zeile)),
-    gedrueckt: null,
-    deaktiviert: false,
-    ansage: liveRegion(zeile),
-    bezieht: beziehungen(zeile).concat(zeile.getAttribute('id') ? ['id=' + zeile.getAttribute('id')] : []),
   };
 }`;
 
@@ -267,14 +241,16 @@ describe("JOB 3259 · UX-19-R2 — die Vorlesehilfe am Ganzdokument-Weg (Chromiu
       expect(b.fehler).toBeNull();
       await bisZurImportart();
 
-      const vorher = await seite.evaluate<Befund>(fn(ANLEITUNG_BEFUND));
-      expect(vorher.gefunden, "die Anleitung wurde im Baum nicht gefunden").toBe(true);
-      expect(vorher.name).toContain(t(CAPTURE_FILE_TEXT.hint).slice(0, 60));
+      const punkteAnleitung = t(CAPTURE_FILE_TEXT.hint);
+      const ganzesAnleitung = t(CAPTURE_FILE_TEXT.hintWhole);
+      const vorher = await befund("span", punkteAnleitung);
+      expect(vorher.name).toBe(punkteAnleitung);
+      expect((await befund("span", ganzesAnleitung)).gefunden).toBe(false);
 
       await ganzdokumentWaehlen(seite);
-      const nachher = await seite.evaluate<Befund>(fn(ANLEITUNG_BEFUND));
-      expect(nachher.name).toContain(t(CAPTURE_FILE_TEXT.hintWhole).slice(0, 60));
-      expect(nachher.name).not.toBe(vorher.name);
+      const nachher = await befund("span", ganzesAnleitung);
+      expect(nachher.name).toBe(ganzesAnleitung);
+      expect((await befund("span", punkteAnleitung)).gefunden).toBe(false);
 
       // ------------------------------------------------------------------------------------
       // DIE ANSAGE — als EINBAHNSTRASSE zugesichert (Codex-Nachführung 08.09. 16:50:
@@ -322,7 +298,7 @@ describe("JOB 3259 · UX-19-R2 — die Vorlesehilfe am Ganzdokument-Weg (Chromiu
       // Der Vergleichsmaßstab für den Befund aus V3: HIER ist es richtig gebaut. Die
       // Ablehnungs-Meldung der Dateiauswahl liegt dauerhaft montiert in einer Live-Region
       // (`CaptureFileImport.tsx:154-160`), leer im Ruhezustand.
-      const meldung = await befund("output");
+      const meldung = await befund('[data-testid="capture-datei-meldung"]');
       expect(meldung.gefunden, "die dauerhaft montierte Ansage-Region der Dateiauswahl fehlt").toBe(
         true,
       );

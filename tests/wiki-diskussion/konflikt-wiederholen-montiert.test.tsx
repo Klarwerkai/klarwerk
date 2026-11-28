@@ -24,7 +24,7 @@
 // BENANNTE PRÜFLÜCKEN: In-Memory-Ablagen (die PostgreSQL-Fassung desselben Vergleichs misst
 // `repo-pg.integration.test.ts`), jsdom statt Browser. Das „Neuladen" am Ende ist ein Abbau und
 // Neuaufbau der Fläche mit leerem Abfragespeicher gegen dieselbe Anwendung — kein Prozessneustart.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QueryClient,
   QueryClientProvider,
@@ -257,6 +257,7 @@ async function mount(): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
   await ausloesen(el('[data-testid="bib-mehr"]', "der Knopf „Mehr“"));

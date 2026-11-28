@@ -69,8 +69,15 @@ async function zuFragen(page: Page): Promise<void> {
   await expect(page.getByTestId("klara-figur")).toBeVisible({ timeout: 15_000 });
 }
 
-/** Öffnen und warten, bis Gespräch und Modus vom Server gelesen sind. */
+async function menueSeite(page: Page, seite: "einstellungen" | "funktionen"): Promise<void> {
+  await page.getByTestId("klara-menue-knopf").click();
+  await page.getByTestId(`klara-menue-${seite}`).click();
+  await expect(page.getByTestId("klara-gespraech")).toHaveAttribute("data-seite", seite);
+}
+
+/** Die Moduswahl in den Einstellungen öffnen und den persönlichen Serverstand abwarten. */
 async function oeffnen(page: Page): Promise<void> {
+  await expect(page.getByTestId("klara-figur")).toBeVisible();
   if (!(await page.getByTestId("klara-gespraech").isVisible())) {
     await page.getByTestId("klara-figur").click();
   }
@@ -78,6 +85,7 @@ async function oeffnen(page: Page): Promise<void> {
   await expect(page.getByTestId("klara-echt-hinweis")).toHaveAttribute("data-laden", "bereit", {
     timeout: 15_000,
   });
+  await menueSeite(page, "einstellungen");
   await expect(page.getByTestId("klara-eigeninitiative")).toHaveAttribute("data-stand", "bereit", {
     timeout: 15_000,
   });
@@ -212,8 +220,10 @@ test("Klara 12 · Modi wählen, Hinweis anbieten und ruhen lassen, übertragene 
 
   // --- K4 · übertragene Aufgabe sichtbar geführt, auch nach dem Neuladen -------------------------
   await waehle(p, "auftraege");
-  await expect(p.getByTestId("klara-aufgaben")).toBeVisible();
-  await expect(p.getByTestId("klara-aufgaben-leer")).toBeVisible();
+  await menueSeite(p, "funktionen");
+  await expect(p.getByTestId("klara-uebertragene-aufgaben")).toBeVisible();
+  await expect(p.getByTestId("klara-uebertragene-aufgaben-leer")).toBeVisible();
+  await p.getByTestId("klara-unterseite-zurueck").click();
   await p.getByTestId("klara-eingabe").fill(`Lege den Entwurf „${titel}“ an`);
   await p.getByTestId("klara-eingabe").press("Enter");
   await expect(p.getByTestId("klara-ausfuehrung").first()).toHaveAttribute("data-phase", "fertig", {
@@ -223,17 +233,19 @@ test("Klara 12 · Modi wählen, Hinweis anbieten und ruhen lassen, übertragene 
     .getByTestId("klara-ausfuehrung")
     .first()
     .getAttribute("data-stand")) as string;
+  await menueSeite(p, "funktionen");
   const aufgabe = p.getByTestId("klara-aufgabe");
   await expect(aufgabe).toHaveCount(1);
   await expect(aufgabe).toContainText(titel);
   await expect(aufgabe).toHaveAttribute("data-stand", kartenStand);
-  await expect(p.getByTestId("klara-aufgaben")).toContainText("mit deinen Rechten");
+  await expect(p.getByTestId("klara-uebertragene-aufgaben")).toContainText("mit deinen Rechten");
   await beleg(p, info, "4 übertragene Aufgabe sichtbar geführt");
 
   await p.reload();
   await expect(p.getByTestId("page-fragen")).toBeVisible({ timeout: 15_000 });
   await oeffnen(p);
   await expect(p.getByTestId("klara-eigeninitiative")).toHaveAttribute("data-modus", "auftraege");
+  await menueSeite(p, "funktionen");
   await expect(p.getByTestId("klara-aufgabe")).toHaveCount(1, { timeout: 15_000 });
   await expect(p.getByTestId("klara-aufgabe")).toContainText(titel);
   await expect(p.getByTestId("klara-hinweis")).toHaveCount(0);
@@ -260,7 +272,8 @@ test("Klara 12 · Modi wählen, Hinweis anbieten und ruhen lassen, übertragene 
   await zuFragen(f);
   await oeffnen(f);
   await waehle(f, "auftraege");
-  await expect(f.getByTestId("klara-aufgaben-leer")).toBeVisible();
+  await menueSeite(f, "funktionen");
+  await expect(f.getByTestId("klara-uebertragene-aufgaben-leer")).toBeVisible();
   await expect(f.getByTestId("klara-aufgabe")).toHaveCount(0);
   await beleg(f, info, "6 zweites Konto: eigene Vorgabe, keine fremde Aufgabe");
   await f.context().close();

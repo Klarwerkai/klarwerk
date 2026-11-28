@@ -49,8 +49,8 @@ describe("R-0843 · Bedienkarte und Blaupause am Paket", () => {
   });
 
   it("H3 · die Netzbindung steht so in der Blaupause, wie der Server horcht", () => {
-    expect(readFileSync(repoPfad("services/app/src/server.ts"), "utf8")).toContain(
-      'await app.listen({ port, host: "0.0.0.0" });',
+    expect(readFileSync(repoPfad("services/app/src/server.ts"), "utf8")).toMatch(
+      /^\s*await\s+\w+\.listen\(\s*\{\s*port,\s*host:\s*"0\.0\.0\.0",?\s*\}\s*\);/m,
     );
     expect(BLAUPAUSE).toContain('`host: "0.0.0.0"`');
   });

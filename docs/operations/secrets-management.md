@@ -88,6 +88,7 @@ sobald eine fehlt. Ablageort für alle: **Service-Env in Coolify** (Produktion) 
 | 2 | Schlüssel des lokalen Modells | `KLARWERK_LOCAL_LLM_KEY` | lokaler Weg ohne Schlüssel | ≤ 12 Monate, gemeinsam mit dem lokalen Modellserver | Neustart; Wert am Modellserver und hier gleichzeitig ändern |
 | 2 | Transkriptionsdienst | `MEDIA_TRANSCRIBE_API_KEY` | keine Transkription | ≤ 12 Monate bzw. Anbieter-Policy | Neustart; alten Schlüssel beim Anbieter widerrufen |
 | 2 | Postausgang | `SMTP_PASS` (+ `SMTP_USER`) | kein authentifizierter Versand | ≤ 12 Monate bzw. Anbieter-Policy | Neustart; Testmail über den Kennwort-zurücksetzen-Weg |
+| 2 | Zugang zum Microsoft-365-Kalender | `KLARWERK_KALENDER_M365_TOKEN` | Keine Verbindung zum Microsoft-365-Kalender | ≤ 12 Monate, früheres Ablaufdatum bei Microsoft geht vor | Delegierten Zugang beim Anbieter erneuern und die Instanz neu starten. Die vorhandene Kontobindung gilt weiter. |
 | 2 | Single Sign-on | `OIDC_CLIENT_SECRET` | Client gilt als öffentlich (nur PKCE) | ≤ 12 Monate bzw. Ablauf beim IdP | Neustart; neues Secret beim IdP vor dem Widerruf des alten anlegen |
 | 3 | Confluence-Token | `KLARWERK_CONFLUENCE_TOKEN` | kein Confluence-Client, Zustand „nicht gesetzt“ | ≤ 12 Monate bzw. Ablauf bei Atlassian | Neustart; Zustandsanzeige muss „gesetzt“ zeigen |
 | 3 | SharePoint-/OneDrive-Token | `KLARWERK_SHAREPOINT_TOKEN` | kein SharePoint-Client, Zustand „nicht gesetzt“ | mit Ablauf bei Microsoft, spätestens 12 Monate | Neustart; Zustandsanzeige muss „gesetzt“ zeigen |
@@ -98,6 +99,10 @@ sobald eine fehlt. Ablageort für alle: **Service-Env in Coolify** (Produktion) 
 | 4 | Geräte-Push, öffentlicher Schlüssel | `VAPID_PUBLIC_KEY` | kein Geräte-Push, Zuweisungen nur per E-Mail | ≤ 12 Monate, nur als Paar mit `VAPID_PRIVATE_KEY` | Fachlich öffentlich (der Browser erhält ihn), wird aber nur mit dem privaten Schlüssel zusammen erzeugt und gewechselt; Folge wie dort |
 | 4 | Verzeichnisschlüssel (SCIM) | `KLARWERK_SCIM_TOKEN` | keine Verzeichnispflege, Konten von Hand | ≤ 12 Monate | Neustart; das Unternehmensverzeichnis braucht denselben neuen Schlüssel; unter 32 Zeichen bleibt die Pflege aus |
 | 4 | Signatur der Antwortbelege | `KLARWERK_ASK_RECEIPT_SECRET` | signiert mit einem prozesslokalen Zufallswert (`services/ask/src/service.ts`); nach einem Neustart nicht mehr bestätigbar | ≤ 12 Monate, zusätzlich Notfallwechsel (§7) | Neustart. Ein Beleg trägt kein Schlüsselkennzeichen und ist nur 30 Minuten gültig (`ANSWER_RECEIPT_TTL_MS`, `services/ask/src/receipt.ts`): Belege aus den letzten 30 Minuten vor dem Wechsel werden nicht mehr bestätigt, ältere waren ohnehin abgelaufen. Den regulären Wechsel deshalb in eine nutzungsarme Zeit legen; ein Parallelbetrieb mit altem Wert ist nicht nötig |
+| 4 | Dienstschlüssel angebundener Systeme | `KLARWERK_SERVICE_KEYS` | Keine Anmeldung mit eigenen Dienstschlüsseln | ≤ 12 Monate je Dienst, bei Entzug sofort sperren | Neue SHA-256-Prüfsumme für dieselbe Dienstkennung ergänzen, das angebundene System umstellen und die alte Prüfsumme entfernen. Die Betriebsumgebung enthält nur Prüfsummen, Dienstrechte und Grenzen. |
+| 4 | Signatur der WOPI-Zugangsmarken | `KLARWERK_WOPI_SCHLUESSEL` | Eingebetteter Office-Editor ohne WOPI-Zugriff | ≤ 12 Monate | Der Neustart mit dem neuen Signierschlüssel macht bisherige Zugangsmarken ungültig. Laufende Bearbeitungen vor dem Wechsel abschließen und den Editor anschließend neu öffnen. |
+| 4 | Zuordnung des E-Mail-Eingangs | `KLARWERK_EMAIL_EINGANG` | Keine Annahme weitergeleiteter E-Mails als Entwurf | ≤ 12 Monate zwischen Prüfungen der Zuordnung, zusätzlich bei Zuständigkeitswechsel | Neue Eingänge folgen nach Neustart der Zuordnung von Empfangsadresse, Instanz, Maildienst und Eigentümerkonto. Den Dienstschlüssel gesondert verwalten. |
+| 4 | Berechtigte Klarwerk-Konten für Microsoft 365 | `KLARWERK_KALENDER_M365_KONTO_IDS` | Kein Klarwerk-Konto erhält Zugriff auf den verbundenen Kalender | ≤ 12 Monate zwischen Prüfungen der Kontoliste, entzogene Berechtigungen sofort entfernen | Nach Neustart können nur die aufgeführten Klarwerk-Konto-IDs den delegierten Kalenderzugang nutzen. |
 
 **Schlüsselmaterial außerhalb der Umgebungsvariablen:**
 
@@ -154,6 +159,8 @@ Datum, sondern „sofort“** — ein Datum wäre ein Aufschub. Nach jedem Wechs
 
 Stand: 2026-10-12.
 
+Nachtrag vom 28.11.2026. Für Dienstschlüssel, WOPI-Signatur, E-Mail-Eingang und die beiden Kalenderwerte gilt der nächste bereits geplante Kontrolltermin am 12.01.2027. Ein früherer Tokenablauf oder Rechteentzug hat Vorrang. Bei den beiden Zuordnungslisten wird die Berechtigung geprüft. Eine bestätigte Kontokennung behält ihren Wert. Die fünf Zeilen dokumentieren die Planung. Ein durchgeführter Wechsel ist dafür bislang nicht belegt.
+
 | Art | Geheimnis | Variable / Ort | Zuständig | Letzte nachgewiesene Rotation | Nächster Termin | Grundlage des Termins |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Betriebszugang | Coolify-/Hetzner-Konto, Server-SSH | Peter (fachlich und Durchführung, Kontoinhaber) | nicht nachgewiesen | 2026-11-12 | größte Reichweite (jede Service-Env); danach jährlich und bei jedem Personenwechsel |
@@ -163,6 +170,7 @@ Stand: 2026-10-12.
 | 2 | Schlüssel des lokalen Modells | `KLARWERK_LOCAL_LLM_KEY` | Peter (fachlich); Durchführung: lokaler Modellserver + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Modellserver; danach ≤ 12 Monate |
 | 2 | Transkriptionsdienst | `MEDIA_TRANSCRIBE_API_KEY` | Peter (fachlich); Durchführung: Anbieterkonto + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Anbieterkonto; danach ≤ 12 Monate |
 | 2 | Postausgang | `SMTP_PASS` | Peter (fachlich); Durchführung: Mail-Anbieter + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite Versand im Namen der Instanz; danach ≤ 12 Monate |
+| 2 | Zugang zum Microsoft-365-Kalender | `KLARWERK_KALENDER_M365_TOKEN` | Peter (fachlich), Durchführung über Microsoft-Mandant und Coolify | nicht nachgewiesen | 2027-01-12 | Delegierter Zugriff im Rahmen der vom Anbieter gewährten Kalenderrechte. Früheres Ablaufdatum geht vor. |
 | 2 | Single Sign-on | `OIDC_CLIENT_SECRET` | Peter (fachlich); Durchführung: IdP-Verwaltung + Coolify | nicht nachgewiesen | 2027-01-12 | früheres Ablaufdatum beim IdP geht vor; danach ≤ 12 Monate |
 | 3 | Confluence-Token | `KLARWERK_CONFLUENCE_TOKEN` | Peter (fachlich); Durchführung: Atlassian-Konto + Coolify | nicht nachgewiesen | 2027-01-12 | früheres Ablaufdatum des Tokens bei Atlassian geht vor; danach ≤ 12 Monate |
 | 3 | SharePoint-/OneDrive-Token | `KLARWERK_SHAREPOINT_TOKEN` | Peter (fachlich); Durchführung: Microsoft-Mandant + Coolify | nicht nachgewiesen | 2027-01-12 | früheres Ablaufdatum bei Microsoft geht vor; danach ≤ 12 Monate |
@@ -173,6 +181,10 @@ Stand: 2026-10-12.
 | 4 | Geräte-Push, öffentlicher Schlüssel | `VAPID_PUBLIC_KEY` | Peter (fachlich); Durchführung: Betriebsweg Coolify | nicht nachgewiesen | 2027-01-12 | nur zusammen mit `VAPID_PRIVATE_KEY` |
 | 4 | Verzeichnisschlüssel (SCIM) | `KLARWERK_SCIM_TOKEN` | Peter (fachlich); Durchführung: Coolify + Verzeichnisverwaltung | nicht nachgewiesen | 2026-11-12 | große Reichweite (Konten und Rollen über das Verzeichnis); danach ≤ 12 Monate |
 | 4 | Signatur der Antwortbelege | `KLARWERK_ASK_RECEIPT_SECRET` | Peter (fachlich); Durchführung: Betriebsweg Coolify | nicht nachgewiesen | 2027-04-12 | geringe Reichweite (nur Belegfälschung, Belege gelten 30 Minuten); danach ≤ 12 Monate |
+| 4 | Dienstschlüssel angebundener Systeme | `KLARWERK_SERVICE_KEYS` | Peter (fachlich), Durchführung über Coolify und den jeweiligen Dienst | nicht nachgewiesen | 2027-01-12 | Je Dienstkennung und ihren zugelassenen Rechten prüfen und wechseln. |
+| 4 | Signatur der WOPI-Zugangsmarken | `KLARWERK_WOPI_SCHLUESSEL` | Peter (fachlich), Durchführung über Coolify | nicht nachgewiesen | 2027-01-12 | Editorzugang für die betroffenen Anhänge nach dem Wechsel neu öffnen. |
+| 4 | Zuordnung des E-Mail-Eingangs | `KLARWERK_EMAIL_EINGANG` | Peter (fachlich), Durchführung über Coolify und den zuständigen Maildienst | nicht nachgewiesen | 2027-01-12 | Empfangsadresse und Eigentümer für neue private Entwürfe abgleichen. |
+| 4 | Berechtigte Klarwerk-Konten für Microsoft 365 | `KLARWERK_KALENDER_M365_KONTO_IDS` | Peter (fachlich), Durchführung über Coolify | nicht nachgewiesen | 2027-01-12 | Jede Klarwerk-Konto-ID gegen die Berechtigung für das angebundene Kalenderkonto prüfen. |
 | Proxy | Pre-Launch-Gate | Basic-Auth-Hash am Reverse-Proxy | Peter (fachlich); Durchführung: Betriebsweg Coolify/Traefik | nicht nachgewiesen | 2026-11-12 | Zugangsschutz vor der ganzen App; danach bei Personen- oder Phasenwechsel |
 | 4 | Demo-Konten-Kennwörter | erster Start einer Instanz | Peter (fachlich und Durchführung) | 30.07. (Beleg: OFFEN.md, Eintrag zu den Demo-Konten, „die Kennwörter der Demo-Konten sind zurückgesetzt“; Jahr dort nicht genannt) | 2027-07-30 | vor jeder echten Nutzung; sonst ≤ 12 Monate ab dem belegten Wechsel |
 | Proxy | TLS-Zertifikate | Reverse-Proxy | Betriebsweg Coolify/Traefik (automatisch) | nicht nachgewiesen | automatisch | Erneuerung durch den Proxy; Peter prüft nur das Ablaufdatum |

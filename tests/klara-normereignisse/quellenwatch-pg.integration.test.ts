@@ -26,11 +26,11 @@ describe("AW21 · tatsächlicher bestehender D-Laufguard vor Norm-Fristen-CAS", 
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-20T06:59:00Z"));
     container = await new GenericContainer("postgres:16-alpine")
-      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_normwatch_test" })
+      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
       .withExposedPorts(5432)
       .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
       .start();
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_normwatch_test`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     pool = createPool(url);
     zweiterPool = createPool(url);
     await migrate(pool);

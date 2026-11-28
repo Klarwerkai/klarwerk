@@ -205,10 +205,11 @@ describe("R-1624 F5 · der Dienst reicht den Befund durch", () => {
     expect(res.aiGenerated?.task).toBe("interview");
   });
 
-  it("ohne Modell: Rückfall auf die feste Foto-Frage, ehrlich als deterministisch markiert", async () => {
+  it("ohne Modell: feste Foto-Frage mit Rückfallgrund und ohne KI-Kennzeichnung", async () => {
     const res = await new Reasoner().interview([], "de", false, BEFUND);
     expect(res.question).toBe("Welcher Fehler ist hier zu sehen?");
     expect(res.demo).toBe(true);
-    expect(res.aiGenerated?.mode).toBe("deterministic");
+    expect(res.fallbackReason).toBe("no-model");
+    expect(res.aiGenerated).toBeUndefined();
   });
 });

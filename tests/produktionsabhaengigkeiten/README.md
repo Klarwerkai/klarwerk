@@ -28,10 +28,17 @@ gebundenen** Stand?*
 | `brace-expansion` (unter `@fastify/static`) | `node_modules/@fastify/static/node_modules/brace-expansion` | 5.0.12 | nicht exponiert |
 | `brace-expansion` (Wurzel, dev-markiert) | `node_modules/brace-expansion` | 2.1.7 | nicht exponiert |
 | `fast-uri` | `node_modules/fast-uri` | 3.1.9 | nicht exponiert |
-| `fastify` | `node_modules/fastify` | 5.12.1 | nicht exponiert |
-| `find-my-way` | `node_modules/find-my-way` | 9.6.0 | nicht exponiert |
+| `fastify` | `node_modules/fastify` | 5.12.7 | nicht exponiert |
+| `find-my-way` | `node_modules/find-my-way` | 9.10.0 | nicht exponiert |
 | `nodemailer` | `node_modules/nodemailer` | 10.1.4 | nicht exponiert |
 | `sharp` | `node_modules/sharp` | 0.35.5 | nicht exponiert |
+
+Seit Commit `5296efcbb` vom 26.10.2026 bindet die Lockdatei Fastify 5.12.7 und
+find-my-way 9.10.0. Für die hier betrachteten Meldungen liegt Fastify damit oberhalb der
+behobenen Untergrenze 5.12.1 und find-my-way außerhalb des betroffenen Bereichs bis
+einschließlich 9.6.0. Die Messungen aus September sind unten mit ihren damaligen
+Versionen beschrieben. Die Laufzeitprüfung für Fastify steht in
+[der Fastify-Restbewertung](../fastify-restbewertung/README.md).
 
 > **Nachtrag 08.10.2026 (R-1398, GHSA-wq5f-xc86-pv6w):** Die `sharp`-Zeile steht jetzt auf
 > **0.35.5**. Grund ist die librsvg-Meldung aus dem echten Audit, die erste behobene Fassung laut
@@ -55,7 +62,7 @@ sie den Typprüfer des Produkts bricht; der Beleg steht in Abschnitt 2.
 `<=10.1.1`) beschreiben beide, wie eine nicht-kanonische Pfadform an einer **Rechteprüfung über
 statischen Dateien** vorbeiführt.
 
-**Aufrufpfad.** `services/app/src/web-static.ts:4` importiert das Paket, `:109` registriert es —
+**Aufrufpfad.** `registerWebStatic` in `services/app/src/web-static.ts` registriert das importierte Paket —
 und das ist die **einzige Registrierung** im ganzen Produkt. Ausgeliefert wird genau ein
 Verzeichnis: `apps/web/dist`, die gebaute SPA (`services/app/src/server.ts:61-66`).
 
@@ -767,3 +774,19 @@ sind an 23.16.8 gebunden. Ein neues Bündel oder ein nichtliteraler Wert macht
 die Prüfung rot und verlangt eine erneute Bewertung. Es wird kein Angriff
 gegen die laufende Anwendung ausgeführt und keine allgemeine Aussage zu
 anderen i18next-Meldungen getroffen.
+
+## 11. Nachtrag vom 28.11.2026
+
+Die Produktions-Lockdateien binden inzwischen find-my-way 9.10.0, fastify
+5.12.7, nodemailer 10.1.4 und react-router-dom 6.30.6. Für 23 frühere
+Meldungen liegt die gebundene Version außerhalb der von GitHub Advisory
+Database veröffentlichten betroffenen Bereiche. Das Register enthält je
+Meldung Paketknoten, Advisory, Versionsbereich und korrigierte Fassung.
+
+Das Webpaket enthält weiterhin i18next 23.16.8. Ein siebter
+`addResourceBundle`-Aufruf lädt deutsche Fachtexte mit `overwrite=false`.
+Der Test prüft auch das vom Vite-Plugin tatsächlich erzeugte Modul und führt
+dessen Wörterbuch mit den Produktoptionen aus. Die HTTP-Schemaprüfung
+erfasst die von Fastify registrierten Schemata einschließlich der optionalen
+Add-in-API. Die CORS-Preflight-Route führt ausschließlich die
+Dokumentationsmetadaten `hide: true`.

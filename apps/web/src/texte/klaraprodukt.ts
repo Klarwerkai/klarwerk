@@ -23,9 +23,9 @@ export default {
     "klaraprodukt.eingabe.platzhalter": "Frag etwas …",
     "klaraprodukt.offen.titel": "Noch nicht verfügbar",
     "klaraprodukt.offen.text":
-      "Aufgaben, Erinnerungen und Termine sind noch in Arbeit und hier nicht freigegeben.",
+      "Den Stand geplanter Erweiterungen findest du als Administrator im Funktionskatalog unter Einstellungen → Funktionen.",
     "klaraprodukt.auswahl.offen":
-      "„Umformulieren“ zeigt Original und Vorschlag nebeneinander – geändert wird erst, wenn du übernimmst und im Editor speicherst. „Notizentwurf“ legt eine Notiz mit Herkunft an, die nur in dieser Sitzung bleibt.",
+      "„Umformulieren“ zeigt Original und Vorschlag nebeneinander – geändert wird erst, wenn du übernimmst und im Editor speicherst. „Notizentwurf“ legt eine Notiz mit Herkunft an, die du als persönliche Notiz speichern kannst.",
     "klaraprodukt.vorschau.link": "Vorschau mit fiktiven Beispielen ansehen",
     "klaraprodukt.vorschau.hinweis":
       "Die Vorschau zeigt vorgefertigte Antworten an fiktiven Artikeln; dein echtes Gespräch bleibt davon unberührt.",
@@ -41,9 +41,9 @@ export default {
     "klaraprodukt.eingabe.platzhalter": "Ask something …",
     "klaraprodukt.offen.titel": "Not available yet",
     "klaraprodukt.offen.text":
-      "Tasks, reminders and appointments are still in progress and not released here.",
+      "Administrators can see the status of planned additions in the feature catalogue under Settings → Features.",
     "klaraprodukt.auswahl.offen":
-      "“Rephrase” shows original and suggestion side by side – nothing changes until you apply it and save in the editor. “Note draft” creates a note with its origin that stays in this session only.",
+      "“Rephrase” shows original and suggestion side by side – nothing changes until you apply it and save in the editor. “Note draft” creates a note with its origin that you can save as a personal note.",
     "klaraprodukt.vorschau.link": "View the preview with fictional examples",
     "klaraprodukt.vorschau.hinweis":
       "The preview shows prepared answers on fictional articles; your real conversation is not affected.",
@@ -59,9 +59,9 @@ export default {
     "klaraprodukt.eingabe.platzhalter": "Vraag iets …",
     "klaraprodukt.offen.titel": "Nog niet beschikbaar",
     "klaraprodukt.offen.text":
-      "Taken, herinneringen en afspraken zijn nog in ontwikkeling en hier niet vrijgegeven.",
+      "Beheerders vinden de status van geplande uitbreidingen in de functiecatalogus onder Instellingen → Functies.",
     "klaraprodukt.auswahl.offen":
-      "„Herformuleren” toont origineel en voorstel naast elkaar – er verandert pas iets als je het overneemt en in de editor opslaat. „Notitieconcept” maakt een notitie met herkomst die alleen in deze sessie blijft.",
+      "„Herformuleren” toont origineel en voorstel naast elkaar – er verandert pas iets als je het overneemt en in de editor opslaat. „Notitieconcept” maakt een notitie met herkomst die je als persoonlijke notitie kunt opslaan.",
     "klaraprodukt.vorschau.link": "Preview met fictieve voorbeelden bekijken",
     "klaraprodukt.vorschau.hinweis":
       "De preview toont voorbereide antwoorden bij fictieve artikelen; je echte gesprek blijft ongemoeid.",

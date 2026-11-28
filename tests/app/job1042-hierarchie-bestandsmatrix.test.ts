@@ -77,7 +77,9 @@ function relativ(pfad: string): string {
  * `frame-ancestors` (CSP) stammen, zählen nicht.
  */
 function beruehrtHierarchie(inhalt: string): boolean {
-  const ohneCsp = inhalt.split("frame-ancestors").join("");
+  // Gesamtcheck R-1329 (Nacharbeit 66): derselbe Fehltreffer in zweiter Schreibweise — die
+  // Collabora-Option `--o:net.frame_ancestors=…` der Office-Prüfstände (M0b).
+  const ohneCsp = inhalt.split("frame-ancestors").join("").split("frame_ancestors").join("");
   return HIERARCHIE_BEGRIFFE.some((begriff) => ohneCsp.includes(begriff));
 }
 
@@ -97,6 +99,9 @@ type Rolle =
   | "projektion" // reicht es Richtung Anzeige durch
   | "anzeige" // baut daraus den Ordnerbaum
   | "fixture" // liefert Beispieldaten mit Elternkette
+  // Gesamtcheck R-1329 (Nacharbeit 66) — zwei Rollen, die der Jira-Import mitbrachte:
+  | "fremdquelle" // eine ANDERE Quelle legt ihre (einstufige) Elternangabe in dieselbe neutrale Form
+  | "abdruck" // liest die Kette als Teil eines Inhaltsabdrucks (Änderungserkennung), zeigt nichts
   | "test";
 
 const MATRIX: Record<string, Rolle> = {
@@ -108,7 +113,20 @@ const MATRIX: Record<string, Rolle> = {
   "services/library-analytics/src/select.ts": "projektion",
   "apps/web/src/api/types.ts": "zieltyp",
   "apps/web/src/lib/importSelectView.ts": "anzeige",
+  // Gesamtcheck R-1329 (Nacharbeit 66), je Datei an ihrer Fundstelle belegt:
+  // R-0153 (confluence-import-hierarchie): das Wissensobjekt trägt die Kette am Anker (`sourcePath`).
+  "services/knowledge-object/src/types.ts": "zieltyp",
+  // R-0153: der Accept reicht die Kette an den Herkunftsanker weiter (`toKoSource`, service.ts:3785).
+  "services/library-analytics/src/service.ts": "projektion",
+  // Die Texte des Ordnerbaums der Importvorschau (`importordner.*`), gebaut aus `sourcePath`.
+  "apps/web/src/texte/importordner.ts": "anzeige",
+  // Jira-Import: das Epic eines Vorgangs als EINE Ebene `sourcePath` (mapper.ts:184).
+  "services/jira/src/mapper.ts": "fremdquelle",
+  // Jira-Import: `sourcePath` gehört zum Inhaltsabdruck eines Vorgangs (`jiraInhaltsabdruck`).
+  "services/app/src/routes/jira-import-routes.ts": "abdruck",
   // ---- Tests ----
+  "tests/antwort-erklaerung/w2-kopien-aktueller-vertrag.test.ts": "test",
+  "tests/confluence-quellabgleich/lauf3-nacharbeit.test.ts": "test",
   // R-1349: der Demo-Korpus lag bis dahin unter services/app/src, ohne dass ein Produktweg ihn lud.
   "tests/demo-korpus/demo-corpus.ts": "fixture",
   "tests/app/confluence-ancestors-expand.test.ts": "test",
@@ -137,6 +155,15 @@ const MATRIX: Record<string, Rolle> = {
   // (setzt `ancestors` beim Anlegen), und sein Test.
   "tests/confluence-verschachtelt/testseiten-anlegen.ts": "fixture",
   "tests/confluence-verschachtelt/testseiten-anlegen.test.ts": "test",
+  // Gesamtcheck R-1329 (Nacharbeit 66): Tests, die seither Ketten führen oder messen.
+  "services/confluence/src/hierarchie.test.ts": "test",
+  "services/jira/src/mapper.test.ts": "test",
+  "tests/beschaffung-px17/quellenfall-am-draht.test.ts": "test",
+  "tests/confluence-quellabgleich/r0142-ergebnisweg.test.ts": "test",
+  "tests/jira-import/vorgaenge-epics-leserechte-am-draht.test.ts": "test",
+  "tests/k3-bedarfsabgleich/ordner-ohne-seite-mounted.test.tsx": "test",
+  "tests/uebernahme-standard-intern/confluence-leserechte-quellgetreu.test.ts": "test",
+  "tests/uebernahme-standard-intern/quellleser-trim-paritaet.integration.test.ts": "test",
   // Der Sammler zählt sich selbst mit — er trägt die Begriffe in seiner eigenen Matrix. Das ist
   // kein Schönheitsfehler, sondern die Probe darauf, dass er wirklich den Baum liest und nicht
   // eine fest verdrahtete Liste zurückgibt.
@@ -158,6 +185,24 @@ describe("JOB1042 D3 · M — die Bestandsmatrix der Quell-Hierarchie", () => {
       // Der Fehltreffer ist ECHT vorhanden …
       expect(inhalt.includes("ancestors"), `${pfad} sollte 'ancestors' tragen`).toBe(true);
       // … und die Klassifikation lässt sich davon nicht täuschen.
+      expect(beruehrtHierarchie(inhalt), `${pfad} darf NICHT als einschlägig gelten`).toBe(false);
+      expect(Object.hasOwn(MATRIX, pfad)).toBe(false);
+    }
+  });
+
+  it("M0b · DER ZWEITE FEHLTREFFER: die Collabora-Option `frame_ancestors` gehört ebenso NICHT dazu", () => {
+    // Drei Office-Prüfstände starten Collabora mit `--o:net.frame_ancestors=…` — dieselbe Einbettungs-
+    // regel wie die CSP oben, nur in der Schreibweise des Programms. Ohne diesen Fall zählte der
+    // Sammler sie als Konsumenten der Elternkette.
+    for (const pfad of [
+      "tests/assistenz-dokumentnachbearbeitung/code-hostweg.integration.test.ts",
+      "tests/office-artikel-editor/code-artikelweg.integration.test.ts",
+      "tests/office-wopi-code/code-probe.integration.test.ts",
+    ]) {
+      const inhalt = readFileSync(join(WURZEL, pfad), "utf8");
+      expect(inhalt.includes("frame_ancestors"), `${pfad} sollte 'frame_ancestors' tragen`).toBe(
+        true,
+      );
       expect(beruehrtHierarchie(inhalt), `${pfad} darf NICHT als einschlägig gelten`).toBe(false);
       expect(Object.hasOwn(MATRIX, pfad)).toBe(false);
     }

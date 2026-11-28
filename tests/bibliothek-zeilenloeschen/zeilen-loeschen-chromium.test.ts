@@ -212,7 +212,14 @@ describe("R-0959 · Papierkorb am Treffer — gebaute Seite, echtes Backend", ()
 
   it("Z1 · jeder Treffer trägt einen Papierkorb mit Namen; der Klick öffnet die ruhige Zeile im Blick, ohne Dialog", async () => {
     expect(fehler).toBeNull();
-    await seite().goto(`${ORIGIN}/bibliothek`, { waitUntil: "domcontentloaded" });
+    await seite().goto(`${ORIGIN}/bibliothek?eintrag=${encodeURIComponent(idA)}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await warteAuf(
+      `(titel) => (${LESETITEL_FN})() === titel`,
+      "Bericht A fehlt im Lesebereich",
+      TITEL_A,
+    );
     await warteAuf(KORB_DA_FN, "kein Papierkorb am Treffer", idB);
     const zeilen = await liste();
     expect(zeilen).toContain(idA);
@@ -224,7 +231,6 @@ describe("R-0959 · Papierkorb am Treffer — gebaute Seite, echtes Backend", ()
     expect(koerbe.mitSymbol).toBe(zeilen.length);
     expect(koerbe.namen).toContain(`„${TITEL_B}“ löschen`);
 
-    const leseTitelVorher = await leseTitel();
     const vorher = await lage(idB);
 
     await seite().click(papierkorb(idB));
@@ -240,7 +246,7 @@ describe("R-0959 · Papierkorb am Treffer — gebaute Seite, echtes Backend", ()
     expect(l.obenauf).toBe(true);
     // RUHIG: keine Dialogfläche, und der gelesene Bericht bleibt.
     expect(l.dialog).toBe(false);
-    expect(await leseTitel()).toBe(leseTitelVorher);
+    expect(await leseTitel()).toBe(TITEL_A);
     // Nacharbeit 1, gemessen: die Liste rollt beim Öffnen (spurOben 0 → 133), weil der Fokus auf
     // „Behalten" die 167 px hohe Zeile ganz ins Bild holt. Das ist das „im Blick" aus JOB 3637,
     // kein Wegrollen. Zugesagt wird deshalb: die Rückfrage UND ihr Treffer stehen beide im

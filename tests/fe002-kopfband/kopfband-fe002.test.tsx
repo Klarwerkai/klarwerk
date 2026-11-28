@@ -50,7 +50,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
-      validation: { board: ok([]) },
+      validation: { boardCount: ok({ length: 0 }) },
       conflicts: { list: ok([]) },
       duplicates: { list: ok([]) },
       gaps: { summary: ok({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } }) },
@@ -78,7 +78,11 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement, useRef, useState } from "../../apps/web/node_modules/react";
 import { type Root, createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
+import {
+  MemoryRouter,
+  useLocation,
+  useNavigate,
+} from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ModalBoundaryProvider } from "../../apps/web/src/app/ModalBoundaryContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
@@ -87,6 +91,7 @@ import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import {
   ALL_ITEMS,
   FOOT_ITEMS,
+  HOME_ROUTE,
   type Role,
   anzeigeNameKey,
   canSee,
@@ -120,7 +125,10 @@ const flush = async (runden = 30): Promise<void> => {
   }
 };
 
+let navigiere: ReturnType<typeof useNavigate>;
+
 function Adresse(): JSX.Element {
+  navigiere = useNavigate();
   const ort = useLocation();
   return createElement("span", { "data-testid": "adresse" }, `${ort.pathname}${ort.search}`);
 }
@@ -154,7 +162,9 @@ function MobilHuelle(): JSX.Element {
   );
 }
 
-async function montiere(opt: { drawer?: boolean; mobil?: boolean } = {}): Promise<void> {
+async function montiere(
+  opt: { drawer?: boolean; mobil?: boolean; pfad?: string } = {},
+): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -185,7 +195,7 @@ async function montiere(opt: { drawer?: boolean; mobil?: boolean } = {}): Promis
               null,
               createElement(
                 MemoryRouter,
-                { initialEntries: ["/start"] },
+                { initialEntries: [opt.pfad ?? HOME_ROUTE] },
                 createElement(
                   NavGuardProvider,
                   null,
@@ -561,6 +571,21 @@ describe("FE-002 · E3 — Meldungen vor dem Kontomenü", () => {
     expect(container.textContent).not.toContain(t("topbar.notificationsEmpty"));
   });
 
+  it("das frisch geöffnete Konto-Menü übersteht die Startumleitung und schließt beim Wechsel zum Kalender", async () => {
+    await montiere({ pfad: "/" });
+    await klicke(q('[data-testid="kopfband-konto"]'));
+    const kalender = q('[data-testid="konto-kalender"]');
+    expect(kalender).not.toBeNull();
+
+    await act(() => navigiere(HOME_ROUTE, { replace: true }));
+    expect(q('[data-testid="adresse"]')?.textContent).toBe(HOME_ROUTE);
+    expect(q('[data-testid="konto-kalender"]')).toBe(kalender);
+
+    await klicke(kalender);
+    expect(q('[data-testid="adresse"]')?.textContent).toBe("/kalender");
+    expect(q('[data-testid="konto-menue"]')).toBeNull();
+  });
+
   it("E3.6 · der Weg über das Kontomenü bleibt und zeigt dieselbe Zahl", async () => {
     netz.state.meldungen = () => Promise.resolve(UNGELESEN);
     await montiere();
@@ -580,6 +605,7 @@ function erlaubteZiele(role: Role, stufe2: boolean): string[] {
   const sichtbar = [...kopfbandItems(), ...weitereBereicheItems(), ...FOOT_ITEMS]
     .filter((i) => canSee(i, role, stufe2))
     .map((i) => i.path);
+  sichtbar.push("/kalender", "/richtlinien", "/chat");
   const einstellungen = einstellungenItem();
   if (canSee(einstellungen, role, stufe2)) {
     sichtbar.push(einstellungen.path);

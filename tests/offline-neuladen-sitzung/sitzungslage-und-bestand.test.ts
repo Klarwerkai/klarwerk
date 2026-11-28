@@ -13,10 +13,9 @@
 // `apps/web/src/App` importiert — das zöge über `routes.tsx` die ganze Anwendung in den
 // WURZEL-Typprüfer, der dafür nicht eingerichtet ist. Gemountete Torwächter-Tests wohnen deshalb
 // unter `apps/web/src/**`, wie `apps/web/src/legal/mega61-rechtsseiten.test.tsx`.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
+import { readOfflineQueue, writeOfflineQueue } from "../../apps/web/src/lib/offlineQueueStorage";
 import {
   OFFLINE_WARTESCHLANGE_SCHLUESSEL,
   offeneVorgaengeAmGeraet,
@@ -90,22 +89,19 @@ describe("JOB 4333: die Sitzungsfrage hat drei Antworten", () => {
     }
   });
 
-  // ==============================================================================================
-  // DER WÄCHTER GEGEN ZWEI WAHRHEITEN ÜBER DENSELBEN SPEICHERPLATZ.
-  // ==============================================================================================
-  //
-  // `app/useOfflineQueue.ts` ist der EINZIGE Schreiber der Warteschlange und hält den Schlüssel
-  // bewusst privat (er ist dort nicht exportiert). Dieser Auftrag darf die Datei nicht anfassen
-  // (Zielpfade), braucht den Namen aber lesend — also steht er ein zweites Mal da. Dass daraus
-  // keine zweite Wahrheit werden kann, hält dieser Wächter fest: laufen die beiden Zeichenketten
-  // auseinander, wird er rot und nennt beide.
-  it("der Speicherschlüssel ist wörtlich derselbe wie in useOfflineQueue.ts", () => {
-    const quelle = readFileSync(
-      resolve(process.cwd(), "apps/web/src/app/useOfflineQueue.ts"),
-      "utf8",
-    );
-    const treffer = /const STORAGE_KEY = "([^"]+)"/.exec(quelle);
-    expect(treffer, "in useOfflineQueue.ts steht kein STORAGE_KEY mehr").not.toBeNull();
-    expect(treffer?.[1]).toBe(OFFLINE_WARTESCHLANGE_SCHLUESSEL);
+  it("der Gerätebestand liest alte und neu geschriebene Vorgänge am v1-Speicherplatz", () => {
+    const schluessel = "kw.offlineQueue.v1";
+    localStorage.setItem(schluessel, JSON.stringify([VORGANG]));
+    expect(readOfflineQueue()).toEqual([VORGANG]);
+    expect(offeneVorgaengeAmGeraet()).toBe(1);
+
+    const vorgaenge = [VORGANG, { ...VORGANG, id: "op-4333-b" }];
+    writeOfflineQueue(vorgaenge);
+    expect(JSON.parse(localStorage.getItem(schluessel) ?? "null")).toEqual(vorgaenge);
+    expect(offeneVorgaengeAmGeraet()).toBe(2);
+
+    writeOfflineQueue([]);
+    expect(localStorage.getItem(schluessel)).toBeNull();
+    expect(offeneVorgaengeAmGeraet()).toBe(0);
   });
 });

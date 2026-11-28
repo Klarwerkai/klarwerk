@@ -92,7 +92,9 @@ export function BildBefundeImRumpf({ html }: { html: string }): JSX.Element | nu
     laufRef.current += 1;
     const lauf = laufRef.current;
     if (eingang.vorkommen.length === 0) {
-      setBefund(null);
+      if (vorher && vorher.eingang.vorkommen.length > 0) {
+        setBefund(null);
+      }
       return;
     }
     if (lage === "unbekannt") {

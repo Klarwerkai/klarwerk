@@ -66,7 +66,11 @@ it("R-1648 · gesperrter Einstieg, Sprach-Leseablauf, Quellen, Tastatur und schm
       };
       window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
       Object.defineProperty(window, 'speechSynthesis', { value: {
-        getVoices() { return []; }, cancel() {}, speak(u) { window.__kioskProbe.output = u; }
+        getVoices() { return [
+          { name: 'Netzstimme Premium', lang: 'de-DE', localService: false },
+          { name: 'Lokale Teststimme', lang: 'de-DE', localService: true }
+        ]; },
+        cancel() {}, speak(u) { window.__kioskProbe.output = u; }
       }});
     `,
     });
@@ -87,6 +91,7 @@ it("R-1648 · gesperrter Einstieg, Sprach-Leseablauf, Quellen, Tastatur und schm
       .getByText("Fiktive Testpumpe KX42 vor dem Öffnen entlasten.", { exact: false })
       .waitFor();
     expect(fragen).toBe(1);
+    expect(await page.evaluate("window.__kioskProbe.output.voice.name")).toBe("Lokale Teststimme");
     expect(await page.evaluate("window.__kioskProbe.output.text")).toContain(
       "vollständige Prüfung",
     );

@@ -42,6 +42,7 @@ export const STICHWORT_JE_EINTRAG: Record<string, string | null> = {
   // Experte — „Meine Aufgaben" ist die Nacharbeitsliste der eigenen Erfassung, kein zweites Recht.
   aufgaben: "einst.rollen.wort.erfassen",
   erfassen: "einst.rollen.wort.erfassen",
+  ablauf: "einst.rollen.wort.erfassen",
   captureFrontDoor: "einst.rollen.wort.erfassen",
   // JOB 3503: „Meine Entwürfe" ist KEINE zusätzliche Freiheit, sondern derselbe Weg von der anderen
   // Seite — ein Entwurf entsteht beim Erfassen und wird dort weitergeschrieben. Deshalb DASSELBE
@@ -90,6 +91,7 @@ export const STICHWORT_JE_EINTRAG: Record<string, string | null> = {
 export const WORT_ORDNUNG: readonly string[] = [
   "einst.rollen.wort.fragen",
   "einst.rollen.wort.lesen",
+  "workflows.nutzen",
   "einst.rollen.wort.erfassen",
   "einst.rollen.wort.pruefen",
   "einst.rollen.wort.konflikte",

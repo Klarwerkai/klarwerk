@@ -172,27 +172,27 @@ export const BLATT_TEXT = `() => {
 // Die Abschnitte 33 und 34 (Entwurf und Zustand nach dem Neuladen) haben KEINE Kalibrierung; dort
 // trägt allein Griff 1. Wer hier „jede Ablesung nach einem Seitenwechsel" liest, liest zu viel.
 //
-// Geleert wird ausschliesslich der TEXTKNOTEN, und sein alter Wert wird gemerkt; die Fläche bleibt
-// im Übrigen unangetastet und ist nach `TEXT_ZURUECK` Zeichen für Zeichen wieder die alte.
-
-/** Leert den ersten Textknoten, der `marke` enthält, und merkt ihn für die Wiederherstellung. */
+// Der gelesene Eintrag kann denselben Wortlaut in Aussage und Lesetext zeigen.
+// Für die Gegenprobe muss die Marke während der Ablesung an beiden Stellen verschwinden.
 export const TEXT_AUSBLENDEN = `(marke) => {
   const gang = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  for (let k = gang.nextNode(); k !== null; k = gang.nextNode()) {
-    if ((k.nodeValue || '').indexOf(marke) !== -1) {
-      window.__d3Kalibrierung = { knoten: k, wert: k.nodeValue };
-      k.nodeValue = '';
-      return true;
+  const fundstellen = [];
+  for (let knoten = gang.nextNode(); knoten !== null; knoten = gang.nextNode()) {
+    const wert = knoten.nodeValue;
+    if (wert && wert.includes(marke)) {
+      fundstellen.push({ knoten, wert });
+      knoten.nodeValue = wert.replaceAll(marke, '');
     }
   }
-  return false;
+  if (fundstellen.length === 0) { return false; }
+  window.__d3Kalibrierung = fundstellen;
+  return true;
 }`;
 
-/** Stellt den zuletzt geleerten Textknoten wieder her. */
 export const TEXT_ZURUECK = `() => {
-  const p = window.__d3Kalibrierung;
-  if (!p) { return false; }
-  p.knoten.nodeValue = p.wert;
+  const fundstellen = window.__d3Kalibrierung;
+  if (!fundstellen) { return false; }
+  for (const { knoten, wert } of fundstellen) { knoten.nodeValue = wert; }
   delete window.__d3Kalibrierung;
   return true;
 }`;

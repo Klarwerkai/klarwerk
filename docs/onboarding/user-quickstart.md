@@ -87,7 +87,7 @@ Unter **`/hilfe`** findest du durchsuchbare Kapitel u. a. zu: Erststart/Demodate
 
 ### Für Betreiber: Supportkontakt hinterlegen
 
-Zwei **optionale** Umgebungswerte der App. Keiner ist Pflicht für den Start; ohne sie zeigt die Hilfe „nicht eingerichtet“.
+Zwei **optionale** Umgebungswerte der App. Keiner ist Pflicht für den Start; ohne sie zeigt die Hilfe an, dass noch kein Supportweg hinterlegt ist.
 
 | Variable | Inhalt | Pflicht |
 |---|---|---|

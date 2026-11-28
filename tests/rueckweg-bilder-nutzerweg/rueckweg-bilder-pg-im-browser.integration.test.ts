@@ -2,7 +2,7 @@
 // JOB 4329 · DIE WEB-HÄLFTE DES BILDRÜCKWEGS ALS EINE GEMESSENE STRECKE.
 // ================================================================================================
 //
-//   Nutzlast im Format von `rwLadung` (vom Test erzeugt)  →  echter Socket, echter Keks
+//   Nutzlast des ausgelieferten Word-Adapters `rwLadung`  →  echter Socket, echter Keks
 //   →  `PUT /api/kos/:id { action: "propose" }`           →  PostgreSQL (`kos.data::text`)
 //   →  `decide-proposal`                                  →  `GET /api/kos/:id`
 //   →  gebaute Fläche, echtes Chromium                    →  Leinwand UND Bildschirmfoto
@@ -11,16 +11,10 @@
 // ------------------------------------------------------------------------------------------------
 // WAS HIER AUSDRÜCKLICH NICHT LÄUFT — und was kein Satz dieser Datei behaupten darf
 // ------------------------------------------------------------------------------------------------
-// KEIN echtes Word, kein Microsoft-365-Host, kein `Office.CoercionType.Html`, kein Aufgabenfenster
-// (`taskpane.html`), keine `.docx`, kein Add-in-Code. DIE NUTZLAST ENTSPRICHT DEM ADD-IN-FORMAT
-// (`rwLadung`, `apps/web/public/word-addin/rueckweg.js:606-614`), WURDE ABER NICHT VOM ADD-IN
-// ERZEUGT. Daraus folgt kein Word- und kein M365-Nachweis; die Word-Hälfte bleibt F-Aufgabe von
-// Pedi und Codex (`archiv/4299/AUFTRAG.md` §10). Gemessen ist die WEB-Hälfte, die
-// `archiv/4085/runde-2/ben.md:27`, `archiv/4115/runde-1/ben.md:27` und `archiv/3667/runde-9/ben.md:23`
-// als unbewiesen benannt haben.
-//
-// DASS DAS ADD-IN-FORMAT NOCH DASSELBE IST, misst nicht diese Datei, sondern `tor-zeuge.test.ts` im
-// normalen Tor — gegen die Produktdatei. Ohne ihn veraltete die Nachbildung eines Tages still.
+// Der ausgelieferte Word-Adapter (apps/web/public/word-addin/rueckweg.js) erzeugt die Nutzlast in
+// einer JavaScript-VM. Seine Nutzlast geht über den echten Socket zum Server. Word selbst, das
+// Aufgabenfenster (taskpane.html) und die Entnahme aus einer .docx benötigen einen Office-Host-Test.
+// Z2 in tor-zeuge.test.ts prüft zusätzlich die Schlüssel bei Wiederholung und Fassungswechsel.
 //
 // ------------------------------------------------------------------------------------------------
 // ZWEI MESSUNGEN, DIE VERSCHIEDENE DINGE SAGEN (Auftrag §5 Nr. 5b)
@@ -38,7 +32,7 @@
 // ausschliesslich Wegwerf-Datenbanken mit `test` im Namen, am Ende entfernt.
 import { existsSync } from "node:fs";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import {
   type Browser,
   type Instanz,
@@ -61,6 +55,7 @@ import {
   mussGelingen,
   wissensobjektAnlegen,
 } from "../gast-nutzerweg/strecke";
+import { pgKalibrierung } from "../pg-laufbeleg/kalibrierung";
 import { repoPfad } from "../support/repoPfad";
 import {
   type Ausblendbefund,
@@ -88,7 +83,7 @@ import {
   bodyHtmlWieAusWord,
   erwartetePunkteRGBA,
   fotoInnenmass,
-  nutzlastWieRwLadung,
+  sendeplatzFuerWordVorschlag,
   sha256,
 } from "./pruefbilder";
 
@@ -203,7 +198,8 @@ async function fahreStrecke(platz: Pruefplatz, marke: string): Promise<Lage> {
     // (`:766-771`). Genau diese drei Schritte, in dieser Reihenfolge — nur eben vom Test.
     const ziel = await stand(experte, koId);
     const rumpf = bodyHtmlWieAusWord();
-    const ladung = nutzlastWieRwLadung({
+    const ladeVorschlag = sendeplatzFuerWordVorschlag();
+    const ladung = ladeVorschlag({
       statement: STATEMENT,
       bodyHtml: rumpf,
       baseVersion: ziel.version,
@@ -212,12 +208,14 @@ async function fahreStrecke(platz: Pruefplatz, marke: string): Promise<Lage> {
     // Was wirklich hinausgeht — vor dem Senden gelesen, nicht behauptet.
     const gesendet = JSON.parse(JSON.stringify(ladung)) as {
       action: string;
+      operationId: string;
       proposal: Record<string, unknown>;
     };
     expect(
       Object.keys(gesendet),
-      "der gesendete Körper hat nicht genau { action, proposal }",
-    ).toEqual(["action", "proposal"]);
+      "der gesendete Körper braucht Aktion, Vorgangskennung und Vorschlag",
+    ).toEqual(["action", "operationId", "proposal"]);
+    expect(gesendet.operationId).toMatch(/^word-[0-9a-f]{32}$/);
     expect(
       Object.keys(gesendet.proposal),
       "der gesendete Vorschlag trägt nicht genau die vier Felder von rwLadung",
@@ -754,6 +752,18 @@ async function pruefeRechteentzug(
 // DER LAUF.
 // ================================================================================================
 
+const { aktiv: kalibriert, it } = pgKalibrierung(
+  process.env.KLARWERK_KALIBRIERUNG === "1" || existsSync(repoPfad(KALIBRIERUNGSMARKE)),
+  {
+    "KAL-i": /^\[KLARWERK\] JOB 4329 KALIBRIERUNG \(i\) HAT GEGRIFFEN/u,
+    "KAL-ii": /^\[KLARWERK\] JOB 4329 KALIBRIERUNG \(ii\) HAT GEGRIFFEN/u,
+    "KAL-iii": /^\[KLARWERK\] JOB 4329 KALIBRIERUNG \(iii\) HAT GEGRIFFEN/u,
+    "KAL-iv": /^\[KLARWERK\] JOB 4329 KALIBRIERUNG \(iv\) HAT GEGRIFFEN/u,
+    "KAL-v": /^\[KLARWERK\] JOB 4329 KALIBRIERUNG \(v\) HAT GEGRIFFEN/u,
+    "KAL-vi": /^\[KLARWERK\] JOB 4329 KALIBRIERUNG \(vi\) HAT GEGRIFFEN/u,
+  },
+);
+
 describe("JOB 4329 · Bilder aus dem Word-Rückweg, sichtbar in der Bibliothek", () => {
   let platz: Pruefplatz | undefined;
   let browser: Browser | undefined;
@@ -907,7 +917,7 @@ describe("JOB 4329 · Bilder aus dem Word-Rückweg, sichtbar in der Bibliothek",
         const innen = messung.fotos[i] as Fotobefund;
         return `Bild${fix.bild.nr}=${fix.bild.breite}×${fix.bild.hoehe} sha256(RGBA,dekodiert)=${fix.sha256Rgba} Foto-Innen=${innen.innenBreite}×${innen.innenHoehe} gleich`;
       });
-      protokollzeile = `${JOB} GELAUFEN · PostgreSQL=${platz.pgFassung} · Chromium=${chromiumFassung} · Socket=127.0.0.1:${lage.instanz.port} · Objekt=${lage.koId} · Nutzlast=rwLadung-Format(Test) · ${teile.join(" · ")} · Maßstab=1 · Ablage=2 Quellen (DB=API)`;
+      protokollzeile = `${JOB} GELAUFEN · PostgreSQL=${platz.pgFassung} · Chromium=${chromiumFassung} · Socket=127.0.0.1:${lage.instanz.port} · Objekt=${lage.koId} · Nutzlast=Word-Adapter(rwLadung) · ${teile.join(" · ")} · Maßstab=1 · Ablage=2 Quellen (DB=API)`;
     } finally {
       for (const k of fenster) {
         await k.close().catch(() => undefined);
@@ -928,8 +938,6 @@ describe("JOB 4329 · Bilder aus dem Word-Rückweg, sichtbar in der Bibliothek",
   // ZWEI SCHALTER, EIN GRUND: `KLARWERK_KALIBRIERUNG=1` (so steht es im Auftrag) ODER die Marke
   // im Arbeitsbaum. Warum die Marke überhaupt existiert, steht bei `KALIBRIERUNGSMARKE` in
   // `pruefbilder.ts`: der Cloud-Wrapper nimmt keine Umgebungsvariable entgegen.
-  const kalibriert =
-    process.env.KLARWERK_KALIBRIERUNG === "1" || existsSync(repoPfad(KALIBRIERUNGSMARKE));
 
   function ueberspringe(ctx: { skip: () => void }, welche: string): boolean {
     if (kalibriert) {

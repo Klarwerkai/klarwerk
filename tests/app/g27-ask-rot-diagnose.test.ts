@@ -21,26 +21,8 @@
 // beide beobachteten Zustände (Vollcheck grün = Modellaufruf fiel aus/lief nicht; Einzellauf rot =
 // Modell antwortete).
 //
-// UND DAMIT IST DER BEFUND VOLLSTÄNDIG ERKLÄRT — ES IST DER AUFRUF, NICHT DER TEST:
-//
-//   · `./tools/test` (und damit `./tools/check`) setzt seit AUFTRAG-mega25 ausdrücklich
-//     `export KLARWERK_SKIP_KEYCHAIN="${KLARWERK_SKIP_KEYCHAIN:-1}"` — der Lauf ist hermetisch,
-//     der Reasoner deterministisch, und der Test ist GRÜN. Das ist der Vollcheck desselben Tages.
-//   · Ein direktes `npx vitest run tests/ask/ask-retrieval-topk-e2e.test.ts` geht an `tools/test`
-//     vorbei, die Variable fehlt, der Schlüsselbund wird befragt — und auf einer Maschine mit
-//     hinterlegtem Schlüssel ist der Test ROT. Das ist der Teil-/Einzellauf.
-//
-// GEMESSEN (beide Richtungen, gleicher Arbeitsbaum, gleiche Minute):
-//   rot:  npx vitest run tests/ask/ask-retrieval-topk-e2e.test.ts
-//   grün: ./tools/test tests/ask/ask-retrieval-topk-e2e.test.ts
-//   grün: npx vitest run --config _relay/messung/pro-g27-hermetisch.config.ts \
-//           tests/ask/ask-retrieval-topk-e2e.test.ts
-//
-// ES WIRD DESHALB NICHTS GEÄNDERT: weder am Test (er kodiert die richtige, deterministische Zusage)
-// noch am Produkt (es verhält sich korrekt). Die Korrektur ist eine Aussage über den AUFRUF —
-// Teilläufe gehören durch `./tools/test`. Sie unübersehbar zu machen (z. B. `KLARWERK_SKIP_KEYCHAIN`
-// in `tests/setup-env.ts`) wäre eine Harness-Entscheidung an Dateien AUSSERHALB des exklusiven
-// Bereichs dieses Auftrags und steht als Empfehlung im Bericht.
+// Der ursprüngliche Einzellauf konnte auf den Schlüsselbund zugreifen. Die gemeinsame
+// Vitest-Einrichtung schließt ihn inzwischen auch für direkt gestartete Tests aus.
 //
 // DIESE DATEI PRÜFT DEN MECHANISMUS, NICHT DIE MASCHINE: beide Zusicherungen gelten unabhängig
 // davon, ob auf dem ausführenden Rechner ein Schlüssel im Schlüsselbund liegt.
@@ -83,13 +65,14 @@ describe("G27 · Diagnose: woher der Cloud-Schlüssel im Testlauf kommt", () => 
     expect(build).toContain("process.env.KLARWERK_SKIP_KEYCHAIN");
   });
 
-  it("der KANONISCHE Testlauf ist hermetisch — ein direktes `npx vitest run` ist es NICHT", async () => {
+  it("der kanonische und der direkte Vitest-Lauf sperren den echten Schlüsselbund", async () => {
     const { readFileSync } = await import("node:fs");
     // `tools/test` (und über `tools/check` auch der Vollcheck) setzt den Schalter …
     expect(readFileSync("tools/test", "utf8")).toContain('export KLARWERK_SKIP_KEYCHAIN="${');
-    // … die Vitest-Setup-Datei, die JEDER Lauf lädt, setzt ihn NICHT. Genau diese Lücke ist der
-    // Unterschied zwischen „Vollcheck grün" und „Einzellauf rot".
-    expect(readFileSync("tests/setup-env.ts", "utf8")).not.toContain("KLARWERK_SKIP_KEYCHAIN");
+    expect(readFileSync("tests/setup-env.ts", "utf8")).toContain(
+      'process.env.KLARWERK_SKIP_KEYCHAIN = "1"',
+    );
+    expect(process.env.KLARWERK_SKIP_KEYCHAIN).toBe("1");
   });
 });
 

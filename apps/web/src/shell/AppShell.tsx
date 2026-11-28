@@ -10,8 +10,6 @@ import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext"
 // entstehende Modalgrenze hinauf, damit sein Dialog in `<main>` portalisiert wird — ohne dass einer
 // der beiden Anbieter seinen Platz verlässt.
 import { NavGuardModalBoundaryBridge } from "../app/NavGuardContext";
-// Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
-import { KlaraAssistant } from "../components/KlaraAssistant";
 // produkt:20261010:assistenz-name-avatar: Ersteinrichtung der persönlichen Assistenz — wie der
 // Nutzungshinweis als Geschwister des Inhalts, nie modal — und der Lader des bestätigten Profils.
 import {
@@ -33,6 +31,7 @@ import { VormachenAnzeige } from "../components/vormachen/VormachenAnzeige";
 // nur die shell-lose Route /mobile trägt ihn weiterhin im Fluss.
 import { LegalFooter } from "../legal/LegalPages";
 import { NoticeBanner } from "../legal/NoticeBanner";
+import { mitFachtexten } from "../lib/fachtexte";
 // FE-003: das Seitentutorial — Knopf unter dem Kopfband, Bereich oben in `<main>`. Beide rendern
 // nur auf Seiten mit ausgearbeitetem Tutorial (heute allein /fragen), sonst nichts.
 import { TutorialEinstieg, TutorialFlaeche, TutorialProvider } from "../tutorial/TutorialRahmen";
@@ -52,10 +51,29 @@ import { SeitenhilfeProvider } from "./SeitenhilfeContext";
 import { ToastViewport } from "./ToastViewport";
 import { NARROW_QUERY, useMediaQuery } from "./useMediaQuery";
 
+// Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
+// Gesamtcheck R-1329 (Nacharbeit 57, Deckel R-0801): der Hilfeknopf wird nachgeladen und nimmt
+// Hilfe-Registry und FAQ (`lib/klaraRegistry.ts`, `lib/faqContent.ts`) mit aus der Eintritts-Hülle.
+// Der Abruf beginnt beim Laden der Hülle, nicht erst beim ersten Zeichnen. Ein Fehlschlag erreicht
+// weiter die Fehlergrenze (über `lazy`, wie bei der Figur darunter); `catch` hält nur die Konsole
+// frei, solange noch niemand den Knopf angefordert hat.
+//
+// R-0801 (Nacharbeit 58): die nachgeladenen Flächen der Hülle zeichnen erst mit ihren deutschen
+// Fachtexten (`lib/fachtexte.ts`). Bleibt das Paket aus, erscheinen sie trotzdem („flaeche") — die
+// Hülle darf an ihnen nicht scheitern.
+const klaraAssistantLaden = import("../components/KlaraAssistant").then((m) => ({
+  default: m.KlaraAssistant,
+}));
+klaraAssistantLaden.catch(() => {});
+const KlaraAssistant = lazy(() => mitFachtexten(klaraAssistantLaden, "flaeche"));
+
 const KlaraVorschau = lazy(() =>
-  import("../components/klara-vorschau/KlaraVorschau").then((m) => ({
-    default: m.KlaraVorschau,
-  })),
+  mitFachtexten(
+    import("../components/klara-vorschau/KlaraVorschau").then((m) => ({
+      default: m.KlaraVorschau,
+    })),
+    "flaeche",
+  ),
 );
 
 // produkt:20261011:assistenz-aktive-beobachtung (BPA-05): die aktive Begleitung. Ihre Statusleiste
@@ -63,9 +81,12 @@ const KlaraVorschau = lazy(() =>
 // das Gespräch geschlossen ist. Ohne eingerichteten Vorgang und ohne laufende Begleitung zeigt sie
 // nichts.
 const KlaraBegleitung = lazy(() =>
-  import("../components/klara-begleitung/KlaraBegleitung").then((m) => ({
-    default: m.KlaraBegleitungImProdukt,
-  })),
+  mitFachtexten(
+    import("../components/klara-begleitung/KlaraBegleitung").then((m) => ({
+      default: m.KlaraBegleitungImProdukt,
+    })),
+    "flaeche",
+  ),
 );
 
 /**
@@ -73,17 +94,27 @@ const KlaraBegleitung = lazy(() =>
  * offen ist immer nur eine der beiden Flächen (`components/assistenzFlaechen.ts`). Bei
  * eingeschalteter Vorschau allein die bewegliche Klara mit ihrem gekennzeichneten Demo-Betrieb.
  */
+//
+// Gesamtcheck R-1329 (Nacharbeit 58, Smoke „Klara 01“): jede Nachladegrenze trägt einen eigenen
+// Schlüssel. Seit der Hilfeknopf ebenfalls hinter `Suspense` steht, bestehen beide Zweige nur noch
+// aus gleichartigen Grenzen; ohne Schlüssel gleicht React sie über ihre Stelle ab und verwendet
+// Grenzen über den Betriebswechsel hinweg weiter. Gemessen standen danach im Vorschaubetrieb zwei
+// Figuren (Produkt und Vorschau) im Baum; die Weiterverwendung ist die am Code eingegrenzte
+// Ursache. Mit Schlüssel wird beim Umschalten die Grenze des anderen Betriebs entfernt; die
+// Begleitung behält ihren Schlüssel und bleibt stehen.
 function KlaraEbene(): JSX.Element {
   const vorschau = useKlaraVorschauAktiv();
   if (!vorschau) {
     return (
       <>
         <KlaraKuerzelAusfuehrung />
-        <KlaraAssistant />
-        <Suspense fallback={null}>
+        <Suspense key="hilfeknopf" fallback={null}>
+          <KlaraAssistant />
+        </Suspense>
+        <Suspense key="assistenz-produkt" fallback={null}>
           <KlaraVorschau betriebsart="produkt" />
         </Suspense>
-        <Suspense fallback={null}>
+        <Suspense key="begleitung" fallback={null}>
           <KlaraBegleitung />
         </Suspense>
       </>
@@ -92,10 +123,10 @@ function KlaraEbene(): JSX.Element {
   return (
     <>
       <KlaraKuerzelAusfuehrung />
-      <Suspense fallback={null}>
+      <Suspense key="assistenz-vorschau" fallback={null}>
         <KlaraVorschau betriebsart="vorschau" />
       </Suspense>
-      <Suspense fallback={null}>
+      <Suspense key="begleitung" fallback={null}>
         <KlaraBegleitung />
       </Suspense>
     </>

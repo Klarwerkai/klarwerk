@@ -49,7 +49,12 @@ describe("E6 · verschachtelter Confluence-Bereich", () => {
   it("collectAll blättert über alle Ergebnisseiten und verliert keine Seite", async () => {
     const { adapter: a, aufrufe } = adapter(5);
     const r = await a.collectAll();
-    expect(aufrufe).toHaveLength(Math.ceil(BAUM.length / 5));
+    const seiten = aufrufe
+      .map((pfad) => new URL(pfad, "https://baader-test.atlassian.net"))
+      .filter((url) => url.pathname === "/wiki/rest/api/content");
+    expect(seiten.map((url) => Number(url.searchParams.get("start") ?? 0))).toEqual(
+      Array.from({ length: Math.ceil(BAUM.length / 5) }, (_, i) => i * 5),
+    );
     expect(r.truncated).toBe(false);
     expect(r.failed).toEqual([]);
     expect(r.items.map((i) => i.externalId).sort()).toEqual(BAUM.map((s) => s.id).sort());
@@ -133,6 +138,9 @@ describe("E6 · verschachtelter Confluence-Bereich", () => {
     for (const item of items) {
       const gesperrt = BAUM.find((s) => s.id === item.externalId)?.gruppe !== undefined;
       expect(item.confidentiality, item.title).toBe(gesperrt ? "vertraulich" : "intern");
+      expect(item.quellrechte?.emails, item.title).toEqual(
+        gesperrt ? ["hr@example.test"] : undefined,
+      );
     }
   });
 });

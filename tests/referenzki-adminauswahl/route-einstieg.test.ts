@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { REFERENZ_PRUEF_RICHTLINIE } from "../../services/ask";
 import type { ReferenzPruefer } from "../../services/reasoner";
+import { mitKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 type Kopf = Record<string, string>;
 
@@ -161,16 +162,14 @@ describe("REF-03 · Lesen und Speichern", () => {
     const { app, services, admin } = await aufbau();
     const funktionsPruefer = vi.spyOn(services.reasoner, "referenzFunktionsPruefer");
     // Eine gesetzte Zuordnung mit Ausnahme und Grundfreigabe — beides darf das Speichern der
-    // Referenzliste nicht verändern.
+    // Referenzliste nicht verändern. Gesamtcheck R-1329 (Nacharbeit 57): die Nutzlast entsteht über
+    // den Freigabehelfer statt von Hand — derselbe Inhalt
+    // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`, F2).
     const zuordnung = await app.inject({
       method: "PUT",
       url: "/api/reasoner/config",
       headers: admin,
-      payload: {
-        global: "anthropic",
-        perTask: { structure: "local" },
-        kiFreigabe: { oeffentlicheKi: true },
-      },
+      payload: mitKiFreigabe({ global: "anthropic", perTask: { structure: "local" } }),
     });
     expect(zuordnung.statusCode, zuordnung.body.slice(0, 300)).toBe(200);
 
@@ -241,12 +240,14 @@ describe("REF-03 · Lesen und Speichern", () => {
       rang: 1,
     });
     const config = services.reasoner.getTaskConfig();
-    expect(config).toMatchObject({
-      global: "anthropic",
-      perTask: { structure: "local" },
-      kiFreigabe: { oeffentlicheKi: true },
-      referenzpruefung: ["local", "anthropic"],
-    });
+    // Dieselbe Erwartung wie vorher, die Grundfreigabe darin über den Helfer gebildet (F2).
+    expect(config).toMatchObject(
+      mitKiFreigabe({
+        global: "anthropic",
+        perTask: { structure: "local" },
+        referenzpruefung: ["local", "anthropic"],
+      }),
+    );
     // Die Persistenz der Liste über einen Neustart belegt REF-02 P5
     // (`tests/referenzki-pruefdienst/reasoner-referenzpruefer.test.ts`); der Schreibweg ist derselbe.
 
@@ -507,6 +508,28 @@ describe("REF-03 · Funktionscheck (K7)", () => {
     expect(
       lage.optionen.find((o: { wahl: string }) => o.wahl === "anthropic").letzteFunktionspruefung,
     ).toMatchObject({ zeit: e.zeit, modell: "claude-fiktiv-8", ergebnis: "erfolgreich" });
+    if (!protokoll) throw new Error("Der geprüfte Auditeintrag fehlt");
+    for (const geaendert of [
+      { verbrauch: { eingabe: "410", ausgabe: 52 } },
+      { kosten: { betrag: 1 } },
+    ]) {
+      await services.audit.record({
+        actor: protokoll.actor,
+        action: protokoll.action,
+        target: protokoll.target,
+        payload: { ...protokoll.payload, ...geaendert },
+      });
+      const erneut = await app.inject({
+        method: "GET",
+        url: "/api/reasoner/referenzpruefung",
+        headers: admin,
+      });
+      expect(erneut.statusCode).toBe(200);
+      expect(
+        erneut.json().optionen.find((o: { wahl: string }) => o.wahl === "anthropic")
+          .letzteFunktionspruefung,
+      ).toBeNull();
+    }
     expect(d.aufrufe()).toBe(1);
   });
 

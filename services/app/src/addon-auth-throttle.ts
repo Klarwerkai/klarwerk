@@ -41,8 +41,7 @@ export interface AddonAuthThrottleZeit {
 }
 
 function planeAbgekoppelt(lauf: () => void, verzoegerungMs: number): void {
-  const zeitgeber = setTimeout(lauf, verzoegerungMs) as unknown as { unref?: () => void };
-  zeitgeber.unref?.();
+  setTimeout(lauf, verzoegerungMs).unref();
 }
 
 export class AddonAuthAttemptThrottle {

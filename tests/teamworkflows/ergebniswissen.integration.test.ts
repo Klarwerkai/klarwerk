@@ -8,12 +8,12 @@ import { ergebnisUmfeld } from "./ergebniswissen-fixture";
 
 it("prüft das Weitergaberecht atomar mit der Artikelanlage und lässt bei abgewiesener Buchung weder Artikel noch Freigabestempel zurück", async () => {
   const c = await new GenericContainer("postgres:16-alpine")
-    .withEnvironment({ POSTGRES_PASSWORD: "workflow-synthetic", POSTGRES_DB: "ergebniswissen" })
+    .withEnvironment({ POSTGRES_PASSWORD: "workflow-synthetic", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
   const pool = createPool(
-    `postgresql://postgres:workflow-synthetic@${c.getHost()}:${c.getMappedPort(5432)}/ergebniswissen`,
+    `postgresql://postgres:workflow-synthetic@${c.getHost()}:${c.getMappedPort(5432)}/klarwerk_test`,
   );
   const schliessen = poolAbschluss(pool);
   try {

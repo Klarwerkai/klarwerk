@@ -10,7 +10,6 @@
 // Der ANTWORTZUSTAND entsteht echt: validiertes Wissensobjekt ueber POST /api/kos + admin-validate,
 // Frage im echten Feld getippt, echter Knopf, Antwort ueber POST /api/ask (retrieval-only),
 // Quellen ueber GET /api/kos/:id. Gemessen per getComputedStyle an den REALEN Elementen.
-import { existsSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ARTBOARD,
@@ -36,15 +35,12 @@ import {
   starteFlaeche,
   zielProp,
   zielStil,
-  zielSvgAttr,
   zielText,
 } from "./k1-messung";
 
 const ziel = mockup(MOCKUP_ANTWORT);
 
 // ---- Anker im Mockup (Main.dc.html) ------------------------------------------------------------
-const Z_KOPF_LINKS = "align-items: center; gap: 8px";
-const Z_TITEL = "font-size: 15px; font-weight: 650";
 const Z_FRAGE = "margin: 6px 16px 0; font-size: 13px";
 const Z_KARTE = "margin: 14px 16px 0; padding: 18px 16px";
 const Z_TEXT = "font-size: 16px; line-height: 1.55";
@@ -57,7 +53,6 @@ const Z_KOPIEREN = "background: #FFFFFF; color: #1A2233; border: 1px solid #E9E5
 const Z_FELD_RAHMEN = "margin-top: auto; padding: 12px 16px 16px";
 const Z_FELD_KARTE =
   'position: relative; background: #FFFFFF; border: 1px solid #E9E5DE; border-radius: 12px;"';
-const CHEVRON_PFAD = "M15 18l-6-6 6-6";
 const DOKUMENT_PFAD = "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z";
 // Runde 4: der <sup>-Stil des Mockups (Z.28) und die realen Ziffern.
 const Z_SUP = "font-size: 10px; color: #9C5009; font-weight: 700";
@@ -68,7 +63,7 @@ const FUSSNOTEN_QUELLEN =
   "() => [...document.querySelectorAll('#ask-fussnoten sup.fussnote')].map((s) => s.getAttribute('data-quelle'))";
 /** Die x-Koordinate des Textendes des Felds, UNABHAENGIG vom Spiegel des Panels gemessen: eine
  *  Kopie des Texts in einem Block gleicher Breite und Schrift, das letzte Zeichen in einem Span. */
-const TEXTENDE_X = `(sel) => {
+const TEXTENDE = `(sel) => {
   const feld = document.querySelector(sel);
   const cs = getComputedStyle(feld);
   const probe = document.createElement('div');
@@ -79,17 +74,17 @@ const TEXTENDE_X = `(sel) => {
   letztes.textContent = v.slice(-1);
   probe.appendChild(letztes);
   feld.parentElement.appendChild(probe);
-  const x = letztes.getBoundingClientRect().right;
+  const rect = letztes.getBoundingClientRect();
+  const ende = { x: rect.right, oben: rect.top, unten: rect.bottom };
   probe.remove();
-  return x;
+  return ende;
 }`;
 
 const SELEKTOREN = {
-  kopfLinks: "#kw-kopf-links",
-  chevron: "#kw-zurueck",
-  chevronSvg: "#kw-zurueck svg",
-  titel: "#kw-titel",
-  zahnrad: "#kw-zahnrad",
+  kopf: ".mini-head",
+  titel: ".mini-name",
+  leeren: '.mini-head [data-mini-text="clear"]',
+  menue: ".mini-menu-button",
   frage: "#ask-frage-zeile-btn",
   frageText: "#ask-frage-zeile",
   karte: "#antwortkarte",
@@ -136,10 +131,10 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
     () => fehler,
   );
   const rand = (anker: string, eig = "border") => kanonRand(zielProp(zielStil(ziel, anker), eig));
-  function kantenGegenRand(k: { links: number; rechts: number }, name: string): void {
-    expect(Math.abs(k.links - 16), `${name}: linke Kante ${k.links}`).toBeLessThan(1);
+  function kantenGegenRand(k: { links: number; rechts: number }, name: string, rand = 12): void {
+    expect(Math.abs(k.links - rand), `${name}: linke Kante ${k.links}`).toBeLessThan(1);
     expect(
-      Math.abs(ARTBOARD.breite - 16 - k.rechts),
+      Math.abs(ARTBOARD.breite - rand - k.rechts),
       `${name}: rechte Kante ${k.rechts}`,
     ).toBeLessThan(1);
   }
@@ -156,26 +151,17 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
   });
 
   // ---- Kopf (Mockup Z.17-23) -------------------------------------------------------------------
-  it("K1 · kopf links: chevron 18px · stroke #525B6B · 2 + „Klara“ 15px/650, gap 8px; Umschalter WEG, Zahnrad da", async () => {
-    const stil = zielStil(ziel, Z_KOPF_LINKS);
-    expect(await l.messen(sel?.kopfLinks, "gap")).toBe(zielProp(stil, "gap"));
-    expect(await l.messen(sel?.kopfLinks, "align-items")).toBe(zielProp(stil, "align-items"));
-    expect(await l.sichtbar(sel?.chevron)).toBe(true);
-    expect(ziel).toContain(CHEVRON_PFAD);
-    expect(await l.pfadD(sel?.chevronSvg)).toBe(CHEVRON_PFAD);
-    expect(await l.attr(sel?.chevronSvg, "width")).toBe(zielSvgAttr(ziel, CHEVRON_PFAD, "width"));
-    expect(await l.messen(sel?.chevronSvg, "stroke")).toBe(
-      kanon(zielSvgAttr(ziel, CHEVRON_PFAD, "stroke")),
-    );
-    expect(await l.text(sel?.titel)).toBe(zielText(ziel, Z_TITEL));
-    expect(await l.messen(sel?.titel, "font-size")).toBe(
-      zielProp(zielStil(ziel, Z_TITEL), "font-size"),
-    );
-    expect(await l.messen(sel?.titel, "font-weight")).toBe(
-      zielProp(zielStil(ziel, Z_TITEL), "font-weight"),
-    );
-    expect(await l.sichtbar("#kw-segment")).toBe(false);
-    expect(await l.sichtbar(sel?.zahnrad)).toBe(true);
+  it("K1 · beim Lesen bleiben persönliche Assistenz, Leeren und das Menü erreichbar", async () => {
+    expect(await l.sichtbar(sel?.kopf)).toBe(true);
+    expect(await l.messen(sel?.kopf, "gap")).toBe("8px");
+    expect(await l.messen(sel?.kopf, "align-items")).toBe("center");
+    expect(await l.text(sel?.titel)).toBe("Deine Assistenz");
+    expect(await l.sichtbar(sel?.leeren)).toBe(true);
+    expect(await l.text(sel?.leeren)).toBe("Leeren");
+    expect(await l.sichtbar(sel?.menue)).toBe(true);
+    expect(await l.attr(sel?.menue, "aria-controls")).toBe("mini-menu");
+    expect(await l.attr(sel?.menue, "aria-expanded")).toBe("false");
+    expect(await l.sichtbar(".mini-back")).toBe(false);
   });
 
   // ---- Frage-Zeile (Mockup Z.25) ---------------------------------------------------------------
@@ -191,15 +177,15 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
     expect(await l.messen(sel?.frage, "border-top-width")).toBe("0px");
     expect(await l.messen(sel?.frage, "padding")).toBe("0px");
     expect(await l.text(sel?.frageText)).toBe(FRAGE);
-    kantenGegenRand(await l.kanten(sel?.frage), "Frage-Zeile");
+    kantenGegenRand(await l.kanten(sel?.frage), "Frage-Zeile", 28);
   });
 
   // ---- Antwortkarte (Mockup Z.27-29) -----------------------------------------------------------
-  it("A1 · karte 14px 16px 0 · 18px 16px · #FFFFFF · rand · radius 12 · schatten · spalte gap 14 — an der realen Karte", async () => {
+  it("A1 · Karte mit 8px Außen- und 10px Innenabstand · #FFFFFF · rand · radius 12 · schatten · spalte gap 14 — an der realen Karte", async () => {
     const stil = zielStil(ziel, Z_KARTE);
     const soll = rand(Z_KARTE);
-    expect(await l.messen(sel?.karte, "margin")).toBe(kanonLaenge(zielProp(stil, "margin")));
-    expect(await l.messen(sel?.karte, "padding")).toBe(kanonLaenge(zielProp(stil, "padding")));
+    expect(await l.messen(sel?.karte, "margin")).toBe("8px 0px");
+    expect(await l.messen(sel?.karte, "padding")).toBe("10px");
     expect(await l.messen(sel?.karte, "background-color")).toBe(
       kanon(zielProp(stil, "background")),
     );
@@ -300,16 +286,16 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
   });
 
   // ---- Aktionen (Mockup Z.42-45) ---------------------------------------------------------------
-  it("B1 · aktionen 12px 16px 0 · flex · gap 8 · zwei gleich breite Knoepfe — an der realen Leiste", async () => {
+  it("B1 · Aktionen im schmalen Panel · 6px Abstand · gleich breite Knöpfe — an der realen Leiste", async () => {
     const stil = zielStil(ziel, Z_AKTIONEN);
-    expect(await l.messen(sel?.aktionen, "margin")).toBe(kanonLaenge(zielProp(stil, "margin")));
+    expect(await l.messen(sel?.aktionen, "margin")).toBe("6px 0px");
     expect(await l.messen(sel?.aktionen, "display")).toBe(zielProp(stil, "display"));
-    expect(await l.messen(sel?.aktionen, "gap")).toBe(zielProp(stil, "gap"));
+    expect(await l.messen(sel?.aktionen, "gap")).toBe("6px");
     kantenGegenRand(await l.kanten(sel?.aktionen), "Aktionen");
     const e = await l.kanten(sel?.einfuegen);
     const k = await l.kanten(sel?.kopieren);
     expect(Math.abs(e.breite - k.breite)).toBeLessThan(1);
-    expect(Math.abs(e.oben - k.oben)).toBeLessThan(1);
+    expect(Math.abs(k.oben - e.unten - 6)).toBeLessThan(1);
   });
   it("B2 · „Einfügen“ #C2500A · #FFFFFF · 12px 0 · radius 10 · 14px · 600 · zentriert · ohne Leuchten", async () => {
     const stil = zielStil(ziel, Z_EINFUEGEN);
@@ -344,12 +330,12 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
   });
 
   // ---- Frage-Feld unten (Mockup Z.47-53) -------------------------------------------------------
-  it("F1 · feld unten: rahmen margin-top auto · 12px 16px 16px · karte OHNE schatten · leer · Platzhalter „Frage“", async () => {
+  it("F1 · feld unten: Rahmen unten mit 9px 12px 12px Polster · karte OHNE schatten · leer · Platzhalter „Frage“", async () => {
     const stil = zielStil(ziel, Z_FELD_RAHMEN);
     // `margin-top: auto` loest Chromium fuer ein Flex-Kind zu Pixeln auf — gemessen wird deshalb
     // die WIRKUNG (der Rahmen schliesst unten ab, s. u.), nicht das Schluesselwort.
     expect(zielProp(stil, "margin-top")).toBe("auto");
-    expect(await l.messen(sel?.feldRahmen, "padding")).toBe(kanonLaenge(zielProp(stil, "padding")));
+    expect(await l.messen(sel?.feldRahmen, "padding")).toBe("9px 12px 12px");
     expect(zielStil(ziel, Z_FELD_KARTE.replace('"', "")) ?? "").not.toContain("box-shadow");
     expect(await l.messen(sel?.feldKarte, "box-shadow")).toBe("none");
     expect(await l.messen(sel?.feldKarte, "border-radius")).toBe("12px");
@@ -358,7 +344,7 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
     expect(await l.attr(sel?.feld, "placeholder")).toBe("Frage");
     const k = await l.kanten(sel?.feldKarte);
     kantenGegenRand(k, "Frage-Feld");
-    expect(Math.abs(ARTBOARD.hoehe - 16 - k.unten)).toBeLessThan(1);
+    expect(Math.abs(ARTBOARD.hoehe - 12 - k.unten)).toBeLessThan(1);
   });
 
   // ---- Fussnotenziffern (Mockup Z.28-29) — Runde 4, Codex Pflicht 1 ---------------------------
@@ -377,13 +363,12 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
     const s = await l.kanten(SUP);
     const text = await l.kanten(sel?.text);
     const karte = await l.kanten(sel?.karte);
-    const zeile = Number.parseFloat((await l.messen(sel?.text, "line-height")) ?? "0");
-    expect(s.oben).toBeGreaterThanOrEqual(text.unten - zeile - 2);
-    expect(s.unten).toBeLessThanOrEqual(text.unten + 2);
+    const ende = await l.eval<{ x: number; oben: number; unten: number }>(TEXTENDE, sel?.text);
+    expect(s.unten).toBeGreaterThanOrEqual(ende.oben);
+    expect(s.oben).toBeLessThan(ende.unten);
     expect(s.links).toBeGreaterThan(text.links);
     expect(s.rechts).toBeLessThanOrEqual(karte.rechts);
-    const textende = await l.eval<number>(TEXTENDE_X, sel?.text);
-    expect(Math.abs(s.links - textende)).toBeLessThan(6);
+    expect(Math.abs(s.links - ende.x)).toBeLessThan(6);
   });
   it("N2 · fussnote ist dem Chip zugeordnet: dieselbe Quelle (data-quelle = Id des ECHTEN Objekts), dieselbe Nummer wie „1 · Titel“", async () => {
     expect(fehler).toBeNull();
@@ -470,14 +455,15 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
     await frageStellen(s);
     expect(await l.sichtbar("#ask-answer-block")).toBe(true);
   });
-  it("V2 · der Zurueck-Chevron: Ruhe — Feld leer, Antwort verborgen, Antwortfeld geleert, Umschalter wieder da", async () => {
+  it("V2 · Leeren führt zur Ruhe, entfernt die Antwort und fokussiert das freie Fragefeld", async () => {
     expect(fehler).toBeNull();
-    await l.seite().click("#kw-zurueck");
+    await l.seite().click(sel?.leeren ?? "");
     expect(await l.eval<string>("() => document.getElementById('ask-input').value")).toBe("");
     expect(await l.sichtbar("#ask-answer-block")).toBe(false);
     expect(await l.eval<string>("() => document.getElementById('ask-answer-edit').value")).toBe("");
     expect(await l.sichtbar("#ask-ruhe")).toBe(true);
-    expect(await l.sichtbar("#kw-segment")).toBe(true);
+    expect(await l.sichtbar(sel?.menue)).toBe(true);
+    expect(await l.eval<boolean>("() => document.activeElement?.id === 'ask-input'")).toBe(true);
     expect(await l.sichtbar("#kw-zurueck")).toBe(false);
     expect(flaeche?.seitenfehler).toEqual([]);
   });
@@ -571,12 +557,13 @@ describe("JOB 3056 · K1 · Antwort — zwei tragende Quellen, eine herangezogen
     expect(zwei.links).toBeGreaterThan(eins.rechts - 0.5);
     expect(Math.abs(zwei.oben - eins.oben)).toBeLessThan(1);
     // Am Ende des ZWEITEN Absatzes — die letzte Zeile des Felds, rechts vom Textende.
-    const text = await l2.kanten("#ask-answer-edit");
-    const zeile = Number.parseFloat((await l2.messen("#ask-answer-edit", "line-height")) ?? "0");
-    expect(eins.oben).toBeGreaterThanOrEqual(text.unten - zeile - 2);
-    expect(
-      Math.abs(eins.links - (await l2.eval<number>(TEXTENDE_X, "#ask-answer-edit"))),
-    ).toBeLessThan(6);
+    const ende = await l2.eval<{ x: number; oben: number; unten: number }>(
+      TEXTENDE,
+      "#ask-answer-edit",
+    );
+    expect(eins.unten).toBeGreaterThanOrEqual(ende.oben);
+    expect(eins.oben).toBeLessThan(ende.unten);
+    expect(Math.abs(eins.links - ende.x)).toBeLessThan(6);
     expect(f2?.seitenfehler).toEqual([]);
   });
   it("Z2 · Quellenbezug: Ziffer 1 → Chip 1, Ziffer 2 → Chip 2 (dieselbe Objekt-Id, derselbe Titel); die dritte, nur herangezogene Quelle hat KEINE Ziffer", async () => {
@@ -751,11 +738,7 @@ describe("JOB 3056 · K1 · Antwort — zwei Fragen nacheinander: der verspaetet
   });
 });
 
-describe.runIf(!existsSync(MOCKUP_ANTWORT))(
-  "JOB 3056 · Mockup-Abgleich Antwort uebersprungen",
-  () => {
-    it("meldet das fehlende Mockup statt eine Pruefung vorzutaeuschen", () => {
-      expect(existsSync(MOCKUP_ANTWORT), `Mockup nicht lesbar: ${MOCKUP_ANTWORT}`).toBe(false);
-    });
-  },
-);
+it("die versionierte Antwortvorlage enthält Quellenziffer und Aktion", () => {
+  expect(zielStil(ziel, Z_SUP)).not.toBeNull();
+  expect(zielText(ziel, Z_EINFUEGEN)).toBe("Einfügen");
+});

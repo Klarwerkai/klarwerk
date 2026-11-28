@@ -99,7 +99,8 @@ describe("JOB 3116 · R6 — kein Abzeichen ohne Auskunft, keine erfundene Kennu
       m.text,
       'Ein Lesefehler ist keine festgestellte Leere: "nicht im Papierkorb" waere eine Behauptung ueber den Bestand.',
     ).not.toContain("nicht im Papierkorb");
-    expect(m.text, "Und keine erfundene Kennung.").not.toContain("Kennung");
+    expect(m.pruefliste).toContain("Wartungsplan Anlage 3");
+    expect(m.pruefliste, "Keine erfundene Kennung am Kandidaten.").not.toContain("Kennung");
   });
 
   it("R6c · die vorhandenen Abzeichen bleiben, wo sie hingehoeren", async () => {

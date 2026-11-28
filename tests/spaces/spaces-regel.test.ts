@@ -88,9 +88,9 @@ describe("darfSehen · der führende Space ist eine zweite, unabhängige Bedingu
 describe("sqlSichtbarkeitFuer · dieselbe Regel als SQL-Prädikat vor dem LIMIT", () => {
   it("mit Spaceangabe reist die Menge lesbarer Spaces als dritter Parameter", () => {
     const trim = sqlSichtbarkeitFuer(sitzung("u-erik", "experte"));
-    expect(trim.params).toEqual([false, "u-erik", ["s-werkstatt", "s-offen"]]);
+    expect(trim.params).toEqual([0, "u-erik", ["s-werkstatt", "s-offen"]]);
     const sql = trim.sql("kos", 4);
-    expect(sql).toContain("$4::boolean");
+    expect(sql).toContain("<= $4::int");
     expect(sql).toContain("$5");
     expect(sql).toContain("kos.data->>'spaceId' = ANY($6::text[])");
     expect(sql).toContain("jsonb_typeof(kos.data->'spaceId') IS DISTINCT FROM 'string'");
@@ -98,7 +98,7 @@ describe("sqlSichtbarkeitFuer · dieselbe Regel als SQL-Prädikat vor dem LIMIT"
 
   it("ohne Spaceangabe bleibt die Parameterliste die bisherige, und jedes Objekt mit Space fällt weg", () => {
     const trim = sqlSichtbarkeitFuer({ id: "u-bert", role: "experte" });
-    expect(trim.params).toEqual([false, "u-bert"]);
+    expect(trim.params).toEqual([0, "u-bert"]);
     const sql = trim.sql("kos", 1);
     expect(sql).not.toContain("$3");
     expect(sql).toContain("jsonb_typeof(kos.data->'spaceId') IS DISTINCT FROM 'string'");

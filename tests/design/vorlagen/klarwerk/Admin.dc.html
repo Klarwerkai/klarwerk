@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+    a { color: #9C5009; } a:hover { color: #C2500A; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; background: #FAF8F5; color: #1A2233; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+  <div style="background: #0E1626; color: #FAF8F5; height: 56px; padding: 0 32px; display: flex; align-items: center; gap: 36px;">
+    <div style="font-size: 16px; font-weight: 650; letter-spacing: 0.4px;">KLARWERK</div>
+    <div style="display: flex; align-items: center; gap: 26px;">
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Start</div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Fragen</div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Bibliothek</div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Erfassen</div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Prüfen <span style="font-size: 10.5px; font-weight: 700; color: #0E1626; background: #B9C1D2; border-radius: 999px; padding: 1px 6px;">9</span></div>
+    </div>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; width: 260px; padding: 7px 12px; background: #16213A; border-radius: 9px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7E879A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+        <div style="font-size: 13px; color: #7E879A;">Suchen</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B9C1D2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      <div style="width: 30px; height: 30px; border-radius: 50%; background: #E8630A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;">PK</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; justify-content: center; overflow: hidden;">
+    <div style="width: 900px; padding: 36px 0; display: flex; flex-direction: column; gap: 22px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div style="font-size: 26px; font-weight: 650; letter-spacing: -0.3px;">Einstellungen</div>
+      
+    </div>
+      <div style="display: flex; gap: 24px; align-items: flex-start;">
+        <div style="width: 200px; display: flex; flex-direction: column; gap: 4px;"><div style="padding: 10px 14px; border-radius: 9px; font-size: 14px; background: #FFFFFF; border: 1px solid #E9E5DE; font-weight: 600;">Konten</div><div style="padding: 10px 14px; border-radius: 9px; font-size: 14px; color: #525B6B;">KI</div><div style="padding: 10px 14px; border-radius: 9px; font-size: 14px; color: #525B6B;">Daten</div><div style="padding: 10px 14px; border-radius: 9px; font-size: 14px; color: #525B6B;">Sicherheit</div></div>
+        <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 20px;">
+          <div style="background: #FFFFFF; border: 1px solid #E9E5DE; border-radius: 14px; box-shadow: 0 1px 2px rgba(14, 22, 38, 0.05), 0 8px 24px -12px rgba(14, 22, 38, 0.12); overflow: hidden;">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #E9E5DE;"><div style="font-size: 14px;">Peter Kohnert</div><div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #525B6B;">Admin <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #E9E5DE;"><div style="font-size: 14px;">Natascha Fouquet</div><div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #525B6B;">Experte <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #E9E5DE;"><div style="font-size: 14px;">Jan Vermeer</div><div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #525B6B;">Controller <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 16px;"><div style="font-size: 14px;">Lena Hartmann</div><div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #525B6B;">Betrachter · wartet auf Freigabe <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div></div>
+          </div>
+          <div style="display: flex; gap: 10px;"><div style="padding: 10px 20px; background: #FFFFFF; color: #1A2233; border: 1px solid #E9E5DE; border-radius: 10px; font-size: 14px;">Nutzer hinzufügen</div></div>
+          <div style="font-size: 11px; letter-spacing: 0.4px; color: #525B6B; margin-top: 8px;">ROLLEN</div>
+          <div style="background: #FFFFFF; border: 1px solid #E9E5DE; border-radius: 14px; box-shadow: 0 1px 2px rgba(14, 22, 38, 0.05), 0 8px 24px -12px rgba(14, 22, 38, 0.12); overflow: hidden;">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #E9E5DE;"><div style="font-size: 14px;">Betrachter</div><div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #525B6B;">fragen, lesen <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #E9E5DE;"><div style="font-size: 14px;">Experte</div><div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #525B6B;">+ erfassen <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #E9E5DE;"><div style="font-size: 14px;">Controller</div><div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #525B6B;">+ prüfen, Konflikte, Duplikate <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 16px;"><div style="font-size: 14px;">Admin</div><div style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: #525B6B;">+ Konten, KI, Daten · KI-Wahl frei <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9AA2B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

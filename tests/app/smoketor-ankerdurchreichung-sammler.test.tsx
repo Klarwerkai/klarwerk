@@ -31,10 +31,15 @@ import { afterEach, describe, expect, it } from "vitest";
 // also Komponenten, und damit genau die Bauform, die dieser Sammler nicht glauben, sondern messen
 // will. Die Proben unten rendern sie und schauen nach, ob das Attribut im SVG ankommt.
 import { ArrowUpRight, ChevronRight, Lock } from "../../apps/web/node_modules/lucide-react";
-import { type ReactNode, act, createElement } from "../../apps/web/node_modules/react";
+import { Fragment, type ReactNode, act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { Link, MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { GuardedLink, NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
+import { BildTabelleBearbeiten } from "../../apps/web/src/components/BildTabelleBearbeiten";
+import {
+  DatenKontrolle,
+  type DatenkontrolleSicht,
+} from "../../apps/web/src/components/bibliothek/DatenKontrolle";
 import { Button, Card, TextInput } from "../../apps/web/src/components/ui";
 import "../../apps/web/src/i18n";
 
@@ -188,6 +193,84 @@ afterEach(() => {
   container = null;
 });
 
+// JSX-Namen aus lokalen Variablen wählen stellenweise zwischen echten HTML-Elementen.
+// Ihre Anker entstehen im Elternbauteil und lassen sich dort in beiden Zweigen messen.
+const DYNAMISCHE_PROBEN: Record<string, () => void> = {
+  Huelle() {
+    const kontrolle: DatenkontrolleSicht = {
+      datenpunktId: ANKER,
+      datenFassung: 1,
+      zustand: "validiert",
+      grund: "Zahl geprüft",
+      naechsteArbeit: [],
+      dimensionen: [],
+      prognose: false,
+      gepruefAm: "2026-01-01T10:00:00Z",
+    };
+    const dom = rendere(
+      createElement(
+        Fragment,
+        {},
+        createElement(DatenKontrolle, { kontrolle }),
+        createElement(DatenKontrolle, { kontrolle, eingebettet: true }),
+      ),
+    );
+    const huellen = dom.querySelectorAll(`[data-datenkontrolle="${ANKER}"]`);
+    expect(Array.from(huellen, (element) => element.tagName)).toEqual(["SECTION", "DIV"]);
+    expect(huellen[1]?.getAttribute("role")).toBe("group");
+  },
+  Zelle() {
+    const dom = rendere(
+      createElement(BildTabelleBearbeiten, {
+        tabelle: {
+          kopfzeilen: 1,
+          spalten: 1,
+          zeilen: [
+            [{ text: "Ort", zustand: "sicher", mehrdeutig: false }],
+            [{ text: "Bonn", zustand: "unsicher", mehrdeutig: true }],
+          ],
+        },
+        inhaltskennung: ANKER,
+        fundstelle: { quelle: "Orte.png", art: "bild", bild: 1 },
+      }),
+    );
+    const zellen = dom.querySelectorAll<HTMLElement>('[data-testid="bild-tabelle-zelle"]');
+    expect(
+      Array.from(zellen, (zelle) => ({
+        tag: zelle.tagName,
+        zeile: zelle.dataset.zeile,
+        spalte: zelle.dataset.spalte,
+        zustand: zelle.dataset.zustand,
+        mehrdeutig: zelle.dataset.mehrdeutig,
+        bearbeitet: zelle.dataset.bearbeitet,
+        berichtigt: zelle.dataset.berichtigt,
+        wert: zelle.querySelector("input")?.value,
+      })),
+    ).toEqual([
+      {
+        tag: "TH",
+        zeile: "0",
+        spalte: "0",
+        zustand: "sicher",
+        mehrdeutig: "nein",
+        bearbeitet: "nein",
+        berichtigt: "nein",
+        wert: "Ort",
+      },
+      {
+        tag: "TD",
+        zeile: "1",
+        spalte: "0",
+        zustand: "unsicher",
+        mehrdeutig: "ja",
+        bearbeitet: "nein",
+        berichtigt: "nein",
+        wert: "Bonn",
+      },
+    ]);
+  },
+};
+
 describe("AUFTRAG-smoketor A — ein Testanker an einer Komponente muss im DOM ankommen", () => {
   // ----------------------------------------------------------------------------------------------
   // DIE BÜHNE, die den Anker SIEHT statt seine Absicht im Quelltext zu lesen. Das ist der Fall, der
@@ -222,7 +305,10 @@ describe("AUFTRAG-smoketor A — ein Testanker an einer Komponente muss im DOM a
       0,
     );
     const ohneProbe = [...new Set(stellen.map((stelle) => stelle.komponente))]
-      .filter((komponente) => PROBEN[komponente] === undefined)
+      .filter(
+        (komponente) =>
+          !Object.hasOwn(PROBEN, komponente) && !Object.hasOwn(DYNAMISCHE_PROBEN, komponente),
+      )
       .sort();
     expect(
       ohneProbe,
@@ -237,5 +323,8 @@ describe("AUFTRAG-smoketor A — ein Testanker an einer Komponente muss im DOM a
         `<${komponente} data-testid> kommt im DOM nicht an — TypeScript prüft Attribute mit Bindestrich nicht gegen den Props-Typ, der Aufruf kompiliert also und verpufft`,
       ).not.toBeNull();
     });
+  }
+  for (const [komponente, probe] of Object.entries(DYNAMISCHE_PROBEN)) {
+    it(`${komponente} trägt die Produktanker an beide HTML-Varianten`, probe);
   }
 });

@@ -104,13 +104,11 @@ describe("K1 · Ankersperre (BEN-Korrekturpflicht 1)", () => {
     ).toEqual({ status: "pending", judge: 0 });
   });
 
-  it("K1f · ein aufgelöster Entwurf OHNE gespeicherte Stufe lässt die Deklaration gelten", async () => {
+  it("K1f · ein Entwurf ohne gespeicherte Einstufung bleibt auch bei interner Deklaration gesperrt", async () => {
     await starte();
-    // JOB 2692 D1, Fall A5, hier unverändert: ein Anker, der auflöst, aber keine Stufe trägt, hebt
-    // nichts — er ist ein Anker, kein Freibrief und keine zweite Sperre.
     expect(
       await frage({ text: DRAFT, source: "draft", confidentiality: "intern", draftId: "d-ohne" }),
-    ).toEqual({ status: "done", judge: 1 });
+    ).toEqual({ status: "pending", judge: 0 });
   });
 
   it("K1g · der Upload-Weg (`transient-document`) bleibt unberührt", async () => {

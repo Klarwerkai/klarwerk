@@ -76,6 +76,7 @@ const GRUNDLINIE_PFAD = join(process.cwd(), "tests/suchguete-drift/grundlinie.js
 const GRUNDLINIE: Grundlinie = JSON.parse(readFileSync(GRUNDLINIE_PFAD, "utf8"));
 
 const VORLAGE: Omit<CreateKoInput, "title" | "statement"> = {
+  confidentiality: "intern",
   type: "best_practice",
   category: "Pruefset",
   author: "anna",

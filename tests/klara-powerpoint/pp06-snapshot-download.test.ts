@@ -349,8 +349,31 @@ describe("PP06 O-1 · dynamische Quellrechte am tatsächlichen Dateiabruf", () =
         headers: w.editor.headers,
         payload: { koId: w.ziel.id, ort: { anhangId: id, sldId: "256", shapeId: "7" } },
       });
-      expect(bind.statusCode, bind.body).toBe(200);
-      await w.status(clone.id, 404, w.admin);
+      // Die öffentliche Bindungsroute prüft die Herkunft bereits vor dem Anlegen einer Bindung.
+      expect(bind.statusCode, bind.body).toBe(400);
+      expect(bind.json()).toMatchObject({ error: "INVALID" });
+      const dp = (await w.services.datenpunkte.lesen(w.punkt.id))!;
+      expect(dp.bindungen.some((b) => b.objectId === clone.id)).toBe(false);
+      // Auch eine gewöhnliche Bindung aus einem Altbestand adelt die Kopie nicht.
+      const original = dp.bindungen.find((b) => b.objectId === gebaut.objectId);
+      if (!original) throw new Error("Die echte PP06-Bindung fehlt");
+      const lesen = w.services.datenpunkte.lesen.bind(w.services.datenpunkte);
+      const leser = vi.spyOn(w.services.datenpunkte, "lesen").mockImplementation((punktId) =>
+        punktId === dp.id
+          ? Promise.resolve({
+              ...dp,
+              bindungen: [
+                ...dp.bindungen,
+                { ...original, id: "normale-bindung", objectId: clone.id, anhangId: id },
+              ],
+            })
+          : lesen(punktId),
+      );
+      try {
+        await w.status(clone.id, 404, w.admin);
+      } finally {
+        leser.mockRestore();
+      }
       await w.status(gebaut.objectId, 200);
     } finally {
       await w.app.close();

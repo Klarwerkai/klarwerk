@@ -6,7 +6,16 @@
 // steht (Pixel des Bildes) — das sind die echten Fundstellen, an denen die Markierung der Ansicht
 // geprüft wird. Dazu eine minimale PowerPoint (ZIP ohne Kompression), dieselbe Bauweise wie in
 // `klara-bild-kontext-browser.spec.ts`.
-import type { Page } from "@playwright/test";
+import { type Page, expect } from "@playwright/test";
+
+/** H06: das Öffnen der Anhangsliste liest die Datei noch nicht. */
+export async function liesBilderImAnhang(page: Page, name: string): Promise<void> {
+  const lesen = page.getByRole("button", { name: `Bilder und Text lesen: ${name}`, exact: true });
+  await expect(lesen).toBeEnabled();
+  const anhang = page.locator("[data-office-bild-befund]").filter({ has: lesen });
+  await expect(anhang.getByTestId("bild-befunde")).toHaveCount(0);
+  await lesen.click();
+}
 
 export interface GezeichnetesWort {
   text: string;

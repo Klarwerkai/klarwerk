@@ -35,7 +35,7 @@ afterEach(() => {
 
 for (const papierkorb of [false, true]) {
   const fall = papierkorb
-    ? "nach dem Einreihen gelöscht: API und Fläche nennen den Papierkorb mit Kennung"
+    ? "nach dem Einreihen gelöscht: die Annahme meldet den Papierkorb, die Liste verbirgt das gelöschte Ziel"
     : "vor der ersten Anlage eingereiht: API und Fläche nennen die Wiederverwendung mit Kennung";
 
   it(`B3 · ${fall}`, async () => {
@@ -96,12 +96,24 @@ for (const papierkorb of [false, true]) {
       treffer: { art: "wissensobjekt", koId: zuerst.koId },
     });
 
+    const liste = await bruecke.app.inject({
+      method: "GET",
+      url: "/api/library/import/candidates",
+      headers: bruecke.kopf,
+    });
+    expect(liste.statusCode).toBe(200);
     m = await mounteImportReview();
+    if (papierkorb) {
+      // Angenommene Kandidaten sind in der Liste an das aktuelle Leserecht des Ziels gebunden.
+      expect(liste.json()).toEqual([]);
+      expect(m.pruefliste).not.toContain("B3 Quelle");
+      expect(m.pruefliste).not.toContain(zuerst.koId);
+      return;
+    }
+    expect(liste.json()).toHaveLength(2);
     expect(m.karte("B3 Quelle Fassung 2")).toEqual([
       "Angenommen",
-      papierkorb
-        ? `liegt im Papierkorb, Kennung ${zuerst.koId}`
-        : `vorhanden, Kennung ${zuerst.koId} wiederverwendet`,
+      `vorhanden, Kennung ${zuerst.koId} wiederverwendet`,
     ]);
     // Die erste Fassung hat wirklich angelegt — dort bleibt das Erzeugt-Abzeichen richtig (seit
     // R-0908 „Wissensobjekt angelegt" statt „KO erzeugt", `fachwort.fund.angelegt`).

@@ -674,7 +674,7 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega70 BLOCK C: die betonte nächste Handlung nach dem Speichern richtet sich nach der
   // effektiven Rolle (RoleContext — auch die Admin-Ansicht-als zählt, nicht nur die Session).
   const { role } = useRole();
-  const { push } = useToast();
+  const { push, dismiss } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
   // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT. Der
   // Server gibt jeder Rolle, auch Administratoren, nur die EIGENEN Entwürfe (`canSeeDraft` in
@@ -1918,6 +1918,7 @@ export function CaptureArbeitsraum({
       push("success", meldung);
     }
   }, [push]);
+  const ganzdokumentFehlerToast = useRef<string | null>(null);
   const fileWholeDraft = useMutation({
     // WP-D1/WP-D4: bei DOCX reist das strukturerhaltende HTML mit (Server sanitisiert autoritativ);
     // sourceKind steuert den ehrlichen Format-Hinweis im Quelle-Blockquote.
@@ -2044,6 +2045,10 @@ export function CaptureArbeitsraum({
       };
     },
     onMutate: () => {
+      if (ganzdokumentFehlerToast.current) {
+        dismiss(ganzdokumentFehlerToast.current);
+        ganzdokumentFehlerToast.current = null;
+      }
       setBereitsGespeichert((b) => ({ ...b, datei: null }));
     },
     onSuccess: ({ draft, originalFailure, originalAttached }, input) => {
@@ -2135,7 +2140,11 @@ export function CaptureArbeitsraum({
         setFileImportMeldung(t(CAPTURE_FILE_TEXT.tooLargeForImport));
         return;
       }
-      fail(error);
+      const meldung = fehlersatz(error);
+      setErr(meldung);
+      push("error", meldung, (id) => {
+        ganzdokumentFehlerToast.current = id;
+      });
     },
   });
 
@@ -2338,7 +2347,7 @@ export function CaptureArbeitsraum({
   // statt einer Wiederholung, und nach einem Antwortverlust entstünde ein zweites vollständiges
   // Wissensobjekt. Wann er fällt und wann er bleibt, steht in lib/createOperation.ts.
   const submitOperationRef = useRef<string | null>(null);
-  const submitAbdruckRef = useRef<string | null>(null);
+  const submitDraftRef = useRef<string | null>(null);
 
   // AUFTRAG-mega22 Block E: steht hier eine Meldung, hat der Server einen 409 mit einem Code
   // geliefert, für den ein NEUER Vorgang der richtige Ausweg ist. Die Oberfläche bietet die
@@ -2352,9 +2361,8 @@ export function CaptureArbeitsraum({
         throw new Error("no draft");
       }
       // Ein Vorgang, ein Schlüssel — über alle Wiederholungen hinweg, bis er eindeutig erledigt ist.
-      const abdruck = JSON.stringify({ draft, draftId, reviewerIds: [...reviewerIds].sort() });
-      if (!submitOperationRef.current || submitAbdruckRef.current !== abdruck) {
-        submitAbdruckRef.current = abdruck;
+      if (!submitOperationRef.current || submitDraftRef.current !== draftId) {
+        submitDraftRef.current = draftId;
         submitOperationRef.current = newCreateOperationId();
       }
       const operationId = submitOperationRef.current;
@@ -3410,6 +3418,8 @@ export function CaptureArbeitsraum({
   // löscht der Reset ALLE inhaltstragenden Modi, Ref-Caches, Queues und abgeleiteten Resultate über die
   // beiden kanonischen Räum-Funktionen. Eine Quelle für den Leerzustand, geteilt von beiden Verwerfen-Wegen.
   const resetCaptureForm = (): void => {
+    submitOperationRef.current = null;
+    setRestartOffer(null);
     setRaw("");
     // OCR-E04: mit dem Rohtext geht auch der Seitenstand eingefügter PDFs; ein laufendes Lesen
     // startet keine weitere Seite.

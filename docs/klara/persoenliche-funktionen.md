@@ -8,7 +8,7 @@ Quelle: `gespraech/auftragsuebernahme-01a11f14/bes-ui-20261011-r1.json`, SHA256 
 | Teil | Ort |
 | --- | --- |
 | Funktionsvertrag, Fassungen, Parameter, Lauf, Serienvorschau | `services/app/src/persoenliche-funktionen.ts` |
-| Ablage (eine Zeile je Funktion, JSON) | Tabelle `persoenliche_funktionen`, `PERSOENLICHE_FUNKTIONEN_SCHEMA` (additiv) |
+| Ablage (eine Zeile je Funktion, JSON) | `RoutinenFunktionenRepo` nutzt die Tabelle `persoenliche_routinen` (`PERSOENLICHE_ROUTINEN_SCHEMA`) auch für Beschaffungsroutinen |
 | HTTP, nur das eigene Konto | `services/app/src/routes/persoenliche-funktionen-routes.ts` (`/api/me/funktionen…`) |
 | Oberfläche | Einstellungen → Persönliche Einstellungen → „Meine Funktionen“ (`/profil?bereich=funktionen`) |
 

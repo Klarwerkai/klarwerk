@@ -447,7 +447,7 @@ export function Start(): JSX.Element {
           <Weiterarbeiten
             key={kontoId}
             kontoId={kontoId}
-            role={role}
+            kontorolle={role}
             board={board.isError ? [] : (board.data ?? [])}
             meldungen={meldungen.isError ? [] : (meldungen.data ?? [])}
           />

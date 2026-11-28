@@ -266,8 +266,9 @@ describe("mega63 C → H1 · die Texte auf der Nachtfläche des Kopfbands", () =
         (m) => m[1] ?? "",
       ),
     );
-    // Größen sind keine Farben.
-    for (const groesse of ["sm", "left", "center"]) {
+    // Größen sind keine Farben. Gesamtcheck R-1329 (R-0918): dazu die benannten Größenstufen der
+    // Schriftskala (`lib/schriftskala.ts`), `text-klein` (11 px) und `text-zaehler` (10,5 px).
+    for (const groesse of ["sm", "left", "center", "klein", "zaehler"]) {
       benutzt.delete(groesse);
     }
     expect(benutzt.size, "keine Textklassen gefunden").toBeGreaterThan(2);

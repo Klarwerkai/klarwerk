@@ -13,6 +13,9 @@ export default {
   // Protokollvorgang `ko.asset-assigned` ab, den `KoService.ordneAnlageZu` schreibt.
   legacySchluessel: ["audit.action.ko_asset_assigned"],
   de: {
+    "folgepruefung.bestaetigungDurchVerwaltung":
+      "Die Verwaltung bestätigt, ob diese freigegebene Fassung weiterhin gilt.",
+    "folgepruefung.aenderungVorschlagen": "Änderung vorschlagen",
     "folgepruefung.grund.konflikt":
       "Die Quellengrundlage einer früheren Entscheidung hat sich geändert — erneut prüfen",
     "folgepruefung.grundKurz.konflikt": "Quellengrundlage geändert",
@@ -66,6 +69,9 @@ export default {
       "Keine gespeicherte Kopplung an „{{asset}}“ — es wurde nichts markiert.",
   },
   en: {
+    "folgepruefung.bestaetigungDurchVerwaltung":
+      "An administrator confirms whether this approved version is still valid.",
+    "folgepruefung.aenderungVorschlagen": "Suggest a change",
     "folgepruefung.grund.konflikt":
       "The source basis of an earlier decision has changed — review it again",
     "folgepruefung.grundKurz.konflikt": "Source basis changed",
@@ -116,6 +122,9 @@ export default {
     "folgepruefung.keineKopplung": "No stored coupling to “{{asset}}” — nothing was marked.",
   },
   nl: {
+    "folgepruefung.bestaetigungDurchVerwaltung":
+      "Een beheerder bevestigt of deze goedgekeurde versie nog geldig is.",
+    "folgepruefung.aenderungVorschlagen": "Een wijziging voorstellen",
     "folgepruefung.grund.konflikt":
       "De bronbasis van een eerdere beslissing is gewijzigd — opnieuw beoordelen",
     "folgepruefung.grundKurz.konflikt": "Bronbasis gewijzigd",

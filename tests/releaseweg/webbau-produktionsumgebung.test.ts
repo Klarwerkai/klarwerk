@@ -10,7 +10,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { bauePruefflaeche } from "../gesamtanweisung-nutzerweg/weg";
 
 it("gibt nur dem Vite-Kind des ganzen Webbaus production statt test", () => {
   const work = realpathSync(mkdtempSync(join(tmpdir(), "webbau-synthetisch-")));
@@ -82,6 +83,34 @@ for(const event of ['start','end'])fs.appendFileSync(log,JSON.stringify({...step
       NODE_ENV: "production",
     });
   } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+it("baut auch die gemeinsame PG-Fläche für Liste und Menü im Produktionsmodus", () => {
+  const work = mkdtempSync(join(tmpdir(), "pg-webbau-"));
+  const protokoll = join(work, "vite.json");
+  try {
+    writeFileSync(
+      join(work, "npx"),
+      `#!${process.execPath}
+require("node:fs").writeFileSync(${JSON.stringify(protokoll)}, JSON.stringify({
+  args: process.argv.slice(2), cwd: process.cwd(), mode: process.env.NODE_ENV,
+  testwert: process.env.KLARWERK_WEBBAU_PROBE
+}));`,
+      { mode: 0o755 },
+    );
+    vi.stubEnv("PATH", work + delimiter + process.env.PATH);
+    vi.stubEnv("KLARWERK_WEBBAU_PROBE", "nur-im-test");
+    bauePruefflaeche();
+    expect(JSON.parse(readFileSync(protokoll, "utf8"))).toEqual({
+      args: ["vite", "build"],
+      cwd: realpathSync(resolve("apps/web")),
+      mode: "production",
+    });
+    expect(process.env.NODE_ENV).toBe("test");
+  } finally {
+    vi.unstubAllEnvs();
     rmSync(work, { recursive: true, force: true });
   }
 });

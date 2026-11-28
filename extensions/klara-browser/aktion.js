@@ -15,7 +15,7 @@
 // verlässt die Seite nie. CAPTCHA, MFA und Anmeldung werden nur erkannt und gemeldet.
 (() => {
   if ("KlaraBrowserAktion" in globalThis) return;
-  const FASSUNG = "aktion.js@1.0.0";
+  const FASSUNG = "aktion.js@1.1.0";
   const MAX_WERT = 4000;
   const MAX_EINTRAG = 500;
   const geseheneWerte = new WeakMap();
@@ -233,7 +233,11 @@
     lage(a) {
       const treffer = formulare(a.formular);
       const f = treffer.length === 1 ? treffer[0] : null;
-      if (f) for (const el of felder(f)) geseheneWerte.set(el, String(el.value));
+      if (f) {
+        for (const el of felder(f)) {
+          if (!gesperrt(el)) geseheneWerte.set(el, String(el.value));
+        }
+      }
       return {
         origin: location.origin,
         pfad: location.pathname,
@@ -247,6 +251,7 @@
                 label: name(el),
                 typ: typ(el),
                 wert:
+                  !gesperrt(el) &&
                   typeof a.lesefreigabe === "string" &&
                   freigegebeneWerte.get(el)?.freigabe === a.lesefreigabe &&
                   freigegebeneWerte.get(el)?.wert === String(el.value)
@@ -262,7 +267,7 @@
     },
 
     /**
-     * `erwartet`: nur eintragen, wenn das Feld jetzt genau diesen Wert zeigt (Rücknahme).
+     * Ältere Relais nehmen über `fuelle` zurück. Einen verdeckten Vorwert dürfen sie nicht leeren.
      * @param {{ formular: string, fingerabdruck: string, label: string, wert: string, erwartet?: string, lesefreigabe?: string }} a
      */
     fuelle(a) {
@@ -273,15 +278,55 @@
       if (passend.length > 1) return { ok: false, grund: "feld_mehrdeutig" };
       const el = passend[0];
       if (gesperrt(el) || inaktiv(el)) return { ok: false, grund: "feld_gesperrt" };
-      const erwartet = geseheneWerte.has(el) ? geseheneWerte.get(el) : a.erwartet;
-      if (typeof erwartet === "string" && String(el.value) !== erwartet) {
+      const vorher = String(el.value);
+      if (
+        (geseheneWerte.has(el) && vorher !== geseheneWerte.get(el)) ||
+        (typeof a.erwartet === "string" && vorher !== a.erwartet)
+      ) {
         return { ok: false, grund: "wert_geaendert" };
+      }
+      if (typeof a.erwartet === "string" && a.wert === "") {
+        return { ok: false, grund: "nicht_ausgefuehrt" };
       }
       const wert = String(a.wert).slice(0, MAX_WERT);
       setze(el, wert);
       if (String(el.value) !== wert) return { ok: false, grund: "wert_geaendert" };
-      freigegebeneWerte.set(el, { wert, freigabe: a.lesefreigabe });
+      if (typeof a.lesefreigabe === "string") {
+        const bisher = freigegebeneWerte.get(el);
+        const ursprung =
+          bisher?.freigabe === a.lesefreigabe && bisher.wert === vorher ? bisher.ursprung : vorher;
+        freigegebeneWerte.set(el, { wert, freigabe: a.lesefreigabe, ursprung });
+      } else {
+        freigegebeneWerte.delete(el);
+      }
       return { ok: true, wert: { wert } };
+    },
+
+    /**
+     * Stellt den vor diesem Auftrag vorhandenen Wert allein auf der Seite wieder her.
+     * @param {{ formular: string, fingerabdruck: string, label: string, erwartet: string, lesefreigabe: string }} a
+     */
+    feldZuruecksetzen(a) {
+      const f = gebunden(a.formular, a.fingerabdruck);
+      if (!f) return { ok: false, grund: "ziel_geaendert" };
+      const passend = felder(f).filter((el) => name(el) === a.label);
+      if (!passend.length) return { ok: false, grund: "feld_fehlt" };
+      if (passend.length !== 1) return { ok: false, grund: "feld_mehrdeutig" };
+      const el = passend[0];
+      if (gesperrt(el) || inaktiv(el)) return { ok: false, grund: "feld_gesperrt" };
+      const eintrag = freigegebeneWerte.get(el);
+      if (
+        !eintrag ||
+        eintrag.freigabe !== a.lesefreigabe ||
+        eintrag.wert !== a.erwartet ||
+        String(el.value) !== a.erwartet
+      ) {
+        return { ok: false, grund: "wert_geaendert" };
+      }
+      setze(el, eintrag.ursprung);
+      if (String(el.value) !== eintrag.ursprung) return { ok: false, grund: "wert_geaendert" };
+      freigegebeneWerte.delete(el);
+      return { ok: true, wert: null };
     },
 
     /**

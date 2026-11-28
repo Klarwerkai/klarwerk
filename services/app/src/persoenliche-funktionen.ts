@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
 import { siehtGeheimAus } from "./assistenz-lernen";
 import { vorkommenVon } from "./klara-erinnerung";
-import {
-  type Zeitplan as DZeitplan,
-  SOMMERZEIT_VORGABE,
-  loeseMitRegel,
-} from "./klara-erinnerung-zeit";
+import { type Zeitplan as DZeitplan, SOMMERZEIT_VORGABE } from "./klara-erinnerung-zeit";
 import type { KlaraGespraech, KlaraGespraechRepo, KlaraNachricht } from "./klara-gespraech";
 import {
   AUSSENAKTIONEN,
@@ -29,13 +24,7 @@ import {
   type Rhythmus,
   type Zeitauftrag,
 } from "./persoenliche-funktionsvertrag";
-import {
-  InMemoryRoutinenRepo,
-  PERSOENLICHE_ROUTINEN_SCHEMA,
-  PgRoutinenRepo,
-  type Routine,
-  type RoutinenRepo,
-} from "./vormachen";
+import type { Routine, RoutinenRepo } from "./vormachen";
 
 // ================================================================================================
 // produkt:20261011:peter-p06:beschaffungsroutine (BES-07) — DER BESCHAFFUNGSABLAUF ALS PERSÖNLICHE
@@ -271,19 +260,6 @@ export class RoutinenFunktionenRepo implements FunktionenRepo {
     return this.routinen.vergleicheUndLege(r, alt);
   }
 }
-export class InMemoryFunktionenRepo extends RoutinenFunktionenRepo {
-  constructor() {
-    super(new InMemoryRoutinenRepo());
-  }
-}
-/** Kompatible Namen für die erhaltenen Originalprüfungen; es gibt nur P06s Tabelle. */
-export const PERSOENLICHE_FUNKTIONEN_SCHEMA = PERSOENLICHE_ROUTINEN_SCHEMA;
-export class PgFunktionenRepo extends RoutinenFunktionenRepo {
-  constructor(pool: Pool) {
-    super(new PgRoutinenRepo(pool));
-  }
-}
-
 // ------------------------------------------------------------------------------------------------
 // AUS DEM SATZ ZUM VERTRAG — OHNE MODELL, OHNE EDITOR (BES-07-K01/K02)
 // ------------------------------------------------------------------------------------------------
@@ -429,7 +405,7 @@ export function entwirfFunktion(roh: unknown, wegRoh: unknown): FunktionsEntwurf
   if (wegRoh !== undefined && wegRoh !== "text" && wegRoh !== "sprache") {
     throw new FunktionsFehler(400, "eingabe", "eingabeweg muss text oder sprache sein.");
   }
-  if (!ABLAUF.test(text) && UEBERNAHME.test(text)) {
+  if (!ABLAUF.test(text) && istUebernahmesatz(text)) {
     throw new FunktionsFehler(
       400,
       "kontext_fehlt",
@@ -503,23 +479,6 @@ const istDatum = (wert: unknown): wert is string =>
   new Date(wert).toISOString().slice(0, 10) === wert;
 export { istZeitzone } from "./klara-erinnerung-zeit";
 import { istZeitzone } from "./klara-erinnerung-zeit";
-export function ortszeitZuUtc(
-  datum: string,
-  uhrzeit: string,
-  zeitzone: string,
-): { utcMs: number; hinweis: "sommerzeit_verschoben" | "winterzeit_doppelt" | null } {
-  const r = loeseMitRegel({ datum, uhrzeit }, zeitzone, SOMMERZEIT_VORGABE);
-  if (r.ms === null) throw new Error("Zeitpunkt nicht auflösbar.");
-  return {
-    utcMs: r.ms,
-    hinweis:
-      r.hinweis === "luecke_verschoben"
-        ? "sommerzeit_verschoben"
-        : r.hinweis === "doppelt_erste"
-          ? "winterzeit_doppelt"
-          : null,
-  };
-}
 export function beschaffungsZeitplan(z: Zeitauftrag): DZeitplan {
   return {
     art: "serie",

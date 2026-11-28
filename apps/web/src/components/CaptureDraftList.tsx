@@ -554,7 +554,7 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                 {auszuege.get(d.id) ? (
                   <p
                     data-testid="entwurfsliste-eintrag-auszug"
-                    className="mt-0.5 line-clamp-2 break-words text-[12px] leading-snug text-muted"
+                    className="mt-0.5 break-words text-[12px] leading-snug text-muted"
                   >
                     {auszuege.get(d.id)}
                   </p>

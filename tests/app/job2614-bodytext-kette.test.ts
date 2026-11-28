@@ -483,36 +483,11 @@ describe("JOB 2614 · D4 · K5 — der menschliche Weg: Trockenlauf → Ausführ
   });
 });
 
-describe("JOB 2614 · K6 — PIN DES IST-ZUSTANDS der Freigabelogik (D4 gemessen, D5 als Pin beauftragt)", () => {
-  // ==============================================================================================
-  // DIESER FALL IST DER IN D5 §2 BEAUFTRAGTE PIN — Bauform wie die Einbau-Reissleine aus 2617 D3:
-  // er BESCHREIBT die Freigabelogik, wie sie heute IST, und härtet nichts. Die NULL-Semantik ist
-  // eine OFFENE OWNERFRAGE bei Pedi (vom Kopf eingetragen); BEN: „Falls der Owner die bestehende
-  // NULL=intern-Semantik bestätigt, muss der Auftrag vor einem neuen Bau-Durchgang ausdrücklich
-  // geändert werden." ENTSCHEIDET PEDI AUF HÄRTUNG (NULL sperrt), wird Fall (b) PLANMÄSSIG ROT
-  // und der Umbau folgt als eigener Auftrag (create speichert ‚intern' explizit + Bestands-
-  // migration + Prädikat-/Pin-Umbau — s. D4-Rückgabe OV-2).
-  //
-  // DER GEMESSENE IST-ZUSTAND (D4): „confidentiality NULL bleibt ausgeschlossen" gilt NICHT —
-  // fehlendes Feld heißt „intern" als gepinnte Systementscheidung (SCRUM-415/502, EIN Prädikat
-  // für alle Egress-Stellen, confidentiality.ts:39-41; Pin confidentiality.test.ts:7-11), und
-  // `ko.create` persistiert „intern" gar nicht erst (service.ts:1589) — ein leeres Feld ist von
-  // jedem normal angelegten internen Objekt ununterscheidbar.
-  //
-  // Was WIRKLICH sperrt, misst dieser Test einzeln: der Prüfstand (`status!=='validiert'` fällt
-  // an validatedOnly, Fall a und d) und die ausdrückliche Vertraulichkeit (Fall c). Die
-  // Kalibrierung (e) belegt, dass die Vorrichtung antworten KANN — die Sperren sind die Ursache.
-  //
-  // FACHLICHE ANMERKUNG (D5 §2, „wenn eine Lesart gefährlich ist, schreib es hin"): Die heutige
-  // Lesart macht die Stufensetzung für ALTBESTAND wirkungslos-still — ein importiertes Dokument
-  // ohne Stufe ist nach der Validierung sofort Antwortgrundlage, ohne dass je ein Mensch über
-  // seine Vertraulichkeit entschieden hat. Das ist konsistent (Neuanlagen tragen dieselbe Leere),
-  // aber für einen Import-Workflow, in dem Dokumente von aussen kommen, ist „nie entschieden"
-  // etwas anderes als „bewusst intern". Die Härtung hätte umgekehrt den Preis, dass JEDES
-  // Bestands-KO ohne explizite Stufe aus den Antworten fiele, bis eine Migration sie setzt.
-  // Beides ist eine Produktentscheidung — deshalb Pin statt Härtung.
-  it("offen sperrt; ausdrücklich vertraulich sperrt; fehlende Stufe gilt als intern (gemessen, nicht behauptet)", async () => {
-    const { app, services, headers, altA, altB } = await menschlicherWegAufbau(true);
+describe("JOB 2614 · K6 — Freigabe des Altbestands für den Word-Antwortweg", () => {
+  // Die Klassifizierung und die fachliche Validierung sind zwei eigenständige Bedingungen.
+  // Die gemeinsame Egress-Regel isConfidential lässt nur ausdrücklich interne Quellen zu.
+  it("verwendet eine validierte Quelle erst nach ihrer ausdrücklichen Einstufung als intern", async () => {
+    const { app, headers, altA, altB } = await menschlicherWegAufbau(true);
     const frageA = `Wie wird die ${FLIESSTEXTWORT} geprüft?`;
     const frageB = `Wann darf die ${ZWEITWORT} geöffnet werden?`;
 
@@ -522,14 +497,19 @@ describe("JOB 2614 · K6 — PIN DES IST-ZUSTANDS der Freigabelogik (D4 gemessen
     expect(vorher.result.answered).toBe(false);
     expect(vorher.result.sources).toEqual([]);
 
-    // (b) DER BEFUND: validiert, Stufe weiterhin NICHT gesetzt → das Produkt antwortet.
-    // Fehlende Stufe wirkt als „intern" (s. Kopfkommentar) — BENs erwartete zweite Sperre griffe
-    // hier NICHT. Gemessen und festgehalten statt stillschweigend hingebogen.
+    // (b) Die Validierung allein ändert die ungeklärte Stufe des Altbestands nicht.
     await validieren(app, headers, altA.id);
-    expect((await services.ko.get(altA.id))?.confidentiality ?? null).toBeNull();
+    const detail = await app.inject({ method: "GET", url: `/api/kos/${altA.id}`, headers });
+    expect(detail.statusCode, detail.body).toBe(200);
+    expect(detail.json()).toMatchObject({
+      id: altA.id,
+      status: "validiert",
+      confidentiality: null,
+      confidentialityProvenance: "unknown",
+    });
     const nurValidiert = await panelFrage(app, headers, frageA);
-    expect(nurValidiert.result.answered).toBe(true);
-    expect(nurValidiert.result.sources).toEqual([altA.id]);
+    expect(nurValidiert.result.answered).toBe(false);
+    expect(nurValidiert.result.sources).toEqual([]);
 
     // (c) DIE VERTRAULICHKEITS-SPERRE, DIE ES GIBT: ausdrücklich „vertraulich" gesetzt → dasselbe
     // validierte Objekt fällt aus JEDEM Antwortweg (dropConfidential, SCRUM-502).

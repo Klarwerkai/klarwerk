@@ -53,6 +53,60 @@ export function bibliothekSprache(lng: string): BibliothekSprache {
 const T = (de: string, en: string, nl: string): Text => ({ de, en, nl });
 
 export const HILFE_BIBLIOTHEK: Readonly<Record<string, HilfeArtikel>> = {
+  teamassistenten: {
+    was: T(
+      "Ein Teamassistent beantwortet wiederkehrende Fragen mit den Firmenquellen, die dein Team für diese Aufgabe ausgewählt hat.",
+      "A team assistant answers recurring questions using the company sources your team chose for that task.",
+      "Een teamassistent beantwoordt terugkerende vragen met de bedrijfsbronnen die je team voor die taak heeft gekozen.",
+    ),
+    wie: T(
+      "Lege die Aufgabe fest, wähle freigegebene Quellen und teste eine typische Frage. Öffne die zitierte Quelle und vergleiche sie mit der Antwort.",
+      "Set the task, choose approved sources and test a typical question. Open the cited source and compare it with the answer.",
+      "Stel de taak in, kies goedgekeurde bronnen en test een voorbeeldvraag. Open de aangehaalde bron en vergelijk die met het antwoord.",
+    ),
+    warum: T(
+      "An einem Beispiel siehst du vor der Freigabe, ob die gewählten Quellen die Fragen deines Teams beantworten.",
+      "A sample question shows whether the sources answer what your team needs to know before you release the assistant.",
+      "Een voorbeeldvraag laat vóór de vrijgave zien of de gekozen bronnen de vragen van je team beantwoorden.",
+    ),
+    danach: T(
+      "Gib die getestete Fassung für das Team frei. Die Mitglieder können diesen Assistenten anschließend öffnen und Fragen stellen.",
+      "Release the tested version to the team. Members can then open that assistant and ask questions.",
+      "Geef de geteste versie vrij voor het team. Teamleden kunnen de assistent daarna openen en vragen stellen.",
+    ),
+    missverstaendnisse: T(
+      "Die Freigabe einer Assistentenfassung erweitert keine Leserechte. Jede Person arbeitet mit den Quellen, auf die sie Zugriff hat.",
+      "Releasing an assistant version preserves source permissions. Each person works with the sources they can access.",
+      "Bij vrijgave van een assistentversie blijven de leesrechten gelden. Iedereen werkt met de bronnen waartoe die persoon toegang heeft.",
+    ),
+  },
+  teamworkflows: {
+    was: T(
+      "Ein gemeinsamer Ablauf führt das Team Schritt für Schritt durch eine wiederkehrende Aufgabe.",
+      "A shared sequence of steps takes your team through a recurring task one step at a time.",
+      "Een gedeeld stappenplan leidt je team stap voor stap door een terugkerende taak.",
+    ),
+    wie: T(
+      "Stelle die Schritte zusammen. Binde bei Bedarf einen freigegebenen Teamassistenten ein und prüfe den Ablauf mit einer Beispieleingabe.",
+      "Add the steps in order. Include a released team assistant where needed and try the sequence with a sample input.",
+      "Voeg de stappen in volgorde toe. Neem waar nodig een vrijgegeven teamassistent op en test het stappenplan met een voorbeeld.",
+    ),
+    warum: T(
+      "Beim Test siehst du, welches Ergebnis ein Schritt an den nächsten weitergibt und an welcher Stelle jemand entscheiden muss.",
+      "A test shows what each step passes to the next and where someone needs to make a decision.",
+      "Tijdens de test zie je wat elke stap aan de volgende doorgeeft en waar iemand een besluit moet nemen.",
+    ),
+    danach: T(
+      "Nach der Freigabe kann das Team einen Lauf starten. Öffne einen bestehenden Lauf, um seinen Stand und die gespeicherten Ergebnisse zu sehen.",
+      "After release the team can start a run. Open an existing run to see its current step and saved results.",
+      "Na de vrijgave kan het team een uitvoering starten. Open een bestaande uitvoering om de huidige stap en de opgeslagen resultaten te zien.",
+    ),
+    missverstaendnisse: T(
+      "Ein Laufergebnis kann mit seinen Quellen zur Prüfung vorgeschlagen werden. Erst die fachliche Freigabe macht daraus bestätigtes Firmenwissen.",
+      "You can send a result and its sources to the person responsible for checking them. It becomes approved company knowledge once the person responsible approves it.",
+      "Je kunt een resultaat samen met de bronnen ter beoordeling voorstellen. Na inhoudelijke goedkeuring wordt het bevestigde bedrijfskennis.",
+    ),
+  },
   firststart: {
     was: T(
       "Der Erststart ist der Moment, in dem eine Installation noch kein Wissen enthält. Mit Demodaten bekommt sie einen Beispielbestand, an dem sich alles ausprobieren lässt — etwa ein Musterbestand einer Bäckerei oder einer Pflegestation.",

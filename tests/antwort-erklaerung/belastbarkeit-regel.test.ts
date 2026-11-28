@@ -56,6 +56,7 @@ function ko(id: string, teil: Partial<KnowledgeObject> = {}): KnowledgeObject {
     statement: `Aussage ${id}`,
     type: "best_practice",
     category: "Betrieb",
+    confidentiality: "intern",
     status: "validiert",
     trust: 80,
     version: 2,

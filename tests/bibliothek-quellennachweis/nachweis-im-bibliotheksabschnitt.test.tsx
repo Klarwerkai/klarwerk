@@ -220,6 +220,7 @@ async function mount(bestand: KnowledgeObject): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
 }

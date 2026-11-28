@@ -1,3 +1,5 @@
+import { htmlToPlainText } from "./richText";
+
 // ================================================================================================
 // produkt:20261010:rechteentzug-gespraeche-belege — EINE CHAT-ÜBERNAHME OHNE IHRE QUELLE.
 // ================================================================================================
@@ -95,7 +97,7 @@ function normiere(text: string): string {
 
 /** Sichtbarer Text eines HTML-Stücks in Vergleichsform. */
 function sichtbarerText(html: string): string {
-  return normiere(entschluessle(html.replace(/<[^>]*>/g, " ")));
+  return normiere(htmlToPlainText(html));
 }
 
 function woerter(text: string): string[] {
@@ -321,24 +323,4 @@ export function ohneChatQuelle<T extends Textfelder>(
   }
   // Nur Zeichenketten werden ersetzt, und zwar durch Zeichenketten — die Feldtypen bleiben.
   return { ...payload, ...neu } as T;
-}
-
-/**
- * Eine Chat-Übernahme, deren Herkunft sich NICHT zuordnen lässt (Altbestand ohne Bindung und ohne
- * auflösbaren Übernahmevermerk): weder Quelle noch eigene Nachricht sind bekannt. Eigen ist nur der
- * Herkunftsvermerk; alles andere — einschließlich Titel und Aussage — geht nicht hinaus.
- */
-export function ohneUngebundeneZitate<T extends Textfelder>(
-  payload: T,
-  blockMarke = CHAT_ZITAT_ZURUECKGEHALTEN,
-): T {
-  return ohneChatQuelle(payload, { zitat: "", quelle: "", eigeneNachricht: null }, blockMarke);
-}
-
-/** Trägt dieser Text den Herkunftsvermerk einer Chat-Übernahme (als eigenen Block)? */
-export function traegtChatHerkunftsvermerk(bodyHtml: string | null | undefined): boolean {
-  if (typeof bodyHtml !== "string") {
-    return false;
-  }
-  return bloecke(bodyHtml).some((block) => CHAT_HERKUNFT_MUSTER.test(sichtbarerText(block)));
 }

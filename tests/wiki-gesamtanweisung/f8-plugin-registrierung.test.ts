@@ -28,12 +28,16 @@ import { GesamtanweisungDienst } from "../../services/knowledge-object/src/gesam
 import { can } from "../../services/rbac";
 import { InMemoryAnweisungRepo, eintrag, kennungen, koLeser, uhr } from "./pruefstand";
 
+// aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Entscheidung 16): die offenen Bausteine sind
+// ausdrücklich „intern" — ohne Stufe wären sie ungeklärt und für den Experten verborgen.
 const EINTRAEGE = [
-  eintrag({ id: "ko-a", title: "Schritt A", version: 2 }, [
+  eintrag({ id: "ko-a", title: "Schritt A", version: 2, confidentiality: "intern" }, [
     { version: 1, bodyHtml: "<p>alt</p>" },
     { version: 2, bodyHtml: "<table><tr><th>Druck</th></tr></table>" },
   ]),
-  eintrag({ id: "ko-b", title: "Schritt B", version: 1 }, [{ version: 1, bodyHtml: "<p>B</p>" }]),
+  eintrag({ id: "ko-b", title: "Schritt B", version: 1, confidentiality: "intern" }, [
+    { version: 1, bodyHtml: "<p>B</p>" },
+  ]),
   eintrag(
     {
       id: "ko-geheim",
@@ -289,7 +293,7 @@ describe("F8 · das Plugin am Draht", () => {
       url: `/api/gesamtanweisungen/${a.id}/bausteine`,
       payload: { version: a.version, koId: "ko-a", koVersion: 2, nachweisHash: "ha" },
     });
-    await app.inject({
+    const geheim = await app.inject({
       method: "POST",
       url: `/api/gesamtanweisungen/${a.id}/bausteine`,
       payload: {
@@ -299,6 +303,8 @@ describe("F8 · das Plugin am Draht", () => {
         nachweisHash: "hg",
       },
     });
+
+    expect(geheim.statusCode, geheim.body).toBe(200);
 
     // Erik ist Experte: er darf lesen und einreichen, aber nicht prüfen — und er ist nicht Autor.
     nutzer = { id: "erik", role: "experte" };

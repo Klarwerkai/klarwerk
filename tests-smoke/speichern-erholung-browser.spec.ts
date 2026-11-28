@@ -10,7 +10,7 @@ import { ensureLoggedIn } from "./support/auth";
 // `offline`, react-query hält das Speichern an, und keine Anfrage erreicht den Server. Gemessen wird
 // am Blatt (`/capture/frontdoor`, `/erfassen`) und an der Bibliothek:
 //
-//   K1/K2  „Entwurf sichern" ohne Netz → sichtbar „wartet", die Eingabe bleibt; nach der Rückkehr
+//   K1/K2  „Als Entwurf speichern" ohne Netz → sichtbar „wartet", die Eingabe bleibt; nach der Rückkehr
 //          sichtbar „gespeichert", und nach dem NEULADEN steht genau dieser Stand vom Server da.
 //   K3     der Bestand trägt danach GENAU EINEN Entwurf mit dieser Marke.
 //   K4     Seitenwechsel ohne Netz: „Entwurf speichern und wechseln" nennt den Grund und bleibt;
@@ -251,7 +251,7 @@ test("K5: Nulltreffer zeigt die aktiven Filter und setzt sie direkt zurück — 
   const filter = page.getByTestId("bib-leer-filter");
   await expect(filter).toBeVisible();
   await expect(filter).toContainText("Aktive Filter:");
-  await expect(filter).toContainText("Zustand: Validiert");
+  await expect(filter).toContainText("Zustand: Fachlich bestätigt");
   await expect(filter).toContainText("Zuletzt geändert: 2020-01-01");
   await beleg(page, "k5-nulltreffer-filter");
 

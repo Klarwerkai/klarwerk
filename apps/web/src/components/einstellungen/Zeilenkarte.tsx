@@ -111,7 +111,7 @@ const UMBRUCH_ZEILE = "flex-wrap gap-x-3 gap-y-1";
  * nie kürzen. `min-w-0` ist dabei nicht kosmetisch — ohne sie käme ein Flex-Kind nie unter seine
  * Mindestinhaltsbreite, und eine lange Adresse ohne Leerzeichen bräche gar nicht erst um.
  */
-const UMBRUCH_TRAEGER = "min-w-0 break-words";
+const UMBRUCH_TRAEGER = "min-w-0 max-w-full break-words";
 /** Der Wert-Block bleibt rechts, auch wenn er in der zweiten Zeile allein steht. */
 const UMBRUCH_WERT_RECHTS = "ml-auto";
 /** Chevron und Schloss sind unteilbar — sie schrumpfen nicht mit und bleiben immer sichtbar. */

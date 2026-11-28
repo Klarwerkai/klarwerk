@@ -232,6 +232,7 @@ describe("Nutzerweg · Import-Körper → Suche → Relevanztor → Auszug → b
       statement: AUSSAGE,
       type: "best_practice",
       category: "Wartung",
+      confidentiality: "intern",
       author: "anna",
       bodyHtml: handbuchHtml(),
     });
@@ -243,6 +244,7 @@ describe("Nutzerweg · Import-Körper → Suche → Relevanztor → Auszug → b
         statement: `Tauschintervalle der Linie ${i}.`,
         type: "best_practice",
         category: "Wartung",
+        confidentiality: "intern",
         author: "bea",
         bodyHtml: `<p>Das Nachspannventil der Linie ${i} wird jährlich getauscht.</p>`,
       });
@@ -285,9 +287,9 @@ describe("Rechte · Vertraulichkeit und Prüfstand gelten vor dem Auszug", () =>
       statement: AUSSAGE,
       type: "best_practice",
       category: "Wartung",
+      confidentiality: opts.vertraulich ? "vertraulich" : "intern",
       author: "anna",
       bodyHtml: handbuchHtml(),
-      ...(opts.vertraulich ? { confidentiality: "vertraulich" as const } : {}),
     });
     if (opts.validiert) {
       await koService.setValidationState(ko.id, { trust: 60, status: "validiert" });
@@ -300,6 +302,7 @@ describe("Rechte · Vertraulichkeit und Prüfstand gelten vor dem Auszug", () =>
       statement: "Der Haltedruck am Nachspannventil wird je Anlage im Handbuch festgelegt.",
       type: "best_practice",
       category: "Wartung",
+      confidentiality: "intern",
       author: "bea",
     });
     await koService.setValidationState(harmlos.id, { trust: 90, status: "validiert" });

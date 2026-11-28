@@ -54,7 +54,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
   type Browser,
@@ -65,6 +65,7 @@ import {
   warte,
 } from "../gast-nutzerweg/browserweg";
 import { PASSWORT, Sitzung, mussGelingen, wissensobjektAnlegen } from "../gast-nutzerweg/strecke";
+import { pgKalibrierung } from "../pg-laufbeleg/kalibrierung";
 import { sprachbestand } from "../support/i18nBestand";
 import { type Laufzustand, befundsatz } from "../wiki-gesamtanweisung-abnahme/laufzustand";
 import {
@@ -109,7 +110,21 @@ const BAUSTEINTITEL = ["Ventil oeffnen (Kalibrierung)", "Druck pruefen (Kalibrie
  * (`vitest.config.ts:32`).
  */
 const MARKENDATEI = join(import.meta.dirname, "KALIBRIERUNG_AN");
-const ANGESCHALTET = process.env.KLARWERK_KALIBRIERUNG === "1" || existsSync(MARKENDATEI);
+const { aktiv: ANGESCHALTET, it } = pgKalibrierung(
+  process.env.KLARWERK_KALIBRIERUNG === "1" || existsSync(MARKENDATEI),
+  {
+    K1: /der Menüpunkt trägt in „de" nicht die Beschriftung „Arbeitsanleitungen" — \[data-testid="bereich-gesamtanweisungen"\] hat keine Fläche/u,
+    K2: /ein Bedienelement mit „Arbeitsanleitungen" war in \d+ Tab-Anschlägen nicht erreichbar — das ist die Halbheit „nur mit der Maus"/u,
+    K3: /der Einstieg heisst in „en" nicht „Work areas" — sichtbar steht dort „Arbeitsbereiche", erwartet war „Work areas"/u,
+    K4: /die beiden Bausteine nach dem Prozessneustart — nicht eingetreten in \d+ ms/u,
+    K5: /der Menüpunkt trägt in „de" nicht die Beschriftung „Arbeitsanleitungen" — sichtbar steht dort „", erwartet war „Arbeitsanleitungen"/u,
+    K6: /vor dem Prozessneustart — der 2\. Baustein \(„Druck pruefen \(Kalibrierung\)"\) ist NICHT sichtbar/u,
+    K7: /vor dem Prozessneustart — Baustein „Druck pruefen \(Kalibrierung\)": Herkunftstext nicht sichtbar/u,
+    K8: /vor dem Prozessneustart — der 1\. Baustein \(„Ventil oeffnen \(Kalibrierung\)"\) ist NICHT sichtbar/u,
+    K9: /nach dem Prozessneustart — Baustein „Ventil oeffnen \(Kalibrierung\)": Herkunftstext nicht sichtbar/u,
+    K10: /nach dem Prozessneustart — Baustein „Ventil oeffnen \(Kalibrierung\)": Herkunftstext nicht sichtbar/u,
+  },
+);
 
 /**
  * Ein Init-Skript, das GENAU diese eine CSS-Regel nachlegt — sonst bleibt die Fläche unverändert.
@@ -168,7 +183,7 @@ const VERSTECKE_ZWEITEN_BAUSTEIN = stilSkript(
  * Prüfung auf Behälter-Sichtbarkeit noch da und für einen Menschen nicht mehr lesbar.
  */
 const VERSTECKE_TEXTKIND_DES_ZWEITEN = stilSkript(
-  '[data-testid="ga-lesestand-baustein"]:nth-of-type(2) p{visibility:hidden !important}',
+  '[data-testid="ga-lesestand-baustein"]:nth-of-type(2) [data-testid="ga-lesestand-herkunft"]{visibility:hidden !important}',
 );
 
 /**
@@ -197,17 +212,16 @@ const DURCHSICHTIGE_BAUSTEINE = stilSkript(
  * dauerhafter Fall, und sie wird NACH dem Prozessneustart gesetzt — so, wie BEN sie gemessen hat.
  */
 const HERKUNFTSABSATZ_NICHT_GERENDERT = stilSkript(
-  '[data-testid="ga-lesestand-baustein"] > p:nth-of-type(2){content-visibility: hidden !important; contain-intrinsic-size: auto 24px !important}',
+  '[data-testid="ga-lesestand-baustein"] [data-testid="ga-lesestand-herkunft"]{content-visibility: hidden !important; contain-intrinsic-size: auto 24px !important}',
 );
 
 /**
  * K10 · BENs Gegenprobe aus Runde 3, wörtlich: der NAME wandert in ein durchsichtiges Kind.
  *
- * Der Herkunftsabsatz (`LesestandAnsicht.tsx:142-152`) trägt DREI Textknoten: den übersetzten Satz
- * mit Titel und Autor, das Trennzeichen „ · " und das Fassungsdatum. BEN hat den ERSTEN — den mit
- * dem Namen — in ein `<span style="opacity:0">` verschoben und alles andere stehen gelassen. Damit
- * blieb der Absatz sichtbar, behielt Fläche und Farbe, und sein `innerText` nannte den Namen
- * weiterhin. Genau daran blieb die Strecke in Runde 3 GRÜN (Cloud-Lauf `2ddd7c926c34fef101a9038c`).
+ * Im Herkunftsabsatz von LesestandAnsicht wandert genau der Textknoten mit dem gesuchten Namen
+ * in ein durchsichtiges span. Der sichtbare Rest des Absatzes bleibt stehen. Der Titel in der
+ * benachbarten Überschrift bleibt ebenfalls sichtbar. Nur eine Messung am Herkunftsabsatz erkennt
+ * damit, dass der Name dort fehlt, obwohl innerText ihn auch im transparenten Kind noch enthält.
  *
  * SIE IST EINE DOM-VERSTELLUNG UND KEIN STIL, und sie wird deshalb EINMAL und ERST NACH dem Aufbau
  * gesetzt — so, wie BEN sie gesetzt hat. Ein Init-Skript mit Beobachter würde React beim nächsten
@@ -217,14 +231,14 @@ const HERKUNFTSABSATZ_NICHT_GERENDERT = stilSkript(
  * berechnete Deckkraft des Spans, dazu den REST des Absatzes. Ohne diesen Beleg wäre das Rot unten
  * nicht von K7 zu unterscheiden — dort ist der ganze Absatz fort, hier NUR der Name.
  */
-const NAME_IN_DURCHSICHTIGES_KIND = `() => {
+const NAME_IN_DURCHSICHTIGES_KIND = `(titel) => {
   const befunde = [];
   for (const li of document.querySelectorAll('[data-testid="ga-lesestand-baustein"]')) {
-    const absaetze = li.querySelectorAll(":scope > p");
-    const absatz = absaetze[1];
+    const absatz = li.querySelector('[data-testid="ga-lesestand-herkunft"]');
+    const name = titel[befunde.length];
     if (!absatz) { befunde.push({ verschoben: false, grund: "kein Herkunftsabsatz" }); continue; }
     const knoten = [...absatz.childNodes].find(
-      (k) => k.nodeType === 3 && String(k.textContent || "").trim() !== "",
+      (k) => k.nodeType === 3 && String(k.textContent || "").includes(name),
     );
     if (!knoten) { befunde.push({ verschoben: false, grund: "kein Textknoten" }); continue; }
     const huelle = document.createElement("span");
@@ -809,9 +823,10 @@ describe("JOB 4323 · Kalibrierung: zehn Verstellungen, die den Nachweis rot mac
       );
       await bausteinePruefen(nachher.seite, "nach dem Prozessneustart, vor der Verstellung");
 
-      // ── DIE VERSTELLUNG: der erste Textknoten jedes Herkunftsabsatzes wandert ins Kind. ────────
+      // ── DIE VERSTELLUNG: der Textknoten mit dem Quelltitel wandert ins Kind. ────────
       const verstellt = await nachher.seite.evaluate<Verstellbefund[]>(
         fn(NAME_IN_DURCHSICHTIGES_KIND),
+        [...BAUSTEINTITEL],
       );
       expect(
         verstellt.length,

@@ -34,9 +34,9 @@ describe("S2 · Z — jede Zuordnung ist belegt", () => {
       // steht hier bewusst NICHT: die Datei liegt nicht in diesem Arbeitsbaum, und eine erfundene
       // Zahl waere genau die unbelegte Setzung, gegen die dieser Fall steht. Die Alternation bleibt
       // eng: sie zaehlt benannte Dokumente auf, sie laesst nicht „irgendeinen Text" durch.
-      // WP-RETEST7 R5 dokumentiert die Frage und die tatsächliche Bildfußnote im Regressionstest.
+      // Die Wortformen aus WP-RETEST7 R5, KA5-R12 und SCRUM-350 sind an ihren Fragetests belegt.
       expect(zuordnung.quelle, `${zuordnung.begriffe}: Quelle nennt keine Kennung`).toMatch(
-        /OFFEN\.md|PRIORITAETEN\.md|\.md:\d+|BEN-PRUEFUNG|tests\/app\/ask-caption-retrieval\.test\.ts/,
+        /OFFEN\.md|PRIORITAETEN\.md|\.md:\d+|BEN-PRUEFUNG|tests\/app\/ask-caption-retrieval\.test\.ts|tests\/ka5\/markierung-fundstelle-bleibt\.test\.ts|tests\/structure\/evidence-attachments-to-use-e2e\.test\.ts/,
       );
     }
   });
@@ -78,6 +78,12 @@ describe("S2 · F — die Erweiterung findet, was gemeint ist", () => {
 
   it("F2 · und ventil findet klep — die Zuordnung gilt in beide Richtungen", () => {
     expect(expandSearchTerms(["ventil"])).toEqual(["ventil", "klep"]);
+  });
+
+  it("beide Wortformen zur Riemenspannung ergänzen nur ihr Gegenstück", () => {
+    expect(expandSearchTerms(["gespannt"])).toEqual(["gespannt", "spannen"]);
+    expect(expandSearchTerms(["spannen"])).toEqual(["spannen", "gespannt"]);
+    expect(expandSearchTerms(["entspannen"])).toEqual(["entspannen"]);
   });
 
   it("F3 · urlaubsregelung findet urlaubszeiten", () => {

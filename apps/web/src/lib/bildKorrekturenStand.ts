@@ -54,10 +54,6 @@ function abonniere(h: () => void): () => void {
   };
 }
 
-function lies(): BildKorrekturStand {
-  return stand;
-}
-
 /** Der bestätigte Stand — für Abläufe außerhalb von React. */
 export function bildKorrekturStand(): BildKorrekturStand {
   return stand;
@@ -186,7 +182,7 @@ export async function aendereBildKorrektur(
  */
 export function useBildKorrekturen(aktiv = true): BildKorrekturStand {
   const kontoId = useAssistenzStand().kontoId;
-  const s = useSyncExternalStore(abonniere, lies, lies);
+  const s = useSyncExternalStore(abonniere, bildKorrekturStand, bildKorrekturStand);
   useEffect(() => {
     if (aktiv && kontoId !== null && s.kontoId !== kontoId) {
       void ladeBildKorrekturen(kontoId);

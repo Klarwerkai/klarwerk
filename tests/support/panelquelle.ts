@@ -477,8 +477,12 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * NACHARBEIT 20 (gesamt-browser-kontextkarten): GEMESSEN im Prüflauf zu Kandidat 6e1a7105
  * (`32f7af32…`, „Received" von E2, HISTORIE/nacharbeit-20/PRUEFUNG/integration-waechter.log;
  * vorher `cd5def0d…`) und unverändert übernommen.
+ * Stand .1155 (191b818aa): Die Dateien aus Git ergeben nach separater Rekonstruktion 902837 Bytes
+ * mit Blob 70ea7f28…; dieselbe Gegenrechnung am .933-Stand 54c5e7ea9 ergibt den bisherigen
+ * Blob 32f7af32…. Geändert haben sich HTML, Fensterskript, Wortvergleich und der ausgelagerte
+ * Dokumentvergleich. Die Bytebilanz und der Vorher-/Nachher-Lauf prüfen den Schnitt zusätzlich.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "32f7af320a766ecca9daab860a53de850c938bad";
+export const PANEL_VOR_SCHNITT_BLOB = "70ea7f2800f5c9e05e87cc00823ff38cc925a391";
 
 export interface PanelTeile {
   html: string;

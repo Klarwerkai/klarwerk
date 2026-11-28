@@ -34,6 +34,7 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { KnowledgeObject } from "../../knowledge-object";
+import { htmlToPlainText } from "../../structure";
 import { FOLIEN_ABGLEICH_GRENZEN, pruefeAbgleichKoerper } from "./folien-abgleich-grenzen";
 import { BERECHNUNGSARTEN, rechne } from "./office-nachbearbeitung";
 import { MAX_FOLIEN, MAX_FOLIENTEIL_ZEICHEN, type XmlTag, tastAb } from "./praesentation-xml";
@@ -740,6 +741,23 @@ export interface Inhalt {
   readonly modellbezug?: string;
 }
 
+/** Die einzigen Felder, die eine Korrektur oder Rücknahme ersetzen kann. */
+export const INHALTSFELDER = [
+  "art",
+  "wert",
+  "zahl",
+  "einheit",
+  "waehrung",
+  "zeitraum",
+  "bezugsgroesse",
+  "erfassung",
+  "quelle",
+  "fundstelle",
+  "rechenweg",
+  "annahmen",
+  "modellbezug",
+] as const satisfies readonly (keyof Inhalt)[];
+
 export interface Korrektur {
   /** Die Datenfassung, die durch die Korrektur entstand. */
   readonly fassung: number;
@@ -763,6 +781,33 @@ export interface Datenpunkt extends Inhalt {
   readonly pruefungen: readonly Pruefung[];
   readonly bindungen: readonly Bindung[];
   readonly korrekturen: readonly Korrektur[];
+}
+
+/** Ersetzt nur den Inhalt. Fehlende optionale Angaben der Zielfassung bleiben entfernt. */
+export function mitInhalt(dp: Datenpunkt, inhalt: Inhalt): Datenpunkt {
+  const {
+    id,
+    heimatKoId,
+    fassung,
+    stand,
+    erfasstVon,
+    erfasstAm,
+    pruefungen,
+    bindungen,
+    korrekturen,
+  } = dp;
+  return {
+    ...inhalt,
+    id,
+    heimatKoId,
+    fassung,
+    stand,
+    erfasstVon,
+    erfasstAm,
+    pruefungen,
+    bindungen,
+    korrekturen,
+  };
 }
 
 /** Der Fingerabdruck der Datenfassung: alles, woran eine Prüfung hängt. */
@@ -955,6 +1000,105 @@ export async function pruefeHerkunftsgraph(dp: Datenpunkt, u: DatenUmgebung): Pr
   }
 }
 
+// Die Vorwerte können aus einer älteren gespeicherten Fassung stammen. Ein unlesbarer
+// Nachweis ergibt keine historische Fassung und kann damit keine Übernahme rechtfertigen.
+const optionalerText = (wert: unknown) => wert === undefined || typeof wert === "string";
+const zahl = (wert: unknown): wert is number => typeof wert === "number" && Number.isFinite(wert);
+
+function istQuellbezug(q: unknown): q is Quellbezug {
+  return (
+    istObjekt(q) &&
+    typeof q.koId === "string" &&
+    zahl(q.koFassung) &&
+    optionalerText(q.anhangId) &&
+    optionalerText(q.objectId) &&
+    optionalerText(q.dateiFassung)
+  );
+}
+
+function istRechenweg(r: unknown): r is Rechenweg {
+  return (
+    istObjekt(r) &&
+    BERECHNUNGSARTEN.some((art) => art === r.art) &&
+    typeof r.formel === "string" &&
+    zahl(r.stellen) &&
+    zahl(r.roh) &&
+    zahl(r.ergebnis) &&
+    Array.isArray(r.eingaben) &&
+    r.eingaben.every(
+      (e: unknown) =>
+        istObjekt(e) &&
+        typeof e.datenpunktId === "string" &&
+        zahl(e.fassung) &&
+        typeof e.wert === "string" &&
+        zahl(e.zahl),
+    )
+  );
+}
+
+function istBildtextUebernahme(b: unknown): b is BildtextUebernahme {
+  if (!istObjekt(b) || typeof b.rohText !== "string") return false;
+  const k = b.korrektur;
+  return (
+    k === undefined ||
+    (istObjekt(k) &&
+      typeof k.quelle === "string" &&
+      typeof k.geaendertAm === "string" &&
+      typeof k.text === "string")
+  );
+}
+
+function istFundstelle(f: unknown): f is Fundstelle {
+  if (!istObjekt(f)) return false;
+  if (f.art === "artikel") return typeof f.zitat === "string";
+  if (f.art === "eingabe") return optionalerText(f.beleg);
+  if (f.art === "rechenweg") return true;
+  if (
+    typeof f.sldId !== "string" ||
+    typeof f.shapeId !== "string" ||
+    !zahl(f.folienPosition) ||
+    typeof f.folienTitel !== "string" ||
+    typeof f.elementName !== "string"
+  )
+    return false;
+  if (f.art === "bild")
+    return (
+      typeof f.bildKennung === "string" &&
+      typeof f.ocrText === "string" &&
+      typeof f.unsicher === "boolean" &&
+      (f.uebernahme === undefined || istBildtextUebernahme(f.uebernahme))
+    );
+  if (f.art === "folienelement") return typeof f.zitat === "string";
+  return (
+    f.art === "tabellenzelle" &&
+    typeof f.zitat === "string" &&
+    zahl(f.zeile) &&
+    zahl(f.spalte) &&
+    typeof f.zeilenkopf === "string" &&
+    typeof f.spaltenkopf === "string"
+  );
+}
+
+function istHistorischerInhalt(i: unknown): i is Inhalt {
+  return (
+    istObjekt(i) &&
+    (i.art === "aussage" || i.art === "zahl") &&
+    typeof i.wert === "string" &&
+    (i.zahl === undefined || zahl(i.zahl)) &&
+    optionalerText(i.einheit) &&
+    optionalerText(i.waehrung) &&
+    optionalerText(i.zeitraum) &&
+    optionalerText(i.bezugsgroesse) &&
+    ERFASSUNGEN.some((e) => e === i.erfassung) &&
+    (i.quelle === undefined || istQuellbezug(i.quelle)) &&
+    istFundstelle(i.fundstelle) &&
+    (i.rechenweg === undefined || istRechenweg(i.rechenweg)) &&
+    (i.annahmen === undefined ||
+      (Array.isArray(i.annahmen) && i.annahmen.every((a: unknown) => typeof a === "string"))) &&
+    optionalerText(i.modellbezug)
+  );
+}
+
 /**
  * Nacharbeit 2 (Bens Befund 2) — EINE FRÜHERE DATENFASSUNG, aus der Korrekturhistorie zurückgerechnet.
  * Jede Korrektur hält den Stand VOR ihr fest (`vorher`, `null` = Angabe fehlte); rückwärts angewandt
@@ -970,12 +1114,16 @@ export function inFassung(dp: Datenpunkt, fassung: number): Datenpunkt | undefin
   if (fassung === dp.fassung) {
     return dp;
   }
-  const stand = new Map<string, unknown>(Object.entries(dp));
+  const stand = new Map<string, unknown>(
+    INHALTSFELDER.flatMap((feld) => (dp[feld] === undefined ? [] : [[feld, dp[feld]]])),
+  );
   for (const k of [...dp.korrekturen].sort((a, b) => b.fassung - a.fassung)) {
     if (k.fassung <= fassung) {
       break;
     }
-    for (const [feld, wert] of Object.entries(k.vorher)) {
+    for (const feld of INHALTSFELDER) {
+      if (!Object.hasOwn(k.vorher, feld)) continue;
+      const wert = k.vorher[feld];
       if (wert === null || wert === undefined) {
         stand.delete(feld);
       } else {
@@ -983,9 +1131,10 @@ export function inFassung(dp: Datenpunkt, fassung: number): Datenpunkt | undefin
       }
     }
   }
-  const alt = Object.fromEntries(stand) as unknown as Datenpunkt;
+  const alt: unknown = Object.fromEntries(stand);
+  if (!istHistorischerInhalt(alt)) return undefined;
   return {
-    ...alt,
+    ...mitInhalt(dp, alt),
     fassung,
     korrekturen: dp.korrekturen.filter((k) => k.fassung <= fassung),
     pruefungen: dp.pruefungen.filter((p) => p.datenFassung <= fassung),
@@ -1356,10 +1505,7 @@ function passtAmOrt(l: OrtsLage, wert: string, bildKennung?: string): string | u
 }
 
 function artikelText(ko: KnowledgeObject): string {
-  const body = (ko.bodyHtml ?? "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&");
+  const body = htmlToPlainText(ko.bodyHtml ?? "");
   return `${ko.title}\n${ko.statement}\n${body}`;
 }
 
@@ -1736,7 +1882,7 @@ export async function korrigiere(
   u: DatenUmgebung,
   h: Handelnder,
 ): Promise<Datenpunkt> {
-  let neu: Inhalt = { ...dp };
+  let neu: Datenpunkt = { ...dp };
   const vorher: Record<string, unknown> = {};
   const merke = (feld: keyof Inhalt) => {
     if (!(feld in vorher)) {
@@ -1747,10 +1893,8 @@ export async function korrigiere(
     const w = k[feld];
     if (w !== undefined && w !== (dp[feld] ?? null)) {
       merke(feld);
-      const ohne = Object.fromEntries(
-        Object.entries(neu).filter(([schluessel]) => schluessel !== feld),
-      );
-      neu = (w === null ? ohne : { ...ohne, [feld]: w }) as unknown as Inhalt;
+      const { [feld]: _bisher, ...ohne } = neu;
+      neu = w === null ? ohne : { ...ohne, [feld]: w };
     }
   }
   if (k.neuBerechnen) {
@@ -1843,7 +1987,7 @@ export async function korrigiere(
   const fassung = dp.fassung + 1;
   // `neu` begann als vollständige Kopie von `dp`; entfernte Angaben fehlen darin und bleiben weg.
   const ergebnis: Datenpunkt = {
-    ...(neu as Datenpunkt),
+    ...neu,
     fassung,
     korrekturen: [
       ...dp.korrekturen,

@@ -149,7 +149,7 @@ function de(key: string): string {
 /** Der sichtbare Nacharbeit-Hinweis am Objekt (`KnowledgeDetail.tsx:904`). */
 const BANNER = de("ko.returnedBanner");
 
-function mountDetail(): void {
+async function mountDetail(): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -171,6 +171,7 @@ function mountDetail(): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 function mountTasks(): void {
@@ -217,10 +218,10 @@ describe("JOB 557 D9 · U — die Owner-Nacharbeit ist sichtbar und bleibt bei d
   // Vor D8 kennt `isReturnedForRework` nur `ko.returned-to-author`. Ein ehrlich benanntes
   // Owner-Ereignis ist ihm unbekannt, der Hinweis bleibt stumm — das Objekt steht in Nacharbeit und
   // die Oberfläche schweigt darüber. Genau das fällt hier.
-  it("U1 · Owner-Rückgabe: der Nacharbeit-Hinweis erscheint am Wissensobjekt", () => {
+  it("U1 · Owner-Rückgabe: der Nacharbeit-Hinweis erscheint am Wissensobjekt", async () => {
     lage.ko = ko();
     lage.audit = [rueckgabe("ko.returned-to-owner", EIGENTUEMERIN)];
-    mountDetail();
+    await mountDetail();
     expect(
       text(),
       "das Objekt ist an die Eigentümerin zurückgegeben, die Detailseite sagt es dem Menschen aber nicht",
@@ -232,12 +233,12 @@ describe("JOB 557 D9 · U — die Owner-Nacharbeit ist sichtbar und bleibt bei d
   //
   // Beide Hälften zusammen, weil jede allein täuschen kann (s. Kopfkommentar): sichtbar am Objekt
   // UND nicht in der Aufgabenliste der Autorin. Eine Owner-Rückgabe liegt nicht bei der Autorin.
-  it("U2 · Owner-Rückgabe: sichtbar am Objekt UND nicht in den Aufgaben der Autorin", () => {
+  it("U2 · Owner-Rückgabe: sichtbar am Objekt UND nicht in den Aufgaben der Autorin", async () => {
     lage.ko = ko();
     lage.kos = [ko()];
     lage.audit = [rueckgabe("ko.returned-to-owner", EIGENTUEMERIN)];
 
-    mountDetail();
+    await mountDetail();
     expect(text(), "erste Hälfte: der Hinweis fehlt am Objekt").toContain(BANNER);
     abbauen();
 
@@ -254,10 +255,10 @@ describe("JOB 557 D9 · U — die Owner-Nacharbeit ist sichtbar und bleibt bei d
   // Bestandsschutz, und BEN verlangt ihn ausdrücklich als Gegenfall: Wo die Verantwortliche
   // tatsächlich die Autorin ist, bleibt alles wie bisher — Hinweis am Objekt UND Aufgabe in der
   // Liste. Diese beiden Fälle sind vor wie nach der Änderung grün; das ist ihre Aufgabe.
-  it("U3 · Autor-Fallback: der Nacharbeit-Hinweis erscheint unverändert", () => {
+  it("U3 · Autor-Fallback: der Nacharbeit-Hinweis erscheint unverändert", async () => {
     lage.ko = ko();
     lage.audit = [rueckgabe("ko.returned-to-author", AUTORIN)];
-    mountDetail();
+    await mountDetail();
     expect(text()).toContain(BANNER);
     abbauen();
   });
@@ -278,12 +279,12 @@ describe("JOB 557 D9 · U — die Owner-Nacharbeit ist sichtbar und bleibt bei d
   //
   // Ohne diesen Fall wären U1 bis U4 auch dann erfüllbar, wenn der Hinweis IMMER stünde und die
   // Liste IMMER leer wäre. Er misst, dass beide Flächen überhaupt unterscheiden.
-  it("U5 · ohne Rückgabeereignis: kein Hinweis am Objekt und keine Aufgabe in der Liste", () => {
+  it("U5 · ohne Rückgabeereignis: kein Hinweis am Objekt und keine Aufgabe in der Liste", async () => {
     lage.ko = ko();
     lage.kos = [ko()];
     lage.audit = [];
 
-    mountDetail();
+    await mountDetail();
     expect(text(), "der Hinweis steht ohne jedes Rückgabeereignis").not.toContain(BANNER);
     abbauen();
 

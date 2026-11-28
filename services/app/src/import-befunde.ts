@@ -89,7 +89,7 @@ function hatLeseschutz(leser: unknown): boolean {
  * reist am Kandidaten mit, steht aber nicht im eingefrorenen `ImportItem` — deshalb hier gelesen.
  */
 function quellangaben(item: ImportCandidate["item"]): unknown {
-  return (item as unknown as { sourceReadRestriction?: unknown }).sourceReadRestriction;
+  return "sourceReadRestriction" in item ? item.sourceReadRestriction : undefined;
 }
 
 function schutzBefund(kandidat: ImportCandidate): SchutzBefund {

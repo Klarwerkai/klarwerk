@@ -123,7 +123,7 @@ describe("WP-SHIP8-CLOSE-2 (bens GELB): vertraulich vorbefüllter Bibliothekslin
     });
     await mountAt(askAnswerHref(QUESTION));
     expect(askMock).toHaveBeenCalledTimes(1);
-    expect(askMock).toHaveBeenCalledWith(QUESTION, "de");
+    expect(askMock).toHaveBeenCalledWith(QUESTION, "de", [], undefined, expect.any(AbortSignal));
     // Der vertrauliche Prüf-Hinweis gehört NICHT zu diesem Weg.
     expect(container.textContent).not.toContain("Vertraulicher Inhalt — prüfe die Frage");
   });

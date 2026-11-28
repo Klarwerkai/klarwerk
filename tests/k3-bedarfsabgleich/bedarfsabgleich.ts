@@ -225,7 +225,7 @@ export const BEDARFSABGLEICH: readonly Bedarf[] = [
     "stripAnswerMarkdown",
     "Antwort-Markdown für Klartext (Word) entfernen",
     {
-      datei: "apps/web/public/word-addin/taskpane.js",
+      datei: "apps/web/public/word-addin/dokumentvergleich.js",
       muster: "function stripAskAnswerMarkdown\\(",
     },
     "Der einzige Bedarfsort (Word-Taskpane) trägt seine eigene Fassung `stripAskAnswerMarkdown`.",

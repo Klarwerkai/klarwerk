@@ -458,6 +458,15 @@ async function suchen(q: string): Promise<void> {
 
   // (c) Und danach der Anstrich: die Flaeche hat die gelesene Antwort wirklich gezeichnet.
   await warteAufAnstrich("Station 5 (Renderer)", q);
+  // Die Trefferzeile kann vor dem nachgeladenen Lesebereich erscheinen. Dort steht der Treffergrund.
+  await warteAuf(
+    "Station 6 (Lesebereich)",
+    "eine leere Liste oder der Titel im gerenderten Lesebereich",
+    () =>
+      container.querySelector(
+        '[data-testid="bib-leer"], [data-testid="bib-lesen"] [data-testid="bib-titel"]',
+      ) !== null,
+  );
 }
 
 beforeEach(async () => {

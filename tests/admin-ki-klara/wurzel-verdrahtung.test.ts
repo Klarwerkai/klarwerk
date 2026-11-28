@@ -226,7 +226,7 @@ describe("JOB 3666 · W — Klara und Word folgen der zentralen Freigabe an der 
     expect(a.gesehen.join("\n")).toContain(TEXT);
   });
 
-  it("W3 · die Adminentscheidung wirkt SOFORT auf eine laufende Sitzung — und entwertet die Zustimmung", async () => {
+  it("W3 · die Adminentscheidung wirkt SOFORT auf eine laufende Sitzung — und ein Widerruf stoppt Word", async () => {
     // Der eigentliche Wert einer zentralen Entscheidung: sie greift ohne Neustart, an EINER
     // laufenden Instanz, und sie steckt in der Version, an der eine Zustimmung hängt. Wäre das Feld
     // weiterhin ungesetzt, wären beide Versionen unten GLEICH — und die Umstellung bliebe für jede
@@ -245,10 +245,21 @@ describe("JOB 3666 · W — Klara und Word folgen der zentralen Freigabe an der 
     expect(basis(nachher.policyVersion)).toBe(basis(vorher.policyVersion));
     expect(nachher.policyVersion.endsWith(":frei")).toBe(true);
 
-    // Und die Zustimmung von vorhin trägt die neue Lage NICHT: der Mensch hat auf einer anderen
-    // Grundlage zugestimmt, also wird erneut gefragt. Fail-closed in beide Richtungen.
-    expect(nachher.externalConsentGranted).toBe(false);
-    expect(nachher.blockedReason).toBe("external_consent_missing");
-    expect(nachher.executionAllowed).toBe(false);
+    // Die Wurzel erteilt für die neue Policy die Standardfreigabe. Ein ausdrücklicher
+    // Widerruf gilt dagegen auch beim nächsten Statusabruf und am Word-Ausführungsweg.
+    expect(nachher.externalConsentGranted).toBe(true);
+    expect(nachher.executionAllowed).toBe(true);
+    const widerruf = await a.app.inject({
+      method: "DELETE",
+      url: `/api/klara/sessions/${a.bindung["x-klara-session"]}/consent`,
+      headers: { ...a.headers, ...a.bindung },
+    });
+    expect(widerruf.statusCode, widerruf.body).toBe(200);
+    const gesperrt = await klaraStatus(a);
+    expect(gesperrt.externalConsentGranted).toBe(false);
+    expect(gesperrt.executionAllowed).toBe(false);
+    expect(gesperrt.blockedReason).toBe("external_consent_missing");
+    expect((await wordWeg(a)).status).toBe(409);
+    expect(a.gesehen).toEqual([]);
   });
 });

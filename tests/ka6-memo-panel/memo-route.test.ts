@@ -80,6 +80,7 @@ const nurWennFreigegeben = KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip;
 
 function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
   return {
+    confidentiality: "intern",
     title: p.id,
     statement: "Aussage",
     conditions: [],

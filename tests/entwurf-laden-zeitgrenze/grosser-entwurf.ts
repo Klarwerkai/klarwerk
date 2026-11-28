@@ -18,10 +18,11 @@
 // nicht einen ausgedachten. Drei Viertel des Limits und nicht 100 %: ein Prüfstand, der am Rand
 // balanciert, wird über die Zeit rot, ohne dass jemand etwas kaputt gemacht hätte.
 
+import sharp from "sharp";
+import { grossesPng } from "../m5c-b-bildbudget/bilder";
+
 /** Verankerte Abbildungen im Rumpf — dieselbe Zahl steht als `sourceImageCount` am Entwurf. */
 export const BILDER_IM_ENTWURF = 30;
-/** Bilddaten je Abbildung, in Zeichen. 30 × 120 000 ≈ 3,4 MiB allein an Bildbytes. */
-export const BILDDATEN_JE_BILD = 120_000;
 /** Belegstellen, die auf ihre Anker warten. */
 export const BELEGSTELLEN_IM_ENTWURF = 30;
 
@@ -38,11 +39,14 @@ export const MARKE_ANFANG = "ANFANGSMARKE-3782 erste Zeile des Gesamtdokuments";
 export const MARKE_ENDE = "SCHLUSSMARKE-3782 letzte Zeile nach der dreissigsten Abbildung";
 
 /** Ein Bild, wie Klara und der DOCX-Weg es in den Rumpf legen — echte base64-Bytes, kein Platzhalter. */
-function bild(nr: number, bytes: number): string {
-  const daten = "QUJDRA".repeat(Math.ceil(bytes / 6)).slice(0, bytes);
+async function bild(nr: number): Promise<string> {
+  // Eigenständige reproduzierbare Bilder, auch nach der Normalisierung noch rund 90 KiB groß.
+  const daten = await sharp(grossesPng(375, 375, nr))
+    .webp({ quality: 80 })
+    .toBuffer();
   return (
     `<figure data-image-id="kw-img-3782-${nr}">` +
-    `<img data-image-id="kw-img-3782-${nr}" src="data:image/png;base64,${daten}" alt="Abbildung ${nr}">` +
+    `<img data-image-id="kw-img-3782-${nr}" src="data:image/webp;base64,${daten.toString("base64")}" alt="Abbildung ${nr}">` +
     `<figcaption data-image-id="kw-img-3782-${nr}">Abbildung ${nr} aus dem Originaldokument</figcaption></figure>`
   );
 }
@@ -52,12 +56,12 @@ function bild(nr: number, bytes: number): string {
  * Entwurf: was im Editor steht, ist dieser String (durch `frontDoorBodyFromDraft`, das bereits
  * verankerte figures unberührt lässt).
  */
-export function grosserRumpf(): string {
+async function grosserRumpf(): Promise<string> {
   const absatz = "<p>Vor jedem Anlauf die Schmierstellen der Presse P4 prüfen und quittieren.</p>";
-  const bilder = Array.from({ length: BILDER_IM_ENTWURF }, (_, i) =>
-    bild(i + 1, BILDDATEN_JE_BILD),
-  ).join("");
-  return `<p>${MARKE_ANFANG}.</p>${absatz.repeat(4_000)}${bilder}<p>${MARKE_ENDE}.</p>`;
+  const bilder = await Promise.all(
+    Array.from({ length: BILDER_IM_ENTWURF }, (_, i) => bild(i + 1)),
+  );
+  return `<p>${MARKE_ANFANG}.</p>${absatz.repeat(4_000)}${bilder.join("")}<p>${MARKE_ENDE}.</p>`;
 }
 
 /**
@@ -74,7 +78,7 @@ export function grosserRumpf(): string {
  * Rückhalt und nicht die Frist. Dieser Entwurf kommt vollständig zurück, und genau das ist die
  * Voraussetzung des Falls.
  */
-export function grosserEntwurf(): Record<string, unknown> {
+export async function grosserEntwurf(): Promise<Record<string, unknown>> {
   const quellen = Array.from({ length: BELEGSTELLEN_IM_ENTWURF }, (_, i) => ({
     label: `Wartungshandbuch P4, Abschnitt ${i + 1}`,
     url: `https://intranet.example/p4/${i + 1}`,
@@ -87,7 +91,7 @@ export function grosserEntwurf(): Record<string, unknown> {
     category: "Instandhaltung",
     confidentiality: "intern",
     origin: "frontdoor",
-    bodyHtml: grosserRumpf(),
+    bodyHtml: await grosserRumpf(),
     sourceImageCount: BILDER_IM_ENTWURF,
     pendingSources: quellen,
   };

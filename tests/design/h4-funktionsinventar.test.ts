@@ -734,9 +734,9 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     // ALLE SIND GEMESSEN, nicht aus dem Katalog geraten (Lieferung 1 dieses Auftrags, an der
     // laufenden Bühne): jedes Wort steht in der deutschen Lesung seines Abschnitts und fehlt in
     // der englischen. Beispiel `Mehr · belege`: DE „Belege › Sicherheit noch nicht bewertet …
-    // Vertrauen 99 Reife Nutzbar … Output-Eignung ja IP-Sensitivität nicht bewertet", EN
-    // „Evidence › Confidence not rated yet … Trust 99 Maturity Usable … Output eligibility yes
-    // IP sensitivity not rated".
+    // Vertrauen 99 Reife Nutzbar … In erzeugte Dokumente ja Schutzbedarf nicht bewertet", EN
+    // „Evidence › Confidence not rated yet … Trust 99 Maturity Usable … In generated documents yes
+    // Protection need not rated".
     //
     // WAS AUSDRÜCKLICH NICHT HIER STEHT — und warum. `Pedi` (F17 `:436`) und `Konstruktion`
     // (Provenienz, Herkunftskette) sind DATENWERTE: der Autor und die Abteilung des
@@ -779,14 +779,14 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
       fall: "F20",
       teil: "Mehr · belege",
       wo: "eintraege",
-      wort: "Output-Eignung",
+      wort: "In erzeugte Dokumente",
       art: "enthaelt",
     },
     {
       fall: "F20",
       teil: "Mehr · belege",
       wo: "eintraege",
-      wort: "IP-Sensitivität",
+      wort: "Schutzbedarf",
       art: "enthaelt",
     },
     {

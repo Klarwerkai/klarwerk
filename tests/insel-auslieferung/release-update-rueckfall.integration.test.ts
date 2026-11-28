@@ -784,7 +784,13 @@ function strecke(startweg: Startweg): void {
 }
 
 strecke("eigenstart");
-strecke("launchd");
+if (process.platform === "darwin" || process.env.KLARWERK_INSEL_LAUNCHD_PFLICHT === "1") {
+  strecke("launchd");
+} else {
+  process.stderr.write(
+    "Insel-Release: Eigenstart auf diesem Prüfplatz; launchd läuft im macOS-Integrationsjob.\n",
+  );
+}
 
 describe("K7 · Gegenproben in einer eigenen Zielumgebung, mit Rücknahme", () => {
   let g: Pruefplatz | undefined;

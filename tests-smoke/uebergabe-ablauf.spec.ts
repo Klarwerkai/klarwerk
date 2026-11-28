@@ -230,7 +230,18 @@ test.describe("Übergabeablauf · ein Einstieg in der echten App", () => {
     await expect(bilanz).toContainText(`${b.namen.nora}: 2 Beiträge, 1 Vorgänge`);
     await expect(bilanz).toContainText(`${b.namen.otto}: 1 Beiträge, 1 Vorgänge`);
     await expect(page.getByTestId("ablauf-letzte-nachher")).toHaveAttribute("data-beitraege", "0");
-    await expect(page.getByTestId("konto-protokoll")).toContainText("Übergabe abgeschlossen");
+    // Die Kontenverwaltung liefert die Abschlussbilanz auch bei eingeschränkter Audit-Lesesicht.
+    const verlauf = await page.request.get(`/api/verantwortung/person/${b.ids.paula}/ablaeufe`);
+    expect(verlauf.ok()).toBe(true);
+    const { ablaeufe } = await verlauf.json();
+    expect(ablaeufe[0]).toMatchObject({ umfang: "ausscheiden", vollstaendig: true });
+    await expect(bilanz.locator('[data-vollstaendig="ja"]')).toHaveAttribute(
+      "data-seq",
+      String(ablaeufe[0].seq),
+    );
+    await expect(
+      page.getByTestId("konto-protokoll").locator('[data-action="user.access-expired"]'),
+    ).toContainText("Zugang abgelaufen");
     await bild(page, "3-bilanz-nach-neuladen");
   });
 

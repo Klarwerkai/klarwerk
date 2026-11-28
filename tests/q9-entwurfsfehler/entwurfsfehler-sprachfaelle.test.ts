@@ -442,3 +442,45 @@ describe("I · der Dokumentweg spricht dieselben zwei Sätze in der Sprache der 
     );
   });
 });
+
+async function docxFehler(sprache: string, payload: Record<string, unknown>, code: string) {
+  const antwort = await app.inject({
+    method: "POST",
+    url: "/api/drafts/from-docx",
+    headers: { authorization: `Bearer ${tokenEignerin}`, "accept-language": sprache },
+    payload: { name: "Test.docx", data: "eA==", ...payload },
+  });
+  expect(antwort.statusCode).toBe(400);
+  expect(antwort.json().error).toBe(code);
+  return antwort.json() as Koerper;
+}
+
+describe("Word-Entwurf: Validierungsfehler am angemeldeten Eingang", () => {
+  it("Unbekannte Dokumentkennung liefert den Fehlercode und den deutschen, englischen und niederländischen Satz", async () => {
+    const daten = { dokumentId: randomUUID() };
+    const de = await docxFehler("de", daten, "DOKUMENT_UNBEKANNT");
+    expect(de.message).toBe(MELDUNGEN.DOKUMENT_UNBEKANNT.de);
+    const en = await docxFehler("en", daten, "DOKUMENT_UNBEKANNT");
+    expect(en.message).toBe(MELDUNGEN.DOKUMENT_UNBEKANNT.en);
+    const nl = await docxFehler("nl", daten, "DOKUMENT_UNBEKANNT");
+    expect(nl.message).toBe(MELDUNGEN.DOKUMENT_UNBEKANNT.nl);
+  });
+  it("Ungültige Vorgangskennung liefert den Fehlercode und den deutschen, englischen und niederländischen Satz", async () => {
+    const daten = { operationId: 42 };
+    const de = await docxFehler("de", daten, "BAD_REQUEST");
+    expect(de.message).toBe(MELDUNGEN.DRAFT_OPERATION_ID_INVALID.de);
+    const en = await docxFehler("en", daten, "BAD_REQUEST");
+    expect(en.message).toBe(MELDUNGEN.DRAFT_OPERATION_ID_INVALID.en);
+    const nl = await docxFehler("nl", daten, "BAD_REQUEST");
+    expect(nl.message).toBe(MELDUNGEN.DRAFT_OPERATION_ID_INVALID.nl);
+  });
+  it("Ungültige Schutzklasse liefert den Fehlercode und den deutschen, englischen und niederländischen Satz", async () => {
+    const daten = { confidentiality: "invalid" };
+    const de = await docxFehler("de", daten, "BAD_REQUEST");
+    expect(de.message).toBe(MELDUNGEN.DRAFT_CONFIDENTIALITY_INVALID.de);
+    const en = await docxFehler("en", daten, "BAD_REQUEST");
+    expect(en.message).toBe(MELDUNGEN.DRAFT_CONFIDENTIALITY_INVALID.en);
+    const nl = await docxFehler("nl", daten, "BAD_REQUEST");
+    expect(nl.message).toBe(MELDUNGEN.DRAFT_CONFIDENTIALITY_INVALID.nl);
+  });
+});

@@ -39,6 +39,7 @@ import { KALENDER_PFAD } from "../api/eigenerKalender";
 import type { KlaraObjektbezug } from "../api/klaraGespraech";
 import { useSession } from "../app/AuthContext";
 import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext";
+import { AiCostHint } from "../components/AiCostHint";
 import { SprachSchalter } from "../components/SprachSchalter";
 import { MeineFunktionen } from "../components/funktionen/MeineFunktionen";
 import { BegleiterSuche } from "../components/klara-begleitung/BegleiterSuche";
@@ -131,7 +132,7 @@ const KNOPF_KI =
   "inline-flex h-8 items-center rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const SYMBOL_KNOPF =
   "inline-flex shrink-0 items-center justify-center rounded-btn border border-hairline bg-surface text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
-const KLEINTITEL = "font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2";
+const KLEINTITEL = "font-mono text-klein font-semibold uppercase tracking-wider text-muted-2";
 const ABSCHNITT = "text-[12.5px] font-semibold text-ink";
 
 /** Der Ring der Figur je Zustand — Farbe UND Text (der Text steht daneben, nie nur die Farbe). */
@@ -1984,7 +1985,7 @@ function BegleiterInhalt(): JSX.Element {
               {kiKurz && !sichtbareAktionen.some((aktion) => aktion.vergleich) ? (
                 <span
                   data-testid="begleiter-verfuegbarkeit"
-                  className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted"
+                  className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
                 >
                   {kiKurz}
                 </span>
@@ -2462,6 +2463,7 @@ function BegleiterInhalt(): JSX.Element {
                 {t("begleiter.eingabe.senden")}
               </button>
             </div>
+            <AiCostHint billable={ki.kostenpflichtig} />
           </form>
         </>
       )}

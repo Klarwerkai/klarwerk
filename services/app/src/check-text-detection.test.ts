@@ -32,6 +32,7 @@ function mkKo(id: string, status: "validiert" | "offen", statement: string): Kno
     title: "Pumpe entlüften",
     statement,
     status,
+    confidentiality: "intern",
     conditions: [],
     measures: [],
     tags: [],
@@ -337,7 +338,12 @@ describe("SCRUM-502: check-text schließt vertrauliche KOs aus (beide Stufen)", 
   }
 
   it("Stufe 1: vertrauliches KO wird NIE als Duplikat/Titel offengelegt", async () => {
-    const { ko, findCandidates } = koService([conf("v1", TEXT_IDENTISCH)]);
+    const { confidentiality: _stufe, ...ohneEinstufung } = mkKo(
+      "ohne-stufe",
+      "validiert",
+      TEXT_IDENTISCH,
+    );
+    const { ko, findCandidates } = koService([conf("v1", TEXT_IDENTISCH), ohneEinstufung]);
     const result = await checkText(
       { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
       { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) },

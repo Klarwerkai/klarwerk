@@ -117,19 +117,36 @@ export function blaetternderFetch(jeSeite: number): { fetchFn: typeof fetch; auf
   const fetchFn = (async (u: string) => {
     const url = new URL(String(u));
     aufrufe.push(url.pathname + url.search);
+    if (url.pathname === `/wiki/rest/api/space/${BEREICH}`) {
+      return Response.json({
+        permissions: [
+          {
+            operation: { operation: "read", targetType: "space" },
+            anonymousAccess: true,
+            subjects: { user: { results: [] }, group: { results: [] } },
+          },
+        ],
+      });
+    }
+    if (url.pathname === "/wiki/rest/api/group") {
+      return Response.json({ results: [{ name: "confluence-hr", id: "hr" }], _links: {} });
+    }
+    if (url.pathname === "/wiki/rest/api/group/hr/membersByGroupId") {
+      return Response.json({
+        results: [{ accountId: "hr-1", email: "hr@example.test" }],
+        _links: {},
+      });
+    }
+    if (url.pathname !== "/wiki/rest/api/content") return Response.json({}, { status: 404 });
     const start = Number(url.searchParams.get("start") ?? "0");
     const teil = seiten.slice(start, start + jeSeite);
     const weiter = start + jeSeite < seiten.length;
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        results: teil,
-        _links: weiter
-          ? { next: `/rest/api/content?spaceKey=${BEREICH}&start=${start + jeSeite}` }
-          : {},
-      }),
-    } as unknown as Response;
+    return Response.json({
+      results: teil,
+      _links: weiter
+        ? { next: `/rest/api/content?spaceKey=${BEREICH}&start=${start + jeSeite}` }
+        : {},
+    });
   }) as unknown as typeof fetch;
   return { fetchFn, aufrufe };
 }

@@ -173,11 +173,16 @@ function pruefeForm(pfad: string, roh: unknown, sprachen: readonly string[]): st
  * @param module   Pfad (wie ihn `import.meta.glob` liefert) → Standardexport des Moduls, ungeprüft.
  * @param basisSchluessel Alle Schlüssel, die der Grundbestand schon trägt.
  * @param sprachen Die angemeldeten Oberflächensprachen (`sprachenAusRessourcen`); Vorgabe: DE/EN/NL.
+ * @param nachgeladen R-0801: Sprachen, deren Blöcke der Produktionsbau aus den Modulen nimmt und mit
+ *   den Sprachpaketen nachlädt (`sprachpaketeNachladen`). Ein LEERER Block einer solchen Sprache ist
+ *   dann kein Befund nach (4); ein nicht leerer wird voll geprüft. Vorgabe: keine — Tor, Build-Plugin
+ *   und Quelltext prüfen damit unverändert den vollen Bestand.
  */
 export function pruefeTextmodule(
   module: Readonly<Record<string, unknown>>,
   basisSchluessel: ReadonlySet<string>,
   sprachen: readonly string[] = SPRACHEN,
+  nachgeladen: readonly string[] = [],
 ): string[] {
   const fehler: string[] = [];
   const herkunft = new Map<string, string>();
@@ -193,14 +198,18 @@ export function pruefeTextmodule(
     const erlaubtAlt = new Set(modul.legacySchluessel);
     // Blockprüfung einmal je Sprache/Aufruf; Reihenfolge und Mehrfachnennungen bleiben.
     const sprachbloecke = new Map<string, Readonly<Record<string, string>>>();
-    const sprachenMitBlock = sprachen.map((sprache) => {
-      let inhalt = sprachbloecke.get(sprache);
-      if (inhalt === undefined) {
-        inhalt = block(modul, sprache);
-        sprachbloecke.set(sprache, inhalt);
-      }
-      return { sprache, inhalt };
-    });
+    const sprachenMitBlock = sprachen
+      .map((sprache) => {
+        let inhalt = sprachbloecke.get(sprache);
+        if (inhalt === undefined) {
+          inhalt = block(modul, sprache);
+          sprachbloecke.set(sprache, inhalt);
+        }
+        return { sprache, inhalt };
+      })
+      .filter(
+        ({ sprache, inhalt }) => !nachgeladen.includes(sprache) || Object.keys(inhalt).length > 0,
+      );
 
     for (const schluessel of Object.keys(modul.de).sort()) {
       // (2) Namensraum — oder ausdrücklich eingetragener Altname.

@@ -344,17 +344,21 @@ describe("Block A: Entwurf speichern sichert den vollständigen Dirty-State und 
     await mount();
     await openWorkspaceAndAdvanced();
     const typeSel = selectByValue("best_practice");
-    const otherType = [...typeSel.options].map((o) => o.value).find((v) => v !== "best_practice");
+
     // JOB 3082 (Q3 a): die Vertraulichkeitsauswahl startet LEER („nicht gewählt"), nicht auf
     // „intern" — die Wahl ist eine Handlung, keine Vorbelegung.
-    const confSel = selectByValue("");
-    const otherConf = [...confSel.options].map((o) => o.value).find((v) => v !== "");
-    const numberInput = [...container.querySelectorAll("input")].find(
-      (i) => i.type === "number",
-    ) as HTMLInputElement;
+    const confSel = container.querySelector<HTMLSelectElement>(
+      '[data-testid="capture-vertraulichkeit"]',
+    );
+    if (!confSel) throw new Error("Vertraulichkeitsauswahl fehlt");
+    expect(confSel.getAttribute("aria-label")).toBe(i18n.t("conf.field"));
+    expect(confSel.value).toBe("");
+    const numberInput = inputByPlaceholder(
+      i18n.t("capture.reviewers.defaultPlaceholder", { n: 3 }),
+    );
 
-    await change(typeSel, otherType as string);
-    await change(confSel, otherConf as string);
+    await change(typeSel, "technik");
+    await change(confSel, "vertraulich");
     await change(numberInput, "2");
 
     await saveViaNavGuard();
@@ -365,8 +369,8 @@ describe("Block A: Entwurf speichern sichert den vollständigen Dirty-State und 
       confidentiality?: string;
       neededValidations?: number;
     };
-    expect(payload.type).toBe(otherType);
-    expect(payload.confidentiality).toBe(otherConf);
+    expect(payload.type).toBe("technik");
+    expect(payload.confidentiality).toBe("vertraulich");
     expect(payload.neededValidations).toBe(2);
   });
 });

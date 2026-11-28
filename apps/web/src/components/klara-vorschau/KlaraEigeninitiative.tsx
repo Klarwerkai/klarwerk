@@ -150,7 +150,7 @@ export function KlaraHinweis({
       <p data-testid="klara-hinweis-text" className="mt-0.5 text-[12px] leading-relaxed text-text">
         {t(`klarainitiative.hinweis.${hinweis.art}.text`, { seite: ort })}
       </p>
-      <p className="mt-0.5 text-[10.5px] text-muted-2">{t("klarainitiative.hinweis.nurAngebot")}</p>
+      <p className="mt-0.5 text-klein text-muted-2">{t("klarainitiative.hinweis.nurAngebot")}</p>
       <div className="mt-1.5 flex flex-wrap gap-1.5">
         <button
           type="button"
@@ -220,7 +220,7 @@ export function KlaraUebertrageneAufgaben({
   const offen = liste.filter(istOffen).length;
   return (
     <section
-      data-testid="klara-aufgaben"
+      data-testid="klara-uebertragene-aufgaben"
       data-offen={offen}
       aria-label={t("klarainitiative.aufgaben.titel")}
       className="rounded-card border border-ai/40 bg-page px-3 py-2"
@@ -230,7 +230,10 @@ export function KlaraUebertrageneAufgaben({
         {t("klarainitiative.aufgaben.intro")}
       </p>
       {liste.length === 0 ? (
-        <p data-testid="klara-aufgaben-leer" className="mt-1 text-[11.5px] text-muted-2">
+        <p
+          data-testid="klara-uebertragene-aufgaben-leer"
+          className="mt-1 text-[11.5px] text-muted-2"
+        >
           {t("klarainitiative.aufgaben.leer")}
         </p>
       ) : (
@@ -266,7 +269,7 @@ export function KlaraUebertrageneAufgaben({
           })}
         </ul>
       )}
-      <p className="mt-1 text-[10.5px] text-muted-2">{t("klarainitiative.aufgaben.rechte")}</p>
+      <p className="mt-1 text-klein text-muted-2">{t("klarainitiative.aufgaben.rechte")}</p>
     </section>
   );
 }

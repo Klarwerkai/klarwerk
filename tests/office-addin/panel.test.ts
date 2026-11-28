@@ -40,15 +40,24 @@ function quelltext(pfad: string): string {
 
 describe("F1 · die einzige fremde Quelle ist office.js", () => {
   it("Skripte und Stilblatt sind relativ und gestempelt; kein Inline-Skript", () => {
-    expect(alle(SEITE, /<script\s+src="([^"]+)"/g)).toEqual([
+    const skripte = alle(SEITE, /<script\s+src="([^"]+)"/g);
+    expect(skripte).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       "hostkern.js?v=__KW_FASSUNG__",
       "taskpane.js?v=__KW_FASSUNG__",
       "folien-herkunft.js?v=__KW_FASSUNG__",
+      "../word-addin/minimal-funktionen.js?v=__KW_FASSUNG__",
+      "../word-addin/minimal.js?v=__KW_FASSUNG__",
+      "minimal-office.js?v=__KW_FASSUNG__",
     ]);
-    expect(alle(SEITE, /<link\s+rel="stylesheet"\s+href="([^"]+)"/g)).toEqual([
+    const stile = alle(SEITE, /<link\s+rel="stylesheet"\s+href="([^"]+)"/g);
+    expect(stile).toEqual([
       "taskpane.css?v=__KW_FASSUNG__",
+      "../word-addin/minimal.css?v=__KW_FASSUNG__",
     ]);
+    for (const asset of [...skripte.slice(1), ...stile]) {
+      expect(existsSync(join(ORDNER, asset.split("?")[0] ?? "")), asset).toBe(true);
+    }
     expect(SEITE).not.toContain("<script>");
     expect(SEITE).toContain('<meta name="kw-office-fassung" content="__KW_FASSUNG__" />');
   });

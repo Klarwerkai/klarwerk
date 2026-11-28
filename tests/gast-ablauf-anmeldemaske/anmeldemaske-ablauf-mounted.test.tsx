@@ -86,11 +86,12 @@ let app: FastifyInstance;
 let services: ReturnType<typeof buildServices>;
 let anfragen: Anfrage[] = [];
 let fetchVorher: typeof fetch;
-/** Nur für den Lade-Zustand (Z2): hält die Antwort an, bis der Fall sie freigibt. */
+let loginAntwort: Promise<Response> | null;
+/** Nur für den Lade-Zustand (Z1): hält die Antwort an, bis der Fall sie freigibt. */
 let bremse: Promise<void> | null = null;
 
 function brueckeAufbauen(): void {
-  globalThis.fetch = (async (eingabe: unknown, init: RequestInit = {}) => {
+  const sende = async (eingabe: unknown, init: RequestInit = {}): Promise<Response> => {
     const url = String(eingabe);
     const kopf: Record<string, string> = {};
     new Headers(init.headers).forEach((wert, name) => {
@@ -120,7 +121,12 @@ function brueckeAufbauen(): void {
       statusText: "",
       text: async () => res.body,
     } as unknown as Response;
-  }) as typeof fetch;
+  };
+  globalThis.fetch = (eingabe, init) => {
+    const antwort = sende(eingabe, init);
+    if (String(eingabe) === "/api/auth/login" && init?.method === "POST") loginAntwort = antwort;
+    return antwort;
+  };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -129,11 +135,15 @@ function brueckeAufbauen(): void {
 let container: HTMLDivElement | null = null;
 let root: ReturnType<typeof createRoot> | null = null;
 
-const flush = async (): Promise<void> => {
-  for (let i = 0; i < 40; i++) {
-    await new Promise((r) => setTimeout(r, 0));
-  }
-};
+const naechsterTakt = (): Promise<void> => new Promise((weiter) => setTimeout(weiter, 0));
+
+async function warteAufAntwort(): Promise<void> {
+  if (!loginAntwort) throw new Error("Der Klick hat keine neue Anmeldeanfrage ausgelöst");
+  await act(async () => {
+    await loginAntwort;
+    await naechsterTakt();
+  });
+}
 
 function abbauen(): void {
   if (root) {
@@ -206,7 +216,7 @@ async function tippen(el: HTMLInputElement, wert: string): Promise<void> {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(el, wert);
   await act(async () => {
     el.dispatchEvent(new Event("input", { bubbles: true }));
-    await flush();
+    await naechsterTakt();
   });
 }
 
@@ -221,16 +231,17 @@ async function spracheWaehlen(l: Sprache): Promise<void> {
   }
   await act(async () => {
     knopf.click();
-    await flush();
+    await naechsterTakt();
   });
 }
 
 async function anmelden(konto: { email: string; password: string }): Promise<void> {
   await tippen(feld("email"), konto.email);
   await tippen(feld("password"), konto.password);
+  loginAntwort = null;
   await act(async () => {
     absendeKnopf().click();
-    await flush();
+    await naechsterTakt();
   });
 }
 
@@ -239,6 +250,7 @@ async function versuch(l: Sprache, konto: { email: string; password: string }): 
   mounten();
   await spracheWaehlen(l);
   await anmelden(konto);
+  await warteAufAntwort();
 }
 
 const letzteAnfrage = (): Anfrage => {
@@ -419,9 +431,7 @@ describe("JOB 3821 Z · die Zustände des Fehlerkastens", () => {
 
     freigeben();
     bremse = null;
-    await act(async () => {
-      await flush();
-    });
+    await warteAufAntwort();
 
     expect(fehlersatz()).toBe(MELDUNGEN.ACCESS_EXPIRED.de);
     expect(absendeKnopf().disabled).toBe(false);

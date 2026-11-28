@@ -1,4 +1,4 @@
-import type { BackendModule, ReadCallback } from "i18next";
+import type { BackendModule, ReadCallback, i18n } from "i18next";
 
 // ================================================================================================
 // R-0801 · DER NACHLADER FÜR SPRACHPAKETE — die Startsprache kommt mit, die anderen erst bei Bedarf.
@@ -55,4 +55,19 @@ export function sprachNachlader(laden: SprachpaketLader): BackendModule {
       );
     },
   };
+}
+
+/** Seitentexte dürfen ein noch ausstehendes Grundwörterbuch nicht als geladen ausgeben. */
+export function nachGrundwoerterbuch(instanz: i18n, sprache: string, ergaenzen: () => void): void {
+  if (instanz.hasResourceBundle(sprache, "translation")) {
+    ergaenzen();
+    return;
+  }
+  const beimPaket = (geladen: string, namensraum: string): void => {
+    if (geladen === sprache && namensraum === "translation") {
+      instanz.store.off("added", beimPaket);
+      ergaenzen();
+    }
+  };
+  instanz.store.on("added", beimPaket);
 }

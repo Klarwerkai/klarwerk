@@ -283,6 +283,36 @@ describe("P8 · ein gemeinsamer Paketkern, echte Ströme und eigener Dateilebens
 });
 
 describe("P8 · Downloadplatz je authentischem Konto bis zum Ende der HTTP-Antwort", () => {
+  it("nach der vollständigen ZIP-Antwort gehört der Platz sofort dem folgenden Download", async () => {
+    const k = await httpAufbau();
+    try {
+      const erster = await k.laden();
+      expect(erster.statusCode).toBe(200);
+      const halten = k.halte();
+      const zweiter = k.laden(k.a2);
+      const h = await Promise.race([
+        halten,
+        zweiter.then((res) => {
+          throw new Error(
+            `Der folgende Download erreichte den offenen ZIP-Strom nicht (HTTP ${res.statusCode}).`,
+          );
+        }),
+      ]);
+      try {
+        await h.beendet;
+        expect((await k.laden()).statusCode).toBe(429);
+      } finally {
+        h.tor.end();
+      }
+      for (const res of [erster, await zweiter]) {
+        expect(res.statusCode).toBe(200);
+        expect((await JSZip.loadAsync(res.rawPayload)).file("MANIFEST.json")).not.toBeNull();
+      }
+    } finally {
+      await k.app.close();
+    }
+  });
+
   it.each([false, true])(
     "andere Sitzung/IP bleibt gesperrt, anderes Konto frei; Abbruch=%s",
     async (abbruch) => {

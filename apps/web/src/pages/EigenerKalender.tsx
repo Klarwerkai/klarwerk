@@ -947,7 +947,7 @@ export function EigenerKalender({ kompakt = false }: { kompakt?: boolean } = {})
       <PageHeader
         pageKey="kalender"
         title={t("kalender.titel")}
-        lead={kompakt ? undefined : t("kalender.lead")}
+        {...(kompakt ? {} : { lead: t("kalender.lead") })}
         actions={
           <Button
             variant="primary"

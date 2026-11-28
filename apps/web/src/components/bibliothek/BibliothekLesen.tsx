@@ -2837,7 +2837,7 @@ export function BibliothekLesen({
         data-testid="bib-lesen"
         // STATUS-FREIGABE: die Objektgrenze für Klaras Zeige-Modus; der Status ist die Pille unten.
         data-objekt="wissen"
-        className="flex w-[720px] max-w-full flex-col gap-[18px] py-9"
+        className="flex w-[720px] max-w-full flex-col gap-2 py-2 sm:gap-[18px] sm:py-9"
       >
         {/* JOB 3034 R2 · KONFLIKTRUNDE 2: derselbe Hinweis wie auf jeder anderen Fläche, aus
           derselben Quelle — seit JOB 3063 R6 auch in DERSELBEN Bauform (`AuffrischungHinweis`),

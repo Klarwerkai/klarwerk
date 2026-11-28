@@ -317,6 +317,7 @@ async function uebergebenUndZurueck(): Promise<void> {
   await klick(container.querySelector('main a[href^="/wissen/ko-1"]'), "Die Aufgabenzeile");
   expect(ort.pathname, "der Absprung führt nicht zum Objekt").toBe("/wissen/ko-1");
 
+  await act(() => vi.dynamicImportSettled());
   await klick(container.querySelector('[data-testid="bib-mehr"]'), "„Mehr“");
   const provenienz = await oeffneAbschnitt("provenienz");
   const auswahl = provenienz.querySelector<HTMLSelectElement>(

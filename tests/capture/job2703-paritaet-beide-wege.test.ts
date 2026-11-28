@@ -182,6 +182,35 @@ describe("JOB 2703 · D2 · Paritaet: dieselbe Kuerzung auf jedem Weg, zeichenge
     expect(nachher.statement).toBe(item.statement);
   });
 
+  it("behält die bewusste Leerung im Formular, auch wenn der Teilpatch nur Titel und Aussage enthält", async () => {
+    const { a, admin } = await app();
+    const angelegt = await a.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: admin,
+      payload: {
+        origin: "expert",
+        title: "Ventil",
+        statement: "Entlüften.",
+        bodyHtml: "<p>Alter Absatz.</p>",
+      },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const gespeichert = await a.inject({
+      method: "PUT",
+      url: `/api/drafts/${angelegt.json().id}`,
+      headers: admin,
+      payload: { title: "Ventil V3", statement: "" },
+    });
+    expect(gespeichert.statusCode, gespeichert.body).toBe(200);
+    expect(gespeichert.json().payload).toMatchObject({
+      origin: "expert",
+      title: "Ventil V3",
+      statement: "",
+      bodyHtml: "<p>Alter Absatz.</p>",
+    });
+  });
+
   it("P4 · kein konkurrierender Kuerzungsweg: der Client liefert die Rohaussage ungekuerzt", async () => {
     const { frontDoorStatement } = await import("../../apps/web/src/lib/captureFrontDoor");
     const { wholeDocumentDraftPayload } = await import("../../apps/web/src/lib/captureFromFile");

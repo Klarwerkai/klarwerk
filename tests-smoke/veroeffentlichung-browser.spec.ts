@@ -89,7 +89,17 @@ test("K1/K3/K4: die Wahl erklärt ihre Wirkung, „hervorgehoben“ erreicht die
 
   await bereich.locator('[data-testid="veroeffentlichung-wahl"][value="hervorgehoben"]').check();
   const empfaenger = bereich.getByTestId("veroeffentlichung-wirkung-empfaenger");
-  await expect(empfaenger).toContainText(leserinName);
+  // Die Vorschau zeigt zehn Namen. Der Zustellweg unten prüft auch eine Leserin außerhalb dieses Ausschnitts.
+  const stand = await page.request.get(`/api/kos/${ko.id}/veroeffentlichung`);
+  expect(stand.status(), await stand.text()).toBe(200);
+  const daten = (await stand.json()) as { empfaenger: { name: string }[] };
+  const namen = daten.empfaenger.map((person) => person.name);
+  expect(namen).toContain(leserinName);
+  const ausschnitt = namen.slice(0, 10);
+  if (namen.length > 10) ausschnitt.push("…");
+  await expect(empfaenger).toContainText(
+    `dieselben ${namen.length} Person(en) wie bei „Normal“ — ${ausschnitt.join(", ")}.`,
+  );
   await expect(empfaenger).toContainText("Niemand bekommt dadurch zusätzliche Leserechte.");
   await expect(knopf).toHaveText("Fassung V1 veröffentlichen (Hervorgehoben)");
   await bild(page, "2-wirkung-hervorgehoben");
@@ -126,9 +136,11 @@ test("K1/K3/K4: die Wahl erklärt ihre Wirkung, „hervorgehoben“ erreicht die
     await leserin.locator('input[type="password"]').first().fill(leserinPass);
     await leserin.locator('button[type="submit"]').click();
     await expect(workspaceMarker(leserin)).toBeVisible({ timeout: 15_000 });
-    if (await leserin.getByTestId("notice-ack").count()) {
-      await leserin.getByTestId("notice-ack").click();
-    }
+    // Erstes Anmelden dieses neu angelegten Kontos: der Hinweis lädt nach dem Kopfband.
+    const bestaetigen = leserin.getByTestId("notice-ack");
+    await expect(bestaetigen).toBeVisible();
+    await bestaetigen.click();
+    await expect(leserin.getByTestId("notice-banner")).toBeHidden();
 
     await leserin.getByTestId("kopfband-meldungen").click();
     const erste = leserin.getByTestId("meldung-oeffnen").first();

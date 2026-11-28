@@ -804,7 +804,7 @@ export function libraryRoutes(
   // P14 · Existenzrecht: optional — ohne Quelle hat niemand ein Existenzrecht (Antwort leer).
   existenzbereiche?: ExistenzbereichQuelle,
 ): FastifyPluginAsync {
-  const aktivePakete = new Set<string>();
+  const aktivePakete = new Map<string, AbortController>();
   /**
    * P14: der Firmenfilter einer Anfrage samt den aktuellen Bereichsmarken — oder `null`, wenn die
    * Angabe ungültig war (dann ist die 400 bereits gesendet, bevor irgendetwas gelesen wurde).
@@ -1120,22 +1120,29 @@ export function libraryRoutes(
           });
           return;
         }
-        aktivePakete.add(user.id);
         const controller = new AbortController();
+        aktivePakete.set(user.id, controller);
+        // Nach dem HTTP-Ende kann das Entfernen der temporären Dateien noch laufen.
+        // Ein voriger Download darf beim Aufräumen den Platz seines Nachfolgers nicht freigeben.
+        const gibPlatzFrei = () => {
+          if (aktivePakete.get(user.id) === controller) aktivePakete.delete(user.id);
+        };
+        let gebaut: Awaited<ReturnType<typeof baueWissenspaketStream>> | undefined;
         let ende!: () => void;
         const beendet = new Promise<void>((resolve) => {
           ende = resolve;
         });
         const fertig = () => {
+          gibPlatzFrei();
           ende();
         };
         const abbruch = () => {
           controller.abort();
+          if (gebaut) gibPlatzFrei();
           ende();
         };
         reply.raw.once("finish", fertig);
         reply.raw.once("close", abbruch);
-        let gebaut: Awaited<ReturnType<typeof baueWissenspaketStream>> | undefined;
         try {
           const jetzt = new Date();
           gebaut = await baueWissenspaketStream(
@@ -1172,7 +1179,7 @@ export function libraryRoutes(
           await gebaut?.abgeschlossen.catch(() => {});
           reply.raw.off("finish", fertig);
           reply.raw.off("close", abbruch);
-          aktivePakete.delete(user.id);
+          gibPlatzFrei();
         }
         return;
       }

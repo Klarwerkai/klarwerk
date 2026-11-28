@@ -56,21 +56,6 @@ export function officeBildArt(name: string): Art | null {
  * Nacharbeit 5 (Bens Befund 2): der Abruf einschließlich Antwortkörper ist auf `ladefristMs`
  * begrenzt; danach wird er abgebrochen und das Ergebnis heißt `"frist"`.
  */
-export async function officeBildEingang(
-  anhang: OfficeBildAnhang,
-  art: Art,
-  laden: (href: string, signal?: AbortSignal) => Promise<Blob | null>,
-  ladefristMs: number = BILD_LADEFRIST_MS,
-  signal?: AbortSignal,
-): Promise<BildQuelleEingang | null | "frist"> {
-  const q = await officeBildQuelle(anhang, art, laden, ladefristMs, signal);
-  return q && q !== "frist" ? q.eingang : q;
-}
-
-/**
- * OCR-03: derselbe Lesevorgang wie `officeBildEingang`, dazu der Text der Datei (Folien- bzw.
- * Dokumenttext) — Klara bekommt ihn neben den Bildbefunden. Gelesen wird nur.
- */
 export async function officeBildQuelle(
   anhang: OfficeBildAnhang,
   art: Art,
@@ -121,7 +106,7 @@ export async function officeBildQuelle(
   }
 }
 
-/** Abruf und Antwortkörper hängen am selben Abbruchsignal (die Frist setzt `officeBildEingang`). */
+/** Abruf und Antwortkörper hängen am selben Abbruchsignal (die Frist setzt `officeBildQuelle`). */
 async function ladeAnhang(href: string, signal?: AbortSignal): Promise<Blob | null> {
   const antwort = await fetch(href, { credentials: "same-origin", ...(signal ? { signal } : {}) });
   return antwort.ok ? antwort.blob() : null;

@@ -79,4 +79,7 @@ export const KONTO_AUDIT_AKTIONEN: readonly string[] = [
   "user.account-corrected",
   // aufnahme:20260922:gesamt-leserechte (Variante B): persönliches Freigabeniveau gesetzt/entzogen.
   "user.freigabe-set",
+  "user.ausgeschieden",
+  "user.ausscheiden-beendet",
+  "user.weisungsbefugnis-set",
 ];

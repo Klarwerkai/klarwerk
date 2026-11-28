@@ -114,6 +114,16 @@ function verzoegerteAblage() {
   });
   class Ablage extends InMemoryKoRepo {
     erster = true;
+    ruecknahmeFehler = 0;
+    gescheiterteRuecknahmen = 0;
+    override async delete(...args: Parameters<InMemoryKoRepo["delete"]>): Promise<void> {
+      if (this.ruecknahmeFehler > 0) {
+        this.ruecknahmeFehler -= 1;
+        this.gescheiterteRuecknahmen += 1;
+        throw new Error("RuecknahmeDown");
+      }
+      return super.delete(...args);
+    }
     override async insert(input: Parameters<InMemoryKoRepo["insert"]>[0]): Promise<void> {
       if (this.erster) {
         this.erster = false;
@@ -144,9 +154,14 @@ async function aufbau(anker: boolean) {
     });
   };
   const ablage = verzoegerteAblage();
-  // Nacharbeit 1: scharf zu schaltende Snapshotfehler NACH dem Insert (Teilpersistenz, wie
-  // `sideEffectHarness` in tests/app/review-claim-recovery.test.ts). Nacharbeit 4: als Zähler —
-  // `rest` aufeinanderfolgende Snapshot-Schreibversuche scheitern.
+  // Nacharbeit 4: als Zähler — `rest` aufeinanderfolgende Snapshot-Schreibversuche scheitern.
+  // Gesamtcheck R-1329 (Nacharbeit 66): seit gesamt-auditprotokoll (Lauf 3) ist die Erstanlage
+  // atomar — ein Snapshotfehler allein wird zurückgenommen (`rollbackCreatedKo`), es bleibt nichts
+  // zu adoptieren (Gegenfall „intakte Rücknahme"). Die Adoptions- und Recovery-Fälle lassen darum
+  // zusätzlich genau die erste Rücknahme scheitern (`ablage.repo.ruecknahmeFehler`): dann steht
+  // das Objekt mit Reparaturvermerk im Bestand, `create` wirft `CREATE_ROLLBACK_FAILED` — die
+  // Teilpersistenz, von der diese Fälle ausgehen. Jeder Fall prüft, dass beide Fehler ausgelöst
+  // haben; Kennungszahl, Befund und Recovery-Ausgang sind unverändert.
   const snapshotFehler = { rest: 0 };
   const versionen = new InMemoryKoVersionRepo();
   const versions: KoVersionRepo = {
@@ -318,12 +333,28 @@ describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", 
       expect(candidateFindings(ra as unknown as WebImportCandidate).acceptedKo).toBe(true);
     });
 
-    // Nacharbeit 1, Bens Befund zu service.ts:2129 — der Adoptionsweg nach Teilpersistenz.
-    it(`${weg} (Nacharbeit 1): As Insert gelingt, sein Snapshot wirft einmal → die Adoption geht durch die Nachprüfung, genau EINE Kennung`, async () => {
+    it(`${weg}: Snapshotfehler mit intakter Rücknahme hinterlässt keine Teilpersistenz`, async () => {
       const { ko, ablage, a, aLauf, rb, snapshotFehler } = await bisVorAsFortsetzung(anker);
       snapshotFehler.rest = 1;
       ablage.fortsetzen();
+      await expect(aLauf).rejects.toThrow("SnapshotDown");
+      expect(snapshotFehler.rest).toBe(0);
+      expect(ablage.repo.gescheiterteRuecknahmen).toBe(0);
+      expect(await ko.findByImportCandidateId(a.id)).toBeUndefined();
+      const kos = await ko.list();
+      expect(kos).toHaveLength(1);
+      expect(kos[0]?.id).toBe(rb.koId);
+    });
+
+    // Nacharbeit 1, Bens Befund zu service.ts:2129 — der Adoptionsweg nach Teilpersistenz.
+    it(`${weg} (Nacharbeit 1): As Insert gelingt, sein Snapshot wirft einmal → die Adoption geht durch die Nachprüfung, genau EINE Kennung`, async () => {
+      const { ko, ablage, a, aLauf, rb, snapshotFehler } = await bisVorAsFortsetzung(anker);
+      ablage.repo.ruecknahmeFehler = 1;
+      snapshotFehler.rest = 1;
+      ablage.fortsetzen();
       const ra = await aLauf;
+      expect(ablage.repo.gescheiterteRuecknahmen).toBe(1);
+      expect(ablage.repo.ruecknahmeFehler).toBe(0);
       expect(snapshotFehler.rest, "Vorbedingung: der Snapshotfehler hat ausgelöst.").toBe(0);
 
       const kos = await ko.list();
@@ -343,9 +374,12 @@ describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", 
       // 1. Fehler: `create` nach dem Insert; 2. Fehler: der Belegnachzug der Adoption in
       // `acceptToKo` — die Nachprüfung dort wird nicht erreicht. Der Nachzug im äußeren
       // Fehlerabschluss gelingt; ohne Prüfung schlösse er A allein auf den Stempel hin ab.
+      ablage.repo.ruecknahmeFehler = 1;
       snapshotFehler.rest = 2;
       ablage.fortsetzen();
       const ra = await aLauf;
+      expect(ablage.repo.gescheiterteRuecknahmen).toBe(1);
+      expect(ablage.repo.ruecknahmeFehler).toBe(0);
       expect(snapshotFehler.rest, "Vorbedingung: beide Snapshotfehler haben ausgelöst.").toBe(0);
 
       const kos = await ko.list();
@@ -363,9 +397,12 @@ describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", 
       const welt = await bisVorAsFortsetzung(anker);
       const { ko, ablage, a, aLauf, rb, snapshotFehler, uhr, bDienst, kandidaten } = welt;
       // Drei Fehler: create, Adoption UND äußerer Nachzug — der Claim bleibt fail-closed stehen.
+      ablage.repo.ruecknahmeFehler = 1;
       snapshotFehler.rest = 3;
       ablage.fortsetzen();
       await expect(aLauf).rejects.toThrow();
+      expect(ablage.repo.gescheiterteRuecknahmen).toBe(1);
+      expect(ablage.repo.ruecknahmeFehler).toBe(0);
       expect(snapshotFehler.rest, "Vorbedingung: alle drei Snapshotfehler haben ausgelöst.").toBe(
         0,
       );
@@ -407,9 +444,12 @@ describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", 
         statement: "die Filterkerze beim Oelwechsel tauschen!",
       });
       const { ko, ablage, a, aLauf, rb, snapshotFehler, uhr, bDienst, kandidaten } = welt;
+      ablage.repo.ruecknahmeFehler = 1;
       snapshotFehler.rest = 3;
       ablage.fortsetzen();
       await expect(aLauf).rejects.toThrow();
+      expect(ablage.repo.gescheiterteRuecknahmen).toBe(1);
+      expect(ablage.repo.ruecknahmeFehler).toBe(0);
       expect((await kandidaten.findById(a.id))?.status).toBe("in_bearbeitung");
       const vorher = await ko.list();
       expect(vorher, "Vor der Recovery stehen noch beide Objekte.").toHaveLength(2);

@@ -15,18 +15,18 @@ let ordner = "";
 const pools: ReturnType<typeof createPool>[] = [];
 const START = Date.parse("2026-10-20T12:00:00Z");
 const TAG = 86400000;
-function pool(db = "klara_p10_test") {
-  const p = createPool(url.replace(/\/klara_p10_test$/, `/${db}`));
+function pool(db = "klarwerk_test") {
+  const p = createPool(url.replace(/\/klarwerk_test$/, `/${db}`));
   pools.push(p);
   return p;
 }
 beforeAll(async () => {
   c = await new GenericContainer("postgres:16-alpine")
-    .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klara_p10_test" })
+    .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
-  url = `postgresql://postgres:test@${c.getHost()}:${c.getMappedPort(5432)}/klara_p10_test`;
+  url = `postgresql://postgres:test@${c.getHost()}:${c.getMappedPort(5432)}/klarwerk_test`;
   ordner = await mkdtemp(join(tmpdir(), "e-p10-pg-"));
   await writeFile(join(ordner, "marken.ndjson"), "");
   await migrate(pool());
@@ -70,7 +70,7 @@ it("P10-AC08 · echte PG-Ausnahme, neuer Pool, tatsächliches Ende und Restore d
   });
   expect(await neu.raeumeAbgelaufeneAuf()).toBe(0);
   expect(
-    (await c.exec(["pg_dump", "-U", "postgres", "-Fc", "-f", "/tmp/p10.dump", "klara_p10_test"]))
+    (await c.exec(["pg_dump", "-U", "postgres", "-Fc", "-f", "/tmp/p10.dump", "klarwerk_test"]))
       .exitCode,
   ).toBe(0);
   jetzt = START + 40 * TAG;

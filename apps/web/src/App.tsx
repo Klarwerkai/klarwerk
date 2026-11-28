@@ -7,10 +7,11 @@
 // weil `main.tsx:6` `./i18n` selbst holt; wer aber `App` OHNE `main.tsx` montiert, stand ohne
 // Sprache da. Die Abhängigkeit ist real und gehört an die Wurzel der Anwendung, nicht an eine Seite.
 import "./i18n";
+import { useQueryClient } from "@tanstack/react-query";
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-const Kiosk = lazy(() => import("./kiosk/Kiosk"));
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { librarySearchQuery } from "./api/hooks";
 import { AuthProvider, useSession } from "./app/AuthContext";
 // R-1029 / R-1674: die geteilten Stände der Hülle im Takt nachladen — nur hinter dem Tor, also nie
 // auf der Sperrfläche nach gescheitertem Abmelden und nie auf dem Anmeldeweg.
@@ -41,12 +42,13 @@ import { VersionsHinweis } from "./components/VersionsHinweis";
 import { LegalScreen, legalPageForPath, useRechtsseitenTor } from "./legal/LegalPages";
 // AUFTRAG-mega62 Block C: die Sperrfläche nach einem gescheiterten strengen Abmelden.
 import { SignOutBlocked } from "./legal/SignOutBlocked";
+import { mitFachtexten } from "./lib/fachtexte";
+import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "./lib/libraryQuery";
 // JOB 4333: die Zahl der noch nicht übertragenen Vorgänge auf DIESEM Gerät — kontounabhängig,
 // nur lesend. Sie entscheidet, ob es überhaupt einen Grund gibt, die Erfassung ohne beantwortete
 // Sitzungsfrage zu zeigen.
 import { offeneVorgaengeAmGeraet } from "./lib/sessionState";
 import { AppRoutes } from "./routes";
-import { AppShell } from "./shell/AppShell";
 // R-0570: die anonyme Vorführung mit erfundenen Inhalten, vor dem Anmeldetor.
 import {
   VORFUEHRUNG_PFAD,
@@ -58,6 +60,14 @@ import {
 // `shell/AppShell.tsx` („/mobile OHNE Shell") und in `routes.tsx` über die Route; sie steht hier
 // als benannte Konstante, damit der Zweck an der Torentscheidung lesbar ist.
 const MOBILE_ROUTE = "/mobile";
+
+// Erst nach der Sitzungsentscheidung lädt der geschützte Arbeitsbereich seine Hülle und Fachtexte.
+const AppShell = lazy(() =>
+  mitFachtexten(import("./shell/AppShell").then((m) => ({ default: m.AppShell }))),
+);
+const Kiosk = lazy(() =>
+  mitFachtexten(import("./kiosk/Kiosk").then((m) => ({ default: m.default }))),
+);
 
 // ================================================================================================
 // JOB 4333 — DIE ADRESSE MUSS AUS DEM ROUTER KOMMEN, UND DESHALB STEHT SIE IN EINEM EIGENEN BAUTEIL.
@@ -86,6 +96,22 @@ function OfflineErfassungsTor({ anwendung }: { anwendung: JSX.Element }): JSX.El
     return <AuthScreens needsSetup={false} />;
   }
   return anwendung;
+}
+
+// Beim direkten Öffnen startet die erste Suche bereits nach der Anmeldung, während die
+// Seitenmodule laden. Die Bibliothek verwendet denselben Abfrageschlüssel und dieselben Rechte.
+function BibliotheksEinstieg(): null {
+  const client = useQueryClient();
+  useEffect(() => {
+    // Bei einem Direkteinstieg auch das Seitenmodul parallel zur Hülle laden.
+    // Einen Ladefehler zeigt die Fehlergrenze der Route bei ihrem regulären Aufruf.
+    void import("./pages/Library").catch(() => undefined);
+    const q = new URLSearchParams(window.location.search).get("q") ?? "";
+    void client.prefetchQuery(
+      librarySearchQuery(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q })),
+    );
+  }, [client]);
+  return null;
 }
 
 // Login-Gate: Ersteinrichtung → Login → Shell. Im Dev wird bei nicht
@@ -126,11 +152,16 @@ function Gate(): JSX.Element {
   // kann, statt eine zweite Hülle daneben aufzubauen.
   const anwendung = (
     <>
+      {s.user && window.location.pathname === "/bibliothek" && (
+        <BibliotheksEinstieg key={s.user.id} />
+      )}
       <GeteilterStandNachlader />
       <RechtekontextWache kontoId={s.user?.id ?? null} />
-      <AppShell key={s.user?.id ?? kontoVorher.current ?? "ohne-konto"}>
-        <AppRoutes />
-      </AppShell>
+      <Suspense fallback={<Splash />}>
+        <AppShell key={s.user?.id ?? kontoVorher.current ?? "ohne-konto"}>
+          <AppRoutes />
+        </AppShell>
+      </Suspense>
     </>
   );
 
@@ -145,7 +176,9 @@ function Gate(): JSX.Element {
           {t("erholung.sitzung.anmeldung")}
         </button>
       </div>
-      <div {...(halten ? { inert: "" } : {})}>{anwendung}</div>
+      <div className="h-full" {...(halten ? { inert: "" } : {})}>
+        {anwendung}
+      </div>
     </>
   );
   if (window.location.pathname === "/kiosk") {

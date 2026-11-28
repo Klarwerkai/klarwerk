@@ -157,7 +157,8 @@ describe("mega26 Block A: Laufkontext des Modelllaufs (wer/woran)", () => {
     const gemeinsam = { source: "draft", confidentiality: "intern", koId: env.koId } as const;
     await laufe(env, { task: "extract", text: DOKUMENT, ...gemeinsam });
     // Ohne Modell gibt es bei assist keinen Vorschlag mehr, sondern die ehrliche Meldung (JOB 3276).
-    await laufe(env, { task: "assist", text: DOKUMENT, ...gemeinsam }, 500);
+    const assist = await laufe(env, { task: "assist", text: DOKUMENT, ...gemeinsam }, 503);
+    expect(assist.json().error).toBe("ASSIST_OHNE_VORSCHLAG");
 
     expect((await laufZu(env, "extract")).actor).toBe(env.adminId);
     expect((await laufZu(env, "assist")).actor).toBeUndefined();

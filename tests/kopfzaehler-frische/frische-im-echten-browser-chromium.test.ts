@@ -17,11 +17,11 @@
 // `fetch`-Mitschnitt mit SEITENZEIT festgehalten — das sind die Herkunftszeiten je Zählquelle.
 //
 // Je Sprache (DE, EN), am selben Bestand:
-//   N   frische leere Instanz: alle fünf Zählquellen antworten, das Board ist leer → KEINE Zahl,
+//   N   frische leere Instanz: alle Zählquellen antworten, das Board ist leer → KEINE Zahl,
 //       der Punkt „Prüfen" steht (echter ungefilterter Nullbestand, kein Filter, kein Reset);
 //   A   zwei offene Einträge, frischer Abruf → Zahl im Kopfband und in „Weitere Bereiche"
 //       (per Tastatur geöffnet); 35 s ohne JEDEN Abruf einer Zählquelle → beide Zahlen weg;
-//       Tastaturweg auf „Prüfen" löst den Neuabruf aus → richtige neue Zahl im Kopfband; Tastaturweg
+//       Wieder online und per Tastatur auf „Prüfen" → richtige neue Zahl im Kopfband; Tastaturweg
 //       zurück auf „Start" → auch „Weitere Bereiche" trägt die richtige Zahl wieder;
 //   B   schmal (390 px): derselbe Ablauf im Drawer — Zahl, 35 s → weg, Tastaturweg → wieder da.
 //
@@ -29,7 +29,7 @@
 // (`__anfragen`), nicht an den erfolgreichen Antworten — ein gescheiterter oder noch laufender
 // Abruf zählt mit. Der Mitschnitt und seine Rechnung stehen in `abrufmitschnitt.ts` und sind in
 // `abrufmitschnitt-kalibrierung.test.ts` gegen genau diese Gegenfälle kalibriert.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { type Seite, type Strecke, fn, oeffne, strecke, warteBis } from "../design/h1-chromium";
 import {
   type Abruf,
@@ -43,6 +43,7 @@ import {
 type Uhrseite = Seite & {
   clock: { install(o?: { time?: number }): Promise<void>; fastForward(ms: number): Promise<void> };
   focus(selector: string): Promise<void>;
+  context(): { setOffline(offline: boolean): Promise<void> };
 };
 
 const FRIST_UEBERSCHRITTEN_MS = 35_000;
@@ -139,6 +140,10 @@ for (const sprache of ["de", "en"] as const) {
       }
     }, 120_000);
 
+    afterEach(async () => {
+      if (s) await seite().context().setOffline(false);
+    });
+
     afterAll(async () => {
       await s?.schliessen();
     }, 60_000);
@@ -181,6 +186,10 @@ for (const sprache of ["de", "en"] as const) {
       console.info(`R-1558 ${sprache} · A1 · Herkunft je Zählquelle: ${JSON.stringify(vorher)}`);
 
       // (2) 35 s Seitenzeit — ohne jeden Abruf einer Zählquelle.
+      // Der aktive 20-s-Abgleich bestätigt die Zahl online. Offline lässt Chromium die
+      // Frist tatsächlich ohne Nachladen verstreichen; der Mitschnitt misst jeden Versuch.
+      await sp.context().setOffline(true);
+      await warteBis(sp, "() => !navigator.onLine");
       await sp.clock.fastForward(FRIST_UEBERSCHRITTEN_MS);
       await warteBis(sp, "(sel) => document.querySelector(sel) === null", KOPF_ZAHL);
       const danach = herkunft(await abrufe(sp));
@@ -204,9 +213,10 @@ for (const sprache of ["de", "en"] as const) {
       ).toBe(0);
       await sp.keyboard.press("Escape");
 
-      // (3) Ein dritter Eintrag kommt dazu; der Tastaturweg auf „Prüfen" löst den Neuabruf aus.
+      // (3) Ein dritter Eintrag kommt dazu; wieder online führen der Neuabruf und der Tastaturweg zum aktuellen Stand.
       await eintragAnlegen(s as Strecke, "Dichtung: Nut 2 mm tiefer");
       expect(await boardZahl(s as Strecke)).toBe(3);
+      await sp.context().setOffline(false);
       await tastatur(sp, KOPF_PUNKT);
       await warteBis(sp, `() => location.pathname === "/validierung"`);
       await warteBis(
@@ -239,13 +249,15 @@ for (const sprache of ["de", "en"] as const) {
       expect(fehler).toBeNull();
       const sp = seite();
       await sp.setViewportSize({ width: 390, height: 844 });
-      const erwartet = String(await boardZahl(s as Strecke));
+      await eintragAnlegen(s as Strecke, "Prüfstück für den schmalen Arbeitsbereich");
+      const zahl = await boardZahl(s as Strecke);
+      expect(zahl).toBeGreaterThan(0);
+      const erwartet = String(zahl);
       await oeffne(sp, "/start");
-      // Schmal holt die Seite `/api/duplicates` erst mit geöffnetem Drawer (dort steht „Dubletten");
-      // die Drawer-Zahl an „Prüfen" hängt allein am Board — auf das wird hier gewartet.
-      await allesGeholt(sp, ["/api/validation/board"]);
       const menue = `header button[aria-label="${sprache === "de" ? "Menü öffnen" : "Open menu"}"]`;
       await tastatur(sp, menue);
+      // Der Drawer lädt seine Zähler, sobald der Nutzer ihn öffnet.
+      await allesGeholt(sp, ["/api/validation/board/count"]);
       await warteBis(
         sp,
         `(sel) => { const z = document.querySelector(sel); return z !== null && z.textContent.trim() === "${erwartet}"; }`,
@@ -254,6 +266,10 @@ for (const sprache of ["de", "en"] as const) {
       const vorher = herkunft(await abrufe(sp));
       const gestartetVorher = await anfragen(sp);
 
+      // Der aktive 20-s-Abgleich bestätigt die Zahl online. Offline lässt Chromium die
+      // Frist tatsächlich ohne Nachladen verstreichen; der Mitschnitt misst jeden Versuch.
+      await sp.context().setOffline(true);
+      await warteBis(sp, "() => !navigator.onLine");
       await sp.clock.fastForward(FRIST_UEBERSCHRITTEN_MS);
       await warteBis(sp, "(sel) => document.querySelector(sel) === null", DRAWER_ZAHL);
       expect(
@@ -266,6 +282,7 @@ for (const sprache of ["de", "en"] as const) {
       expect(await text(sp, DRAWER_PUNKT)).not.toBeNull();
 
       // Der Drawer-Punkt „Prüfen" per Tastatur: Neuabruf, danach trägt der Drawer die Zahl wieder.
+      await sp.context().setOffline(false);
       await tastatur(sp, DRAWER_PUNKT);
       await warteBis(sp, `() => location.pathname === "/validierung"`);
       await tastatur(sp, menue);

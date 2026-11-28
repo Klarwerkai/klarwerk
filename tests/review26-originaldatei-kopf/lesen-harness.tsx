@@ -11,6 +11,7 @@
 // des Wissensobjekts. Der `vi.mock`-Kopf bleibt in jeder Testdatei (er wird dateiweise hochgezogen);
 // der Bestand reist über `globalThis.__job3474Ko`, weil eine hochgezogene Fabrik nichts aus dem
 // Modulrumpf schließen darf.
+import { vi } from "vitest";
 import {
   QueryClient,
   QueryClientProvider,
@@ -140,6 +141,7 @@ export async function mount(bodyHtml: string): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
 }

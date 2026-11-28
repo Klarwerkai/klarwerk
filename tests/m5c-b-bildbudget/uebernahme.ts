@@ -114,9 +114,9 @@ export function figuren(html: string): string[] {
   return [...html.matchAll(/<figure\b[^>]*>[\s\S]*?<\/figure>/g)].map((m) => m[0]);
 }
 
-/** Die Bildkennung `kw-img-<token>-N` am `<img>` einer figure. */
+/** Die Bildkennung `kw-img-<token>-N` am Figure-Element, auch nach einem Bildausfall. */
 export function kennung(figur: string): string {
-  return /<img\b[^>]*data-image-id="([^"]+)"/.exec(figur)?.[1] ?? "";
+  return /<figure\b[^>]*data-image-id="([^"]+)"/.exec(figur)?.[1] ?? "";
 }
 
 /** Der Base64-Rumpf einer `data:`-Quelle — leer, wenn es keine ist. */

@@ -15,7 +15,7 @@ describe("SCRUM-415: Vertraulichkeit (Frontend-Helfer)", () => {
     expect(confidentialityOf(undefined)).toBe("intern");
     expect(confidentialityOf(null)).toBe("intern");
     expect(confidentialityOf("vertraulich")).toBe("vertraulich");
-    expect(isConfidential(undefined)).toBe(false);
+    expect(isConfidential(undefined)).toBe(true);
     expect(isConfidential("vertraulich")).toBe(true);
   });
 

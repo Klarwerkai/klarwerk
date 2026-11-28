@@ -63,7 +63,15 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       // gelösten Konflikt. Die Attrappe liefert dasselbe; was sie liefert, setzen die Fälle unten.
       conflicts: { list: ok(() => daten.konflikte) },
       duplicates: { list: ok(() => []), settings: ok(() => ({ minConfidence: 0.5 })) },
-      validation: { board: ok(() => []), overview: ok(() => []) },
+      validation: {
+        board: ok(() => []),
+        boardCount: ok(() => ({ length: 0 })),
+        overview: ok(() => []),
+      },
+      me: {
+        returnedSummary: ok(() => ({ open: 0 })),
+        authorTransfersSummary: ok(() => ({ open: 0 })),
+      },
       lifecycle: { pending: ok(() => []) },
       ko: { list: ok(() => KOS) },
       gaps: {

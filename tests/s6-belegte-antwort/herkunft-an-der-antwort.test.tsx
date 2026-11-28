@@ -494,8 +494,10 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     await ruhe();
     await fragen();
     const text = await einfuegen();
+    // Die Quellenzeile darf für den 503 weder Prüfstand noch Fassung ergänzen.
+    // Die eigene Einstufungszeile übernimmt den vom Antwortdienst gelieferten Grad.
     expect(QUELLENZEILE.exec(text)?.[1]).toBe("ka");
-    expect(text).not.toMatch(/Validiert|Fachlich bestätigt|Version/);
+    expect(text).toMatch(/^Einstufung: Fachlich bestätigt\b/m);
   });
 
   // ----------------------------------------------------------------------------------------------
@@ -531,8 +533,8 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     const box = einschub();
     expect(box).not.toBeNull();
     expect(box?.getAttribute("data-quelle")).toBe("ka");
-    expect(box?.querySelector("h3")?.textContent).toBe("Design Guide");
-    expect(box?.querySelector(".einschub-stand")?.textContent).toBe(
+    expect(box?.querySelector(":scope > h3")?.textContent).toBe("Design Guide");
+    expect(box?.querySelector(":scope > .einschub-stand")?.textContent).toBe(
       "Fachlich bestätigt · Version 3 · Stand 02.03.2026",
     );
     expect(box?.querySelector(".einschub-passage mark")?.textContent).toBe(
@@ -607,7 +609,7 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
       ["button", "Im Original öffnen", true],
       ["a", "Im Wissensnetz anzeigen", false],
     ]);
-    expect(document.getElementById("ask-einschub-kein-original")?.textContent).toBe(
+    expect(einschub()?.querySelector(":scope > #ask-einschub-kein-original")?.textContent).toBe(
       "Kein Original hinterlegt.",
     );
   });

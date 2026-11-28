@@ -31,7 +31,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 export const WURZEL = resolve(process.cwd());
 export const DIST = resolve(WURZEL, "apps/web/dist");
-export const MOCKUPS = "/Users/peterkohnert/klarwerk_steuerung/design/klara";
+export const MOCKUPS = join(WURZEL, "tests/design/vorlagen/klara");
 export const MOCKUP_RUHE = join(MOCKUPS, "Ruhe.dc.html");
 export const MOCKUP_ANTWORT = join(MOCKUPS, "Main.dc.html");
 export const MOCKUP_EINSTELLUNGEN = join(MOCKUPS, "Einstellungen.dc.html");

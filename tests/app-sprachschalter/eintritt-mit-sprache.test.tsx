@@ -67,8 +67,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
 import { QueryClient } from "../../apps/web/node_modules/@tanstack/react-query";
 import { createElement } from "../../apps/web/node_modules/react";
 import { SPRACHE_STORAGE_KEY } from "../../apps/web/src/lib/sprachwahl";
-import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
-import { type Montage, breite, montiere } from "./huelle";
+import { type Montage, breite } from "./huelle";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -189,6 +188,11 @@ describe("JOB 3323 R3 · der Eintritt öffnet den Entwurf IN DER SPRACHE DES LIN
 
   /** Aufbau der Vordertür an genau dieser Adresse. */
   async function vordertuerOeffnen(suche: string): Promise<HTMLElement> {
+    // Der neue Modulgraph teilt einen Sitzungskontext mit den nachgeladenen Seiten.
+    const [{ montiere }, { CaptureFrontDoor }] = await Promise.all([
+      import("./huelle"),
+      import("../../apps/web/src/pages/CaptureFrontDoor"),
+    ]);
     montage = await montiere(
       `/capture/frontdoor${suche}`,
       createElement(CaptureFrontDoor),

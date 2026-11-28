@@ -136,12 +136,12 @@ beforeAll(async () => {
       .withLabels({ "klarwerk.owner": "klara-f15-quellbindung-20261020" })
       .withEnvironment({
         POSTGRES_PASSWORD: "f15-synthetic",
-        POSTGRES_DB: "klara_f15_quellbindung",
+        POSTGRES_DB: "klarwerk_test",
       })
       .withExposedPorts(5432)
       .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
       .start();
-    url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klara_f15_quellbindung`;
+    url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
   }
   console.log(
     JSON.stringify({
@@ -149,7 +149,7 @@ beforeAll(async () => {
       ereignis: "begonnen",
       at: new Date().toISOString(),
       backend: container ? "container" : "ci-url",
-      datenbank: eigeneDb?.name ?? "klara_f15_quellbindung",
+      datenbank: eigeneDb?.name ?? "klarwerk_test",
     }),
   );
   const p = createPool(url);

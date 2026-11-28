@@ -531,22 +531,25 @@ describe("D-034 (4) · die Nicht-Ziele bleiben unangetastet", () => {
   it("ein Klick auf einen Beispiel-Chip sendet weiterhin SOFORT", async () => {
     const { container, unmount } = await seite();
 
-    const chips = [...container.querySelectorAll<HTMLButtonElement>("button")].filter(
-      (b) => (b.title ?? "") === i18n.t("ask.examplesSendHint"),
-    );
-    expect(chips.length, "es gibt keine Beispiel-Chips mehr").toBeGreaterThan(0);
-    const frage = chips[0]?.textContent?.replace("↵", "").trim() ?? "";
+    const beispiele = container.querySelector<HTMLElement>('[data-testid="ask-beispiele"]');
+    expect(beispiele?.hidden).toBe(true);
+    const oeffnen = container.querySelector<HTMLButtonElement>('[aria-controls="ask-beispiele"]');
+    expect(oeffnen).not.toBeNull();
+    await act(async () => oeffnen?.click());
+    expect(beispiele?.hidden).toBe(false);
+    const chip = beispiele?.querySelector<HTMLButtonElement>('[data-testid="ask-beispiel"]');
+    expect(chip?.title).toContain(i18n.t("ask.examplesSendHint"));
+    expect(chip?.disabled).toBe(false);
     await act(async () => {
-      chips[0]?.click();
+      chip?.click();
       await flush();
     });
-    expect(
-      (endpoints.ask.ask as unknown as { mock: { calls: unknown[][] } }).mock.calls.length,
-      "der Chip-Klick löste keine Anfrage aus — das Sofort-Senden ist weg",
-    ).toBe(1);
-    expect(
-      String((endpoints.ask.ask as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0]),
-    ).toContain(frage.slice(0, 20));
+    const frage = eingabefeld(container).value;
+    expect(frage.trim().length).toBeGreaterThan(0);
+    expect(chip?.textContent).toContain(frage);
+    const aufrufe = vi.mocked(endpoints.ask.ask).mock.calls;
+    expect(aufrufe).toHaveLength(1);
+    expect(aufrufe[0]?.[0]).toBe(frage);
     unmount();
   });
 

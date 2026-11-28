@@ -44,6 +44,7 @@ async function aufbau(frageZeit: number) {
   await koService.activateSearchProjectionV2();
   const angelegt = await koService.create({
     title: "Ventil bei Überdruck schließen",
+    confidentiality: "intern",
     statement: "Bei Überdruck Ventil X manuell schließen.",
     type: "best_practice",
     category: "Anlage 1",

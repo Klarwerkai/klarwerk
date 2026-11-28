@@ -27,6 +27,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEMO_TEXTS } from "../../services/app/src/demo-content";
+import { schalterAn } from "../../services/app/src/feature-flags";
 import {
   type Stand,
   WURZEL,
@@ -199,12 +200,11 @@ const IM_BILD = `({ texte, selektor }) => {
 /** Der Nutzungshinweis wird regulär bestätigt (`legal/NoticeBanner.tsx`, Knopf `notice-ack`). */
 async function hinweisBestaetigen(stand: Stand): Promise<void> {
   const seite = stand.seite;
-  if (seite === null) return;
-  const knopf = seite.getByTestId("notice-ack");
-  if ((await knopf.count()) > 0 && (await knopf.isVisible())) {
-    await knopf.click();
-    await seite.getByTestId("notice-banner").waitFor({ state: "hidden" });
-  }
+  if (seite === null || !schalterAn("hinweisbanner")) return;
+  // Das frische Demokonto muss den Hinweis bestätigen. Beim Sprachwechsel steht der
+  // Seitenkopf bereits vor der Antwort auf /api/auth/notice. Der Klick wartet auf den Knopf.
+  await seite.getByTestId("notice-ack").click();
+  await seite.getByTestId("notice-banner").waitFor({ state: "hidden" });
 }
 
 for (const sprache of ["de", "en"] as const) {

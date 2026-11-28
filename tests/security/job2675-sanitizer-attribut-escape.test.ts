@@ -31,6 +31,8 @@ import { describe, expect, it } from "vitest";
 import { sanitizeHtml as clientSanitize } from "../../apps/web/src/lib/richText";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { sanitizeHtml as serverSanitize } from "../../services/structure";
+import { pruefeBildpixel } from "../m5-docx-bildunterschriften/bildpixel";
+import { grossesPng } from "../m5c-b-bildbudget/bilder";
 
 /** Ein Ereignisattribut entsteht nur, wenn ein echtes, nicht escaptes `"` den Wert schliesst. */
 const ALS_ATTRIBUT = (name: string) => new RegExp(`\\s${name}\\s*=\\s*"`, "i");
@@ -90,10 +92,11 @@ describe("JOB 2675 D1 · W0 · Kalibrierung: die Pruefreihe misst wirklich", () 
 });
 
 describe("JOB 2675 D1 · W1 · DIE ABNAHME: was gespeichert wird, traegt kein Ereignisattribut", () => {
-  it("Entwurf anlegen und zuruecklesen — der GESPEICHERTE Text hat kein onerror-Attribut", async () => {
+  it("Entwurf anlegen und zuruecklesen — Bildpunkte und Anführungszeichen im Alternativtext bleiben erhalten", async () => {
     // Die Flaeche im Sinne des Befundes: nicht das Gerenderte, sondern das Gespeicherte. Der Weg
     // ist die echte Route, der Beleg das Zuruecklesen.
     const { app, headers } = await angemeldeteApp();
+    const png = grossesPng(8, 6, 2675);
     const angelegt = await app.inject({
       method: "POST",
       url: "/api/drafts",
@@ -104,7 +107,7 @@ describe("JOB 2675 D1 · W1 · DIE ABNAHME: was gespeichert wird, traegt kein Er
         type: "best_practice",
         category: "Allgemein",
         origin: "frontdoor",
-        bodyHtml: `<p>Vorher</p><img src="data:image/png;base64,AAAA" alt='x" onerror="alert(1)'><p>Nachher</p>`,
+        bodyHtml: `<p>Vorher</p><img src="data:image/png;base64,${png.toString("base64")}" alt='Ersatzteil "A" für Presse P4'><p>Nachher</p>`,
       }),
     });
     expect(angelegt.statusCode, angelegt.body.slice(0, 200)).toBe(201);
@@ -118,8 +121,9 @@ describe("JOB 2675 D1 · W1 · DIE ABNAHME: was gespeichert wird, traegt kein Er
     const gespeichert = gelesen.json().payload.bodyHtml ?? "";
 
     expect(gespeichert, `gespeichert: ${gespeichert}`).not.toMatch(ALS_ATTRIBUT("onerror"));
-    // Der Inhalt ist nicht verschwunden, sondern entschaerft — der Sanitizer wirft nichts weg.
-    expect(gespeichert).toContain("&quot;");
+    expect(gespeichert).toContain('alt="Ersatzteil &quot;A&quot; für Presse P4"');
+    const quelle = /<img\b[^>]*?\bsrc="([^"]+)"/.exec(gespeichert)?.[1] ?? "";
+    await pruefeBildpixel(quelle, png.toString("base64"));
     // Und der Rest des Dokuments steht unveraendert.
     expect(gespeichert).toContain("Vorher");
     expect(gespeichert).toContain("Nachher");
@@ -158,6 +162,8 @@ describe("JOB 2675 D1 · W2 · Der Fixpunkt — die eigentliche Zusicherung", ()
     // haelt. Das ist die Eigenschaft, nicht ein Einzelfall — deshalb ueber die ganze Reihe.
     for (const fall of FAELLE) {
       const einmal = serverSanitize(fall.html);
+      expect(einmal, fall.name).not.toMatch(ALS_ATTRIBUT("onerror"));
+      expect(einmal, fall.name).not.toMatch(ALS_ATTRIBUT("onclick"));
       expect(
         serverSanitize(einmal),
         `${fall.name} ist serverseitig kein Fixpunkt:\n  einmal: ${einmal}`,
@@ -168,6 +174,8 @@ describe("JOB 2675 D1 · W2 · Der Fixpunkt — die eigentliche Zusicherung", ()
   it("CLIENT: zweimal sanitisieren aendert nichts mehr", () => {
     for (const fall of FAELLE) {
       const einmal = clientSanitize(fall.html);
+      expect(einmal, fall.name).not.toMatch(ALS_ATTRIBUT("onerror"));
+      expect(einmal, fall.name).not.toMatch(ALS_ATTRIBUT("onclick"));
       expect(
         clientSanitize(einmal),
         `${fall.name} ist clientseitig kein Fixpunkt:\n  einmal: ${einmal}`,

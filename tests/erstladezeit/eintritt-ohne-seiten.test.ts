@@ -174,6 +174,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { type Plugin, build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { fachtexteMitSeite, nenntPraefix } from "../../apps/web/src/texte/intern/sprachpakete";
 
 const WURZEL = resolve(__dirname, "..", "..");
 const WEB = join(WURZEL, "apps", "web");
@@ -1619,6 +1620,38 @@ describe("MUTATIONSSUITE · das gebaute Bündel zerfällt in Stücke", () => {
 // Produktionsbau heraus; der zweite Fall unten belegt am gebauten Bündel, dass sie wirklich als
 // eigene Stücke AUSSERHALB der Eintritts-Hülle liegen — sonst hielte der Deckel womöglich aus einem
 // anderen Grund und die Sprachtrennung wäre unbelegt.
+/** Gruppen der Eintrittsbytes — die erste passende gewinnt. */
+const GRUPPEN: readonly [string, RegExp][] = [
+  ["Wörterbuch (woerterbuch/)", /\/apps\/web\/src\/woerterbuch\//],
+  ["Textmodule (texte/)", /\/apps\/web\/src\/texte\/[^/]+\.ts$/],
+  ["Lesevariante (lib/lesevariante.ts)", /\/apps\/web\/src\/lib\/lesevariante\.ts$/],
+  ["Fremdpakete (node_modules)", /\/node_modules\//],
+  ["eigener Code (apps/web/src)", /\/apps\/web\/src\//],
+];
+
+/** Die Zusammensetzung der Hülle: Gruppensummen und die 30 grössten Module, in ausgelieferten Bytes. */
+function zusammensetzung(g: Bau, huelleDateien: ReadonlySet<string>): string {
+  const jeModul = new Map<string, number>();
+  let rahmen = 0;
+  for (const s of g.jsStuecke.filter((x) => huelleDateien.has(x.fileName))) {
+    rahmen += Math.max(s.rahmenBytes, 0);
+    for (const [id, n] of s.inhaltBytesJeModul) {
+      jeModul.set(id, (jeModul.get(id) ?? 0) + n);
+    }
+  }
+  const gruppen = new Map<string, number>([["Rahmen", rahmen]]);
+  for (const [id, n] of jeModul) {
+    const name = GRUPPEN.find(([, muster]) => muster.test(id))?.[0] ?? "sonstiges";
+    gruppen.set(name, (gruppen.get(name) ?? 0) + n);
+  }
+  const zeilen = [...gruppen].sort((a, b) => b[1] - a[1]).map(([k, n]) => `  ${n} B\t${k}`);
+  const groesste = [...jeModul]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 30)
+    .map(([id, n]) => `    ${n} B\t${kurz(id)}`);
+  return [...zeilen, "  die 30 grössten Module:", ...groesste].join("\n");
+}
+
 describe("DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801)", () => {
   const EINTRITT_DECKEL_BYTES = 1_360_000;
   // Die Paketmodule, wie das Plugin sie benennt (`paketSpezifizierer` in sprachpakete.ts).
@@ -1628,6 +1661,10 @@ describe("DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801)"
   // Untergrenze für den Inhalt eines Pakets: weit unter dem heutigen Umfang (en und nl zusammen
   // 818 533 B Quelltext), aber hoch genug, dass ein leeres oder fast leeres Paket auffällt.
   const PAKET_MINDESTINHALT_BYTES = 100_000;
+  // Die Textmodulpakete, wie das Plugin sie benennt (`textmodulSpezifizierer` in sprachpakete.ts).
+  const TEXTPAKETE = ["en", "nl"].map((sprache) =>
+    posix(join(WEB, "src", `i18n.textmodule.${sprache}.js`)),
+  );
 
   it("die Sprachpakete en und nl liegen je in einem eigenen Stück außerhalb der Eintritts-Hülle", () => {
     const g = GETEILT as Bau;
@@ -1653,6 +1690,37 @@ describe("DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801)"
         PAKET_MINDESTINHALT_BYTES,
       );
     }
+    // Gesamtcheck R-1329 (Nacharbeit 49): auch die en-/nl-Blöcke der Textmodule liegen je in einem
+    // eigenen Stück ausserhalb der Hülle. Daneben die MESSUNG des Textmodulanteils, der im Eintritt
+    // bleibt (Deutsch und direkt importierte Module) — die Zahl, die vorher nicht erhoben war.
+    const textmodulOrdner = `${posix(join(WEB, "src", "texte"))}/`;
+    const imEintritt = [...huelleDateien].reduce((summe, datei) => {
+      const stueck = g.jsStuecke.find((s) => s.fileName === datei);
+      let anteil = 0;
+      for (const [id, n] of stueck?.inhaltBytesJeModul ?? []) {
+        anteil += id.startsWith(textmodulOrdner) ? n : 0;
+      }
+      return summe + anteil;
+    }, 0);
+    const textpakete = TEXTPAKETE.map((paket) => {
+      const traeger = g.jsStuecke.filter((s) => s.moduleIds.includes(paket));
+      return {
+        paket: kurz(paket),
+        traeger: traeger.map((s) => s.fileName),
+        inHuelle: traeger.some((s) => huelleDateien.has(s.fileName)),
+        inhalt: g.inhaltBytesJeModul.get(paket) ?? 0,
+      };
+    });
+    console.log(
+      `[R-0801] Textmodule: im Eintritt ${imEintritt} B · ${textpakete.map((b) => `${b.paket} → ${b.traeger.join(", ") || "—"} (Inhalt ${b.inhalt} B)`).join(" · ")}`,
+    );
+    for (const b of textpakete) {
+      expect(b.traeger, `${b.paket} muss in GENAU einem Stück liegen`).toHaveLength(1);
+      expect(b.inHuelle, `${b.paket} liegt in der Eintritts-Hülle`).toBe(false);
+      expect(b.inhalt, `${b.paket} trägt kaum Inhalt — ist es leer?`).toBeGreaterThan(
+        PAKET_MINDESTINHALT_BYTES,
+      );
+    }
     // Deutsch bleibt im Eintritt: die Startsprache darf nicht erst nachgeladen werden.
     const i18nModul = posix(join(WEB, "src", "i18n.ts"));
     expect(
@@ -1663,6 +1731,51 @@ describe("DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801)"
     ).toBe(true);
   });
 
+  // Gesamtcheck R-1329 (Nacharbeit 58): die deutschen Blöcke der Textmodule, deren Texte die Hülle
+  // nicht nennt, liegen im Paket `i18n.fachtexte.de.js` (`fachtexteMitSeite` in sprachpakete.ts).
+  // Gemessen am GEBAUTEN Bündel: das Paket liegt in genau einem Stück außerhalb der Hülle, trägt
+  // Inhalt — und KEIN Modul, das wirklich in der Hülle gelandet ist, nennt ein ausgewähltes Präfix.
+  // Damit ist die Auswahl nicht nur an der Quelltext-Erhebung belegt, sondern an dem, was rollup
+  // tatsächlich in den Eintritt gelegt hat: übersähe die Erhebung einen Import, würde es hier rot.
+  it("das deutsche Fachtextpaket liegt außerhalb der Hülle, und die Hülle nennt keinen seiner Texte", () => {
+    const g = GETEILT as Bau;
+    const huelleDateien = huelle(g, g.eintritt ? [g.eintritt.fileName] : []);
+    const paket = posix(join(WEB, "src", "i18n.fachtexte.de.js"));
+    const traeger = g.jsStuecke.filter((s) => s.moduleIds.includes(paket));
+    const inhalt = g.inhaltBytesJeModul.get(paket) ?? 0;
+    console.log(
+      `[R-0801] Fachtexte: ${kurz(paket)} → ${traeger.map((s) => s.fileName).join(", ") || "—"} (Inhalt ${inhalt} B)`,
+    );
+    expect(traeger, "das Fachtextpaket muss in GENAU einem Stück liegen").toHaveLength(1);
+    expect(
+      traeger.some((s) => huelleDateien.has(s.fileName)),
+      "das Fachtextpaket liegt in der Eintritts-Hülle — es würde sofort geladen",
+    ).toBe(false);
+    expect(inhalt, "das Fachtextpaket trägt kaum Inhalt — ist es leer?").toBeGreaterThan(
+      PAKET_MINDESTINHALT_BYTES,
+    );
+    const src = posix(join(WEB, "src"));
+    const praefixe = fachtexteMitSeite(join(WEB, "src")).map((name) => `${name}.`);
+    const nennungen: string[] = [];
+    for (const datei of huelleDateien) {
+      for (const id of g.jsStuecke.find((s) => s.fileName === datei)?.moduleIds ?? []) {
+        const pfad = id.split("?")[0] ?? id;
+        const woerterbuch =
+          pfad.startsWith(`${src}/texte/`) ||
+          pfad.startsWith(`${src}/woerterbuch/`) ||
+          pfad === `${src}/lib/lesevariante.ts`;
+        if (!pfad.startsWith(`${src}/`) || woerterbuch || !existsSync(pfad)) {
+          continue;
+        }
+        const text = readFileSync(pfad, "utf8");
+        for (const praefix of praefixe.filter((p) => nenntPraefix(text, p))) {
+          nennungen.push(`${kurz(pfad)} nennt "${praefix}"`);
+        }
+      }
+    }
+    expect(nennungen, "diese Module der Hülle zeigen Texte aus dem Fachtextpaket").toEqual([]);
+  });
+
   it("Eintrittsdatei und Eintritts-Hülle bleiben unter 1,36 MB", () => {
     const g = GETEILT as Bau;
     expect(g.eintritt, "kein Eintritts-Stück in der Rollup-Ausgabe").not.toBeNull();
@@ -1671,6 +1784,11 @@ describe("DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801)"
     const huelleBytes = bytes(g, huelleDateien);
     const messung = `Eintritt ${g.eintritt?.fileName ?? "—"} ${eintritt} B · Eintritts-Hülle ${huelleDateien.size} Stücke ${huelleBytes} B · Deckel ${EINTRITT_DECKEL_BYTES} B · Luft ${EINTRITT_DECKEL_BYTES - huelleBytes} B.`;
     console.log(`[R-0801] ${messung}`);
+    // Gesamtcheck R-1329 (Nacharbeit 52): WORAUS die Hülle besteht — gemessen an den ausgelieferten
+    // Bytes je Modul (Quellkarte, dieselbe Zuordnung wie (c3)), gruppiert und als Rangliste. Ohne
+    // diese Aufschlüsselung wäre jeder weitere Schnitt geraten.
+    const aufbau = zusammensetzung(g, huelleDateien);
+    console.log(`[R-0801] Zusammensetzung der Eintritts-Hülle:\n${aufbau}`);
     expect(eintritt, "Eintrittsgröße nicht gemessen").toBeGreaterThan(0);
     const hinweis =
       "Der Eintritt ist über den verbindlichen Deckel aus R-0801 gewachsen. Eintritt verkleinern " +

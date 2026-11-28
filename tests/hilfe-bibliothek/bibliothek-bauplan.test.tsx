@@ -44,6 +44,7 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { GUARDED_ITEMS, routePathAllows } from "../../apps/web/src/app/navigation";
+import { ANTWORT_MENUEPUNKTE } from "../../apps/web/src/components/fragen/antwortMenue";
 import i18n from "../../apps/web/src/i18n";
 import { FAQ_CONTENT } from "../../apps/web/src/lib/faqContent";
 import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
@@ -437,8 +438,13 @@ describe("R-0890 · Nacharbeit 7 — „Eine Antwort weitergeben“ und nachgeme
     const zuordnung = new Map(GLIEDERUNG.map((punkt) => [punkt.id, punkt.artikel]));
     expect(zuordnung.get("B5-6")).toBe("antwort-weitergeben");
     const fragen = readFileSync(repoPfad("apps/web/src/pages/Ask.tsx"), "utf8");
-    expect(fragen).toContain('{ id: "download", label: t("ask.export.download") }');
-    expect(fragen).toContain('{ id: "print", label: t("ask.export.print") }');
+    expect(fragen).toContain("ANTWORT_MENUEPUNKTE.map");
+    expect(ANTWORT_MENUEPUNKTE).toEqual(
+      expect.arrayContaining([
+        { id: "download", labelKey: "ask.export.download" },
+        { id: "print", labelKey: "ask.export.print" },
+      ]),
+    );
     expect(fragen).toContain('{t("ask.export.copy")}');
     const fehlt: string[] = [];
     for (const sprache of SPRACHEN) {

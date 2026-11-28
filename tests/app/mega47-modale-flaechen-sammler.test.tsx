@@ -149,11 +149,11 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider, useToast } from "../../apps/web/src/app/ToastContext";
 import { ImportSelect } from "../../apps/web/src/components/ImportSelect";
+import { BegleiterDirektvergleich } from "../../apps/web/src/components/klara-vorschau/BegleiterDirektvergleich";
 import i18n from "../../apps/web/src/i18n";
 // JOB 3063 (H4): `pages/Library` wird hier nicht mehr gemountet — die Bibliothek trägt seit dem
 // Umbau keine modale Fläche mehr (Begründung an `FAELLE` und an den Untergrenzen).
 import { Validation } from "../../apps/web/src/pages/Validation";
-import { AppShell } from "../../apps/web/src/shell/AppShell";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -182,6 +182,7 @@ import {
   posix,
   quelldateien,
   quelleAus,
+  sammleDeklarationen,
   unabgerechnet,
   zeileVon,
 } from "../../tools/modalgrenze";
@@ -229,7 +230,10 @@ function istJsxTagName(n: ts.Node): boolean {
   return false;
 }
 
+const LAZY_IMPORTNAMEN = new WeakSet<ts.Node>();
+
 function klassifiziere(n: ts.Identifier): { art: VerweisArt; alias?: string } {
+  if (LAZY_IMPORTNAMEN.has(n)) return { art: "import" };
   const p = n.parent;
   if (ts.isImportSpecifier(p)) {
     const klausel = p.parent.parent;
@@ -336,6 +340,73 @@ function moduldatei(vonDatei: string, spez: string): string | null {
   return null;
 }
 
+/** React.lazy mit benanntem Export: die zurückgegebene Eigenschaft muss aus genau dem
+ * zuvor geladenen Modul stammen. Ein anderer Aufruf oder Rückgabewert belegt keine Bindung. */
+function lazyBindung(
+  aufruf: ts.Expression,
+  datei: string,
+  lazyNamen: Set<string>,
+): Bindung | undefined {
+  if (
+    !ts.isCallExpression(aufruf) ||
+    !ts.isIdentifier(aufruf.expression) ||
+    !lazyNamen.has(aufruf.expression.text) ||
+    aufruf.arguments.length !== 1
+  )
+    return;
+  const loader = aufruf.arguments[0];
+  if (
+    !loader ||
+    !ts.isArrowFunction(loader) ||
+    loader.parameters.length ||
+    !ts.isBlock(loader.body)
+  )
+    return;
+  const [laden, liefern] = loader.body.statements;
+  if (
+    loader.body.statements.length !== 2 ||
+    !laden ||
+    !ts.isVariableStatement(laden) ||
+    !(laden.declarationList.flags & ts.NodeFlags.Const) ||
+    laden.declarationList.declarations.length !== 1 ||
+    !liefern ||
+    !ts.isReturnStatement(liefern) ||
+    !liefern.expression ||
+    !ts.isObjectLiteralExpression(liefern.expression)
+  )
+    return;
+  const bindung = laden.declarationList.declarations[0];
+  const ergebnis = liefern.expression.properties[0];
+  if (
+    !bindung ||
+    !ts.isIdentifier(bindung.name) ||
+    !bindung.initializer ||
+    !ts.isAwaitExpression(bindung.initializer) ||
+    liefern.expression.properties.length !== 1 ||
+    !ergebnis ||
+    !ts.isPropertyAssignment(ergebnis) ||
+    !ts.isIdentifier(ergebnis.name) ||
+    ergebnis.name.text !== "default" ||
+    !ts.isPropertyAccessExpression(ergebnis.initializer) ||
+    !ts.isIdentifier(ergebnis.initializer.expression) ||
+    ergebnis.initializer.expression.text !== bindung.name.text
+  )
+    return;
+  const dynamisch = bindung.initializer.expression;
+  if (
+    !ts.isCallExpression(dynamisch) ||
+    dynamisch.expression.kind !== ts.SyntaxKind.ImportKeyword ||
+    dynamisch.arguments.length !== 1 ||
+    !dynamisch.arguments[0] ||
+    !ts.isStringLiteral(dynamisch.arguments[0])
+  )
+    return;
+  const modul = moduldatei(datei, dynamisch.arguments[0].text);
+  if (!modul) return;
+  LAZY_IMPORTNAMEN.add(ergebnis.initializer.name);
+  return { modul, export: ergebnis.initializer.name.text };
+}
+
 const BINDUNGS_CACHE = new WeakMap<ts.SourceFile, Map<string, Bindung>>();
 
 /** Lokaler Name → Herkunft. Typ-only-Importe sind keine Flächen und bleiben draußen. */
@@ -345,6 +416,7 @@ function bindungenVon(quelle: { datei: string; ast: ts.SourceFile }): Map<string
     return zwischen;
   }
   const map = new Map<string, Bindung>();
+  const lazyNamen = new Set<string>();
   for (const st of quelle.ast.statements) {
     if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) {
       continue;
@@ -366,7 +438,23 @@ function bindungenVon(quelle: { datei: string; ast: ts.SourceFile }): Map<string
         if (sp.isTypeOnly) {
           continue;
         }
-        map.set(sp.name.text, { modul: ziel, export: (sp.propertyName ?? sp.name).text });
+        const exportName = (sp.propertyName ?? sp.name).text;
+        map.set(sp.name.text, { modul: ziel, export: exportName });
+        if (st.moduleSpecifier.text === "react" && exportName === "lazy")
+          lazyNamen.add(sp.name.text);
+      }
+    }
+  }
+  if (lazyNamen.size) {
+    for (const st of quelle.ast.statements) {
+      if (!ts.isVariableStatement(st) || !(st.declarationList.flags & ts.NodeFlags.Const)) continue;
+      for (const d of st.declarationList.declarations) {
+        if (!ts.isIdentifier(d.name) || !d.initializer) continue;
+        const ziel = lazyBindung(d.initializer, quelle.datei, lazyNamen);
+        if (ziel) {
+          map.set(d.name.text, ziel);
+          LAZY_IMPORTNAMEN.add(d.name);
+        }
       }
     }
   }
@@ -592,7 +680,7 @@ const KANDIDATEN: Kandidat[] = ALLE_ERHEBUNGEN.flatMap((e) => e.kandidaten);
 const BEURTEILUNG = beurteile(ALLE_ERHEBUNGEN);
 const UNABGERECHNET: string[] = ALLE_ERHEBUNGEN.flatMap(modalAbgleich);
 
-// Ein modales BAUTEIL behauptet App-Modalität (aria-modal in irgendeiner Bauform) und ist weder das
+// Ein modales BAUTEIL hat ein Dialogelement oder aria-modal und ist weder das
 // Grenzmodul noch nativ ausgenommen; seine exportierten Komponenten sind das, was Aufrufer einbinden.
 const BAUTEIL_ERHEBUNGEN: DateiErhebung[] = ALLE_ERHEBUNGEN.filter(
   (e) =>
@@ -600,14 +688,19 @@ const BAUTEIL_ERHEBUNGEN: DateiErhebung[] = ALLE_ERHEBUNGEN.filter(
     // B52/E GELB-1: nicht mehr „Datei ausgenommen“, sondern „Ausnahme deckt ALLE Funde dieser
     // Datei". Ein zweites, nicht natives Overlay holt die Datei in die Bauteil-Erhebung zurueck.
     !nativAusnahmeDecktDatei(e) &&
-    e.kandidaten.some((k) => k.art.startsWith("aria-modal")),
+    e.kandidaten.some(
+      (k) =>
+        k.art.startsWith("aria-modal") ||
+        k.art === "dialog-jsx" ||
+        k.art === "dialog-createElement",
+    ),
 );
 const BAUTEILE: Bauteil[] = BAUTEIL_ERHEBUNGEN.flatMap((e) =>
   e.exportierte.map((komponente) => ({ datei: e.quelle.datei, komponente })),
 );
 const BAUTEIL_ROT: string[] = BAUTEIL_ERHEBUNGEN.filter((e) => e.exportierte.length === 0).map(
   (e) =>
-    `${e.quelle.datei} — behauptet aria-modal, exportiert aber keine Komponente: Aufrufer sind so nicht erhebbar`,
+    `${e.quelle.datei} — enthält eine Dialogfläche, exportiert aber keine Komponente: Aufrufer sind so nicht erhebbar`,
 );
 const VERWEISE: VerweisBild = erhebeVerweise(ALLE_ERHEBUNGEN, BAUTEILE);
 const ERWARTETE_PAARE: Paar[] = VERWEISE.paare;
@@ -863,6 +956,14 @@ function wirktModalAmBestand(quelltext: string): boolean {
  */
 const WIRKUNG_OHNE_FLAECHE = new Map<string, string>([
   [
+    "apps/web/src/App.tsx",
+    "Sitzungswiederherstellung: inert sperrt den geschützten Inhalt hinter der Anmeldeaufforderung.",
+  ],
+  [
+    "apps/web/src/tutorial/seiten/ziele.ts",
+    "Der Zielselektor überspringt bereits inerte Vorfahren.",
+  ],
+  [
     "apps/web/src/lib/focusables.ts",
     "Fokus-Hilfsmodul: liefert Selektor und Fokusfunktionen, rendert selbst kein Element",
   ],
@@ -873,6 +974,17 @@ const WIRKUNG_OHNE_FLAECHE = new Map<string, string>([
     // Vollfläche selbst zeichnet er nicht — die kommt aus `Modal.tsx`, das bereits als markerloser
     // Träger registriert ist; der eigene Wrapper ist `display: contents` und damit layoutneutral.
     "meldet den Navigations-Dialog an der Grenze an (enter + Portal), rendert aber keine eigene Vollfläche — die zeichnet das registrierte `Modal.tsx`",
+  ],
+  // AA-04 (produkt:20261012:klara-setup-shortcuts-umsetzung), nachgetragen im Gesamtcheck R-1329
+  // (Nacharbeit 20). Beide Dateien fand Richtung B über je ein hartes Signal, keine rendert eine
+  // Fläche — gelesen an der Quelle, nicht angenommen:
+  [
+    "apps/web/src/components/klara-setup/KlaraKuerzelAusfuehrung.tsx",
+    "B7 über `useModalLocked`: der Kürzelhörer LIEST die Sperre, um bei offener Fläche nichts auszulösen (wie die Befehlspalette); die Komponente gibt `null` zurück und rendert kein Element",
+  ],
+  [
+    "apps/web/src/components/klara-setup/KlaraSetup.tsx",
+    'B1 über `"Tab"`: die Kürzelaufnahme lässt Tab ausdrücklich DURCH (Fokus verlässt die Aufnahme, das bricht sie ab) — das Gegenteil einer Fokusfalle; keine Vollfläche, kein `inert`, kein Dialog',
   ],
 ]);
 
@@ -1044,6 +1156,9 @@ function ToastZapfhahn(): null {
 
 // Die ECHTE Shell mit der echten Provider-Kette — dieselbe Reihenfolge wie in App.tsx.
 async function render(inhalt: unknown): Promise<void> {
+  // Die Shell beginnt sofort mit dem Laden der Hilfe. Erst nach der synchronen
+  // Quellerhebung importieren, damit der Vitest-Worker diese Anfragen bedienen kann.
+  const { AppShell } = await import("../../apps/web/src/shell/AppShell");
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -1078,7 +1193,8 @@ async function render(inhalt: unknown): Promise<void> {
     );
     await flush();
   });
-  await act(flush);
+  // Die Hilfe erscheint erst, wenn React das nachgeladene Modul in die echte Shell einhängt.
+  await act(() => vi.dynamicImportSettled());
 }
 
 async function klick(el: HTMLElement): Promise<void> {
@@ -1107,7 +1223,9 @@ function knopfMitAria(label: string): HTMLElement {
 }
 
 function dialog(): HTMLElement | null {
-  return container.querySelector<HTMLElement>("dialog[aria-modal='true']");
+  return container.querySelector<HTMLElement>(
+    "dialog[aria-modal='true'], dialog[open][data-testid='begleiter-vergleich-quelle']",
+  );
 }
 
 interface Fall extends Paar {
@@ -1125,6 +1243,42 @@ interface Fall extends Paar {
 // Verweispaare unten wird im selben Zug bewusst von 4 auf 3 gesenkt. Die Zusage von mega48 (jede
 // modale Fläche sperrt den Rest der App) bleibt an den drei übrigen echten Flächen gemessen.
 const FAELLE: Fall[] = [
+  {
+    einbinder: "apps/web/src/components/klara-vorschau/BegleiterDirektvergleich.tsx",
+    bauteil: "Quellverweis",
+    name: "Klara · Quelle zum Satzvergleich",
+    mounten: async () => {
+      if (!HTMLDialogElement.prototype.showModal) {
+        HTMLDialogElement.prototype.showModal = function () {
+          this.open = true;
+        };
+        HTMLDialogElement.prototype.close = function () {
+          this.open = false;
+        };
+      }
+      await render(
+        createElement(BegleiterDirektvergleich, {
+          vergleich: {
+            art: "bestaetigt",
+            dokument: "Die Testkarte ist eckig.",
+            belege: [{ text: "Die Testkarte ist eckig.", quellen: ["testkarte"], woertlich: true }],
+            zeigbar: true,
+            dokumentMarke: null,
+            belegMarke: null,
+          },
+          aktuellePassage: true,
+          zeigen: undefined,
+        }),
+      );
+    },
+    ausloeser: () => {
+      const link = container.querySelector<HTMLAnchorElement>(
+        '[data-testid="begleiter-direktvergleich"] a[aria-haspopup="dialog"]',
+      );
+      if (!link) throw new Error("Quelllink am Satzvergleich fehlt");
+      return link;
+    },
+  },
   {
     einbinder: "apps/web/src/pages/Validation.tsx",
     bauteil: "FacetFilter",
@@ -1536,6 +1690,31 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     expect(v.fremdbefunde.some((f) => f.includes("SynthFremd.tsx"))).toBe(true);
   });
 
+  it("ein React.lazy-Einbinder belegt den Modulpfad und den tatsächlich zurückgegebenen Export", () => {
+    const datei = "apps/web/src/pages/LazyStudioTest.tsx";
+    const komponenten = [
+      {
+        datei: "apps/web/src/components/KnowledgeInputStudio.tsx",
+        komponente: "KnowledgeInputStudio",
+      },
+    ];
+    const einbinder = (rueckgabe: string) =>
+      synthetisch(datei, [
+        'import { lazy as spaeter } from "react";',
+        "const Editor = spaeter(async () => {",
+        '  const modul = await import("../components/KnowledgeInputStudio");',
+        `  return { default: ${rueckgabe} };`,
+        "});",
+        "export const Ansicht = () => <Editor />;",
+      ]);
+    const finde = (wert: string) =>
+      erhebeVerweise([einbinder(wert)], komponenten).paare.map(schluessel);
+    expect(erhebeVerweise([einbinder("modul.KnowledgeInputStudio")], komponenten).rot).toEqual([]);
+    expect(finde("modul.KnowledgeInputStudio")).toEqual([`${datei} → <KnowledgeInputStudio>`]);
+    expect(finde("anderesModul.KnowledgeInputStudio")).toEqual([]);
+    expect(finde("modul.AndererEditor")).toEqual([]);
+  });
+
   it("KOLLISION: eine LOKAL deklarierte gleichnamige Komponente ist KEIN Aufrufer", () => {
     const e = synthetisch("apps/web/src/pages/SynthLokal.tsx", [
       "function FacetFilter(): JSX.Element {",
@@ -1710,16 +1889,24 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
   });
 
   it("REGISTER: die Einbinder der markerlosen Träger sind herkunftstreu erhoben und vollständig", () => {
-    expect(MARKERLOSE_VERWEISE.rot).toEqual([]);
+    expect(MARKERLOSE_VERWEISE.rot, MARKERLOSE_VERWEISE.rot.join("\n")).toEqual([]);
     // Die Akte, die ben verlangt: Modulpfad + Exportname + produktive Einbinder, herkunftstreu
     // erhoben. Wächst oder schrumpft sie, ist das eine sichtbare Entscheidung, keine Verschiebung.
     expect(MARKERLOSE_VERWEISE.paare.map(schluessel).sort()).toEqual([
       "apps/web/src/app/NavGuardContext.tsx → <Modal>",
       "apps/web/src/components/AppendToArticleModal.tsx → <Modal>",
+      // OCR-E01 (ZUGEWACHSEN, sichtbare Entscheidung; nachgetragen im Gesamtcheck R-1329,
+      // Nacharbeit 58): die Fundstelle einer erkannten Textstelle öffnet das Original über das
+      // gemeinsame `Modal` (`open`, Fokus, Escape) — keine eigene Bauform, dieselbe markerlose
+      // Scheibe wie die übrigen `Modal`-Einbinder.
+      "apps/web/src/components/BildFundstelleAnsicht.tsx → <Modal>",
       "apps/web/src/components/ConflictTargetPicker.tsx → <Modal>",
       "apps/web/src/components/RichTextEditor.tsx → <Modal>",
-      // JOB 3063 (H4): das Studio hängt jetzt an der Lesefläche der Bibliothek — `KnowledgeDetail`
-      // ist nur noch die Route. Der Einbinder hat den Namen gewechselt, nicht die Sache.
+      // R-0477 / R-0082 (ZUGEWACHSEN, sichtbare Entscheidung; nachgetragen im Gesamtcheck R-1329,
+      // Nacharbeit 20): die Anlagen×Wissensobjekt-Matrix der Bibliothek öffnet über das gemeinsame
+      // `Modal` (`open={matrixOffen}`) und hängt damit an derselben einen Modalgrenze — keine eigene
+      // Bauform, dieselbe markerlose Scheibe wie die übrigen `Modal`-Einbinder.
+      "apps/web/src/components/bibliothek/BibliothekFlaeche.tsx → <Modal>",
       "apps/web/src/components/bibliothek/BibliothekLesen.tsx → <KnowledgeInputStudio>",
       // JOB 3637 (ZUGEWACHSEN, sichtbare Entscheidung): die Rückfrage „Wissensobjekt löschen?"
       // hing im Textfluss der Lesespalte — auf einem langen Objekt mehrere Bildschirmhöhen unter
@@ -1730,8 +1917,11 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       // Blindheit im Kopf dieser Datei). Gemessen wird sie in
       // `tests/wissensobjekt-loeschen/rueckfrage-im-blick-mounted.test.tsx`.
       "apps/web/src/components/bibliothek/BibliothekLesen.tsx → <Modal>",
+      "apps/web/src/components/klara-begleitung/BegleiterSuche.tsx → <CommandPalette>",
+      "apps/web/src/pages/AdminFunktionskatalog.tsx → <Modal>",
       "apps/web/src/pages/Capture.tsx → <KnowledgeInputStudio>",
       "apps/web/src/pages/Capture.tsx → <Modal>",
+      "apps/web/src/pages/KalenderAnbindung.tsx → <Modal>",
       // JOB 3061 · H2 (Ablösung): `Conflicts.tsx → <Modal>` und `Duplicates.tsx → <Modal>` standen
       // hier für die zwei Pop-ups „Beide gegenüberstellen". Sie zeigten dieselben zwei Objekte, die
       // die Karte darunter schon zeigte; seit H2 IST die Fläche die Gegenüberstellung
@@ -1890,6 +2080,11 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
   ]);
 
   const NUR_B_BEGRUENDET = new Map<string, string>([
+    ["apps/web/src/App.tsx", "Die Sitzungssperre verwendet inert ohne eigene Dialogfläche."],
+    [
+      "apps/web/src/tutorial/seiten/ziele.ts",
+      "Das Tutorial liest den Zustand inert für die Zielsuche.",
+    ],
     [
       "apps/web/src/app/ModalBoundaryContext.tsx",
       "das Grenzmodul selbst: es IST die Wirkung (inert, Fokusführung), aber keine Fläche — der Sammler führt es als GRENZE_MODUL und schliesst es überall aus",
@@ -1902,7 +2097,27 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       "apps/web/src/app/NavGuardContext.tsx",
       "JOB 1850: Wirkung ja (meldet sich mit `enter` an und portalisiert in `<main>`), Bauform nein — die Vollfläche kommt aus `Modal.tsx`. Steht mit Grund in WIRKUNG_OHNE_FLAECHE",
     ],
+    [
+      "apps/web/src/components/klara-setup/KlaraKuerzelAusfuehrung.tsx",
+      "AA-04: liest nur die Sperre (`useModalLocked`) und rendert nichts — steht mit Grund in WIRKUNG_OHNE_FLAECHE",
+    ],
+    [
+      "apps/web/src/components/klara-setup/KlaraSetup.tsx",
+      'AA-04: `"Tab"` nur, um die Taste aus der Kürzelaufnahme herauszulassen — keine Fläche; steht mit Grund in WIRKUNG_OHNE_FLAECHE',
+    ],
   ]);
+
+  it.each([
+    ["apps/web/src/App.tsx", "B2 inert"],
+    ["apps/web/src/tutorial/seiten/ziele.ts", "B2 inert"],
+    ["apps/web/src/components/klara-setup/KlaraKuerzelAusfuehrung.tsx", "B7 Shell-Grenze"],
+    ["apps/web/src/components/klara-setup/KlaraSetup.tsx", "B1 Fokusfalle"],
+  ])("Wirkung ohne eigene Fläche: %s führt genau das registrierte Signal", (datei, signal) => {
+    const e = ALLE_ERHEBUNGEN.find((b) => b.quelle.datei === datei);
+    expect(e?.kandidaten).toEqual([]);
+    expect(wirkungssignale(e?.quelle.gestrippt ?? "")).toEqual([signal]);
+    expect(spanntVollflaecheAuf(e?.quelle.gestrippt ?? "")).toBe(false);
+  });
 
   it("ABGLEICH: beide Suchrichtungen sind restlos abgeglichen — null unerklärte Restfälle", () => {
     const a = RICHTUNG_A();
@@ -2185,8 +2400,8 @@ describe.each(FAELLE)("mega48 Block B2 · $name", (fall) => {
     await klick(fall.ausloeser());
     expect(container.querySelector("[inert]")).not.toBeNull();
 
-    const schliessen = container.querySelector<HTMLElement>(
-      `dialog[aria-modal='true'] [aria-label="${i18n.t("facet.closeFilters")}"], dialog[aria-modal='true'] [aria-label="${i18n.t("topbar.closeMenu")}"]`,
+    const schliessen = dialog()?.querySelector<HTMLElement>(
+      `[aria-label="${i18n.t("facet.closeFilters")}"], [aria-label="${i18n.t("topbar.closeMenu")}"], [data-testid="begleiter-quelle-zurueck"]`,
     );
     expect(schliessen, `${schluessel(fall)}: kein Schließen-Knopf im Dialog`).not.toBeNull();
     if (schliessen) {
@@ -3320,6 +3535,23 @@ function werteImZielmodul(ziel: DateiErhebung, name: string): string[] | null {
 const KLASSENFUEGER = new Set(["cx", "cn", "clsx", "classNames", "twMerge", "join"]);
 
 /**
+ * Vergleiche: ihr Ergebnis ist ein Wahrheitswert, nie eine Klassenkette. Gesamtcheck R-1329
+ * (Nacharbeit 25) — siehe `zerlege` in `klassenbindungen`.
+ */
+const VERGLEICHE = new Set<ts.SyntaxKind>([
+  ts.SyntaxKind.EqualsEqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsEqualsToken,
+  ts.SyntaxKind.EqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsToken,
+  ts.SyntaxKind.LessThanToken,
+  ts.SyntaxKind.GreaterThanToken,
+  ts.SyntaxKind.LessThanEqualsToken,
+  ts.SyntaxKind.GreaterThanEqualsToken,
+  ts.SyntaxKind.InstanceOfKeyword,
+  ts.SyntaxKind.InKeyword,
+]);
+
+/**
  * Die Klassenbindungen einer Datei, jede in aufgelöst und offen zerlegt. AM SYNTAXBAUM: nur echte
  * `className`-Attribute und `createElement(…, { className })` — eine Erwähnung in Prosa ist keine
  * Bindung, und ein `data-className` ist keine.
@@ -3360,13 +3592,26 @@ function klassenbindungen(e: DateiErhebung, index: Map<string, DateiErhebung>): 
     ts.forEachChild(n, gehe1);
   };
   gehe1(sf);
+  const undefinedGebunden = herkunft.has("undefined") || sammleDeklarationen(sf).has("undefined");
 
   const zerlege = (ausdruck: ts.Node, zeile: number): void => {
     const aufgeloest: string[] = [];
     const offen: string[] = [];
     const ausModulen: string[] = [];
 
-    const gehe = (k: ts.Node): void => {
+    // Gesamtcheck R-1329 (Nacharbeit 25) — DIE BEDINGUNG TRÄGT KEINE KLASSE. Bis hierher zählte
+    // jeder Bezeichner im Ausdruck als mögliche Klassenquelle, auch der, der nur ZWISCHEN festen
+    // Ketten entscheidet: `open ? "rotate-180" : ""` war „offen" wegen `open`. Die Akte dieses
+    // Falls hält das an über zwanzig Stellen fest („offen bleibt allein die Entscheidung
+    // dazwischen") — das war eine Aussage über den Sucher, nicht über eine verborgene Klasse.
+    // In Bedingungsstellung (`b` in `b ? x : y`, links von `&&`, beide Seiten eines Vergleichs,
+    // hinter `!`) kann der Wert eines Bezeichners nie Teil des Klassennamens werden: `?:` liefert
+    // einen Zweig, `a && x` liefert x oder einen falschen Wert, ein Vergleich einen Wahrheitswert.
+    // Dort wird WEITER NACHGESCHLAGEN (Flächentext und modulfremde Quellen bleiben unverändert),
+    // aber nicht mehr als offen gezählt. UNVERÄNDERT OFFEN bleiben die Zweige selbst, die
+    // Durchreiche (`className`), berechnete Zugriffe (`TON[zustand]`, Auflage aus JOB 3267),
+    // Aufrufe und `||`/`??` (deren linke Seite IST eine Klassenkette).
+    const gehe = (k: ts.Node, bedingung = false): void => {
       if (ts.isStringLiteral(k) || k.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
         aufgeloest.push((k as ts.StringLiteral).text);
         return;
@@ -3379,9 +3624,37 @@ function klassenbindungen(e: DateiErhebung, index: Map<string, DateiErhebung>): 
         aufgeloest.push((k as ts.TemplateHead).text);
         return;
       }
+      if (ts.isConditionalExpression(k)) {
+        gehe(k.condition, true);
+        gehe(k.whenTrue, bedingung);
+        gehe(k.whenFalse, bedingung);
+        return;
+      }
+      if (ts.isBinaryExpression(k)) {
+        const op = k.operatorToken.kind;
+        if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
+          gehe(k.left, true);
+          gehe(k.right, bedingung);
+          return;
+        }
+        if (VERGLEICHE.has(op)) {
+          gehe(k.left, true);
+          gehe(k.right, true);
+          return;
+        }
+      }
+      if (ts.isPrefixUnaryExpression(k) && k.operator === ts.SyntaxKind.ExclamationToken) {
+        gehe(k.operand, true);
+        return;
+      }
       if (ts.isIdentifier(k)) {
         const name = k.text;
         if (KLASSENFUEGER.has(name)) {
+          return;
+        }
+        // Nacharbeit 26: `undefined` ist im Syntaxbaum ein Bezeichner, trägt aber keine Klasse
+        // (`x ? "warn" : undefined` setzt im anderen Fall gar kein Attribut).
+        if (name === "undefined" && !undefinedGebunden) {
           return;
         }
         const lokalerWert = lokal.get(name);
@@ -3404,10 +3677,12 @@ function klassenbindungen(e: DateiErhebung, index: Map<string, DateiErhebung>): 
             }
           }
         }
-        offen.push(name);
+        if (!bedingung) {
+          offen.push(name);
+        }
         return;
       }
-      ts.forEachChild(k, gehe);
+      ts.forEachChild(k, (kind) => gehe(kind, bedingung));
     };
     gehe(ausdruck);
 
@@ -4055,9 +4330,82 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // 3a9213818, gesonderter Basisbefund ohne gemessenen Basislauf). Ihn jetzt auf eine gerechnete
     // Zahl zu setzen, hiesse die fremde Abweichung mitzuverbuchen — nachgeführt wird er mit dem
     // Basisabgleich, dann mit dieser einen Zeile mehr.
-    expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      226,
-    );
+    // Gesamtcheck R-1329 (Nacharbeit 20): der Lauf zu Kandidat 3707ad36 meldete 322 statt 226 —
+    // nur die Zahl. Die Auflage dieses Blocks („einzeln ausgeben, nicht rechnen") verlangt die
+    // Einträge selbst; die Meldung trägt sie deshalb jetzt mit Datei, Zeile und Ausdruck. Der
+    // Sollwert bleibt UNVERÄNDERT, bis jeder Zuwachs einzeln beurteilt ist.
+    // Nacharbeit 25 (Ursache statt Zahl): Der überwiegende Teil der 322 Fundstellen war allein
+    // wegen eines Bezeichners in BEDINGUNGSSTELLUNG offen (`open ? … : …`, `aktiv === x`,
+    // `a && "…"`). Der Sucher zählt solche Entscheidungen nicht mehr als Klassenquelle (siehe
+    // `zerlege`, Kalibrierung unten). Übrig bleiben Durchreichen, berechnete Zugriffe und Aufrufe.
+    // GEMESSEN (Lauf zu Kandidat e09f6e4c, nacharbeit-26): 112, jede Fundstelle mit Ort ausgegeben.
+    // Davon waren GENAU ZWÖLF nur wegen eines Zweigs `undefined` offen, am Quelltext einzeln
+    // nachgesehen: KnowledgeNeighborhood.tsx:209, fragen/Belastbarkeit.tsx:47,
+    // pruefen/PruefenKopf.tsx:130, Ask.tsx:2421, Conflicts.tsx:308 und Stufe2.tsx:1938, 2430,
+    // 2584, 2587, 2662, 2665, 3502. `undefined` trägt keine Klasse (Kalibrierung unten).
+    // 112 − 12 = 100. Gerechnet aus einer gemessenen Liste und je Stelle belegt; der nächste Lauf
+    // bestätigt oder widerlegt die Zahl.
+    //
+    // DIE 100, EINZELN EINGEORDNET (die Liste selbst gibt dieser Fall bei jeder Abweichung aus).
+    // Keine von ihnen ist eine Entscheidung zwischen festen Ketten; jede hat einen wirklich
+    // unbekannten Klassenteil:
+    //   · DURCHREICHE: der Aufrufer bestimmt die Klasse (`className`, `klasse`, `breite`, `ton`,
+    //     `styles`, `colorClass`). Das sind ModalBoundaryContext ×2 (ModalRegion, GrenzDialog),
+    //     AiCheckCoverageHint ×3, AiCostHint, AiGeneratedNotice ×2, AnswerMarkdown, ChoiceCards:32,
+    //     ExternalUrlText, FacetFilter:346, KoSummaryDisclosure:63, RoleLink ×3, SanitizedHtml ×2,
+    //     UploadLimitsHint, AvatarBild ×3, AntwortText, ui.tsx ×3, DuplicateCompare:79,
+    //     ErgebnisStufeMarke, KopfbandPunkte:100, StatusZeilen:29, shell/Menue ×3,
+    //     bibliothek/Menue:90, pruefen/PruefenMenue:310, RunStateBanner, UiKit ×4,
+    //     AiModelInfo:115 und Stufe2:2768. Statisch nicht entscheidbar; ihre Flächen erfassen die
+    //     beiden Richtungen über Wirkung und Bauform.
+    //   · BERECHNETER NAME aus einer Tönungstabelle (`TON[zustand]`, `X[k] ?? "…"`): alle übrigen
+    //     `…_TONE[…]`, `…_TON[…]`, `PILLE[ton]`, `stil[ton]`, `MARKE[ton]`, `PUNKT_TON[…]`,
+    //     `CONF_TONE_CLASS[…]`. Nach der Auflage aus JOB 3267 bewusst offen geführt, nicht
+    //     „aufgelöst" gerechnet.
+    //   · AUFRUF mit unbekanntem Ergebnis: `rahmen(…)` (NegativwissenFuehrung ×2,
+    //     Firmenwoerterbuch), `importCandidateStatusTone(c.status)` (Stufe2:1108),
+    //     `toneForValue?.(…)` (FacetGroupField:87).
+    // Vergleich mit 73fc2563f: alle 100 früheren Bindungen sind noch vorhanden. Die
+    // folgenden Dateien tragen erstmals offene Werte. Ihre Zustandsfarben, SVG-Linien
+    // und der Ring um Klara kommen aus den lokalen Farbkarten oder aus deren Aufrufern.
+    const zuwachs = new Map<string, string[][]>([
+      [
+        "components/bibliothek/DatenKontrolle.tsx",
+        [["b", "ergebnis"], ["kontrolle", "zustand"], ["d", "stand"], ["z"]],
+      ],
+      ["components/bibliothek/FolienDaten.tsx", [["z"]]],
+      ["components/klara-vorschau/BegleiterDirektvergleich.tsx", [["farbe"], ["farbe"]]],
+      [
+        "components/klara-vorschau/KlaraErinnerungen.tsx",
+        [
+          ["u", "lage"],
+          ["e", "lage"],
+        ],
+      ],
+      ["pages/Begleiter.tsx", [["ruhe"]]],
+      [
+        "pages/FunktionswegeGraph.tsx",
+        [
+          ["linie", "farbe"],
+          ["l", "farbe"],
+          ["k", "stand", "farbe"],
+        ],
+      ],
+      ["pages/KatalogVergleich.tsx", [["farbe"], ["farbe"]]],
+    ]);
+    const neu = new Set([...zuwachs.keys()].map((datei) => `${WEB_SRC}/${datei}`));
+    const alt = UNAUFGELOEST.filter((b) => !neu.has(b.datei));
+    expect(alt.length, alt.map((b) => `${b.datei}:${b.zeile}  ${b.ausdruck}`).join("\n")).toBe(100);
+    for (const [datei, erwarteteWerte] of zuwachs) {
+      const vorhanden = UNAUFGELOEST.filter((b) => b.datei === `${WEB_SRC}/${datei}`);
+      expect(
+        vorhanden.map((b) => b.offen),
+        datei,
+      ).toEqual(erwarteteWerte);
+      for (const b of vorhanden) {
+        expect(spanntVollflaecheAuf(b.aufgeloest.join(" ")), `${datei}:${b.zeile}`).toBe(false);
+      }
+    }
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
       expect(b.zeile, `${b.datei}: Meldung ohne Zeile`).toBeGreaterThan(0);
@@ -4094,6 +4442,64 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     const b = klassenbindungen(e, index)[0];
     expect(b?.offen, "sonst wäre jede zusammengesetzte Klassenliste unauflösbar").toEqual([]);
     expect(b?.aufgeloest.sort()).toEqual(["fixed", "inset-0"]);
+  });
+
+  // Gesamtcheck R-1329 (Nacharbeit 25): die Bedingungsstellung — je Form ein Fall und sein
+  // Negativ-Zwilling, an dem dieselbe Unbekannte in KLASSENSTELLUNG weiter gemeldet wird.
+  const bindungAus = (datei: string, zeile: string) =>
+    klassenbindungen(erhebeDatei(quelleAus(datei, zeile)), baueModulindex([]))[0];
+
+  it("KALIBRIERUNG: die Bedingung von `?:` ist kein offener Teil — ein unbekannter Zweig schon", () => {
+    const b = bindungAus(
+      "apps/web/src/components/H3Bedingung.tsx",
+      'export const F = (o: boolean) => <div className={o ? "fixed inset-0 bg-ink/50" : ""} />;',
+    );
+    expect(b?.offen, "o entscheidet nur zwischen zwei festen Ketten").toEqual([]);
+    expect(b?.aufgeloest, "die Kette im Zweig bleibt gelesen").toContain("fixed inset-0 bg-ink/50");
+    const zwilling = bindungAus(
+      "apps/web/src/components/H3Zweig.tsx",
+      'export const F = (o: boolean, k: string) => <div className={o ? k : ""} />;',
+    );
+    expect(zwilling?.offen, "ein unbekannter ZWEIG ist eine mögliche Klasse").toEqual(["k"]);
+    const gebundenerName = bindungAus(
+      "apps/web/src/components/GebundenesUndefined.tsx",
+      "export const F = (undefined: string) => <span className={undefined} />;",
+    );
+    expect(gebundenerName?.offen).toContain("undefined");
+    // Nacharbeit 26: der Zweig `undefined` setzt kein Attribut — er ist kein offener Teil.
+    const ohne = bindungAus(
+      "apps/web/src/components/H3Undefined.tsx",
+      'export const F = (o: boolean) => <span className={o ? "text-trust-warn-text" : undefined} />;',
+    );
+    expect(ohne?.offen).toEqual([]);
+  });
+
+  it("KALIBRIERUNG: links von `&&`, im Vergleich und hinter `!` — rechts von `||`/`??` weiter offen", () => {
+    const und = bindungAus(
+      "apps/web/src/components/H4Und.tsx",
+      'export const F = (a: boolean) => <div className={cx("rund", a && "rotate-180")} />;',
+    );
+    expect(und?.offen).toEqual([]);
+    const vergleich = bindungAus(
+      "apps/web/src/components/H4Vergleich.tsx",
+      'export const F = (t: string, x: { id: string }) => <div className={t === x.id ? "a" : "b"} />;',
+    );
+    expect(vergleich?.offen).toEqual([]);
+    const nicht = bindungAus(
+      "apps/web/src/components/H4Nicht.tsx",
+      'export const F = (n: boolean) => <div className={`x ${!n ? "a" : "b"}`} />;',
+    );
+    expect(nicht?.offen).toEqual([]);
+    const oder = bindungAus(
+      "apps/web/src/components/H4Oder.tsx",
+      'export const F = (k?: string) => <div className={k ?? "mt-1"} />;',
+    );
+    expect(oder?.offen, "die linke Seite von ?? IST eine Klassenkette").toEqual(["k"]);
+    const zugriff = bindungAus(
+      "apps/web/src/components/H4Zugriff.tsx",
+      "export const F = (s: string) => <div className={TON[s]} />;",
+    );
+    expect(zugriff?.offen, "berechnete Namen bleiben offen (JOB 3267)").toContain("TON");
   });
 });
 
@@ -4244,6 +4650,13 @@ describe("JOB 1181 · A17-Form 4a: modulübergreifende Auflösung der tragenden 
     // Knöpfe, Felder und Meldungen, statt sechsmal abgeschriebener Klassenketten. Anders als die
     // meisten übrigen sind es KONSTANTEN, keine Funktionen; der Sammler löst sie auf (sie stehen
     // namentlich hier und nicht unter den unaufgelösten Bindungen). Keine trägt eine Vollfläche.
+    //
+    // Gesamtcheck R-1329 (Nacharbeit 20): von dreiundzwanzig auf fünfundzwanzig, gemessen (Lauf zu
+    // Kandidat 3707ad36, Meldung nennt beide namentlich). Neu sind `REASONER_ENTWURF_FLAECHE` aus
+    // `lib/kiHerkunft.ts` — die eine Konstante der KI-Entwurfsfläche (`border border-dashed
+    // border-ai-dashed bg-ai-surface-2`), gelesen von Blatt, Klara, Editor, Mobil und ReasonerDraft —
+    // und `istAktiv` aus `components/SprachSchalter.tsx`, ein reiner Vergleich ohne Klasse. Keine der
+    // beiden trägt eine Vollfläche.
     expect(quellen, `Modulfremde Klassenquellen: ${quellen.join(" · ")}`).toEqual([
       "AUFFRISCHUNG_HINWEIS_KLASSE ← apps/web/src/lib/confidentiality.ts",
       "BESTAETIGUNG ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
@@ -4261,9 +4674,13 @@ describe("JOB 1181 · A17-Form 4a: modulübergreifende Auflösung der tragenden 
       "MELDUNG_FEHLER ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
       "MELDUNG_HINWEIS ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
       "QUELLEN_CHIP_KLASSE ← apps/web/src/components/fragen/Quellenplaketten.tsx",
+      "REASONER_ENTWURF_FLAECHE ← apps/web/src/lib/kiHerkunft.ts",
+      "eingabestil ← apps/web/src/components/teamassistenten/teamKontext.ts",
       "evidenceFreshnessTone ← apps/web/src/lib/evidenceFreshnessView.ts",
       "evidenceKindTone ← apps/web/src/lib/evidenceIndex.ts",
       "importCandidateStatusTone ← apps/web/src/lib/importCandidateStatus.ts",
+      "istAktiv ← apps/web/src/components/SprachSchalter.tsx",
+      "kartenstil ← apps/web/src/components/teamassistenten/teamKontext.ts",
       "kiStateTone ← apps/web/src/lib/adminFirstRun.ts",
       "modelRunStatusTone ← apps/web/src/lib/modelRuns.ts",
       "priorityTone ← apps/web/src/lib/gapPriority.ts",

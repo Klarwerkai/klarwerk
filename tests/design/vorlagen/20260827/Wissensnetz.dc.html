@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+    a { color: #9C5009; } a:hover { color: #C2500A; }
+  </style>
+</helmet>
+<div style="width: 1280px; min-height: 800px; background: #FAF8F5; color: #1A2233; display: flex; flex-direction: column;">
+
+  <div style="background: #0E1626; color: #FAF8F5; padding: 14px 32px; display: flex; align-items: center; justify-content: space-between;">
+    <div style="font-size: 17px; font-weight: 650;">KLARWERK <span style="font-size: 10px; font-weight: 500; color: #7E879A; letter-spacing: 1.6px;">REASONING SYSTEM</span></div>
+    <div style="font-size: 13px; color: #7E879A;">Wissensnetz</div>
+  </div>
+
+  <div style="display: flex; flex-grow: 1;">
+    <div style="flex-grow: 1; position: relative; padding: 16px;">
+      <svg width="880" height="660" viewBox="0 0 880 660" style="display: block;">
+        <line x1="330" y1="290" x2="520" y2="180" stroke="#E9E5DE" stroke-width="2"></line>
+        <line x1="330" y1="290" x2="470" y2="420" stroke="#E9E5DE" stroke-width="2"></line>
+        <line x1="330" y1="290" x2="180" y2="180" stroke="#E9E5DE" stroke-width="2"></line>
+        <line x1="520" y1="180" x2="700" y2="250" stroke="#E9E5DE" stroke-width="2"></line>
+        <line x1="470" y1="420" x2="640" y2="500" stroke="#E9E5DE" stroke-width="2"></line>
+        <line x1="180" y1="180" x2="150" y2="380" stroke="#E9E5DE" stroke-width="2"></line>
+        <line x1="700" y1="250" x2="640" y2="500" stroke="#E9E5DE" stroke-width="2"></line>
+        <line x1="470" y1="420" x2="330" y2="560" stroke="#E9E5DE" stroke-width="2"></line>
+
+        <circle cx="180" cy="180" r="34" fill="#E0F1E7" stroke="#116B3C" stroke-width="2"></circle>
+        <text x="180" y="184" text-anchor="middle" font-size="12" font-weight="600" fill="#116B3C">Reinigung</text>
+
+        <circle cx="330" cy="290" r="46" fill="#E8630A" fill-opacity="0.14" stroke="#C2500A" stroke-width="2.5"></circle>
+        <text x="330" y="286" text-anchor="middle" font-size="13" font-weight="700" fill="#9C5009">Hygienic</text>
+        <text x="330" y="302" text-anchor="middle" font-size="13" font-weight="700" fill="#9C5009">Design</text>
+
+        <circle cx="520" cy="180" r="38" fill="#E0F1E7" stroke="#116B3C" stroke-width="2"></circle>
+        <text x="520" y="177" text-anchor="middle" font-size="12" font-weight="600" fill="#116B3C">Profile &amp;</text>
+        <text x="520" y="192" text-anchor="middle" font-size="12" font-weight="600" fill="#116B3C">Halter</text>
+
+        <circle cx="700" cy="250" r="30" fill="#FDF1D7" stroke="#8A5A00" stroke-width="2"></circle>
+        <text x="700" y="254" text-anchor="middle" font-size="11.5" font-weight="600" fill="#8A5A00">Schweißen</text>
+
+        <circle cx="470" cy="420" r="36" fill="#E0F1E7" stroke="#116B3C" stroke-width="2"></circle>
+        <text x="470" y="417" text-anchor="middle" font-size="12" font-weight="600" fill="#116B3C">Spritz-</text>
+        <text x="470" y="432" text-anchor="middle" font-size="12" font-weight="600" fill="#116B3C">zonen</text>
+
+        <circle cx="640" cy="500" r="26" fill="#FDF1D7" stroke="#8A5A00" stroke-width="2"></circle>
+        <text x="640" y="504" text-anchor="middle" font-size="11" font-weight="600" fill="#8A5A00">Dichtungen</text>
+
+        <circle cx="150" cy="380" r="24" fill="#FFFFFF" stroke="#525B6B" stroke-width="1.5"></circle>
+        <text x="150" y="384" text-anchor="middle" font-size="11" font-weight="600" fill="#525B6B">CIP</text>
+
+        <circle cx="330" cy="560" r="22" fill="#FFFFFF" stroke="#525B6B" stroke-width="1.5"></circle>
+        <text x="330" y="564" text-anchor="middle" font-size="10.5" font-weight="600" fill="#525B6B">Ersatzteile</text>
+      </svg>
+
+      <div style="position: absolute; left: 32px; bottom: 24px; display: flex; gap: 16px; padding: 10px 14px; background: #FFFFFF; border: 1px solid #E9E5DE; border-radius: 10px;">
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #525B6B;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #E0F1E7; border: 1.5px solid #116B3C;"></span> freigegeben</div>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #525B6B;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #FDF1D7; border: 1.5px solid #8A5A00;"></span> in Prüfung</div>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #525B6B;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #FFFFFF; border: 1.5px solid #525B6B;"></span> wenig belegt</div>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #525B6B;">Größe = sichtbares Wissen · Kante = gemeinsam belegt</div>
+      </div>
+    </div>
+
+    <div style="width: 340px; border-left: 1px solid #E9E5DE; background: #FFFFFF; padding: 24px 20px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #E8630A;"></span>
+        <div style="font-size: 16px; font-weight: 650;">Hygienic Design</div>
+      </div>
+      <div style="font-size: 12.5px; color: #525B6B;">7 freigegebene Wissensobjekte · 2 in Prüfung</div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="padding: 10px 12px; background: #FAF8F5; border: 1px solid #E9E5DE; border-radius: 9px;">
+          <div style="font-size: 13px; font-weight: 600;">Design Guide Rev. 0.91</div>
+          <div style="font-size: 11.5px; color: #525B6B;">freigegeben · 27.08.2026</div>
+        </div>
+        <div style="padding: 10px 12px; background: #FAF8F5; border: 1px solid #E9E5DE; border-radius: 9px;">
+          <div style="font-size: 13px; font-weight: 600;">HD Handbook Q1-2025 (Auszug)</div>
+          <div style="font-size: 11.5px; color: #525B6B;">freigegeben · 12.08.2026</div>
+        </div>
+        <div style="padding: 10px 12px; background: #FAF8F5; border: 1px solid #E9E5DE; border-radius: 9px;">
+          <div style="font-size: 13px; font-weight: 600;">Totraum-Checkliste Montage</div>
+          <div style="font-size: 11.5px; color: #525B6B;">in Prüfung · 1 von 3 grün</div>
+        </div>
+      </div>
+      <a href="#" style="font-size: 12.5px; font-weight: 600;">Alle 9 Objekte öffnen</a>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

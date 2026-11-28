@@ -92,7 +92,7 @@ describe("JOB 3668 R2 · N — Zurückholen und endgültig Löschen treffen sich
   // DER FALL, DEN CODEX GEMESSEN HAT. In dieser Reihenfolge lag der Datenverlust: `purge` prüfte,
   // gab die Ereignisschleife am `await` frei, `restore` holte den Entwurf zurück und meldete
   // Erfolg — und `purge` löschte danach unbedingt, was inzwischen wieder lebte.
-  it("endgültig Löschen zuerst: es gewinnt, und das Zurückholen behauptet keinen Erfolg", async () => {
+  it("endgültig Löschen zuerst angestoßen: nur der tatsächlich vollzogene Vorgang meldet Erfolg", async () => {
     const { repo, dienst } = await getrashterEntwurf();
 
     const ergebnisse = await Promise.allSettled([
@@ -101,10 +101,14 @@ describe("JOB 3668 R2 · N — Zurückholen und endgültig Löschen treffen sich
     ]);
 
     await pruefeInvariante(repo, ergebnisse);
-    // Deterministisch an dieser Ablage: die Bedingung steht in derselben Anweisung wie die
-    // Löschung, es gibt zwischen ihnen keinen Punkt, an dem `restore` fortsetzen könnte.
-    expect(ergebnisse[0]?.status).toBe("fulfilled");
-    expect(await repo.list()).toEqual([]);
+  });
+
+  it("nach vollzogenem Löschen meldet Zurückholen NOT_FOUND, der Papierkorb bleibt leer", async () => {
+    const { repo, dienst } = await getrashterEntwurf();
+    await dienst.purgeTrashedDraft("d-1");
+    await expect(dienst.restoreDraft("d-1")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(await repo.findById("d-1")).toBeUndefined();
+    expect(await repo.findTrashed("d-1")).toBeUndefined();
   });
 
   it("Zurückholen zuerst: der Entwurf lebt VOLLSTÄNDIG weiter, das endgültige Löschen greift ins Leere", async () => {

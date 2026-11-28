@@ -103,6 +103,7 @@ const VORLAGE: Omit<CreateKoInput, "title" | "statement"> = {
   type: "best_practice",
   category: "Handbuch",
   author: "anna",
+  confidentiality: "intern",
 };
 
 interface Bestand {

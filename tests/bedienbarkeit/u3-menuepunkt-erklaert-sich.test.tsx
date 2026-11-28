@@ -287,17 +287,10 @@ describe("JOB 3028 U3 → H1 · der Erklärsatz zum Menüpunkt steht in der Seit
     expect(container.textContent ?? "").not.toContain(de("help.firststart.body"));
   });
 
-  // JOB 3741 (SEITENHILFE-LUECKEN): acht → achtzehn. Die Rechnung selbst ist unverändert (sie wird
-  // weiter aus Navigation × Hilfekapiteln GEBILDET und nicht aufgezählt); zehn Menüpunkte haben ihr
-  // Kapitel bekommen. Die Untergrenze steht gegen eine Rechnung, die gar nichts fände.
-  //
-  // JOB 4309: achtzehn → NEUNZEHN. „Gesamtanweisungen" ist als Menüpunkt dazugekommen und bringt
-  // sein Kapitel mit — die Rechnung zieht von selbst mit, weil sie aus der Navigationsquelle kommt.
-  it("U3-5: die MENGE stimmt — neunzehn Seiten, berechnet aus Navigation und Hilfekapiteln, nicht aufgezählt", async () => {
+  it("U3-5: alle 21 Menüseiten mit Hilfekapitel zeigen ihren eigenen Satz", async () => {
     const erwartet = erwartetePfadeMitSatz();
-    expect(erwartet.length, "die Rechnung aus NAV_GROUPS × HELP_TOPICS ergibt nicht neunzehn").toBe(
-      19,
-    );
+    expect(erwartet).toHaveLength(21);
+    expect(erwartet).toEqual(expect.arrayContaining(["/teamassistenten", "/teamworkflows"]));
     const imDom: string[] = [];
     for (const item of erreichbareEintraege()) {
       await mountKopfband(item.path);

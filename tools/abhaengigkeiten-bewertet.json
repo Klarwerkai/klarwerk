@@ -26,231 +26,231 @@
     "kennung": "GHSA-c96f-x56v-gq3h",
     "paket": "find-my-way",
     "ort": "node_modules/find-my-way",
-    "version": "9.6.0",
+    "version": "9.10.0",
     "urteil": "nicht exponiert",
-    "begruendung": "Der beschriebene Absturz setzt einen HTTP/2-Server voraus; buildApp() erzeugt einen node:http-Server und keine Datei unter services/ nennt http2.",
-    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt find-my-way; Waechter kein-http2.test.ts",
-    "bewertet_am": "2026-09-17"
+    "begruendung": "Die gebundene Fassung 9.10.0 liegt außerhalb des vom Hersteller gemeldeten Bereichs <= 9.6.0. Die erste korrigierte Fassung dieser Linie ist 9.7.0.",
+    "beleg": "https://github.com/advisories/GHSA-c96f-x56v-gq3h; package-lock.json, node_modules/find-my-way.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-2x7j-588g-ccc2",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
-    "urteil": "exponiert",
-    "begruendung": "Der Adressparser wird ueber services/notifications/src/smtp.ts mit der unveraenderten Empfaengeradresse erreicht (nur mit SMTP_HOST). Erster Stand ohne Advisory ist 9.1.0, drei Hauptwechsel entfernt; als eigene Entscheidung Pedi vorgelegt, nicht nebenbei gehoben.",
-    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt nodemailer; Messung mailadressen-bleiben-unveraendert.test.ts",
-    "bewertet_am": "2026-09-17"
+    "version": "10.1.4",
+    "urteil": "nicht exponiert",
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 9.1.0. Die erste korrigierte Fassung dieser Linie ist 9.1.0.",
+    "beleg": "https://github.com/advisories/GHSA-2x7j-588g-ccc2; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-cc9r-2j5m-2m83",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
-    "urteil": "exponiert",
-    "begruendung": "Fehlparsen von RFC-5322-Kommentaren am gebundenen Stand gemessen (Komma-Zerlegung, verschachtelte Kommentare verlieren den Empfaenger); Weg und offene Hauptwechsel-Entscheidung wie GHSA-2x7j-588g-ccc2.",
-    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt nodemailer; Messung mailadressen-bleiben-unveraendert.test.ts",
-    "bewertet_am": "2026-09-17"
+    "version": "10.1.4",
+    "urteil": "nicht exponiert",
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs >= 6.9.16, < 9.1.0. Die erste korrigierte Fassung dieser Linie ist 9.1.0.",
+    "beleg": "https://github.com/advisories/GHSA-cc9r-2j5m-2m83; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-4mh8-r7rc-xpvc",
     "paket": "fastify",
     "ort": "node_modules/fastify",
-    "version": "5.12.1",
+    "version": "5.12.7",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung laut Advisory: Antworten mit HTTP/2-Trailern. buildApp() erzeugt einen node:http-Server, keine Datei unter services/ nennt http2.",
-    "beleg": "Auditlauf 08.10.2026 (HISTORIE/nacharbeit-3/PRUEFUNG/echter-audit.json); Waechter tests/produktionsabhaengigkeiten/kein-http2.test.ts",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 5.12.7 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 5.12.5. Die erste korrigierte Fassung dieser Linie ist 5.12.5.",
+    "beleg": "https://github.com/advisories/GHSA-4mh8-r7rc-xpvc; package-lock.json, node_modules/fastify.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-667r-xxjv-c9mm",
     "paket": "fastify",
     "ort": "node_modules/fastify",
-    "version": "5.12.1",
+    "version": "5.12.7",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung laut Advisory: asynchrones Validierungsergebnis. Klarwerk hat keinen eigenen Validator- oder Schema-Compiler und kein $async-Schema; die zwei Body-Schemata (ask-routes.ts, check-text-routes.ts) laufen synchron ueber den Standard-Compiler.",
-    "beleg": "Waechter tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts, F2",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 5.12.7 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 5.12.2. Die erste korrigierte Fassung dieser Linie ist 5.12.2.",
+    "beleg": "https://github.com/advisories/GHSA-667r-xxjv-c9mm; package-lock.json, node_modules/fastify.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-p68q-wchp-6fh7",
     "paket": "fastify",
     "ort": "node_modules/fastify",
-    "version": "5.12.1",
+    "version": "5.12.7",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung laut Advisory: fehlerhafte URLs erreichen gekapselte Not-Found-Handler unter Umgehung der Anmeldung. Klarwerk hat genau einen Not-Found-Handler (web-static.ts, auf der Wurzelinstanz ueber server.ts), und er liefert nur Oeffentliches: JSON-404, Text-404 oder index.html der SPA. Grenze: bewertet am Advisorytitel und Bereich aus dem Auditbericht, der Advisorytext selbst war ohne Netzzugang nicht lesbar.",
-    "beleg": "Waechter tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts, F1",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 5.12.7 liegt außerhalb des vom Hersteller gemeldeten Bereichs >= 4.0.0, < 5.12.2. Die erste korrigierte Fassung dieser Linie ist 5.12.2.",
+    "beleg": "https://github.com/advisories/GHSA-p68q-wchp-6fh7; package-lock.json, node_modules/fastify.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-hwr6-493r-vm6h",
     "paket": "fastify",
     "ort": "node_modules/fastify",
-    "version": "5.12.1",
+    "version": "5.12.7",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung laut Advisory: boolesche false-Schemata werden uebersprungen. Die Bedingung ist VORHANDEN: askBodySchema.fragekontext traegt additionalProperties: false (ask-routes.ts:95); sonst gibt es in den zwei Routenschemata kein false-Teilschema. Die Folge ist wirkungslos: zusaetzliche Schluessel in fragekontext kaemen nur bis normalizeFragekontext (knowledge-object/src/geltung.ts:120), und das uebernimmt ausschliesslich werk, schicht und rolle. Wird die Normalisierung geaendert, ist die Zeile neu zu bewerten.",
-    "beleg": "Waechter tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts, F3 und F4",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 5.12.7 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 5.12.2. Die erste korrigierte Fassung dieser Linie ist 5.12.2.",
+    "beleg": "https://github.com/advisories/GHSA-hwr6-493r-vm6h; package-lock.json, node_modules/fastify.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-9q9j-q6p8-xq58",
     "paket": "fastify",
     "ort": "node_modules/fastify",
-    "version": "5.12.1",
+    "version": "5.12.7",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung laut Advisory: Header-Schemata (Gross-/Kleinschreibung). Klarwerk definiert in keiner Route ein headers-Schema; beide Routenschemata haben nur body.",
-    "beleg": "Waechter tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts, F3",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 5.12.7 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 5.12.2. Die erste korrigierte Fassung dieser Linie ist 5.12.2.",
+    "beleg": "https://github.com/advisories/GHSA-9q9j-q6p8-xq58; package-lock.json, node_modules/fastify.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-mm7p-fcc7-pg87",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
-    "urteil": "exponiert",
-    "begruendung": "Adressauslegung: die Empfaengeradresse geht ueber smtp.ts:26 unveraendert in den Parser (nur mit SMTP_HOST). Behebung erst ab 7.0.7, Hauptwechsel; gehoert zur offenen nodemailer-Entscheidung wie GHSA-2x7j-588g-ccc2.",
-    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt nodemailer; Waechter exposition-20261008.test.ts, N1",
-    "bewertet_am": "2026-10-08"
+    "version": "10.1.4",
+    "urteil": "nicht exponiert",
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 7.0.7. Die erste korrigierte Fassung dieser Linie ist 7.0.7.",
+    "beleg": "https://github.com/advisories/GHSA-mm7p-fcc7-pg87; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-rcmh-qjqh-p98v",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
-    "urteil": "exponiert",
-    "begruendung": "DoS im Adressparser: derselbe Weg ueber smtp.ts:26. Behebung erst jenseits 7.0.10, Hauptwechsel; offene nodemailer-Entscheidung.",
-    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt nodemailer; Waechter exposition-20261008.test.ts, N1",
-    "bewertet_am": "2026-10-08"
+    "version": "10.1.4",
+    "urteil": "nicht exponiert",
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs >= 3.0.0, <= 7.0.10. Die erste korrigierte Fassung dieser Linie ist 7.0.11.",
+    "beleg": "https://github.com/advisories/GHSA-rcmh-qjqh-p98v; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-v53p-9fqp-m79j",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
-    "urteil": "exponiert",
-    "begruendung": "Quadratisches Backtracking im Adressparser: derselbe Weg ueber smtp.ts:26. Behebung erst jenseits 10.0.5, Hauptwechsel; offene nodemailer-Entscheidung.",
-    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt nodemailer; Waechter exposition-20261008.test.ts, N1",
-    "bewertet_am": "2026-10-08"
+    "version": "10.1.4",
+    "urteil": "nicht exponiert",
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs <= 10.0.5. Die erste korrigierte Fassung dieser Linie ist 10.0.6.",
+    "beleg": "https://github.com/advisories/GHSA-v53p-9fqp-m79j; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-wmmp-3585-3rmp",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
-    "urteil": "exponiert",
-    "begruendung": "IDN/Punycode-Domainbehandlung der Empfaengeradresse; eine eigene Domain-Erlaubnisliste konfiguriert Klarwerk nicht, die Adresse erreicht den Parser aber ueber smtp.ts:26. Vorsichtig als exponiert gefuehrt. Behebung ab 9.1.0, Hauptwechsel; offene nodemailer-Entscheidung.",
-    "beleg": "Waechter exposition-20261008.test.ts, N1",
-    "bewertet_am": "2026-10-08"
+    "version": "10.1.4",
+    "urteil": "nicht exponiert",
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 9.1.0. Die erste korrigierte Fassung dieser Linie ist 9.1.0.",
+    "beleg": "https://github.com/advisories/GHSA-wmmp-3585-3rmp; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-8vvx-rff5-p5rq",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: verschachtelte strukturierte Empfaenger-Arrays. MailMessage.to ist string (notifications/src/mailer.ts), smtp.ts reicht genau diese Zeichenkette weiter; ein Array kann nicht entstehen.",
-    "beleg": "Waechter exposition-20261008.test.ts, N1",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 10.0.2. Die erste korrigierte Fassung dieser Linie ist 10.0.2.",
+    "beleg": "https://github.com/advisories/GHSA-8vvx-rff5-p5rq; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-c7w3-x93f-qmm8",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: envelope.size. sendMail erhaelt ausschliesslich from, to, subject, text, html; kein envelope.",
-    "beleg": "Waechter exposition-20261008.test.ts, N2",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs < 8.0.4. Die erste korrigierte Fassung dieser Linie ist 8.0.4.",
+    "beleg": "https://github.com/advisories/GHSA-c7w3-x93f-qmm8; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-vvjj-xcjg-gr5g",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: Transportoption name (EHLO/HELO). createTransport erhaelt ausschliesslich host, port, secure, auth.",
-    "beleg": "Waechter exposition-20261008.test.ts, N3",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs <= 8.0.4. Die erste korrigierte Fassung dieser Linie ist 8.0.5.",
+    "beleg": "https://github.com/advisories/GHSA-vvjj-xcjg-gr5g; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-268h-hp4c-crq3",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: List-*-Kopfzeilen (Option list). sendMail erhaelt keine list-Option.",
-    "beleg": "Waechter exposition-20261008.test.ts, N2",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs <= 8.0.8. Die erste korrigierte Fassung dieser Linie ist 8.0.9.",
+    "beleg": "https://github.com/advisories/GHSA-268h-hp4c-crq3; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-wqvq-jvpq-h66f",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: jsonTransport. Das Produkt baut ausschliesslich den SMTP-Transport (createTransport mit host); jsonTransport kommt nur in einer Testmessung vor.",
-    "beleg": "Waechter exposition-20261008.test.ts, N3",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs <= 8.0.8. Die erste korrigierte Fassung dieser Linie ist 8.0.9.",
+    "beleg": "https://github.com/advisories/GHSA-wqvq-jvpq-h66f; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-p6gq-j5cr-w38f",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: Nachrichtenoption raw. sendMail erhaelt keine raw-Option; Inhalte sind Zeichenketten, keine Datei- oder URL-Verweise.",
-    "beleg": "Waechter exposition-20261008.test.ts, N2",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs <= 9.0.0. Die erste korrigierte Fassung dieser Linie ist 9.0.1.",
+    "beleg": "https://github.com/advisories/GHSA-p6gq-j5cr-w38f; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-8m3c-c648-2xjj",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: Umgehung von disableFileAccess/disableUrlAccess bei resolveContent(). Klarwerk ruft resolveContent nicht auf und gibt keine Inhalte als path- oder href-Verweis, nur Zeichenketten (subject, text, html).",
-    "beleg": "Waechter exposition-20261008.test.ts, N2",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs <= 9.1.0. Die erste korrigierte Fassung dieser Linie ist 9.1.1.",
+    "beleg": "https://github.com/advisories/GHSA-8m3c-c648-2xjj; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-6vj9-mwq6-2f5v",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: mehrere Transporte mit verschiedenen Zugangsdaten in einem Prozess (DNS-Cache teilt den TLS-servername). Klarwerk baut den Transport an genau einer Stelle aus genau einer Umgebungskonfiguration (SMTP_HOST/SMTP_USER).",
-    "beleg": "Waechter exposition-20261008.test.ts, N3",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs >= 5.0.0, < 10.0.2. Die erste korrigierte Fassung dieser Linie ist 10.0.2.",
+    "beleg": "https://github.com/advisories/GHSA-6vj9-mwq6-2f5v; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-r7g4-qg5f-qqm2",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: OAuth2-Tokenabruf. auth ist ausschliesslich { user, pass }; kein type OAuth2.",
-    "beleg": "Waechter exposition-20261008.test.ts, N3",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs <= 8.0.7. Die erste korrigierte Fassung dieser Linie ist 8.0.8.",
+    "beleg": "https://github.com/advisories/GHSA-r7g4-qg5f-qqm2; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
@@ -312,22 +312,22 @@
     "kennung": "GHSA-jjmj-jmhj-qwj2",
     "paket": "react-router-dom",
     "ort": "node_modules/react-router-dom",
-    "version": "6.30.4",
+    "version": "6.30.6",
     "urteil": "nicht exponiert",
-    "begruendung": "Open Redirect bis XSS (betroffen >=6.30.2 <=6.30.5); Bedingung wie GHSA-wrjc-x8rr-h8h6: ein fremdgesteuertes Navigationsziel, das mit // oder /\\ beginnt. Die vollstaendige Erhebung der 155 Navigationsstellen (siehe GHSA-wrjc) findet keines mehr: Code-Ziele haben einen festen Anfang, die beiden location.pathname-Ziele laufen durch internerPfad(). Kompatible Behebung: ob ein 6.30.x-Stand ueber 6.30.5 existiert, war in diesem Arbeitsweg ohne Registry nicht pruefbar und ist in keiner Lockdatei des Repositorys. Die Pruefung gibt seit diesem Stand npms eigene Auskunft (fixAvailable) je Meldung aus; der naechste echte Auditlauf belegt sie. Bei fehlender Exposition verlangt der Auftrag keine Hebung.",
-    "beleg": "Waechter exposition-20261008.test.ts, R2-R4",
-    "bewertet_am": "2026-10-08"
+    "begruendung": "Die gebundene Fassung 6.30.6 liegt außerhalb des vom Hersteller gemeldeten Bereichs >= 6.30.2, <= 6.30.5. Die erste korrigierte Fassung dieser Linie ist 6.30.6.",
+    "beleg": "https://github.com/advisories/GHSA-jjmj-jmhj-qwj2; apps/web/package-lock.json, node_modules/react-router-dom.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
     "kennung": "GHSA-39m8-27wv-hr27",
     "paket": "nodemailer",
     "ort": "node_modules/nodemailer",
-    "version": "6.10.1",
+    "version": "10.1.4",
     "urteil": "nicht exponiert",
-    "begruendung": "Nur DKIM: Die Meldung setzt DKIM-Signierung am Transport oder an der Nachricht voraus. smtpMailer in services/notifications/src/smtp.ts erzeugt genau einen Transport mit host, port, secure, auth und sendMail erhaelt ausschliesslich from, to, subject, text, html; keine dkim-Option, keine Transportdefaults und kein Plugin werden gesetzt. Die installierte oeffentliche nodemailer-6.10.1-Quelle lib/mailer/index.js setzt this.dkim ohne options.dkim auf false und erreicht dkim.sign nur unter mail.data.dkim || this.dkim. Beide Voraussetzungen fehlen im gebundenen Produktpfad. Diese Bewertung gilt ausschliesslich fuer GHSA-39m8-27wv-hr27; die vorhandenen exponierten Adressparsermeldungen und deren offene Upgradeentscheidung bleiben unveraendert.",
-    "beleg": "Primaerquelle https://github.com/advisories/GHSA-39m8-27wv-hr27 (DKIM-Voraussetzung); services/notifications/src/smtp.ts#smtpMailer; installierte oeffentliche Quelle nodemailer/lib/mailer/index.js, Konstruktor und DKIM-Zweig; bestehende Guards tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts N1/N2/N3.",
-    "bewertet_am": "2026-10-23"
+    "begruendung": "Die gebundene Fassung 10.1.4 liegt außerhalb des vom Hersteller gemeldeten Bereichs >= 3.0.0, <= 10.0.9. Die erste korrigierte Fassung dieser Linie ist 10.0.10.",
+    "beleg": "https://github.com/advisories/GHSA-39m8-27wv-hr27; package-lock.json, node_modules/nodemailer.",
+    "bewertet_am": "2026-11-28"
   },
   {
     "bestand": "wurzel",
@@ -358,8 +358,8 @@
     "ort": "node_modules/i18next",
     "version": "23.16.8",
     "urteil": "nicht exponiert",
-    "begruendung": "Advisory setzt fremde verschachtelte Daten in addResourceBundle mit deep=true und overwrite=true voraus. Alle sechs expliziten Aufrufe unter apps/web/src wurden gelesen: ImportSelect und AdminKiDetails liefern ausschliesslich feste flache String-Konstanten, keine Nutzereingaben. Der Test erfasst alle sechs per AST, verwirft verschachtelte/dynamische Daten, bindet installierte Version und Lockknoten und fuehrt die echten Bundle-Aufrufe aus. Servergepflegte Texte laufen einzeln ueber addResource (textpflege.ts); Backend-Nachladen nutzt den Standardpfad ohne deep/overwrite. Die Version bleibt betroffen, keine Behauptung einer Paketbehebung. Neue Aufrufwege verlangen neue Bewertung.",
+    "begruendung": "ImportSelect und AdminKiDetails liefern sechs feste, flache Übersetzungsobjekte. Der siebte Aufruf in fachtexte.ts lädt nur das im Produktbau erzeugte deutsche Textpaket und überschreibt gepflegte Texte nicht (overwrite=false). Der Test prüft auch das erzeugte Paket auf flache Stringwerte und die Bindung des Laders. Fremde Textpflege nutzt addResource für Einzelwerte. Die Paketversion bleibt vom Advisory betroffen.",
     "beleg": "https://github.com/advisories/GHSA-6jcc-5g8w-32mx; tests/abhaengigkeiten-vor-auslieferung/i18next-flache-buendel-20261124.test.ts; tests/produktionsabhaengigkeiten/README.md, Nachtrag 24.11.2026",
-    "bewertet_am": "2026-11-24"
+    "bewertet_am": "2026-11-28"
   }
 ]

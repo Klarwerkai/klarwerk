@@ -584,6 +584,9 @@ const de = {
   "audit.action.user_approve": "Konto freigegeben",
   "audit.action.user_account_corrected": "Kontodaten berichtigt",
   "audit.action.user_freigabe_set": "Freigabeniveau geändert",
+  "audit.action.user_ausgeschieden": "Person als ausgeschieden markiert",
+  "audit.action.user_ausscheiden_beendet": "Status „Ausgeschieden“ aufgehoben",
+  "audit.action.user_weisungsbefugnis_set": "Weisungsbefugnis geändert",
   "audit.action.auth_login": "Angemeldet",
   "audit.action.auth_logout": "Abgemeldet",
   "audit.action.notice_acknowledged": "Hinweis zur Kenntnis genommen",
@@ -7592,7 +7595,7 @@ const de = {
   // Wortlaut der Quelle. `reasoner.draftLabel` bleibt als Bestandstext unverändert stehen.
   // Die Empfehlung sagt „ungeprüft" statt „nicht validiert": JOB 2660 hält fest, dass auf einer
   // Fläche ohne geprüfte Quelle das Wort „validiert" GAR NICHT steht — auch nicht verneint.
-  "ergebnisStufe.entwurf": "Reasoner-Entwurf, nicht validiert",
+  "ergebnisStufe.entwurf": "KI-Vorschlag (Reasoner-Entwurf, nicht validiert)",
   "ergebnisStufe.empfehlung": "Empfehlung, ungeprüft",
   "ergebnisStufe.validiert": "Validiert",
 

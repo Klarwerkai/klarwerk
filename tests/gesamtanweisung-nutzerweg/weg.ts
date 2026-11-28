@@ -27,7 +27,7 @@ import { type ChildProcessWithoutNullStreams, execFileSync } from "node:child_pr
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import {
   type Browser,
   DIST,
@@ -102,6 +102,21 @@ export async function freierPort(): Promise<number> {
   });
 }
 
+/** Auch aus Vitest muss das ausgelieferte Bündel den Offline-Dienstarbeiter registrieren. */
+export function bauePruefflaeche(): void {
+  execFileSync("npx", ["vite", "build"], {
+    cwd: join(WURZEL, "apps/web"),
+    env: {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      TMPDIR: process.env.TMPDIR,
+      NODE_ENV: "production",
+    },
+    stdio: "pipe",
+    timeout: 600_000,
+  });
+}
+
 /**
  * Die gebaute Fläche herstellen, wenn sie fehlt — einmal, mit dem echten Bündler.
  *
@@ -117,11 +132,7 @@ export function stelleFlaecheBereit(): string {
     return "war schon da";
   }
   const begonnen = Date.now();
-  execFileSync("npx", ["vite", "build"], {
-    cwd: join(WURZEL, "apps/web"),
-    stdio: "pipe",
-    timeout: 600_000,
-  });
+  bauePruefflaeche();
   if (!existsSync(join(DIST, "index.html"))) {
     throw new Error(`${MARKE}: der Bau lief durch, aber ${DIST}/index.html fehlt weiterhin.`);
   }
@@ -430,20 +441,33 @@ export interface Sichtbefund {
   flaeche: number;
 }
 
+interface Sichtseite {
+  evaluate(f: ReturnType<typeof fn>, selektor: string): Promise<Sichtbefund>;
+}
+
 /** Der WIRKLICH sichtbare Text eines Elements — oder ein Befund, der sagt, was fehlt. */
-export async function sichtbefund(seite: Seite, selektor: string): Promise<Sichtbefund> {
-  return seite.evaluate<Sichtbefund>(fn(SICHTBARER_TEXT), selektor);
+export async function sichtbefund(seite: Sichtseite, selektor: string): Promise<Sichtbefund> {
+  return seite.evaluate(fn(SICHTBARER_TEXT), selektor);
 }
 
 /** Zusicherung: dieses Element ist da, hat Fläche und trägt diesen Text SICHTBAR. */
 export async function mussSichtbarTragen(
-  seite: Seite,
+  seite: Sichtseite,
   selektor: string,
   erwartet: string,
   was: string,
+  einbaufristMs = 0,
 ): Promise<string> {
-  const befund = await sichtbefund(seite, selektor);
-  expect(befund.da, `${MARKE}: ${was} — ${selektor} steht nicht im Dokument`).toBe(true);
+  const liesElement = async (): Promise<Sichtbefund> => {
+    const stand = await sichtbefund(seite, selektor);
+    expect(stand.da, `${MARKE}: ${was} — ${selektor} steht nicht im Dokument`).toBe(true);
+    return stand;
+  };
+  // Bei einem Seitenwechsel kann das Kopfband zwischen zwei Browseraufrufen neu aufgebaut werden.
+  // Anwesenheit, sichtbarer Text und Fläche müssen aus derselben DOM-Messung stammen.
+  const befund = einbaufristMs
+    ? await vi.waitFor(liesElement, { timeout: einbaufristMs })
+    : await liesElement();
   expect(
     befund.flaeche,
     `${MARKE}: ${was} — ${selektor} hat keine Fläche auf dem Bildschirm (verborgen: ${befund.verborgen.join(" | ")})`,
@@ -610,13 +634,6 @@ export async function menuewegOhneMaus(
 ): Promise<Menuebefund> {
   const ausloeser = '[data-testid="kopfband-arbeitsbereiche"]';
   const flaeche = '[data-testid="arbeitsbereiche-menue"]';
-  await warte(
-    seite,
-    `() => !!document.querySelector('${ausloeser}')`,
-    `das Kopfband mit „Arbeitsbereiche“ (${sprache})`,
-    undefined,
-    45_000,
-  );
 
   // ── 1. „Arbeitsbereiche“: Beschriftung prüfen, dann per Tab und Enter öffnen. ─────────────────
   await mussSichtbarTragen(
@@ -624,6 +641,7 @@ export async function menuewegOhneMaus(
     ausloeser,
     sollBereiche,
     `der Einstieg heisst in „${sprache}" nicht „${sollBereiche}"`,
+    45_000,
   );
   const arbeitsbereiche = await tabUndEnter(
     seite,
@@ -872,6 +890,7 @@ const BAUSTEINBEFUNDE = `() => {
     const breite = Math.max(0, Math.min(r.right, fensterB) - Math.max(r.left, 0));
     const hoehe = Math.max(0, Math.min(r.bottom, fensterH) - Math.max(r.top, 0));
     const befund = textVon(el);
+    const herkunft = el.querySelector('[data-testid="ga-lesestand-herkunft"]');
     const kann = typeof el.checkVisibility === "function";
     return {
       platz: i + 1,
@@ -883,7 +902,7 @@ const BAUSTEINBEFUNDE = `() => {
       imFenster: Math.round(breite * hoehe),
       text: befund.text,
       verborgen: befund.verborgen,
-      knoten: befund.knoten,
+      herkunftsknoten: herkunft ? knotenVon(herkunft) : [],
     };
   });
 }`;
@@ -903,7 +922,7 @@ export interface Bausteinbefund {
   /** Was an ihm steht, aber niemand liest — die Zeichen der unsichtbaren Knoten. */
   verborgen: string[];
   /** Jeder Textknoten einzeln — daran hängt die namentliche Meldung. */
-  knoten: Textknotenbefund[];
+  herkunftsknoten: Textknotenbefund[];
 }
 
 /** Die Befunde aller gezeichneten Bausteine, in gezeichneter Reihenfolge. */
@@ -956,7 +975,7 @@ export async function bausteineMuessenSichtbarSein(
     // scheitert auch BENs Verstellung aus Runde 3: steht der Name allein in einem
     // `<span style="opacity:0">` und bleibt der übrige Absatz sichtbar, ist der NAMENSKNOTEN
     // unsichtbar — und diese Zeile wird namentlich rot.
-    const traeger = b.knoten.find((k) => k.text.includes(soll));
+    const traeger = b.herkunftsknoten.find((k) => k.text.includes(soll));
     const warum = traeger
       ? `Knoten in <${traeger.marke}>: „${traeger.text}" · checkVisibility=${traeger.sichtbar}` +
         ` · opacity=${traeger.deckkraft}` +

@@ -105,19 +105,23 @@ describe("AUFTRAG-mega77 BLOCK B: Klara sagt nur, was der Code belegt", () => {
     }
   });
 
-  it("der belastbare Teil steht dafür in allen drei Sprachen: kein externes Modell, wörtliches Zitat", () => {
+  it("ohne Freigabe nennt der Zustandsbericht in allen drei Sprachen den Empfänger, den Ausschluss und das wörtliche Zitat", () => {
     // BEIDE Hälften sind im Code belegt: `mode: "retrieval-only"` erzwingt serverseitig
     // validatedOnly + retrievalOnly (kein Modell-, kein Embedder-Aufruf erreichbar), und die
     // Antwort ist die wörtliche validierte Aussage statt einer Formulierung.
     const belegt: Record<Sprache, string[]> = {
-      de: ["wörtlich", "nicht an eine externe KI"],
-      en: ["word for word", "not sent to an external AI"],
-      nl: ["woordelijk", "niet naar een externe AI"],
+      de: ["wörtlich", "ohne KI-Modell", "nichts an {provider}"],
+      en: [
+        "word for word",
+        "without an AI model",
+        "nothing about this document goes to {provider}",
+      ],
+      nl: ["woordelijk", "zonder AI-model", "niets naar {provider}"],
     };
     for (const sprache of SPRACHEN) {
-      const satz = text(sprache, "askRuleNote");
+      const satz = text(sprache, "wegExternOhneZustimmung");
       for (const teil of belegt[sprache]) {
-        expect(satz, `${sprache}.askRuleNote muss „${teil}" nennen`).toContain(teil);
+        expect(satz, `${sprache}.wegExternOhneZustimmung muss „${teil}" nennen`).toContain(teil);
       }
     }
   });

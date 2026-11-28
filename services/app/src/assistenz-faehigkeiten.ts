@@ -2024,7 +2024,7 @@ export const PERPLEXITY_SUCH_ENDPUNKT = "https://api.perplexity.ai/search";
  * `ersatz` — ein solcher Lauf belegt keine reale Anbieterwirkung.
  */
 export function perplexitySuchAdapter(deps: { fetchImpl?: PostFetch } = {}): FaehigkeitsAdapter {
-  const doFetch = deps.fetchImpl ?? (globalThis.fetch as unknown as PostFetch);
+  const doFetch: PostFetch = deps.fetchImpl ?? globalThis.fetch;
   return {
     faehigkeitId: PERPLEXITY_SUCHE.id,
     fassung: PERPLEXITY_SUCHE.fassung,

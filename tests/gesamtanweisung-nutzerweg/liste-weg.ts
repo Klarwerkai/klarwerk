@@ -21,13 +21,18 @@
 // die Ausgabe eines Bildschirmlesers, `docker compose`, TLS, und die Fläche in Englisch oder
 // Niederländisch (die Sprachen messen `tests/wiki-gesamtanweisung-abnahme/a12-liste-flaeche.test.tsx`
 // am DOM und `menueweg-tastatur-sprachen-prozess.integration.test.ts` am Menüweg).
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { expect } from "vitest";
 import { bewerteFrische, frischeMeldung, sammleFrische } from "../../scripts/dist-frische";
 import { DIST, type Seite, fn, tabBisZu, warte } from "../gast-nutzerweg/browserweg";
-import { MARKE as WEG_MARKE, WURZEL, fokusMussSichtbarSein, mussSichtbarTragen } from "./weg";
+import {
+  MARKE as WEG_MARKE,
+  WURZEL,
+  bauePruefflaeche,
+  fokusMussSichtbarSein,
+  mussSichtbarTragen,
+} from "./weg";
 
 export const MARKE = `${WEG_MARKE} LISTE`;
 
@@ -71,11 +76,7 @@ export function stelleFrischeFlaecheBereit(): string {
     return "war frisch";
   }
   const begonnen = Date.now();
-  execFileSync("npx", ["vite", "build"], {
-    cwd: join(WURZEL, "apps/web"),
-    stdio: "pipe",
-    timeout: 600_000,
-  });
+  bauePruefflaeche();
   if (!existsSync(join(DIST, "index.html"))) {
     throw new Error(`${MARKE}: der Bau lief durch, aber ${DIST}/index.html fehlt weiterhin.`);
   }

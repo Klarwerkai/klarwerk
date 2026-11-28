@@ -502,6 +502,8 @@ const DECKEL = `(arg) => {
   if (arg === null) { return { ok: true }; }
   const el = document.querySelector(arg);
   if (el === null) { return { ok: false }; }
+  // Vor dem Auflegen denselben Bildlauf ausführen wie die anschließende Treffermessung.
+  el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
   const r = el.getBoundingClientRect();
   const d = document.createElement('div');
   d.id = 'job4361-deckel';

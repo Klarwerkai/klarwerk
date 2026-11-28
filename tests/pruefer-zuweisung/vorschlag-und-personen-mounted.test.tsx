@@ -25,7 +25,6 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { AuftraegeJePerson } from "../../apps/web/src/components/AuftraegeJePerson";
 import {
   REVIEWER_SUGGESTION_DEBOUNCE_MS,
   ReviewerSuggestions,
@@ -162,33 +161,10 @@ describe("R-0756 · Prüfaufträge je Person", () => {
     ]);
   });
 
-  it("P2 · die Auswertung zeigt je Person offen und erledigt", async () => {
-    await i18n.changeLanguage("de");
-    const ziel = await mount(
-      createElement(AuftraegeJePerson, {
-        summaries: [
-          { userId: "u-a", open: 0, done: 4 },
-          { userId: "u-b", open: 2, done: 1 },
-        ],
-        personen: [
-          { id: "u-a", name: "Anna" },
-          { id: "u-b", name: "Bert" },
-        ],
-      }),
-    );
-    const zeilen = [...ziel.querySelectorAll("tbody tr")].map((tr) =>
-      [...tr.querySelectorAll("td")].map((td) => td.textContent),
-    );
-    expect(zeilen).toEqual([
-      ["Bert", "2", "1"],
-      ["Anna", "0", "4"],
-    ]);
-  });
-
-  it("P3 · ohne Zuweisungen sagt die Karte das ausdrücklich", async () => {
-    await i18n.changeLanguage("de");
-    const ziel = await mount(createElement(AuftraegeJePerson, { summaries: [], personen: [] }));
-    expect(ziel.textContent).toContain(i18n.t("prueferzuweisung.person.leer"));
-    expect(ziel.querySelector("table")).toBeNull();
-  });
+  // Gesamtcheck R-1329 (Aufrufer-Wächter): P2/P3 maßen die Komponente `AuftraegeJePerson`, die nie
+  // montiert war — die Auswertung zeigt die Zahlen in `PersonenZeilen`. Sie ist samt diesen zwei
+  // reinen Komponentenfällen entfernt; die sichtbaren Orte messen
+  // `tests/analytics/kennzahlen-uebersicht-mounted.test.tsx` (Auswertung) und
+  // `tests/analytics/kapital-pruefaufgaben-mounted.test.tsx` (Management-Sicht). P1 misst weiter
+  // die Ableitung, die der Adminbereich nutzt.
 });

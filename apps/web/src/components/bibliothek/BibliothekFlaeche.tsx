@@ -757,10 +757,15 @@ export function BibliothekFlaeche({
   // PRÜFSTATUS-ANZEIGE (R-0216): die Reife (Zähler UND Filter) kennt die Konfliktliste — dieselbe
   // konfliktbegrenzte Nutzbarkeit wie Detail und Antwort. Solange die Liste fehlt, gilt die bisherige
   // Ableitung (kein erfundener Konflikt, keine erfundene Konfliktfreiheit über die Reife hinaus).
-  const facetBase = useMemo(() => {
+  const liesFacetBase = useMemo(() => {
     const now = Date.now();
-    const konflikte = conflicts.data;
-    return new Map((query.data ?? []).map((k) => [k.id, libraryFilterValues(k, now, konflikte)]));
+    let basis: Map<string, ReturnType<typeof libraryFilterValues>> | undefined;
+    return () => {
+      basis ??= new Map(
+        (query.data ?? []).map((k) => [k.id, libraryFilterValues(k, now, conflicts.data)]),
+      );
+      return basis;
+    };
   }, [query.data, conflicts.data]);
 
   // ================================================================================================
@@ -890,12 +895,15 @@ export function BibliothekFlaeche({
     () => searchLibrary(applyLibraryScope(query.data ?? [], scope, user?.id), trimmedQ),
     [query.data, scope, user?.id, trimmedQ],
   );
-  const facetItems = useMemo(
-    () => ranked.map((item) => facetBase.get(item.ko.id) ?? {}),
-    [ranked, facetBase],
-  );
-  const groups = useFacetRailGroups(
-    facetItems,
+  const liesFacetItems = useMemo(() => {
+    let werte: ReturnType<typeof libraryFilterValues>[] | undefined;
+    return () => {
+      werte ??= ranked.map((item) => liesFacetBase().get(item.ko.id) ?? {});
+      return werte;
+    };
+  }, [ranked, liesFacetBase]);
+  const liesFiltergruppen = useFacetRailGroups(
+    liesFacetItems,
     LIBRARY_FILTER_CONFIGS,
     wirksameAuswahl,
     railUi,
@@ -911,16 +919,22 @@ export function BibliothekFlaeche({
     () => JSON.parse(kontextSchluessel) as ReturnType<typeof kontextAusParams>,
     [kontextSchluessel],
   );
+  const bezugGewaehlt = BEZUG_ARTEN.some(
+    (art) => facetSelectedValues(wirksameAuswahl[art]).length > 0,
+  );
+  const hatGeltungskontext = Object.keys(geltungskontext).length > 0;
+  const zeigeKontextLeiste = bezugGewaehlt || hatGeltungskontext;
+  const hatZeitraum = isFacetRangeActive(range);
   // Die wählbaren Kontextwerte: was im Bestand vorkommt (voller Bestand, sonst die Trefferquelle).
   const kontextwerte = useMemo(
-    () => bekannteKontextwerte(all.data ?? query.data ?? []),
-    [all.data, query.data],
+    () => bekannteKontextwerte(zeigeKontextLeiste ? (all.data ?? query.data ?? []) : []),
+    [zeigeKontextLeiste, all.data, query.data],
   );
   const faceted = useMemo(
     () =>
-      applyFacetSelection(ranked, (item) => facetBase.get(item.ko.id) ?? {}, wirksameAuswahl)
-        .filter((item) => passtZumKontext(item.ko, geltungskontext))
-        .filter((item) => matchesFacetRange(koChangedMs(item.ko), range))
+      applyFacetSelection(ranked, (item) => liesFacetBase().get(item.ko.id) ?? {}, wirksameAuswahl)
+        .filter((item) => !hatGeltungskontext || passtZumKontext(item.ko, geltungskontext))
+        .filter((item) => !hatZeitraum || matchesFacetRange(koChangedMs(item.ko), range))
         // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben Anzeigestatus, den auch
         // Punkt und Pille zeigen — keine zweite Statusrechnung. Seit JOB 3072 ist das die vom
         // Server erhobene Zahl, und der Umschalter kennt damit auch den Konflikt: ein Eintrag mit
@@ -933,7 +947,17 @@ export function BibliothekFlaeche({
             segment === BIB_SEGMENT_STANDARD ||
             passtZuSegment(auskunftFuer(item.ko).status, segment),
         ),
-    [ranked, facetBase, wirksameAuswahl, geltungskontext, range, segment, auskunftFuer],
+    [
+      ranked,
+      liesFacetBase,
+      wirksameAuswahl,
+      geltungskontext,
+      hatGeltungskontext,
+      range,
+      hatZeitraum,
+      segment,
+      auskunftFuer,
+    ],
   );
   // K16: die Risiko-Sortierung liest denselben angezeigten Zustand wie Punkt, Wort und Segment.
   const sorted = useMemo(
@@ -1050,7 +1074,7 @@ export function BibliothekFlaeche({
     resetWindow();
     const naechste = pruneDependentSelection(
       toggleFacetValue(wirksameAuswahl, key, value),
-      facetItems,
+      liesFacetItems(),
       LIBRARY_FACET_DEPENDENCIES,
     );
     if (urlSeed !== null) {
@@ -1282,7 +1306,7 @@ export function BibliothekFlaeche({
     ? []
     : groupBy === "none"
       ? win.visible.map((i) => zeileAus(i.ko))
-      : groupByFacet(win.visible, (item) => facetBase.get(item.ko.id) ?? {}, groupBy).flatMap(
+      : groupByFacet(win.visible, (item) => liesFacetBase().get(item.ko.id) ?? {}, groupBy).flatMap(
           (g) => [
             {
               art: "gruppe" as const,
@@ -1499,9 +1523,13 @@ export function BibliothekFlaeche({
       const r = el.getBoundingClientRect();
       return rr.height > 0 && r.bottom > rr.top && r.top < rr.bottom;
     };
-    if (zeile !== undefined && listenRoll.scrollTop !== stand) {
-      // Geklemmt: die Liste ist kürzer geworden (Auffrischung, Löschung durch andere). Ohne
-      // Layout (jsdom) gibt es kein `scrollIntoView` — und auch nichts ins Bild zu rollen.
+    if (
+      zeile !== undefined &&
+      (listenRoll.scrollTop !== stand || (schmal && rr.height > 0 && !imBild(zeile)))
+    ) {
+      // Auf dem Telefon kehrt der Fokus zum gelesenen Eintrag zurück. Ein eingeblendeter
+      // Hinweis oder ein kleineres Fenster kann ihn trotz identischer Rollposition verdecken.
+      // Auch bei einer gekürzten Liste genügt der kleinste Weg zurück ins Bild.
       zeile.focus({ preventScroll: true });
       zeile.scrollIntoView?.({ block: "nearest" });
       return;
@@ -1751,7 +1779,6 @@ export function BibliothekFlaeche({
   ];
   const nulltrefferFilterLoesbar =
     aktiveFilterAngaben.length > 0 || verworfeneEingrenzung.length > 0;
-  const bereichGruppe = groups.find((g) => g.key === BEREICH_KEY);
   const bereichGewaehlt = facetSelectedValues(wirksameAuswahl[BEREICH_KEY]);
 
   // R-1006: gezählt und angehakt wird nur, was gerade TREFFER ist (die volle gefilterte Menge, nicht
@@ -1931,9 +1958,6 @@ export function BibliothekFlaeche({
   // beides bleibt die Fläche, wie H4 sie festgelegt hat (kein zusätzlicher Text). Jede Wahl wohnt
   // in der Adresse (`?anlagenversion=`, `?standort=`, `?schicht=`), wie Umschalter und Bereich — die
   // Adresse IST der Speicher, und ein Neuladen behält den Kontext.
-  const bezugGewaehlt = BEZUG_ARTEN.some(
-    (art) => facetSelectedValues(wirksameAuswahl[art]).length > 0,
-  );
   const setzeKontext = (param: KontextParam, wert: string): void => {
     resetWindow();
     setParams(
@@ -1949,37 +1973,36 @@ export function BibliothekFlaeche({
       { replace: true },
     );
   };
-  const kontextLeiste =
-    bezugGewaehlt || Object.keys(geltungskontext).length > 0 ? (
-      <fieldset
-        data-testid="bib-kontext"
-        aria-label={t("anlagenzugang.kontext.label")}
-        className="flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0"
-      >
-        {KONTEXT_ACHSEN.map(({ param }) => {
-          const gewaehlt = geltungskontext[param] ?? "";
-          const bekannt = kontextwerte[param];
-          const werte = gewaehlt && !bekannt.includes(gewaehlt) ? [gewaehlt, ...bekannt] : bekannt;
-          return (
-            <select
-              key={param}
-              data-testid={`bib-kontext-${param}`}
-              aria-label={t(`anlagenzugang.kontext.${param}`)}
-              value={gewaehlt}
-              onChange={(e) => setzeKontext(param, e.target.value)}
-              className="h-7 min-w-0 max-w-[12rem] rounded-input border border-hairline bg-surface px-1.5 text-[12px] text-text"
-            >
-              <option value="">{t(`anlagenzugang.kontext.alle.${param}`)}</option>
-              {werte.map((wert) => (
-                <option key={wert} value={wert}>
-                  {wert}
-                </option>
-              ))}
-            </select>
-          );
-        })}
-      </fieldset>
-    ) : null;
+  const kontextLeiste = zeigeKontextLeiste ? (
+    <fieldset
+      data-testid="bib-kontext"
+      aria-label={t("anlagenzugang.kontext.label")}
+      className="flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0"
+    >
+      {KONTEXT_ACHSEN.map(({ param }) => {
+        const gewaehlt = geltungskontext[param] ?? "";
+        const bekannt = kontextwerte[param];
+        const werte = gewaehlt && !bekannt.includes(gewaehlt) ? [gewaehlt, ...bekannt] : bekannt;
+        return (
+          <select
+            key={param}
+            data-testid={`bib-kontext-${param}`}
+            aria-label={t(`anlagenzugang.kontext.${param}`)}
+            value={gewaehlt}
+            onChange={(e) => setzeKontext(param, e.target.value)}
+            className="h-7 min-w-0 max-w-[12rem] rounded-input border border-hairline bg-surface px-1.5 text-[12px] text-text"
+          >
+            <option value="">{t(`anlagenzugang.kontext.alle.${param}`)}</option>
+            {werte.map((wert) => (
+              <option key={wert} value={wert}>
+                {wert}
+              </option>
+            ))}
+          </select>
+        );
+      })}
+    </fieldset>
+  ) : null;
 
   const hinweisKnoten = standQuelle ? (
     <>
@@ -2559,40 +2582,45 @@ export function BibliothekFlaeche({
                 ausrichtung="rechts"
                 breite="w-[230px]"
               >
-                {(schliessen) => (
-                  <>
-                    {isFacetNoMatch(wirksameAuswahl[BEREICH_KEY]) ? (
-                      <NoMatchLoesen
-                        dimension={BEREICH_KEY}
-                        onLoesen={onNoMatchLoesen}
-                        schliessen={schliessen}
-                      />
-                    ) : null}
-                    {bereichGruppe ? (
-                      <DimensionsSuche
-                        gruppe={bereichGruppe}
-                        beschriftung={t(bereichGruppe.labelKey)}
-                        onSuche={(wert) => dimensionSuchen(BEREICH_KEY, wert)}
-                      />
-                    ) : null}
-                    {(bereichGruppe?.options ?? []).map((o) => (
-                      <MenuePunkt
-                        key={o.value}
-                        haken={o.selected}
-                        disabled={o.disabled}
-                        onClick={() => onToggleFacet(BEREICH_KEY, o.value)}
-                      >
-                        {`${facetValueLabel(BEREICH_KEY, o.value)} · ${o.count}`}
-                      </MenuePunkt>
-                    ))}
-                    {bereichGruppe ? (
-                      <DeckelUmschalter
-                        gruppe={bereichGruppe}
-                        onUmschalten={(alle) => deckelUmschalten(BEREICH_KEY, alle)}
-                      />
-                    ) : null}
-                  </>
-                )}
+                {(schliessen) => {
+                  const bereichGruppe = liesFiltergruppen().find(
+                    (gruppe) => gruppe.key === BEREICH_KEY,
+                  );
+                  return (
+                    <>
+                      {isFacetNoMatch(wirksameAuswahl[BEREICH_KEY]) ? (
+                        <NoMatchLoesen
+                          dimension={BEREICH_KEY}
+                          onLoesen={onNoMatchLoesen}
+                          schliessen={schliessen}
+                        />
+                      ) : null}
+                      {bereichGruppe ? (
+                        <DimensionsSuche
+                          gruppe={bereichGruppe}
+                          beschriftung={t(bereichGruppe.labelKey)}
+                          onSuche={(wert) => dimensionSuchen(BEREICH_KEY, wert)}
+                        />
+                      ) : null}
+                      {(bereichGruppe?.options ?? []).map((o) => (
+                        <MenuePunkt
+                          key={o.value}
+                          haken={o.selected}
+                          disabled={o.disabled}
+                          onClick={() => onToggleFacet(BEREICH_KEY, o.value)}
+                        >
+                          {`${facetValueLabel(BEREICH_KEY, o.value)} · ${o.count}`}
+                        </MenuePunkt>
+                      ))}
+                      {bereichGruppe ? (
+                        <DeckelUmschalter
+                          gruppe={bereichGruppe}
+                          onUmschalten={(alle) => deckelUmschalten(BEREICH_KEY, alle)}
+                        />
+                      ) : null}
+                    </>
+                  );
+                }}
               </Menue>
             ),
             filter: (
@@ -2639,7 +2667,7 @@ export function BibliothekFlaeche({
                     <MenueTrenner />
                     {/* Jede Facette ein Untermenü — dieselbe Logik, dieselben Kontext-Zähler und
                         dasselbe ehrliche Ausgrauen wie in der abgelösten Schiene. */}
-                    {groups
+                    {liesFiltergruppen()
                       .filter((g) => g.key !== BEREICH_KEY)
                       .map((g) => {
                         const gewaehlteWerte = facetSelectedValues(wirksameAuswahl[g.key]);

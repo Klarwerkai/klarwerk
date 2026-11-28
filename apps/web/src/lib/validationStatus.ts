@@ -27,7 +27,7 @@ import type { AuditEntry, KnowledgeObject } from "../api/types";
 //
 // HISTORISCHE EREIGNISSE BLEIBEN LESBAR: `ko.returned-to-author` verschwindet an keiner Stelle.
 // Altbestand ergibt denselben Zustand wie am Tag seiner Entstehung.
-const AUTHOR_RETURN_ACTION = "ko.returned-to-author";
+export const AUTHOR_RETURN_ACTION = "ko.returned-to-author";
 const OWNER_RETURN_ACTION = "ko.returned-to-owner";
 const RETURN_ACTIONS = new Set([AUTHOR_RETURN_ACTION, OWNER_RETURN_ACTION]);
 const REWORK_RESET_ACTIONS = new Set(["ko.revised", "ko.rated"]);

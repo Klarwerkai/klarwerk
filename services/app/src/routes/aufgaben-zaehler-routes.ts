@@ -1,11 +1,14 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  UEBERGABE_ANGEFORDERT,
   UEBERGABE_REGEL_AKTIONEN,
   type UebergabeBereich,
   type UebergabeKonto,
   anstehendeUebergaben,
+  ausgeschiedeneKonten,
 } from "../../../../apps/web/src/lib/autorenuebergabe";
 import {
+  AUTHOR_RETURN_ACTION,
   RUECKGABE_REGEL_AKTIONEN,
   returnedToAuthor,
 } from "../../../../apps/web/src/lib/validationStatus";
@@ -37,14 +40,17 @@ import { sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 //     die Protokollaktionen, aus denen sie rechnet. Kein Protokolleintrag verlässt den Server.
 // `GET /api/audit` bleibt unverändert bei `ko.validate`.
 async function grundlage(
-  deps: { ko: Pick<KoService, "list">; audit: Pick<AuditService, "list"> },
+  deps: { ko: Pick<KoService, "listAufgabenKandidaten">; audit: Pick<AuditService, "list"> },
   user: SessionUser,
 ) {
-  const [kos, protokoll] = await Promise.all([
-    deps.ko.list({}, sqlSichtbarkeitFuer(user)),
-    Promise.all(RUECKGABE_REGEL_AKTIONEN.map((action) => deps.audit.list({ action }))),
-  ]);
-  return { kos, protokoll: protokoll.flat() };
+  const protokoll = (
+    await Promise.all(RUECKGABE_REGEL_AKTIONEN.map((action) => deps.audit.list({ action })))
+  ).flat();
+  const objektIds = [
+    ...new Set(protokoll.filter((e) => e.action === AUTHOR_RETURN_ACTION).map((e) => e.target)),
+  ];
+  const kos = await deps.ko.listAufgabenKandidaten({ objektIds }, sqlSichtbarkeitFuer(user));
+  return { kos, protokoll };
 }
 
 // ================================================================================================
@@ -65,25 +71,40 @@ export interface UebergabeQuellen {
 }
 
 async function uebergaben(
-  deps: { ko: Pick<KoService, "list">; audit: Pick<AuditService, "list"> } & UebergabeQuellen,
+  deps: {
+    ko: Pick<KoService, "listAufgabenKandidaten">;
+    audit: Pick<AuditService, "list">;
+  } & UebergabeQuellen,
   user: SessionUser,
 ) {
-  const [kos, konten, protokoll, bereiche] = await Promise.all([
-    deps.ko.list({}, sqlSichtbarkeitFuer(user)),
+  const [konten, eintraege, bereiche] = await Promise.all([
     deps.konten(),
     Promise.all(UEBERGABE_REGEL_AKTIONEN.map((action) => deps.audit.list({ action }))),
     deps.bereiche(),
   ]);
+  const protokoll = eintraege.flat();
+  const ausgeschieden = ausgeschiedeneKonten(protokoll);
+  const erreichbareAutoren = konten.map((k) => k.id).filter((id) => !ausgeschieden.has(id));
+  const objektIds = [
+    ...new Set(protokoll.filter((e) => e.action === UEBERGABE_ANGEFORDERT).map((e) => e.target)),
+  ];
+  const kos = await deps.ko.listAufgabenKandidaten(
+    { objektIds, erreichbareAutoren },
+    sqlSichtbarkeitFuer(user),
+  );
   return anstehendeUebergaben({
     kos: sichtbareFuer(user, kos),
     konten,
-    protokoll: protokoll.flat(),
+    protokoll,
     bereiche,
   });
 }
 
 export function aufgabenZaehlerRoutes(
-  deps: { ko: Pick<KoService, "list">; audit: Pick<AuditService, "list"> } & UebergabeQuellen,
+  deps: {
+    ko: Pick<KoService, "listAufgabenKandidaten">;
+    audit: Pick<AuditService, "list">;
+  } & UebergabeQuellen,
   guards: Guards,
 ): FastifyPluginAsync {
   return async (app) => {

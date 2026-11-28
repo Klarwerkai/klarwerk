@@ -93,6 +93,12 @@ function lesen(pfad: string): unknown {
             tasks: { answer: false },
             ...(netz.lage.kiAbgeschaltet ? { kiAbgeschaltet: true } : {}),
           };
+    case "/api/me/klara/notizen":
+      return { notizen: [] };
+    case "/api/me/klara/aufgaben":
+      return { aufgaben: [] };
+    case "/api/me/klara/erinnerungen":
+      return { erinnerungen: [], uebernommen: [] };
     case "/api/kos":
       return [ECHTE_QUELLE];
     case "/api/features":

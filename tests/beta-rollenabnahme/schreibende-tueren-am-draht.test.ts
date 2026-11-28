@@ -508,7 +508,7 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
             rumpf.changes = { statement: "Andere Fassung." };
           }
           if (fall.aktion === "rate") {
-            rumpf.verdict = "correct";
+            rumpf.verdict = "up";
           }
           if (fall.aktion === "assign") {
             rumpf.userIds = [buehne.konto.experte.id];

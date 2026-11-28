@@ -70,6 +70,7 @@ describe("JOB 3776: assertPersistentStore — warnt laut, verweigert aber nicht 
       fehlendePflichtwerte({
         NODE_ENV: "production",
         APP_BASE_URL: "https://demo.example",
+        KLARWERK_TRUST_PROXY: "none",
       }),
       "Der Startvertrag verlangt DATABASE_URL in Produktion nicht mehr — seit JOB 3776 bricht damit " +
         "NICHTS mehr ab (assertPersistentStore wirft nicht mehr). Produktion liefe still auf " +
@@ -80,6 +81,7 @@ describe("JOB 3776: assertPersistentStore — warnt laut, verweigert aber nicht 
       fehlendePflichtwerte({
         NODE_ENV: "production",
         APP_BASE_URL: "https://demo.example",
+        KLARWERK_TRUST_PROXY: "none",
         KLARWERK_ALLOW_INMEMORY_PROD: "1",
       }),
     ).toEqual([]);

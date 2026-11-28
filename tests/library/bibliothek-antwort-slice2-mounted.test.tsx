@@ -179,6 +179,7 @@ async function bibliothek(href: string): Promise<HTMLDivElement> {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
   await ruhe();
   return container;
 }

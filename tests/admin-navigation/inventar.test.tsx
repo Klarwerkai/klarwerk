@@ -161,15 +161,13 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     expect(ohneThema, ohneThema.join(" · ")).toEqual([]);
   });
 
-  // JOB 4309: 21 → 22 Navigationsziele, mit dem Audit-Deep-Link also 23. Der neue Punkt
-  // „Gesamtanweisungen" ist genau deshalb in `NAV_GROUPS` gebaut worden und nicht in einer
-  // Nebenliste: nur so erbt ihn der Direktzugang „Gehe zu …" von selbst mit.
-  it("A2 · alle 23 Routenziele der Vorlage stehen im Direktzugang", () => {
+  it("A2 · alle 24 Navigationsziele und der Audit-Direktlink stehen im Direktzugang", () => {
     const pfade = alleZiele().map((z) => z.path);
     const fehlend = [...ALL_ITEMS.map((i) => i.path), ANALYTICS_AUDIT_PATH].filter(
       (p) => !pfade.includes(p),
     );
-    expect(ALL_ITEMS, "die Quelle selbst ist geschrumpft").toHaveLength(22);
+    expect(ALL_ITEMS).toHaveLength(24);
+    expect(pfade).toEqual(expect.arrayContaining(["/teamassistenten", "/teamworkflows"]));
     expect(fehlend, `ohne Weg im Direktzugang: ${fehlend.join(" · ")}`).toEqual([]);
   });
 

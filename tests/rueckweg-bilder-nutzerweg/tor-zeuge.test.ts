@@ -9,8 +9,7 @@
 // Fixture-Kalibrierung — und niemand merkte, wenn
 //
 //   · die Integrationsdatei umbenannt würde und dadurch in KEINEM Lauf mehr liefe,
-//   · das Add-in sein Nutzlastformat änderte und die Nachbildung in `pruefbilder.ts` still
-//     veraltete,
+//   · der ausgelieferte Word-Adapter andere Felder oder instabile Vorgangsschlüssel sendete,
 //   · die Fixture sich veränderte und damit auch der Inhalt, den die Abnahme misst.
 //
 // Diese drei Dinge hält dieser Zeuge fest. Er behauptet KEINE PG-Abnahme und kein Grün der
@@ -23,7 +22,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { repoPfad } from "../support/repoPfad";
-import { FIXTUREN, KALIBRIERUNGSMARKE, PRUEFBILDER, pngBytes, sha256 } from "./pruefbilder";
+import {
+  FIXTUREN,
+  KALIBRIERUNGSMARKE,
+  PRUEFBILDER,
+  pngBytes,
+  sendeplatzFuerWordVorschlag,
+  sha256,
+} from "./pruefbilder";
 
 /** Die Strecke dieses Auftrags — der Pfad steht hier als Wort, damit eine Umbenennung auffällt. */
 const STRECKE = "tests/rueckweg-bilder-nutzerweg/rueckweg-bilder-pg-im-browser.integration.test.ts";
@@ -74,7 +80,7 @@ describe("JOB 4329 · Tor-Zeuge: Strecke vorhanden, Add-in-Format unverändert, 
       "pruefplatzOeffnen",
       "starteChromium",
       "instanzStarten",
-      "nutzlastWieRwLadung",
+      "sendeplatzFuerWordVorschlag",
       "Laufzustand",
     ]) {
       expect(
@@ -84,37 +90,22 @@ describe("JOB 4329 · Tor-Zeuge: Strecke vorhanden, Add-in-Format unverändert, 
     }
   });
 
-  it("Z2 · das Nutzlastformat des Add-ins steht unverändert im Produkt (rwLadung)", () => {
-    const js = readFileSync(repoPfad(RUECKWEG_JS), "utf8");
-    // Der EINE `JSON.stringify`-Block des Vorschlagswegs (`rueckweg.js:606-614`). Gemessen wird der
-    // BLOCK und nicht vier einzelne Vorkommen: die vier Felder müssen zusammen in derselben Ladung
-    // stehen, sonst bildet `pruefbilder.ts` etwas nach, das es so nicht mehr gibt.
-    const block = js.match(
-      /JSON\.stringify\(\{\s*action:\s*"propose",\s*proposal:\s*\{[\s\S]{0,400}?\}\s*\}\)/,
-    );
-    expect(
-      block,
-      `${RUECKWEG_JS} trägt keinen JSON.stringify-Block mit action: "propose" mehr — die Nachbildung in pruefbilder.ts ist damit veraltet`,
-    ).not.toBeNull();
-    const text = (block as RegExpMatchArray)[0] as string;
-    for (const feld of [
-      /statement:\s*statement/,
-      /bodyHtml:\s*koerper/,
-      /baseVersion:\s*version/,
-      /origin:\s*"word_addin"/,
-    ]) {
-      expect(
-        feld.test(text),
-        `im Vorschlagsblock von ${RUECKWEG_JS} fehlt ${String(feld)} — das Add-in sendet etwas anderes als der Test`,
-      ).toBe(true);
-    }
-    // „nicht mehr und nicht weniger": genau vier Feldzuweisungen im `proposal`.
-    const proposal = text.slice(text.indexOf("proposal:"));
-    const felder = [...proposal.matchAll(/(\w+):\s*(?:statement|koerper|version|"word_addin")/g)];
-    expect(
-      felder.map((m) => m[1]),
-      "der Vorschlag des Add-ins trägt nicht mehr genau vier Felder in dieser Reihenfolge",
-    ).toEqual(["statement", "bodyHtml", "baseVersion", "origin"]);
+  it("Z2 · das ausgelieferte Add-in sendet die vier Vorschlagsfelder und eine wiederholbare Vorgangskennung", () => {
+    const sende = sendeplatzFuerWordVorschlag();
+    const eingabe = { statement: "  Prüftext  ", bodyHtml: "<p>Ein Test.</p>", baseVersion: 2 };
+    const ladung = sende(eingabe);
+    expect(ladung).toEqual({
+      action: "propose",
+      operationId: expect.stringMatching(/^word-[0-9a-f]{32}$/),
+      proposal: {
+        statement: "Prüftext",
+        bodyHtml: eingabe.bodyHtml,
+        baseVersion: 2,
+        origin: "word_addin",
+      },
+    });
+    expect(sende(eingabe).operationId).toBe(ladung.operationId);
+    expect(sende({ ...eingabe, baseVersion: 3 }).operationId).not.toBe(ladung.operationId);
   });
 
   it("Z3 · der Einreichweg des Add-ins ist unverändert PUT mit application/json", () => {

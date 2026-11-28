@@ -10,9 +10,10 @@ import {
   type DatenUmgebung,
   type Datenpunkt,
   type Handelnder,
-  type Inhalt,
+  INHALTSFELDER,
   fingerabdruck,
   inFassung,
+  mitInhalt,
   pruefeHerkunftsgraph,
   vollLesbar,
 } from "./praesentation-daten";
@@ -224,34 +225,11 @@ export async function ruecknahmeDatenpunkt(
     throw new DatenFehler("ungueltig", "Die ursprüngliche Datenfassung ist nicht mehr belegt.");
   const bindungen = dp.bindungen.filter((b) => ref.bindungenVorher.includes(b.id));
   if (fingerabdruck(dp) === ref.vorherAbdruck) return { ...dp, bindungen };
-  const felder: (keyof Inhalt)[] = [
-    "art",
-    "wert",
-    "zahl",
-    "einheit",
-    "waehrung",
-    "zeitraum",
-    "bezugsgroesse",
-    "erfassung",
-    "quelle",
-    "fundstelle",
-    "rechenweg",
-    "annahmen",
-    "modellbezug",
-  ];
-  const vorher: Record<string, unknown> = {};
-  const inhalt: Record<string, unknown> = {};
-  for (const f of felder) {
-    vorher[f] = dp[f] ?? null;
-    if (alt[f] !== undefined) inhalt[f] = alt[f];
-  }
-  const metadaten = Object.fromEntries(
-    Object.entries(dp).filter(([k]) => !felder.includes(k as keyof Inhalt)),
-  );
+  const felder = INHALTSFELDER;
+  const vorher = Object.fromEntries(felder.map((feld) => [feld, dp[feld] ?? null]));
   const fassung = dp.fassung + 1;
-  const neu = {
-    ...metadaten,
-    ...inhalt,
+  const neu: Datenpunkt = {
+    ...mitInhalt(dp, alt),
     fassung,
     bindungen,
     korrekturen: [
@@ -265,7 +243,7 @@ export async function ruecknahmeDatenpunkt(
         am: h.jetzt,
       },
     ],
-  } as unknown as Datenpunkt;
+  };
   const fp = fingerabdruck(neu);
   const result = {
     ...neu,

@@ -6,8 +6,8 @@
 // Damit fiel die deckende Hinweisfarbe `rgb(138, 90, 0)` (Blauanteil 0) durch, und Browserfälle
 // meldeten sichtbare Produkthinweise als unsichtbar. Hier läuft GENAU der Quelltext, den die
 // Browserfälle in die Seite geben — keine Abschrift.
-import { describe, expect, it } from "vitest";
-import { SICHT_HILFEN } from "./weg";
+import { describe, expect, it, vi } from "vitest";
+import { SICHT_HILFEN, type Sichtbefund, mussSichtbarTragen } from "./weg";
 
 const durchsichtigeFarbe = new Function(`${SICHT_HILFEN}\nreturn durchsichtigeFarbe;`)() as (s: {
   color: string;
@@ -36,4 +36,36 @@ describe("SICHT_HILFEN · durchsichtigeFarbe", () => {
   ])("durchsichtig: %s", (color) => {
     expect(durchsichtigeFarbe({ color })).toBe(true);
   });
+});
+
+describe("Kopfband beim Seitenwechsel", () => {
+  const beschriftet = { da: true, text: "Arbeitsbereiche", verborgen: [], flaeche: 200 };
+
+  it("liest beim Einbau Anwesenheit und beschriftete Fläche in derselben Messung", async () => {
+    const evaluate = vi
+      .fn<() => Promise<Sichtbefund>>()
+      .mockResolvedValueOnce({ da: false, text: "", verborgen: [], flaeche: 0 })
+      .mockResolvedValueOnce(beschriftet);
+    await expect(
+      mussSichtbarTragen({ evaluate }, "#menue", "Arbeitsbereiche", "Einstieg", 1000),
+    ).resolves.toBe("Arbeitsbereiche");
+    expect(evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [{ ...beschriftet, flaeche: 0 }, "keine Fläche"],
+    [{ ...beschriftet, text: "Anderer Bereich" }, "erwartet war"],
+  ] as const)(
+    "prüft den ersten vorhandenen Einstieg auf Fläche und Beschriftung",
+    async (befund, meldung) => {
+      const evaluate = vi
+        .fn<() => Promise<Sichtbefund>>()
+        .mockResolvedValueOnce(befund)
+        .mockResolvedValue(beschriftet);
+      await expect(
+        mussSichtbarTragen({ evaluate }, "#menue", "Arbeitsbereiche", "Einstieg", 1000),
+      ).rejects.toThrow(meldung);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+    },
+  );
 });

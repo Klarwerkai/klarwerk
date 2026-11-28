@@ -11,21 +11,23 @@
 // seit mega84 öffnet derselbe Klick das Formular, und der Vorschlag lebt darin. Der Fußnoten-Wechsel
 // mitten im Request ist damit ein Formular-Wechsel — der Fall, den dieser Test beschreibt, ist
 // unverändert erreichbar und bleibt gepinnt. Verschoben hat sich nur, WO der Nutzer klickt.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, useState } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-// i18n VOR dem Editor importieren: initialisiert react-i18next global (Default-Sprache de).
-import "../../apps/web/src/i18n";
 import type { DescribeImageResult } from "../../apps/web/src/api/types";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
+// i18n VOR dem Editor importieren: initialisiert react-i18next global (Default-Sprache de).
+import i18n from "../../apps/web/src/i18n";
+import { CAPTION_AI_TEXT } from "../../apps/web/src/lib/captionAiSuggest";
+import { PNG_BLAU, PNG_ROT } from "../m5-docx-bildunterschriften/docx-bauen";
 import { mitBildbeschreibung } from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // Zwei Bild-Fußnoten A und B mit data:-Bildern (kein fetch nötig — der data:-Pfad ist synchron).
 const TWO_FIGURES =
-  '<figure><img src="data:image/png;base64,AAAA"><figcaption data-image-id="kw-a">A</figcaption></figure>' +
-  '<figure><img src="data:image/png;base64,BBBB"><figcaption data-image-id="kw-b">B</figcaption></figure>';
+  `<figure><img src="data:image/png;base64,${PNG_ROT}"><figcaption data-image-id="kw-a">A</figcaption></figure>` +
+  `<figure><img src="data:image/png;base64,${PNG_BLAU}"><figcaption data-image-id="kw-b">B</figcaption></figure>`;
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -43,7 +45,9 @@ function deferred(): Deferred {
   return { promise, resolve };
 }
 
-function Host({ onDescribe }: { onDescribe: () => Promise<DescribeImageResult> }) {
+type BildBeschreiben = (dataUrl: string) => Promise<DescribeImageResult>;
+
+function Host({ onDescribe }: { onDescribe: BildBeschreiben }) {
   const [value, setValue] = useState(TWO_FIGURES);
   return mitBildbeschreibung(
     createElement(RichTextEditor, { value, onChange: setValue, documentTitle: "Wartungsnotiz" }),
@@ -51,7 +55,7 @@ function Host({ onDescribe }: { onDescribe: () => Promise<DescribeImageResult> }
   );
 }
 
-function mount(onDescribe: () => Promise<DescribeImageResult>): void {
+function mount(onDescribe: BildBeschreiben): void {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -102,7 +106,13 @@ afterEach(() => {
 describe("WP-BILD-1f P1: Vorschlag ist an die Ausgangs-Fußnote gebunden (Deferred A → B)", () => {
   it("A→B-Wechsel während des Requests: As späte Antwort verändert weder Panel noch Inhalt von B", async () => {
     const d = deferred();
-    mount(() => d.promise);
+    const beschreibe = vi.fn((url: string) =>
+      url === `data:image/png;base64,${PNG_ROT}`
+        ? d.promise
+        : Promise.resolve({ text: "Zweites Bild", demo: false }),
+    );
+
+    mount(beschreibe);
 
     // Auf Fußnote A klicken → das Formular für A öffnet → Vorschlag anfordern (hängt am Deferred).
     clickInto(caption("kw-a"));
@@ -110,8 +120,16 @@ describe("WP-BILD-1f P1: Vorschlag ist an die Ausgangs-Fußnote gebunden (Deferr
       suggestButton().click();
     });
 
-    // WÄHREND des laufenden Requests auf Fußnote B wechseln (das Formular zeigt jetzt B).
+    expect(beschreibe.mock.calls.map(([url]) => url)).toEqual([`data:image/png;base64,${PNG_ROT}`]);
+    // Das modale Formular verlassen, bevor eine zweite Fußnote geöffnet werden kann.
+    const abbrechen = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === i18n.t(CAPTION_AI_TEXT.formCancel),
+    );
+    if (!abbrechen) throw new Error("Abbrechen im Bildformular fehlt");
+    clickInto(abbrechen);
+    expect(container.querySelector("#caption-form-text")).toBeNull();
     clickInto(caption("kw-b"));
+    expect(container.querySelector("#caption-form-text")?.textContent).toBe("B");
 
     // JETZT erst antwortet das Modell — die Antwort gehört zu A, das Ziel hat gewechselt.
     await act(async () => {
@@ -120,7 +138,8 @@ describe("WP-BILD-1f P1: Vorschlag ist an die Ausgangs-Fußnote gebunden (Deferr
     });
 
     // Still verworfen: kein Panel mit dem Vorschlagstext, beide Fußnoten-Inhalte unverändert.
-    expect(container.textContent ?? "").not.toContain("Eine Kreiselpumpe");
+    expect(container.querySelector('[data-testid="caption-form-suggestion"]')).toBeNull();
+    expect(container.querySelector("#caption-form-text")?.textContent).toBe("B");
     expect(caption("kw-a").textContent).toBe("A");
     expect(caption("kw-b").textContent).toBe("B");
   });
@@ -139,7 +158,9 @@ describe("WP-BILD-1f P1: Vorschlag ist an die Ausgangs-Fußnote gebunden (Deferr
     });
 
     // Das Formular zeigt den Vorschlag (Ziel unverändert).
-    expect(container.textContent ?? "").toContain("Eine Kreiselpumpe auf dem Prüfstand.");
+    expect(
+      container.querySelector('[data-testid="caption-form-suggestion"]')?.textContent,
+    ).toContain("Eine Kreiselpumpe auf dem Prüfstand.");
 
     // Übernehmen setzt ihn ins FELD — nicht in die Fußnote. Erst Speichern schreibt.
     act(() => {

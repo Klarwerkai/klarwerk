@@ -49,6 +49,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { pruefeBildpixel } from "../m5-docx-bildunterschriften/bildpixel";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -241,11 +242,9 @@ async function ansichtMounten(draftId: string): Promise<HTMLDivElement> {
   return container;
 }
 
-/** Die einzelnen eingebetteten Bilddaten im DOM — Base64-Rumpf je <img>. */
+/** Die vom Renderer ausgegebene Bildquelle je Element. */
 function bilderImDom(behaelter: HTMLElement): string[] {
-  return [...behaelter.querySelectorAll("img")]
-    .map((b) => /^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/.exec(b.getAttribute("src") ?? "")?.[1])
-    .filter((x): x is string => Boolean(x));
+  return [...behaelter.querySelectorAll("img")].map((bild) => bild.getAttribute("src") ?? "");
 }
 
 describe("JOB 2613 · A · DURCH DIE ECHTE ENTWURFSANSICHT", () => {
@@ -255,9 +254,9 @@ describe("JOB 2613 · A · DURCH DIE ECHTE ENTWURFSANSICHT", () => {
 
     const gesehen = bilderImDom(dom);
     expect(gesehen, "Die Entwurfsansicht zeigt kein einziges Bild").toHaveLength(2);
-    // BILD FÜR BILD — jedes gegen seine eigenen Bytes, wie in D4.
-    expect(gesehen[0], "Das ERSTE Bild (rot) fehlt in der Ansicht").toBe(PNG_ROT);
-    expect(gesehen[1], "Das ZWEITE Bild (blau) fehlt in der Ansicht").toBe(PNG_BLAU);
+    // Der Import speichert verlustfreies WebP. Die Pixel und Maße jedes Originals müssen erhalten sein.
+    await pruefeBildpixel(gesehen[0] ?? "", PNG_ROT);
+    await pruefeBildpixel(gesehen[1] ?? "", PNG_BLAU);
     expect(new Set(gesehen).size, "Beide Bilder tragen dieselben Bytes").toBe(2);
     // Und der Text der Quelle steht daneben — die Ansicht zeigt den Entwurf, nicht nur Bilder.
     expect(dom.textContent ?? "").toContain("BAADER Sonde Station 1");

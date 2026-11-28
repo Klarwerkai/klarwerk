@@ -17,7 +17,7 @@ import type { IntervalHandle } from "./trash-sweep-scheduler";
 // R-0609 · Bens B14 — DER NACHTRAG VOR DEM LÖSCHEN, GEGEN ECHTES POSTGRESQL.
 // ================================================================================================
 //
-// Die B12-/B13-Fälle (`services/klara-consent-protokoll.test.ts`, `klara-aufraeumen.test.ts`) laufen
+// Die B12-/B13-Fälle (`services/app/src/services/klara-consent-protokoll.test.ts`, `klara-aufraeumen.test.ts`) laufen
 // gegen Ablagen im Arbeitsspeicher. Hier fahren DIESELBEN Szenarien mit den produktiven Adaptern:
 // `PgKlaraSessionRepo` für Sitzungen und Zustimmungszeilen, `AuditService` über `PgAuditRepo` für
 // das Prüfprotokoll, beide auf einer Datenbank, die `migrate()` angelegt hat. Gemessen wird:

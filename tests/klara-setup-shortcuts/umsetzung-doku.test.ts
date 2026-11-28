@@ -5,7 +5,7 @@
 //   U1  Jede Kürzel-Aktion steht mit Fundstelle und Voraussetzung in `UMSETZUNG.md`; die genannten
 //       Dateien existieren und tragen die genannten Anker (K17).
 //   U2  Server und Oberfläche kennen dieselben Aktionen in derselben Reihenfolge (K17).
-//   U3  Option 1 ist festgehalten: innerhalb Klarwerks, systemweit nur vorgemerkt; ab Werk unbelegt;
+//   U3  Option 1 ist festgehalten: innerhalb Klarwerks, systemweite Suche am Mac; ab Werk unbelegt;
 //       nicht angebotene Funktionen sind mit Grund benannt (K10, K17, K18).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -71,13 +71,18 @@ describe("U2 · Server und Oberfläche kennen dieselben Aktionen", () => {
 });
 
 describe("U3 · Option 1, Standard, nicht angebotene Funktionen", () => {
-  it("innerhalb Klarwerks; systemweit nur vorgemerkt; ab Werk unbelegt", () => {
+  it("Sieben Aktionen in Klarwerk und die persönlich belegte Suche am Mac", () => {
     expect(doku).toContain("innerhalb des aktiven Klarwerk-Fensters");
-    expect(doku).toMatch(/vorgemerkt,\s+nicht gebaut/);
+    expect(SERVER).toHaveLength(7);
+    expect(doku).toContain("Die übrigen Aktionen benötigen das aktive Klarwerk-Fenster.");
     expect(Object.values(STANDARD_BELEGUNG).every((b) => b === null)).toBe(true);
     const texte = quelle("apps/web/src/texte/klarasetup.ts");
     expect(texte).toContain("in Klarwerk, solange das Klarwerk-Fenster aktiv ist");
-    expect(texte).toContain("das ist für später vorgemerkt");
+    expect(texte).toContain("nur dieses bewusst gesetzte Kürzel");
+    expect(quelle("apps/web/src/shell/CommandPalette.tsx")).toContain('aktion === "suchen"');
+    expect(quelle("apps/desktop/klara-begleiter/Sources/Suchkuerzel.swift")).toContain(
+      "RegisterEventHotKey(",
+    );
   });
 
   it("nicht angebotene Funktionen sind mit Grund benannt", () => {

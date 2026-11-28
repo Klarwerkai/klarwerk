@@ -36,7 +36,7 @@ export function FunktionswegeUebersicht({
         key={w.id}
         to={ziel({ weg: w.id, knoten: id, funktion: null })}
         preventScrollReset
-        className={`flex min-w-0 items-center gap-2 rounded-btn border px-3 py-2 text-sm font-semibold hover:underline focus-visible:outline-brand ${aktiv === w.id ? "border-brand bg-brand/5" : "border-hairline bg-surface"}`}
+        className={`flex min-w-0 items-center gap-2 rounded-btn border px-3 py-2 text-sm font-semibold text-text hover:underline focus-visible:outline-brand ${aktiv === w.id ? "border-brand bg-brand/5" : "border-hairline bg-surface"}`}
       >
         <CircleDot size={15} aria-hidden="true" className="shrink-0 text-brand-text" />
         {w.titel[sprache]}

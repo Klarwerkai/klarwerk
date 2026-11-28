@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -112,6 +112,14 @@ import assert from 'node:assert/strict';
 const m=await import(new URL('./pg-auswahl.mjs',process.argv[1]));
 assert.deepEqual(m.pgSelection(['services/a.integration.test.ts','tests/unit.test.ts']),['services/a.integration.test.ts']);
 assert.deepEqual(m.pgSelection(['tests/unit.test.ts']),[]);
+const journal='tests/insel-auslieferung/release-update-rueckfall.integration.test.ts';
+const pg='tests/insel-auslieferung/mit-postgres.integration.test.ts';
+const installation='tests/neuinstallation/kundeninstallation-strecke.integration.test.ts';
+const installationPg='tests/neuinstallation/datenbank.integration.test.ts';
+const alle=[journal,pg,installation,installationPg];
+const {integrationSelection}=await import(new URL('./release.mjs',process.argv[1]));
+assert.deepEqual(integrationSelection(alle),[...alle].sort());
+assert.deepEqual(m.pgSelection(alle),[pg,installationPg]);
 `);
     expect(run.status, run.stderr).toBe(0);
   });
@@ -255,8 +263,10 @@ describe("gezielte PG-Dateien: getrennte serielle Prozessbudgets", () => {
     for (const path of ["bin", "tools", "tests", "node_modules/.bin"]) {
       mkdirSync(join(work, path), { recursive: true });
     }
-    for (const file of files)
+    for (const file of files) {
+      mkdirSync(dirname(join(work, file)), { recursive: true });
       writeFileSync(join(work, file), "// synthetische Integrationsdatei\n");
+    }
     writeFileSync(
       join(work, "bin/git"),
       `#!${process.execPath}
@@ -339,6 +349,67 @@ const result=JSON.parse(cli.stdout),saved=JSON.parse(readFileSync(join(out,'pg-a
 assert.deepEqual(saved,result);assert.equal(result.success,false);
 const events=readFileSync(join(work,'kindereignisse.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
 `;
+
+  it.each([
+    ["passend", "a", "success", true],
+    ["anderer-commit", "b", "success", false],
+    ["insel-rot", "a", "failure", false],
+    ["fehlend", "", "", false],
+  ] as const)(
+    "bindet den Inselauftrag an den gemeldeten Job und Commit (%s)",
+    (name, sha, status, ok) => {
+      const insel = "tests/insel-auslieferung/release-update-rueckfall.integration.test.ts";
+      const pg = "tests/insel-auslieferung/a.integration.test.ts";
+      const work = vorrichtung(`pg-inselnachweis-${name}`, [insel, pg]);
+      const run = node(
+        `process.env.KLARWERK_CI_INSEL_COMMIT=${JSON.stringify(sha.repeat(40))};
+process.env.KLARWERK_CI_INSEL_ERGEBNIS=${JSON.stringify(status)};
+${programm}
+assert.equal(result.applicable,true);
+assert.equal(result.success,${ok});
+assert.deepEqual(result.files,[${JSON.stringify(pg)}]);
+assert.deepEqual(result.insel,{file:${JSON.stringify(insel)},job:'integration-insel-macos',commit:${JSON.stringify(sha.repeat(40))},status:${JSON.stringify(status)}});
+assert.deepEqual(events.map(e=>[e.event,e.file]),[['start',${JSON.stringify(pg)}],['end',${JSON.stringify(pg)}]]);
+`,
+        pgUrl,
+        [work],
+      );
+      expect(run.status, run.stderr).toBe(0);
+    },
+  );
+
+  it.each([
+    ["beide-passend", "a", "success", true, true],
+    ["anderer-installationscommit", "b", "success", true, false],
+    ["installation-fehlgeschlagen", "a", "failure", true, false],
+    ["installation-ohne-job", "", "", true, false],
+    ["pg-bleibt-rot", "a", "success", false, false],
+  ] as const)(
+    "bestätigt die Installation nur nach dem eigenen Lauf am Prüfcommit (%s)",
+    (name, sha, status, pgErfolgreich, ok) => {
+      const installation = "tests/neuinstallation/kundeninstallation-strecke.integration.test.ts";
+      const insel = "tests/insel-auslieferung/release-update-rueckfall.integration.test.ts";
+      const pg = "tests/neuinstallation/mit-postgres.integration.test.ts";
+      const work = vorrichtung(name, [installation, insel, pg], "", pgErfolgreich ? [] : [pg]);
+      const run = node(
+        `process.env.KLARWERK_CI_INSEL_COMMIT='a'.repeat(40);
+process.env.KLARWERK_CI_INSEL_ERGEBNIS='success';
+process.env.KLARWERK_CI_KUNDENINSTALLATION_COMMIT=${JSON.stringify(sha.repeat(40))};
+process.env.KLARWERK_CI_KUNDENINSTALLATION_ERGEBNIS=${JSON.stringify(status)};
+${programm}
+assert.equal(result.applicable,true);
+assert.equal(result.success,${ok});
+assert.equal(result.insel.status,'success');
+assert.deepEqual(result.files,[${JSON.stringify(pg)}]);
+assert.deepEqual(result.kundeninstallation,{file:${JSON.stringify(installation)},job:'integration-kundeninstallation',commit:${JSON.stringify(sha.repeat(40))},status:${JSON.stringify(status)}});
+assert.deepEqual(events.map(e=>[e.event,e.file]),[['start',${JSON.stringify(pg)}],['end',${JSON.stringify(pg)}]]);
+`,
+        pgUrl,
+        [work],
+      );
+      expect(run.status, run.stderr).toBe(0);
+    },
+  );
 
   it("setzt nach gemessenem Rot seriell fort und hält Gesamtbericht und CLI rot", () => {
     const files = ["tests/a.integration.test.ts", "tests/b.integration.test.ts"];

@@ -311,7 +311,7 @@ export function AdminFunktionskarte({
           {pfeil && (
             <section
               data-katalog-kante
-              className="rounded-btn border border-brand bg-brand/5 p-3 space-y-1"
+              className="rounded-btn border border-brand bg-brand/5 p-3 space-y-1 text-text"
             >
               <h4 className="text-xs font-semibold text-muted">
                 {t("funktionskatalog.selectedEdge")}

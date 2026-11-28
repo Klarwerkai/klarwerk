@@ -16,7 +16,7 @@
 // WARUM EINE ABSCHRIFT DER SERVERREGEL: `apps/web/src` darf aus `services/` nichts importieren
 // (Wächter `tests/capture/draft-limits-shared.test.ts`, Grund: der Webbuild kopiert nur apps/web).
 // Dasselbe Muster wie `draftLimits.ts`: die Werte stehen hier, und
-// `tests/editor-einheitlich/aussage-paritaet.test.ts` legt beide Fassungen Fall für Fall
+// `tests/editor-einheitlich/aussage-aus-inhalt.test.ts` legt beide Fassungen Fall für Fall
 // gegeneinander — ändert sich eine Seite ohne die andere, wird der Test rot.
 //
 // GEGENSTÜCK: `services/structure/src/kernaussage.ts` (`kernaussageAusKlartext`, `kernaussageAusHtml`).

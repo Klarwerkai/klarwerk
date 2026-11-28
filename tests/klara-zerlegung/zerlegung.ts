@@ -291,6 +291,28 @@ export function markenBaum(marken: readonly Marke[]): Skelett {
 export const CSS_DATEI = "taskpane.css";
 export const JS_DATEI = "taskpane.js";
 
+export const OFFICE_JS = "https://appsforoffice.microsoft.com/lib/1/hosted/office.js";
+export const KOPFSKRIPTE = [
+  "begriffe.js",
+  "anleitung.js",
+  "begleiter.js",
+  "kalender.js",
+  "lernziel.js",
+  "vormachen.js",
+];
+export const MINIMALSKRIPTE = ["minimal-funktionen.js", "minimal.js", "minimal-taskpane.js"];
+export const DOKUMENTVERGLEICH = "dokumentvergleich.js";
+export const EXTERNE_PANELSKRIPTE = [
+  ...KOPFSKRIPTE,
+  DOKUMENTVERGLEICH,
+  RUECKWEG_DATEI,
+  JS_DATEI,
+  WV_DATEI,
+  MARKE_DATEI,
+  ...MINIMALSKRIPTE,
+];
+export const STILBLAETTER = [CSS_DATEI, "minimal.css"];
+
 export interface Probeschnitt {
   /** Der Rest der Seite — mit `<link>` und `<script src>` an denselben Stellen. */
   html: string;

@@ -83,15 +83,14 @@ describe("Aufnahme 20260922 · Suchsichtbarkeit bei Altdaten — die bestehende 
   });
 
   // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): Entscheidung 16 löst die frühere Grenze
-  // „jede Altstufe gilt als intern" ab. Die Anzeige-Hilfen (`isConfidential`,
-  // `normalizeConfidentiality`) legen weiter aus wie bisher — für die SICHTBARKEIT ist eine
-  // Altstufe ungeklärt und wie vertraulich geschützt.
+  // Frühere Datensätze ohne eindeutige Einstufung erfordern für Leserechte und
+  // Ausleitung vertrauliche Behandlung. Nur der Anzeige-Standardwert lautet weiterhin „intern“.
   it("jede Altstufe ist ungeklärt und wie vertraulich geschützt (Entscheidung 16)", () => {
     const altstufen = BESTAND.filter((s) => s.altform?.feld === "confidentiality");
     expect(altstufen.length).toBeGreaterThanOrEqual(6);
     for (const saat of altstufen) {
       const ko = fakten(saat.marke);
-      expect(isConfidential(ko.confidentiality), saat.marke).toBe(false);
+      expect(isConfidential(ko.confidentiality), saat.marke).toBe(true);
       expect(normalizeConfidentiality(ko.confidentiality), saat.marke).toBe("intern");
       expect(schutzrang(ko.confidentiality), saat.marke).toBe(1);
       expect(saat.regel, `${saat.marke}: Regel und Auslegung laufen auseinander`).toBe(

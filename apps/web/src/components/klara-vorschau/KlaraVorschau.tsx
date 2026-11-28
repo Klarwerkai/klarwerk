@@ -76,6 +76,7 @@ import { anfrageEpoche, aufRechtekontextwechsel } from "../../lib/rechtekontext"
 import { meldeVormachen } from "../../lib/vormachenAnzeige";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
+import { AiCostHint } from "../AiCostHint";
 import { AvatarBild } from "../assistenz/AvatarBild";
 import { AvatarMimik } from "../assistenz/AvatarMimik";
 // produkt:20261010:assistenz-name-avatar: die neun Zustände der Figur aus echten Ereignissen.
@@ -411,6 +412,9 @@ export function KlaraVorschau({
   // produkt:20261010:assistenz-name-avatar: `t` trägt den persönlichen Namen als `{{assistenz}}`;
   // Name, Motiv und Bewegung kommen aus dem kontobezogenen Profil (`lib/assistenzProfil.ts`).
   const { t, i18n } = useAssistenzT();
+  // Ereignisse und laufende Quellenprüfungen verwenden die aktuelle Oberflächensprache.
+  const tRef = useRef(t);
+  tRef.current = t;
   const assistenz = useAssistenzAnzeige();
   const produkt = betriebsart === "produkt";
   // UI-MIN-10/UI-S12 (Nacharbeit 3, Bens Befund): die BISHERIGE Produktfläche als Vergleichsbasis.
@@ -490,14 +494,14 @@ export function KlaraVorschau({
       return;
     }
     if (istEcht) {
-      void pruefeEcht(kontoId, t);
+      void pruefeEcht(kontoId, tRef.current);
     }
     // Erfolgreiche Sessionprüfung ist auch bei gleichem Rechteheader ein zusätzlicher Anlass.
-  }, [kontoId, istEcht, t, rechteEpoche, sitzung.sitzungGeprueftAm]);
+  }, [kontoId, istEcht, rechteEpoche, sitzung.sitzungGeprueftAm]);
   useEffect(() => {
-    if (kontoId && istEcht) return starteQuellpruefung(kontoId, t);
+    if (kontoId && istEcht) return starteQuellpruefung(kontoId, () => tRef.current);
     return undefined;
-  }, [kontoId, istEcht, t]);
+  }, [kontoId, istEcht]);
   // „Anfrage läuft seit … s“ — einmal je Sekunde neu gezeichnet, nur solange eine läuft.
   const [, setTakt] = useState(0);
   useEffect(() => {
@@ -519,9 +523,6 @@ export function KlaraVorschau({
   );
   const kontextRef = useRef(kontext);
   kontextRef.current = kontext;
-  // Für Ereignishörer, die einmal angemeldet werden (Markierung, Ziehen): der aktuelle Übersetzer.
-  const tRef = useRef(t);
-  tRef.current = t;
   // NACHARBEIT 3 (Bens Befund): Ein Entwurf lädt oft erst nach dem Seitenwechsel, und ein Wechsel
   // über `?draft=` setzt den Titel PROGRAMMATISCH (`Blatt.tsx` → `setTitle`) — ohne input-Ereignis.
   // Klara liest deshalb auf Seiten, deren Objekt aus einem Feld kommt (Erfassung, Fragen), das
@@ -2470,41 +2471,45 @@ export function KlaraVorschau({
           onDragLeave={() => setAblage(false)}
           onDrop={beiAblegen}
           title={ablage ? t("klaravorschau.figur.ablegen") : figurLabel}
-          className={`klara-figur relative grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
+          className={`klara-figur relative flex flex-col items-center rounded-btn focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
             ziehPos ? "cursor-grabbing" : "cursor-grab"
           }`}
-          style={{ width: groesse, height: groesse }}
         >
-          <AvatarBild
-            motiv={assistenz.motiv}
-            alt=""
-            ersatzBeschriftung=""
-            width={groesse}
-            height={groesse}
-            testId="klara-avatar"
-            className="klara-motiv pointer-events-none h-full w-full"
-            // Die Mimik der Motive mit Gesicht (Lidschlag, Mund/Schnabel), deckungsgleich über dem
-            // unveränderten Bild; sachliche Objekte und die Ersatzgrafik bekommen keine.
-            ueberlagerung={
-              <AvatarMimik
-                motivId={assistenz.motiv?.id}
-                zustand={figurZustand}
-                bewegungReduziert={assistenz.bewegungReduziert}
-              />
-            }
-          />
-        </button>
-        {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen
-            zu finden. Die Beschriftung ist kein eigenes Ziel; bedient wird die Figur selbst. */}
-        {produkt ? (
           <span
-            data-testid="klara-figur-name"
-            aria-hidden="true"
-            className="pointer-events-none mt-1 whitespace-nowrap rounded-pill bg-ink px-2 py-0.5 text-[11px] font-semibold text-page shadow-tile"
+            className="relative grid shrink-0 place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover"
+            style={{ width: groesse, height: groesse }}
           >
-            {anzeigeName}
+            <AvatarBild
+              motiv={assistenz.motiv}
+              alt=""
+              ersatzBeschriftung=""
+              width={groesse}
+              height={groesse}
+              testId="klara-avatar"
+              className="klara-motiv pointer-events-none h-full w-full"
+              // Die Mimik der Motive mit Gesicht (Lidschlag, Mund/Schnabel), deckungsgleich über dem
+              // unveränderten Bild; sachliche Objekte und die Ersatzgrafik bekommen keine.
+              ueberlagerung={
+                <AvatarMimik
+                  motivId={assistenz.motiv?.id}
+                  zustand={figurZustand}
+                  bewegungReduziert={assistenz.bewegungReduziert}
+                />
+              }
+            />
           </span>
-        ) : null}
+          {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen
+            zu finden. Die Beschriftung ist kein eigenes Ziel; bedient wird die Figur selbst. */}
+          {produkt ? (
+            <span
+              data-testid="klara-figur-name"
+              aria-hidden="true"
+              className="pointer-events-none mt-1 whitespace-nowrap rounded-pill bg-ink px-2 py-0.5 text-[11px] font-semibold text-page shadow-tile"
+            >
+              {anzeigeName}
+            </span>
+          ) : null}
+        </button>
         {/* produkt:20261011:assistenz-minimalistische-oberflaeche: eingeklappt bleibt jeder laufende
             Vorgang an der Figur stoppbar. Eine Aufnahme endet beim Einklappen ohnehin (siehe
             `aufnahmeAbbrechen`) — es gibt kein Mikrofon ohne sichtbaren Stopp. */}
@@ -2765,7 +2770,16 @@ export function KlaraVorschau({
                 notizen={istEcht && kontoId ? <KlaraNotizen auftragskarte /> : null}
                 // Integration main (Klara 07): die eigenen Aufgaben wiederfinden — dieselbe Liste
                 // wie im bisherigen Panel; angelegt wird über den Ausführungsweg im Gespräch.
-                aufgaben={istEcht && kontoId ? <KlaraAufgaben /> : null}
+                aufgaben={
+                  istEcht && kontoId ? (
+                    <>
+                      {unterstuetzung === "auftraege" ? (
+                        <KlaraUebertrageneAufgaben liste={ausfuehrungen} t={t} />
+                      ) : null}
+                      <KlaraAufgaben />
+                    </>
+                  ) : null
+                }
                 arbeitsueberblick={
                   istEcht && kontoId ? (
                     <KlaraArbeitsueberblick key={kontoId} kontoId={kontoId} />
@@ -3552,6 +3566,7 @@ export function KlaraVorschau({
                     })}
                   </p>
                 ) : null}
+                <AiCostHint billable={istEcht && !eingabeAuftrag && ki.kostenpflichtig} />
               </form>
             </>
           ) : null}
@@ -4392,6 +4407,7 @@ export function KlaraVorschau({
                 {t("klaravorschau.eingabe.senden")}
               </button>
             )}
+            <AiCostHint billable={istEcht && !eingabeAuftrag && ki.kostenpflichtig} />
           </form>
 
           {/* Fuss: Lage der Figur, Vollbild, Ende */}

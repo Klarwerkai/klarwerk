@@ -170,14 +170,13 @@ function mitAssistenz(dbProfile = 2): Record<string, unknown> {
     ...p,
     vergleich: {
       ...(p.vergleich as Record<string, unknown>),
-      assistenz: kategorie([
-        ["assistenz_profile", 2, dbProfile],
-        ["klara_gespraeche", 1, 1],
-        ["interaktions_gedaechtnis", 0, 0],
-        ["klara_sessions", 0, 0],
-        ["klara_session_consents", 0, 0],
-        ["klara_aufgaben", 0, 0],
-      ]),
+      assistenz: kategorie(
+        assistenzTabellen().map((tabelle) => {
+          if (tabelle === "assistenz_profile") return [tabelle, 2, dbProfile];
+          if (tabelle === "klara_gespraeche") return [tabelle, 1, 1];
+          return [tabelle, 0, 0];
+        }),
+      ),
     },
   };
 }
