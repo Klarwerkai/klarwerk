@@ -34,6 +34,7 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { KnowledgeObject } from "../../knowledge-object";
+import { htmlToPlainText } from "../../structure";
 import { FOLIEN_ABGLEICH_GRENZEN, pruefeAbgleichKoerper } from "./folien-abgleich-grenzen";
 import { BERECHNUNGSARTEN, rechne } from "./office-nachbearbeitung";
 import { MAX_FOLIEN, MAX_FOLIENTEIL_ZEICHEN, type XmlTag, tastAb } from "./praesentation-xml";
@@ -1356,10 +1357,7 @@ function passtAmOrt(l: OrtsLage, wert: string, bildKennung?: string): string | u
 }
 
 function artikelText(ko: KnowledgeObject): string {
-  const body = (ko.bodyHtml ?? "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&");
+  const body = htmlToPlainText(ko.bodyHtml ?? "");
   return `${ko.title}\n${ko.statement}\n${body}`;
 }
 

@@ -121,6 +121,16 @@ const SET_LISTE = /\bSET\b([\s\S]*?)(?:\bWHERE\b|\bRETURNING\b|`|")/g;
 // dafuer gibt es den zweiten Maszstab. Wer ihn weglaesst, haelt eine Luecke fuer eine Null.
 const SET_INTERPOLIERT = /\bSET\s*\$\{(\w+)\}/g;
 
+// DER ZWEITE BLINDE FLECK, und wieder hat ihn S3 gemeldet (Gesamtcheck R-1329, Nacharbeit 66): eine
+// SET-Liste, die über eine STRINGVERKETTUNG läuft — `"… DO UPDATE SET " + "horizon_months=$2,
+// due_at=$3,updated_at=$4,…"` (`services/management/src/profiles.ts`). Die Erhebung endete am
+// ersten `"` und sah eine leere oder abgeschnittene Liste; der Textzähler fand die Datei (zwei
+// `_at=$n`), die Erhebung nicht: „expected 3 to be 4". Deshalb werden benachbarte Literale vor
+// der Erhebung verbunden (`"a" + "b"` → `"ab"`), genau wie der Rumpf sie zur Laufzeit liest.
+function verbindeLiterale(text: string): string {
+  return text.replace(/"\s*\+\s*"/g, "").replace(/'\s*\+\s*'/g, "");
+}
+
 /** Loest `SET ${NAME}` auf: sucht die Konstante NAME in derselben Datei und gibt ihren Inhalt. */
 function interpolierteListe(text: string, name: string): string | null {
   const treffer = new RegExp(`\\b${name}\\s*=\\s*\`([\\s\\S]*?)\``).exec(text);
@@ -136,7 +146,7 @@ function erhebung(): { funde: Fund[]; setListenGesamt: number; parsefehler: stri
     for (const rel of quelldateien(bereich)) {
       let text: string;
       try {
-        text = readFileSync(join(WURZEL, rel), "utf8");
+        text = verbindeLiterale(readFileSync(join(WURZEL, rel), "utf8"));
       } catch (err) {
         // Sichtbar machen statt überspringen: eine Datei, die nicht gelesen werden kann, ist eine
         // Lücke in der Erhebung — und eine stille Lücke macht jedes Grün wertlos.
@@ -205,7 +215,11 @@ const REGISTER: readonly string[] = [
   // ab dem Schreibvorgang ausgesperrt. GEDECKT — `tests/auth/job2413-nutzlast-user-update.test.ts`
   // prueft die neue Spalte in GRUPPE 2 mit einem eigenen, von den anderen beiden verschiedenen
   // Wert.
-  "services/auth/src/repo-pg.ts | name,email,password_salt,password_hash,role,approved,created_at,notice_ack_at,notice_ack_version,oidc_issuer,oidc_subject,access_expires_at | praefix:notice_ack: notice_ack_at=$9, notice_ack_version=$10 · praefix:oidc: oidc_issuer=$11, oidc_subject=$12 · praefix:password: password_salt=$4, password_hash=$5 · zeitstempel: created_at=$8, notice_ack_at=$9, access_expires_at=$13",
+  //
+  // Gesamtcheck R-1329 (Nacharbeit 66): die Liste trägt als 13. Spalte `freigabe` (gemessen im
+  // Gesamtlauf am Kandidaten 637e45ec). Sie gehört zu keiner drehbaren Gruppe — die vier Gruppen
+  // und ihre Stellen sind unverändert, die Deckung oben gilt unverändert für sie.
+  "services/auth/src/repo-pg.ts | name,email,password_salt,password_hash,role,approved,created_at,notice_ack_at,notice_ack_version,oidc_issuer,oidc_subject,access_expires_at,freigabe | praefix:notice_ack: notice_ack_at=$9, notice_ack_version=$10 · praefix:oidc: oidc_issuer=$11, oidc_subject=$12 · praefix:password: password_salt=$4, password_hash=$5 · zeitstempel: created_at=$8, notice_ack_at=$9, access_expires_at=$13",
   // touchSession — laeuft ueber `cas()`, nicht ueber `casMitConsent`. UNGEDECKT.
   "services/reasoner/src/klara-policy-store.ts | last_activity_at,expires_at | zeitstempel: last_activity_at=$3, expires_at=$4",
   // rebindSession — drei drehbare Gruppen auf einmal, die dichteste Stelle im Baum. Gedeckt durch
@@ -225,6 +239,24 @@ const REGISTER: readonly string[] = [
   // zwischen ihnen bliebe selbst dann unsichtbar, wenn die Bindung geprueft wuerde. Gleiche
   // Sentinels machen jede Vertauschungsprobe blind.
   "services/knowledge-object/src/search-projection-repo-pg.ts | active_projection_version,target_projection_version,projection_state,last_successful_rebuild,last_reconcile,last_failure,build_started_at,build_finished_at,build_generation,active_generation,integrity_marker,activated_at | praefix:last: last_reconcile=$5, last_failure=$6 · version: active_projection_version=$1, target_projection_version=$2 · zeitstempel: build_started_at=$7, build_finished_at=$8, activated_at=$12",
+  // ----------------------------------------------------------------------------------------------
+  // GESAMTCHECK R-1329 (Nacharbeit 66) — NACHGEFÜHRT. Die ersten zwei Schlüssel wörtlich aus der
+  // S2-Meldung im Gesamtlauf am Kandidaten 637e45ec; die drei der Verwaltung aus der Erhebung MIT
+  // verbundenen Literalen (oben), aus dem Quelltext nachgerechnet. DECKUNG IN DIESER NACHFÜHRUNG
+  // NICHT GEMESSEN — ein Test, der diese SET-Listen gegen ihre Parameterliste auflöst, ist nicht
+  // bekannt; sie gelten bis zu einer Messung als ungedeckt, nicht als gedeckt.
+  // Die befristete Ausnahme bindet Ende, Grund und verantwortliche Person getrennt.
+  "services/app/src/interaktionsgedaechtnis.ts | inhalt,antwort,aufbewahrung_tage,verfall_am,fassung,geaendert_am,darstellung,ausnahme_bis,ausnahme_grund,ausnahme_verantwortlich | praefix:ausnahme: ausnahme_bis=$9, ausnahme_grund=$10, ausnahme_verantwortlich=$11",
+  // Die Indexfelder eines Entwurfs (Suchtext-Stand, fünf `index_*`-Spalten).
+  "services/capture/src/repo-pg.ts | index_fassung,index_stand,index_hash,index_text,index_status | praefix:index: index_fassung=$2, index_stand=$3, index_hash=$4, index_text=$5, index_status=$6",
+  // Die Entscheidung einer Gesamtanweisung (`entschieden_von/_am/_version`).
+  "services/knowledge-object/src/gesamtanweisung-repo-pg.ts | version,stand,titel,zweck,geltungsbereich,voraussetzungen,geaendert_am,entscheidung,entschieden_von,entschieden_am,entschieden_version | praefix:entschieden: entschieden_von=$11, entschieden_am=$12, entschieden_version=$13",
+  // Lagebildwerte: Zeitraum (von/bis) und Änderung (am/von) — über eine Verkettung, s. oben.
+  "services/management/src/lagebild-werte.ts | zeitraum_von,zeitraum_bis,werte,version,anfrage_id,geaendert_am,geaendert_von | praefix:geaendert: geaendert_am=$7, geaendert_von=$8 · praefix:zeitraum: zeitraum_von=$2, zeitraum_bis=$3",
+  // Kategorieprofil: `updated_at`/`updated_by` — über eine Verkettung.
+  "services/management/src/profiles.ts | manager_id,criticality,process_proximity,repetition,damage_potential,updated_at,updated_by | praefix:updated: updated_at=$7, updated_by=$8",
+  // Ruhestandshorizont: `due_at`/`updated_at` — die Stelle, die S3 meldete, über eine Verkettung.
+  "services/management/src/profiles.ts | horizon_months,due_at,updated_at,updated_by | praefix:updated: updated_at=$4, updated_by=$5 · zeitstempel: due_at=$3, updated_at=$4",
 ];
 
 describe("JOB 2408 · Sammler: SET-Listen mit gleichartigen Parametern", () => {
@@ -255,7 +287,7 @@ describe("JOB 2408 · Sammler: SET-Listen mit gleichartigen Parametern", () => {
       "NEUE drehbare Stelle im Baum, nicht im Register. Prüfen, ob sie gedeckt ist, dann eintragen.",
     ).toEqual([]);
     expect(weg, "im Register gepinnt, im Baum nicht mehr gefunden").toEqual([]);
-    expect(erhoben.length, "die Zahl der drehbaren Stellen hat sich geändert").toBe(7);
+    expect(erhoben.length, "die Zahl der drehbaren Stellen hat sich geändert").toBe(13);
   });
 
   it("S3 · ein UNABHÄNGIGER Textzähler bestätigt die Größenordnung", () => {

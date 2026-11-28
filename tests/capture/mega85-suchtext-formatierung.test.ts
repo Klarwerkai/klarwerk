@@ -24,7 +24,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Draft, KnowledgeObject } from "../../apps/web/src/api/types";
+import { wortlautEnthalten } from "../../apps/web/src/components/klara-vorschau/bezug";
 import { extractBodyImages } from "../../apps/web/src/lib/bodyImages";
+import { CHAT_ZITAT_ZURUECKGEHALTEN, ohneChatQuelle } from "../../apps/web/src/lib/chatQuelle";
 import { planDocxImageCaptions } from "../../apps/web/src/lib/docx";
 import { draftBodyFromText, draftBodyText, splitDraftBody } from "../../apps/web/src/lib/draftBody";
 import { filterDrafts } from "../../apps/web/src/lib/draftListView";
@@ -32,7 +34,12 @@ import { buildDuplicateCompareSections } from "../../apps/web/src/lib/duplicateC
 import { koPreviewText } from "../../apps/web/src/lib/koPreview";
 import { imageCaptionTexts } from "../../apps/web/src/lib/librarySearch";
 import { htmlToPlainText } from "../../apps/web/src/lib/richText";
+import { textVon as vorlagenTextVon } from "../../apps/web/src/lib/vorlagenStruktur";
 import { wordHtmlToPlainText } from "../../apps/web/src/lib/wordAddin";
+import { textAusRumpf } from "../../services/app/src/gemeinsamer-entwurf";
+import { webvttLesen } from "../../services/app/src/meeting-dokumentbezug";
+import { htmlText as fragensatzText } from "../../services/app/src/verstaendnisfragen";
+import { htmlAlsText } from "../../services/app/src/wissenspaket";
 import { htmlToPlainText as serverPlainText } from "../../services/structure";
 import { imageCaptionTexts as serverCaptionTexts } from "../../services/structure/src/captions";
 
@@ -95,7 +102,6 @@ const URTEILE: Record<string, string> = {
   // Die kanonische Reduktion, Client und Server: Block-ENDEN werden zum Leerzeichen, Inline-Tags
   // verschwinden spurlos. Genau diese Bauform ist die Wahrheit, an die die Korrekturen binden.
   "apps/web/src/lib/richText.ts": "kanonisch (htmlToPlainText, Client)",
-  "services/structure/src/sanitize.ts": "kanonisch (htmlToPlainText, Server-Zwilling)",
   // mega84: Fußnotenleser, dort bereits geschlossen.
   "apps/web/src/lib/librarySearch.ts": "mega84 korrigiert (Suche, Client)",
   "services/structure/src/captions.ts": "mega84 korrigiert (Suche, Server-Spiegel)",
@@ -126,6 +132,31 @@ const URTEILE: Record<string, string> = {
   // byteweise (`draftBodyFromText`), die Auszeichnung überlebt.
   "apps/web/src/lib/draftBody.ts":
     "unkritisch: Inline-Tags spurlos, Reduktion je Block; unberührte Blöcke behalten ihr rohes HTML",
+  // ── Gesamtcheck R-1329 (Nacharbeit 66): die seither dazugekommenen Funde, je Stelle gelesen ────
+  // Spurlos wie `wordAddin`: Block-ENDEN werden zum Trenner, das Inline-Tag verschwindet ohne
+  // Zeichen („<em>Ventil V2</em>," → „Ventil V2,"). Gefahren in Stufe 3.
+  "apps/web/src/lib/vorlagenStruktur.ts":
+    "unkritisch: Inline-Tags spurlos, Block-Enden → Leerzeichen (textVon, Vorlagenfelder)",
+  "services/app/src/verstaendnisfragen.ts":
+    "unkritisch: Inline-Tags spurlos, Block-Enden → Leerzeichen (htmlText, Fragensatz)",
+  "services/app/src/wissenspaket.ts":
+    "unkritisch: Inline-Tags spurlos, Block-Enden → Zeilenumbruch (htmlAlsText, Markdown-Fassung)",
+  "services/app/src/gemeinsamer-entwurf.ts":
+    "unkritisch: Inline-Tags spurlos, Reduktion je Block (blockText über textAusRumpf)",
+  "services/app/src/meeting-dokumentbezug.ts":
+    "unkritisch: WebVTT-Auszeichnung (<v …>, <b>) einer Untertitelstelle spurlos (webvttLesen)",
+  // Der Regex läuft hier NUR ohne DOMParser (Server, Node-Prüfstand); im Browser liest
+  // `DOMParser…textContent` — baulich ohne Zwischenraum. Und auch der Rückfall verändert das
+  // Ergebnis nicht: beide Stellen vergleichen OHNE JEDEN Leerraum (`ohneLeerraum` bzw.
+  // `.replace(/\s+/g, "")`), der eingesetzte Zwischenraum verschwindet vor dem Vergleich.
+  "apps/web/src/components/klara-vorschau/bezug.ts":
+    "unkritisch: Vergleich ohne jeden Leerraum (wortlautEnthalten); Regex nur ohne DOMParser",
+  "apps/web/src/components/klara-vorschau/vorschlag.ts":
+    "unkritisch: Vergleich ohne jeden Leerraum (inVorschlag); Regex nur ohne DOMParser",
+  // Kein HTML eines Wissensobjekts: entfernt die Platzhalter `<ui=…&>` der WOPI-Discovery-Adresse
+  // (`editorAktion`), bevor sie als URL gelesen wird.
+  "services/app/src/office-artikel.ts":
+    "ausserhalb: Platzhalter einer WOPI-Discovery-Adresse, nie Fussnote/Fliesstext eines Wissensobjekts",
 };
 
 describe("mega85 Block A · Stufe 1+2: die Grundmenge wird erhoben, jeder Fund hat ein Urteil", () => {
@@ -313,6 +344,62 @@ describe("mega85 Block A · Stufe 3: die unkritischen Funde sind wirklich unkrit
     );
     // Und der Wortlaut kommt nicht aus der Reduktion zurück: unberührt heisst byteweise gleich.
     expect(draftBodyFromText(mit, draftBodyText(mit))).toBe(BODY_MIT);
+  });
+
+  it("die Chatübernahme erkennt einen eigenen formatierten Absatz und hält gebundene Wörter weiter zurück", () => {
+    const bodyHtml = "<p>Mein Pro<em>tokoll</em> ist fertig.</p>";
+    const eigeneNachricht = "Mein Protokoll ist fertig.";
+    expect(ohneChatQuelle({ bodyHtml }, { zitat: "", quelle: "", eigeneNachricht }).bodyHtml).toBe(
+      bodyHtml,
+    );
+    const geschuetzt = ohneChatQuelle(
+      { bodyHtml },
+      { zitat: "Protokoll ist", quelle: "", eigeneNachricht },
+    ).bodyHtml;
+    expect(geschuetzt).toContain(CHAT_ZITAT_ZURUECKGEHALTEN);
+    expect(geschuetzt).not.toContain("tokoll");
+  });
+
+  // Gesamtcheck R-1329 (Nacharbeit 66): die neuen Urteile, je an der echten Funktion gefahren.
+  it("vorlagenStruktur, Verständnisfragen, Wissenspaket, gemeinsamer Entwurf: Inline-Tags spurlos (Urteile gefahren)", () => {
+    expect(vorlagenTextVon(BODY_MIT)).toBe(vorlagenTextVon(BODY_OHNE));
+    expect(vorlagenTextVon(BODY_MIT)).toBe(OHNE);
+    expect(fragensatzText(BODY_MIT)).toBe(fragensatzText(BODY_OHNE));
+    expect(fragensatzText(BODY_MIT).trim()).toBe(OHNE);
+    expect(htmlAlsText(BODY_MIT)).toBe(htmlAlsText(BODY_OHNE));
+    expect(htmlAlsText(BODY_MIT).trim()).toBe(OHNE);
+    expect(textAusRumpf(BODY_MIT)).toBe(textAusRumpf(BODY_OHNE));
+    expect(textAusRumpf(BODY_MIT)).toBe(OHNE);
+    // Je Block: zwei Absätze wachsen nicht zu einem Wort zusammen.
+    expect(textAusRumpf("<p>Dichtring</p><p>Ventil</p>")).toBe("Dichtring\n\nVentil");
+  });
+
+  it("Meetingbezug: die WebVTT-Auszeichnung einer Stelle verschwindet spurlos (Urteil gefahren)", () => {
+    const vtt = (zeile: string): string =>
+      `WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n<v Anna>${zeile}\n`;
+    const mit = webvttLesen(vtt(MIT));
+    const ohne = webvttLesen(vtt(OHNE));
+    expect(mit.map((s) => s.text)).toEqual(ohne.map((s) => s.text));
+    expect(mit[0]?.text).toBe(OHNE);
+  });
+
+  it("Klara-Vorschau: auch der Regex-Rückfall (ohne DOMParser) findet den Wortlaut der formatierten Fassung (Urteil gefahren)", () => {
+    // Diese Datei läuft ohne DOMParser — `textVon` nimmt hier also genau den Rückfall, der für
+    // jedes Tag ein Leerzeichen einsetzt. Gefahren wird, dass der Vergleich ihn nicht sieht.
+    expect(typeof (globalThis as { DOMParser?: unknown }).DOMParser).toBe("undefined");
+    const ko = (bodyHtml: string): KnowledgeObject =>
+      ({
+        title: "",
+        statement: "",
+        bodyHtml,
+        conditions: [],
+        measures: [],
+      }) as unknown as KnowledgeObject;
+    const gesucht = "am Ventil V2, sichtbar";
+    expect(wortlautEnthalten(ko(BODY_MIT), gesucht)).toBe(true);
+    expect(wortlautEnthalten(ko(BODY_OHNE), gesucht)).toBe(true);
+    // Gegenprobe: ein Wortlaut, der nicht dasteht, bleibt nicht gefunden.
+    expect(wortlautEnthalten(ko(BODY_MIT), "am Ventil V3")).toBe(false);
   });
 
   it("die mega84-Leser bleiben geschlossen (Regressionsschutz für die drei bereits grünen)", () => {

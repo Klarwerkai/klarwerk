@@ -1,3 +1,5 @@
+import { htmlToPlainText } from "./richText";
+
 // ================================================================================================
 // produkt:20261010:rechteentzug-gespraeche-belege — EINE CHAT-ÜBERNAHME OHNE IHRE QUELLE.
 // ================================================================================================
@@ -95,7 +97,7 @@ function normiere(text: string): string {
 
 /** Sichtbarer Text eines HTML-Stücks in Vergleichsform. */
 function sichtbarerText(html: string): string {
-  return normiere(entschluessle(html.replace(/<[^>]*>/g, " ")));
+  return normiere(htmlToPlainText(html));
 }
 
 function woerter(text: string): string[] {

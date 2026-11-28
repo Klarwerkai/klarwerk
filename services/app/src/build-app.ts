@@ -711,7 +711,7 @@ import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
-import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+import { STARTVERTRAG, ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
 // produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg; im Postgres-Betrieb haltbar.
 import {
   InMemoryTeamassistentRepo,
@@ -3610,6 +3610,7 @@ export function serialisiereFehler(fehler: Error & { code?: unknown }): {
  * auf das eine Überwachung filtern soll.
  */
 const DOMAENEN_CODE = /^[A-Z_]+$/;
+const STARTWERT_NAMEN = new Set(STARTVERTRAG.map(({ name }) => name));
 
 function istEinfachesObjekt(wert: object): boolean {
   const prototyp = Object.getPrototypeOf(wert);
@@ -3635,7 +3636,10 @@ export function senkeUeberWert(
   tiefe = 0,
 ): unknown {
   if (typeof wert === "string") {
-    return DOMAENEN_CODE.test(wert) ? wert : sanitizeLogText(wert, env);
+    if (DOMAENEN_CODE.test(wert)) return wert;
+    // Bekannte Konfigurationsnamen mit Ziffern sind öffentliche Bezeichnungen.
+    if (STARTWERT_NAMEN.has(wert)) return entferneGeheimeEnvWerte(wert, env);
+    return sanitizeLogText(wert, env);
   }
   if (wert === null || typeof wert !== "object") {
     return wert;

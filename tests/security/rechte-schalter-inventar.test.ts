@@ -95,6 +95,7 @@ const SCHLUESSELRECHTE: Record<string, { klaraSchluessel: boolean; routen: reado
   "import.kandidaten": { klaraSchluessel: false, routen: ["POST /api/library/import/candidates"] },
   "status.read": { klaraSchluessel: false, routen: ["GET /health", "GET /api/reasoner/status"] },
   // R-0713 (integrierter Hauptstand): der MCP-Zugang für fremde KI-Programme (mcp-routes.ts).
+  "mail.entwurf": { klaraSchluessel: false, routen: ["POST /api/eingang/email"] },
   "mcp.werkzeug": { klaraSchluessel: false, routen: ["GET /mcp", "POST /mcp"] },
 };
 
@@ -119,6 +120,9 @@ const REGISTRY_SCHALTER: Record<
   rechtsseiten: { variable: "KLARWERK_RECHTSSEITEN", vorgabeAn: true, vorAnmeldung: true },
   hinweisbanner: { variable: "KLARWERK_HINWEISBANNER", vorgabeAn: true, vorAnmeldung: true },
   demodaten: { variable: "KLARWERK_DEMO_SEED", vorgabeAn: false, vorAnmeldung: false },
+  // R-0570 (feature-flags.ts): anonyme Vorführung — Vorgabe aus, aber vor der Anmeldung gemeldet,
+  // damit die Anmeldemaske nur dann auf sie verweist (SCHALTER_VOR_ANMELDUNG).
+  vorfuehrung: { variable: "KLARWERK_VORFUEHRUNG_ANONYM", vorgabeAn: false, vorAnmeldung: true },
 };
 
 type Schalterquelle = "registry" | "startvertrag" | "direkt";
@@ -142,6 +146,10 @@ const SCHALTER: Record<
   KLARWERK_RECHTSSEITEN: { quellen: ["registry"], wofuer: "Notausschalter der Rechtsseiten." },
   KLARWERK_HINWEISBANNER: { quellen: ["registry"], wofuer: "Notausschalter des Hinweises." },
   KLARWERK_DEMO_SEED: { quellen: ["registry"], wofuer: "Laden der Demodaten (legt Konten an)." },
+  KLARWERK_VORFUEHRUNG_ANONYM: {
+    quellen: ["registry"],
+    wofuer: "Anonyme Vorführung (/vorfuehrung) nur an erfundenen Inhalten; aus: beide Wege 404.",
+  },
   KLARWERK_ALLOW_INMEMORY_PROD: {
     quellen: ["startvertrag"],
     wofuer: "Bewusster Produktionsstart ohne Datenbank (Ausnahme der DATABASE_URL-Pflicht).",
@@ -159,6 +167,10 @@ const SCHALTER: Record<
   KLARWERK_TRUST_PROXY: {
     quellen: ["direkt"],
     wofuer: "Vertraute Proxys; die Ja/Nein-Werte werden ausdrücklich ABGEWIESEN (spoofbar).",
+  },
+  KLARWERK_TLS_PFLICHT: {
+    quellen: ["direkt"],
+    wofuer: "Verweigert den Start ohne TLS-Zertifikat am App-Port (transport-tls.ts).",
   },
   EXTERNAL_SEARCH: { quellen: ["direkt"], wofuer: "„off“ schaltet die externe Suche ab (501)." },
   OIDC_AUTOPROVISION: { quellen: ["direkt"], wofuer: "SSO legt unbekannte Konten selbst an." },
@@ -207,11 +219,11 @@ const UNLESBAR_GEDECKT: Record<string, string> = {
  * (`tests/demo-zugang-start/vertrag-vollstaendig.test.ts`, D1) erhebt `env.KLARWERK_KI_ANFRAGEN_MAX`
  * aus `ki-anfragebremse.ts` und verlangt den Eintrag dort. Dieser Eintrag hier hält die Lücke
  * sichtbar — und wird rot, sobald sie geschlossen ist (dann streichen).
+ *
+ * Gesamtcheck R-1329 (Nacharbeit 27): GESCHLOSSEN — `KLARWERK_KI_ANFRAGEN_MAX` steht jetzt im
+ * Startvertrag (samt Fenster und Beispieldatei). Der Eintrag ist wie verlangt gestrichen.
  */
-const OHNE_STARTVERTRAG: Record<string, string> = {
-  KLARWERK_KI_ANFRAGEN_MAX:
-    "ki-anfragebremse.ts:48/51 liest ihn; kein Startvertragseintrag (Quelleninspektion 41ba0b7f).",
-};
+const OHNE_STARTVERTRAG: Record<string, string> = {};
 
 // ================================================================================================
 // DIE ERHEBUNG
@@ -514,7 +526,7 @@ describe("R-1136 · V2 · die Schlüsselrechte angebundener Systeme", () => {
     const verzeichnet = Object.keys(SCHLUESSELRECHTE).sort();
     expect([...DIENST_RECHTE].sort()).toEqual(verzeichnet);
     expect(
-      zeichenkettenUnion("services/app/src/addon-principal.ts", "AddonCapability").sort(),
+      zeichenkettenUnion("services/app/src/addon-principal-typen.ts", "AddonCapability").sort(),
     ).toEqual(verzeichnet);
   });
 

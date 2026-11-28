@@ -276,6 +276,9 @@ describe("JOB 3655 B · der Startbericht", () => {
         wert.name,
       );
     }
+    const name = "KLARWERK_KALENDER_M365_KONTO_IDS";
+    expect(senkeUeberWert(name, { API_TOKEN: name })).toBe("[redacted]");
+    expect(senkeUeberWert(`${name}_UNBEKANNT`, {})).toBe("[redacted]");
     // Kalibrierung: die Ausnahme ist nicht vakuos, und ein Name mit Ziffern, den die Senke
     // zerstört (Token-Regel ab 24 Zeichen), fiele hier auf.
     expect(STARTVERTRAG.some((w) => w.name === "KLARWERK_M365_MANDANTEN")).toBe(true);

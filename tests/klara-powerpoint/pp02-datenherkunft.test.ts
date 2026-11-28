@@ -1043,7 +1043,8 @@ describe("PP-02 · Datenherkunft und Bindung an Folien", () => {
     // Nacharbeit 4 (Bens Befund): Quelle Q → A (direkt) → B = A + M → C = B + M.
     const q = await w.ko.create({
       title: "Preisliste 2025 (fiktiv)",
-      statement: "Stückpreis 2025: 12 € je Stück.",
+      statement: "Preisangabe steht im belegten Artikeltext.",
+      bodyHtml: "<p>Stückpreis 2025: 1<em>2</em> € je Stück.</p>",
       type: "best_practice",
       category: "Testbestand",
       author: "anna",
