@@ -287,7 +287,7 @@ function NachrichtEcht({
               {t("klaragespraech.label.kiHinweis")}
             </span>
           </>
-        ) : n.modus === "ohne_ki" ? (
+        ) : n.modus === "ohne_ki" && !ohneGrundlage ? (
           <span
             data-testid="klara-echt-kennzeichen"
             className={`${SCHILD} border border-hairline bg-surface text-muted`}

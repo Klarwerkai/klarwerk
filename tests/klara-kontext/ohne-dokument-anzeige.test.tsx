@@ -60,6 +60,7 @@ describe("Ohne Dokument fragen", () => {
     async (locale) => {
       const nachrichten = [
         antwort,
+        { ...antwort, id: "woertlich", modus: "ohne_ki", text: "The test card is square. [1]" },
         {
           ...antwort,
           id: "ohne",
@@ -147,7 +148,15 @@ describe("Ohne Dokument fragen", () => {
         expect(c.textContent).toContain("The test card is square.");
         expect(c.textContent).toContain(i18n.t("klaragespraech.antwort.keine"));
         expect(c.textContent).not.toContain("Server-Fallback");
-        const luecke = c.querySelector('[data-testid="klara-nachricht"][data-modus="ohne_ki"]');
+        const luecke = c.querySelector('[data-testid="klara-grundlage-fehlt"]')?.closest("li");
+        expect(luecke?.textContent).toContain(i18n.t("klarakontext.grundlage.kennzeichen"));
+        expect(luecke?.textContent).not.toContain(i18n.t("klaragespraech.label.ohneKi"));
+        expect(luecke?.querySelector('[data-testid="klara-nachricht-erinnern"]')).toBeNull();
+        const woertlich = c
+          .querySelector('[data-modus="ohne_ki"] [data-testid="klara-quelle"]')
+          ?.closest('[data-testid="klara-nachricht"]');
+        expect(woertlich?.textContent).toContain(i18n.t("klaragespraech.label.ohneKi"));
+        expect(woertlich?.querySelector('[data-testid="klara-nachricht-als-notiz"]')).toBeTruthy();
         expect(luecke?.querySelector('[data-testid="klara-nachricht-als-notiz"]')).toBeNull();
         expect(aufrufe).not.toContain("/api/kos/karte?belegfassung=2");
         // Eine abweichende Serverfassung darf keinen Namen für den alten Beleg liefern.
