@@ -735,7 +735,7 @@ import {
   type TeamworkflowRepo,
 } from "./teamworkflows";
 import { quellenlageAus, quellsperreAus } from "./technische-daten-quellen";
-import { type TransportTls, tlsServerFabrik } from "./transport-tls";
+import { type TransportTls, tlsServerOptionen } from "./transport-tls";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
 import {
   InMemoryUebersetzungRepo,
@@ -3920,7 +3920,7 @@ export function buildApp(
     // ab; Fastifys Vorgabe von 10 s riss ihn ab rund 2.300 Objekten bei jedem Start. Begründung und
     // Nachfolge (Hintergrundlauf) an der Konstante.
     pluginTimeout: SUCHPROJEKTION_STARTFRIST_MS,
-    ...(opts.tls ? { serverFactory: tlsServerFabrik(opts.tls) } : {}),
+    ...(opts.tls ? { https: tlsServerOptionen(opts.tls) } : {}),
   });
   // GHSA-3m5p-2c4r-xxw2: eine Hop-Anzahl wird verworfen (resolveTrustProxy). Ohne diese Zeile sähe ein
   // Betreiber nur, dass alle Drosseln plötzlich gegen die Proxy-IP zählen.

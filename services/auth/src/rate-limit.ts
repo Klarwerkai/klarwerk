@@ -41,8 +41,7 @@ export interface LoginRateLimiterOptions {
 // R-0601: der Standard-Zeitgeber. `unref`, damit ein geplanter Aufräumlauf weder einen Server beim
 // Herunterfahren noch einen Testprozess am Ende festhält.
 function planeAbgekoppelt(lauf: () => void, verzoegerungMs: number): void {
-  const zeitgeber = setTimeout(lauf, verzoegerungMs) as unknown as { unref?: () => void };
-  zeitgeber.unref?.();
+  setTimeout(lauf, verzoegerungMs).unref();
 }
 
 interface WindowEntry {

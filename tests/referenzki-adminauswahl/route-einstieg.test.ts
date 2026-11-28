@@ -508,6 +508,28 @@ describe("REF-03 · Funktionscheck (K7)", () => {
     expect(
       lage.optionen.find((o: { wahl: string }) => o.wahl === "anthropic").letzteFunktionspruefung,
     ).toMatchObject({ zeit: e.zeit, modell: "claude-fiktiv-8", ergebnis: "erfolgreich" });
+    if (!protokoll) throw new Error("Der geprüfte Auditeintrag fehlt");
+    for (const geaendert of [
+      { verbrauch: { eingabe: "410", ausgabe: 52 } },
+      { kosten: { betrag: 1 } },
+    ]) {
+      await services.audit.record({
+        actor: protokoll.actor,
+        action: protokoll.action,
+        target: protokoll.target,
+        payload: { ...protokoll.payload, ...geaendert },
+      });
+      const erneut = await app.inject({
+        method: "GET",
+        url: "/api/reasoner/referenzpruefung",
+        headers: admin,
+      });
+      expect(erneut.statusCode).toBe(200);
+      expect(
+        erneut.json().optionen.find((o: { wahl: string }) => o.wahl === "anthropic")
+          .letzteFunktionspruefung,
+      ).toBeNull();
+    }
     expect(d.aufrufe()).toBe(1);
   });
 

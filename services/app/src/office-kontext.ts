@@ -281,13 +281,27 @@ export function pruefeKontextmarke(
   } catch {
     return { gueltig: false, grund: "marke_ungueltig" };
   }
-  if (!istObjekt(inhalt) || inhalt.v !== 1 || typeof inhalt.exp !== "number") {
+  if (!istObjekt(inhalt)) return { gueltig: false, grund: "marke_ungueltig" };
+  const { v, sid, act, inst, doc, seq, sum, exp } = inhalt;
+  const host = OFFICE_HOSTANWENDUNGEN.find((h) => h === inhalt.host);
+  if (
+    v !== 1 ||
+    typeof sid !== "string" ||
+    typeof act !== "string" ||
+    typeof inst !== "string" ||
+    typeof doc !== "string" ||
+    !host ||
+    typeof seq !== "number" ||
+    !Number.isSafeInteger(seq) ||
+    seq < 1 ||
+    typeof sum !== "string" ||
+    !PRUEFSUMME.test(sum) ||
+    typeof exp !== "number" ||
+    !Number.isFinite(exp)
+  )
     return { gueltig: false, grund: "marke_ungueltig" };
-  }
-  if (inhalt.exp <= jetzt) {
-    return { gueltig: false, grund: "marke_abgelaufen" };
-  }
-  return { gueltig: true, inhalt: inhalt as unknown as KontextmarkenInhalt };
+  if (exp <= jetzt) return { gueltig: false, grund: "marke_abgelaufen" };
+  return { gueltig: true, inhalt: { v, sid, act, inst, doc, host, seq, sum, exp } };
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -530,18 +530,14 @@ function withPriority(gap: Gap): Gap {
  * Ersteller fällt weg, von den weiteren Fragenden bleibt höchstens er selbst. Zuordnungsverlauf und
  * Rückfragen gehören nicht in die Antwort auf eine Frage.
  */
-const PERSONENBEZOGENE_LUECKENFELDER: ReadonlySet<string> = new Set([
-  "createdBy",
-  "weitereFragende",
-  "zuordnungen",
-  "rueckfragen",
-]);
-
 function fuerDenFragenden(gap: Gap, fragender: string): Gap {
-  const { createdBy, weitereFragende } = gap;
-  const rest = Object.fromEntries(
-    Object.entries(gap).filter(([feld]) => !PERSONENBEZOGENE_LUECKENFELDER.has(feld)),
-  ) as unknown as Gap;
+  const {
+    createdBy,
+    weitereFragende,
+    zuordnungen: _zuordnungen,
+    rueckfragen: _rueckfragen,
+    ...rest
+  } = gap;
   const selbst = fragender && fragender !== "system" ? fragender : undefined;
   return {
     ...rest,

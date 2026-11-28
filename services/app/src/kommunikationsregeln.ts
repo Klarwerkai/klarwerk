@@ -807,16 +807,20 @@ export interface KommunikationDienstDeps {
   jetzt: () => number;
 }
 
-function feldWert(wert: unknown, feld: keyof Vorgabe): boolean | Haeufigkeit | undefined {
+type GeprueftesFeld =
+  | { feld: "haeufigkeit"; wert: Haeufigkeit }
+  | { feld: "abwaehlbar" | "mail"; wert: boolean };
+
+function feldWert(wert: unknown, feld: keyof Vorgabe): GeprueftesFeld | undefined {
   if (wert === undefined) {
     return undefined;
   }
   if (feld === "haeufigkeit") {
     if (wert === "sofort" || wert === "taeglich") {
-      return wert;
+      return { feld, wert };
     }
   } else if (typeof wert === "boolean") {
-    return wert;
+    return { feld, wert };
   }
   throw new KommunikationFehler(400, "VALIDATION", `Ungültiger Wert für „${feld}".`, { feld });
 }
@@ -940,7 +944,7 @@ export class KommunikationDienst {
       };
       for (const feld of ["abwaehlbar", "haeufigkeit", "mail"] as const) {
         const neu = feldWert(felder[feld], feld);
-        if (neu === undefined || neu === ziel[feld]) {
+        if (neu === undefined || neu.wert === ziel[feld]) {
           continue;
         }
         if (!erlaubt[feld]) {
@@ -953,8 +957,12 @@ export class KommunikationDienst {
             { ereignis: id, feld },
           );
         }
-        aenderungen.push({ ereignis: id, feld, vorher: ziel[feld], nachher: neu });
-        (ziel as unknown as Record<string, boolean | Haeufigkeit>)[feld] = neu;
+        aenderungen.push({ ereignis: id, feld, vorher: ziel[feld], nachher: neu.wert });
+        if (neu.feld === "haeufigkeit") {
+          ziel.haeufigkeit = neu.wert;
+        } else {
+          ziel[neu.feld] = neu.wert;
+        }
       }
       if (ziel.mail && ziel.haeufigkeit === "taeglich") {
         throw new KommunikationFehler(

@@ -589,18 +589,70 @@ export function referenzOptionZustand(
   return "konfiguriert";
 }
 
+function istCheckVerbrauch(wert: unknown): wert is NonNullable<FunktionscheckEintrag["verbrauch"]> {
+  return (
+    typeof wert === "object" &&
+    wert !== null &&
+    "eingabe" in wert &&
+    typeof wert.eingabe === "number" &&
+    "ausgabe" in wert &&
+    typeof wert.ausgabe === "number"
+  );
+}
+
+function sindCheckKosten(wert: unknown): wert is NonNullable<FunktionscheckEintrag["kosten"]> {
+  return (
+    typeof wert === "object" &&
+    wert !== null &&
+    "betrag" in wert &&
+    typeof wert.betrag === "number" &&
+    "waehrung" in wert &&
+    typeof wert.waehrung === "string" &&
+    "preisstand" in wert &&
+    typeof wert.preisstand === "string"
+  );
+}
+
 /** Ein gespeicherter Funktionscheck aus der Auditnutzlast — Unlesbares zählt nicht. */
 function funktionscheckAus(payload: Record<string, unknown>): FunktionscheckEintrag | null {
-  const p = payload as Partial<Record<keyof FunktionscheckEintrag, unknown>>;
+  const { zeit, anbieter, modell, ergebnis, grund, modellaufruf, dauerMs, richtlinie, fiktiv } =
+    payload;
+  const wahl = REASONER_REFERENZ_WAHLEN.find((w) => w === payload.wahl);
+  const verbrauch = payload.verbrauch;
+  const kosten = payload.kosten;
   if (
-    (p.ergebnis !== "erfolgreich" && p.ergebnis !== "fehlgeschlagen") ||
-    typeof p.zeit !== "string" ||
-    !(REASONER_REFERENZ_WAHLEN as readonly unknown[]).includes(p.wahl) ||
-    (p.modell !== null && typeof p.modell !== "string")
-  ) {
+    !wahl ||
+    (ergebnis !== "erfolgreich" && ergebnis !== "fehlgeschlagen") ||
+    typeof zeit !== "string" ||
+    typeof anbieter !== "string" ||
+    (modell !== null && typeof modell !== "string") ||
+    (grund !== null && typeof grund !== "string") ||
+    typeof modellaufruf !== "boolean" ||
+    typeof dauerMs !== "number" ||
+    typeof richtlinie !== "string" ||
+    fiktiv !== true ||
+    (verbrauch !== null && !istCheckVerbrauch(verbrauch)) ||
+    (kosten !== null && !sindCheckKosten(kosten))
+  )
     return null;
-  }
-  return payload as unknown as FunktionscheckEintrag;
+  return {
+    wahl,
+    zeit,
+    anbieter,
+    modell,
+    ergebnis,
+    grund,
+    modellaufruf,
+    dauerMs,
+    richtlinie,
+    fiktiv,
+    verbrauch: verbrauch && { eingabe: verbrauch.eingabe, ausgabe: verbrauch.ausgabe },
+    kosten: kosten && {
+      betrag: kosten.betrag,
+      waehrung: kosten.waehrung,
+      preisstand: kosten.preisstand,
+    },
+  };
 }
 
 function gueltigeReferenzEingabe(wert: unknown): wert is string[] | null | undefined {
