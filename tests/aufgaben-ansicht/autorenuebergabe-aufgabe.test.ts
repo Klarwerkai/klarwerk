@@ -98,6 +98,32 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
     return { app, repos, services, ada, anna, bert, eintrag, lesen, anstehend, aktion };
   }
 
+  it("liest beide Aufgabenlisten und Kopfbandzahlen ohne Inhaltsscan auch bei vorhandenen Rückgaben", async () => {
+    const { app, repos, services, anna, ada, eintrag, lesen } = await setup();
+    try {
+      const zurueck = await eintrag(anna.id, "Anlage 1");
+      const verwaist = await eintrag("ehemalige-pruefperson", "Anlage 1");
+      await services.validation.rate(zurueck, "pruefer", "warn");
+      const voll = vi.spyOn(repos.koRepo, "list");
+      const suche = vi.spyOn(repos.koRepo, "listForSearch");
+      for (const [weg, konto, erwartet] of [
+        ["returned-tasks", anna, zurueck],
+        ["author-transfers", ada, verwaist],
+      ] as const) {
+        const liste = await lesen(`/api/me/${weg}`, konto.headers);
+        const zahl = await lesen(`/api/me/${weg}/summary`, konto.headers);
+        expect(liste.statusCode, liste.body).toBe(200);
+        expect(zahl.statusCode, zahl.body).toBe(200);
+        expect(liste.json()).toEqual([expect.objectContaining({ koId: erwartet })]);
+        expect(zahl.json()).toEqual({ open: 1 });
+      }
+      expect(voll).not.toHaveBeenCalled();
+      expect(suche).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it("Kalibrierung: ohne Auslöser steht keine Übergabe an", async () => {
     const { anna, eintrag, anstehend } = await setup();
     await eintrag(anna.id, "Instandhaltung");
