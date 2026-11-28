@@ -26,16 +26,13 @@ import {
   type BrowserAuftrag,
   type BrowserAuftragEingabe,
   BrowserAusfuehrung,
-  type BrowserEntwurfsliste,
   BrowserFaehigkeitsregister,
-  type BrowserFeldwert,
   type BrowserSchrittArt,
   type BrowserSeitenadapter,
-  type SeitenAntwort,
   type SeitenFehler,
-  type SeitenLage,
   neuerBrowserAuftrag,
 } from "../../services/app/src/klara-browser-aktion";
+import { BrowserBefehlsrelais } from "../../services/app/src/klara-browser-relais";
 import {
   ANGREIFER,
   BETREFF,
@@ -95,71 +92,40 @@ interface SeitenZustand {
   loeschungen: number;
 }
 
-/** Die Brücke wie der Worker sie bauen wird: je Aufruf Seitenausführer laden, dann rufen. */
-class ChromiumSeitenadapter implements BrowserSeitenadapter {
-  readonly fassung = `aktion.js@1.0.0 sha256:${AKTION_SHA.slice(0, 12)}`;
+/** Der Testhost überträgt wie der Worker die Befehle des echten Relais in den beauftragten Tab. */
+class ChromiumSeitenadapter {
+  readonly fassung = `aktion.js@1.1.0 sha256:${AKTION_SHA.slice(0, 12)}`;
   readonly tabs = new Map<number, Seite>();
   readonly aufrufe: string[] = [];
-  /** Eine eingespeiste Störung des nächsten Klicks: Antwort fehlt VOR bzw. NACH der Wirkung. */
   stoerung: { wann: "vor" | "nach"; grund: SeitenFehler } | null = null;
 
-  private async rufe<T>(tabId: number, methode: string, arg: unknown): Promise<T | null> {
-    const s = this.tabs.get(tabId);
-    if (!s || s.isClosed()) {
-      return null;
-    }
-    await s.evaluate(AKTION);
-    return s.evaluate<T>(fn(`(a) => globalThis.KlaraBrowserAktion.${methode}(a)`), arg);
-  }
-
-  async lage(
-    tabId: number,
-    formular: string,
-    liste: BrowserEntwurfsliste | null,
-  ): Promise<SeitenLage | null> {
-    this.aufrufe.push("lage");
-    const roh = await this.rufe<Omit<SeitenLage, "tabId">>(tabId, "lage", { formular, liste });
-    return roh ? { tabId, ...roh } : null;
-  }
-
-  async fuelle(
-    tabId: number,
-    a: { formular: string; fingerabdruck: string; label: string; wert: string; erwartet?: string },
-  ): Promise<SeitenAntwort<{ wert: string }>> {
-    this.aufrufe.push("fuelle");
-    const antwort = await this.rufe<SeitenAntwort<{ wert: string }>>(tabId, "fuelle", a);
-    return antwort ?? { ok: false, grund: "verbindung" };
-  }
-
-  async klicke(
-    tabId: number,
-    a: {
-      formular: string;
-      fingerabdruck: string;
-      knopf: string;
-      werte?: readonly BrowserFeldwert[];
-    },
-  ): Promise<SeitenAntwort<null>> {
-    this.aufrufe.push(`klicke:${a.knopf}`);
-    const st = this.stoerung;
-    this.stoerung = null;
-    if (st?.wann === "vor") {
-      return { ok: false, grund: st.grund };
-    }
-    const antwort = await this.rufe<SeitenAntwort<null>>(tabId, "klicke", a);
-    if (st?.wann === "nach") {
-      return { ok: false, grund: st.grund };
-    }
-    return antwort ?? { ok: false, grund: "verbindung" };
-  }
-
-  async loesche(
-    tabId: number,
-    a: { liste: BrowserEntwurfsliste; id: string; knopf: string },
-  ): Promise<SeitenAntwort<null>> {
-    this.aufrufe.push("loesche");
-    const antwort = await this.rufe<SeitenAntwort<null>>(tabId, "loesche", a);
-    return antwort ?? { ok: false, grund: "verbindung" };
+  neuerAuftrag(): BrowserSeitenadapter {
+    const relais = new BrowserBefehlsrelais(this.fassung);
+    const senden = async <T>(antwort: Promise<T>): Promise<T> => {
+      const befehl = relais.abholen();
+      if (!befehl) throw new Error("Der Klick oder Leseauftrag ist nicht zur Abholung bereit.");
+      const { art, args, tabId } = befehl;
+      this.aufrufe.push(art === "klicke" ? `klicke:${args.knopf}` : art);
+      const stoerung = art === "klicke" ? this.stoerung : null;
+      if (art === "klicke") this.stoerung = null;
+      const seite = this.tabs.get(tabId);
+      let roh: unknown = null;
+      if (seite && !seite.isClosed() && stoerung?.wann !== "vor") {
+        await seite.evaluate(AKTION);
+        roh = await seite.evaluate(fn(`(a) => globalThis.KlaraBrowserAktion.${art}(a)`), args);
+        if (art === "lage" && typeof roh === "object" && roh !== null) roh = { ...roh, tabId };
+      }
+      relais.antworte(befehl.nr, stoerung ? { ok: false, grund: stoerung.grund } : roh);
+      return antwort;
+    };
+    return {
+      fassung: this.fassung,
+      lage: (...args) => senden(relais.lage(...args)),
+      fuelle: (...args) => senden(relais.fuelle(...args)),
+      feldZuruecksetzen: (...args) => senden(relais.feldZuruecksetzen(...args)),
+      klicke: (...args) => senden(relais.klicke(...args)),
+      loesche: (...args) => senden(relais.loesche(...args)),
+    };
   }
 
   zaehle(praefix: string): number {
@@ -236,7 +202,7 @@ type Rechte = (a: BrowserAuftrag, art: BrowserSchrittArt) => Promise<boolean>;
 
 function lauf(a: BrowserAuftrag, rechte: Rechte = async () => true): BrowserAusfuehrung {
   return new BrowserAusfuehrung(a, {
-    adapter,
+    adapter: adapter.neuerAuftrag(),
     register: REGISTER,
     rechte,
     warte: async () => {},
@@ -514,8 +480,9 @@ describe("BPA-03 · berechtigte Browseraktionen auf der synthetischen Seite (Chr
     expect(adapter.zaehle("klicke:")).toBe(0);
     // Die zweite Sicherung im Seitenausführer: ein Klick mit erwarteten Werten prüft unmittelbar
     // davor die tatsächlichen Feldwerte und klickt bei Abweichung nicht.
-    const lage = await adapter.lage(1, "Angebotsentwurf", null);
-    const direkt = await adapter.klicke(1, {
+    const direktadapter = adapter.neuerAuftrag();
+    const lage = await direktadapter.lage(1, "Angebotsentwurf", null);
+    const direkt = await direktadapter.klicke(1, {
       formular: "Angebotsentwurf",
       fingerabdruck: lage?.formular?.fingerabdruck ?? "",
       knopf: "Endgültig senden",
@@ -553,7 +520,8 @@ describe("BPA-03 · berechtigte Browseraktionen auf der synthetischen Seite (Chr
     expect(eigene(z)[0]?.empfaenger).toBe(EMPFAENGER);
     expect(JSON.stringify(ansicht)).not.toContain(ANGREIFER);
     // Der Tooltip ist kein Name: die Beschriftung bleibt „Empfänger".
-    const lage = await adapter.lage(1, "Angebotsentwurf", TESTSEITE.entwurfsliste);
+    const direktadapter = adapter.neuerAuftrag();
+    const lage = await direktadapter.lage(1, "Angebotsentwurf", TESTSEITE.entwurfsliste);
     const beschriftungen = lage?.formular?.felder.map((f) => f.label);
     expect(beschriftungen).toEqual(["Betreff", "Empfänger", "Nachricht"]);
   });
@@ -789,9 +757,31 @@ describe("BPA-03 · berechtigte Browseraktionen auf der synthetischen Seite (Chr
 
     const s2 = await oeffne(2);
     await aendere(s2, "document.getElementById('a-betreff').value = 'Alter Betreff';");
+    const unabhaengig = adapter.neuerAuftrag();
+    const vor = await unabhaengig.lage(2, "Angebotsentwurf", null);
+    expect(JSON.stringify(vor)).not.toContain("Alter Betreff");
     const nurFuellen = lauf(auftrag({ speichern: false, ziel: imTab(2) }));
     expect((await nurFuellen.ausfuehren()).erfolg).toBe(true);
+    const fremd = await unabhaengig.feldZuruecksetzen(2, {
+      formular: "Angebotsentwurf",
+      fingerabdruck: vor?.formular?.fingerabdruck ?? "",
+      label: "Betreff",
+      erwartet: BETREFF,
+    });
+    expect(fremd).toEqual({ ok: false, grund: "wert_geaendert" });
+    const alteRuecknahme = await unabhaengig.fuelle(2, {
+      formular: "Angebotsentwurf",
+      fingerabdruck: vor?.formular?.fingerabdruck ?? "",
+      label: "Betreff",
+      wert: "",
+      erwartet: BETREFF,
+    });
+    expect(alteRuecknahme).toEqual({ ok: false, grund: "nicht_ausgefuehrt" });
+    expect((await werte(s2, "angebot"))["a-betreff"]).toBe(BETREFF);
     expect((await nurFuellen.ruecknahme()).art).toBe("zurueckgenommen");
+    expect(JSON.stringify(await unabhaengig.lage(2, "Angebotsentwurf", null))).not.toContain(
+      "Alter Betreff",
+    );
     expect(await werte(s2, "angebot")).toEqual({
       "a-betreff": "Alter Betreff",
       "a-empfaenger": "",
@@ -854,8 +844,9 @@ describe("BPA-03 · berechtigte Browseraktionen auf der synthetischen Seite (Chr
       "a-nachricht": NACHRICHT,
     });
     // Auch der Seitenausführer selbst trägt mit `erwartet` nicht über einen fremden Wert ein.
-    const lage = await adapter.lage(1, "Angebotsentwurf", null);
-    const direkt = await adapter.fuelle(1, {
+    const direktadapter = adapter.neuerAuftrag();
+    const lage = await direktadapter.lage(1, "Angebotsentwurf", null);
+    const direkt = await direktadapter.fuelle(1, {
       formular: "Angebotsentwurf",
       fingerabdruck: lage?.formular?.fingerabdruck ?? "",
       label: "Empfänger",

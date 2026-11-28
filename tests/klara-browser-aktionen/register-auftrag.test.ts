@@ -68,6 +68,7 @@ function doppelgaenger() {
       klicks.push(a.knopf);
       return { ok: true, wert: null };
     },
+    feldZuruecksetzen: async () => ({ ok: false, grund: "feld_fehlt" }),
     loesche: async () => ({ ok: false, grund: "eintrag_fehlt" }),
   };
   return { adapter, klicks, werte };

@@ -1019,7 +1019,7 @@ async function bisZu(leiste: Leiste, seite: Seite, start: Antwort, art: BrowserB
   throw new Error(`Kein Befehl ${art}.`);
 }
 
-const WIRKUNGEN: readonly string[] = ["fuelle", "klicke", "loesche"];
+const WIRKUNGEN: readonly string[] = ["fuelle", "feldZuruecksetzen", "klicke", "loesche"];
 
 describe("BPA-03 · Produktweg: Einordnung für die Prüftorregister (Chat 57)", () => {
   it("Q1 · Datenfluss: kein Inhalt eines Wissensobjekts reist zur Erweiterung — Befehle tragen nur Werte aus dem Wortlaut, Namen aus dem Profil und Gelesenes derselben Seite", async () => {

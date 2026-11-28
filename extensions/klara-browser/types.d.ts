@@ -407,7 +407,7 @@ export type State = {
 /** Ein Schritt des Kerns für die Seite: genau eine Handlung von `aktion.js`. */
 export type AktionBefehl = {
   nr: number;
-  art: "lage" | "fuelle" | "klicke" | "loesche";
+  art: "lage" | "fuelle" | "feldZuruecksetzen" | "klicke" | "loesche";
   tabId: number;
   args: Record<string, unknown>;
   /** Welche Teile der Adresse das Ziel binden (Seitenprofil): Abfrageparameter, Anker. */
