@@ -190,13 +190,11 @@ async function fokusSichtbar(was: string): Promise<void> {
   expect(ring, `${was}: kein sichtbarer Fokusring`).not.toBe("none");
 }
 
-/** Leert das fokussierte Eingabefeld mit Tasten (Ende, dann Rücktaste). */
-async function feldLeeren(laenge: number): Promise<void> {
+/** Löscht die Auswahl im fokussierten Feld über die systemeigene Alles-auswählen-Taste. */
+async function feldLeeren(): Promise<void> {
   const s = seite as Seite;
-  await s.keyboard.press("End");
-  for (let i = 0; i < laenge + 2; i++) {
-    await s.keyboard.press("Backspace");
-  }
+  await s.keyboard.press("ControlOrMeta+a");
+  await s.keyboard.press("Backspace");
 }
 
 async function warteAuf(quelle: string, arg?: unknown, frist = 20_000): Promise<void> {
@@ -344,7 +342,7 @@ describe("P-ENTWUERFE-VERWALTEN · Abnahmefolge nur mit Tab/Enter im echten Chro
       await s.keyboard.type(INHALTSWORT);
       await warteAuf(`(n) => (${SEITEN_TITEL})().length === n`, 1);
       expect(await s.evaluate<string[]>(fn(SEITEN_TITEL))).toEqual([ZIEL_TITEL]);
-      await feldLeeren(INHALTSWORT.length);
+      await feldLeeren();
       await s.keyboard.type(TITELWORT);
       await warteAuf(`(n) => (${SEITEN_TITEL})().length === n`, 1);
       expect(await s.evaluate<string[]>(fn(SEITEN_TITEL))).toEqual([ZIEL_TITEL]);
@@ -358,7 +356,16 @@ describe("P-ENTWUERFE-VERWALTEN · Abnahmefolge nur mit Tab/Enter im echten Chro
 
       // ── 5 · UNGESICHERTE ÄNDERUNG — Tab bis ins Titelfeld, ans Ende, tippen.
       await tasteBis({ selektor: '[data-testid="blatt-titel"]' }, "Titelfeld des Blattes");
-      await s.keyboard.press("End");
+      await s.keyboard.press("ControlOrMeta+a");
+      await s.keyboard.press("ArrowRight");
+      expect(
+        await s.evaluate<boolean>(
+          fn(`() => {
+        const feld = document.activeElement;
+        return feld.selectionStart === feld.value.length && feld.selectionEnd === feld.value.length;
+      }`),
+        ),
+      ).toBe(true);
       const zusatz = " — GEÄNDERT";
       await s.keyboard.type(zusatz);
       await warteAuf(`(t) => (${BLATT_TITEL})() === t`, ZIEL_TITEL + zusatz);
@@ -403,7 +410,7 @@ describe("P-ENTWUERFE-VERWALTEN · Abnahmefolge nur mit Tab/Enter im echten Chro
       // ── 8 · LÖSCHEN MIT BESTÄTIGUNG — Filter mit Tasten leeren, Tab zum Löschknopf, Enter;
       // die Rückfrage steht in DIESER Zeile; Tab bis „Löschen“, Enter.
       await tasteBis({ selektor: '[data-testid="entwurfsliste-suche"]' }, "Suchfeld (Rückweg)");
-      await feldLeeren(TITELWORT.length);
+      await feldLeeren();
       await warteAuf(`(n) => (${SEITEN_TITEL})().length === n`, 1 + andereIds.length);
       await tasteBis({ selektor: `[data-loeschen="${ziel}"]` }, "Löschknopf des Zielentwurfs");
       expect(
