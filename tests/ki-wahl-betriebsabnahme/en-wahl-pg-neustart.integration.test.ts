@@ -65,8 +65,8 @@ import {
   BREIT,
   anmelden,
   browserKennung,
-  mitPfeilWaehlen,
   stelleFlaecheBereit,
+  zuElement,
 } from "../fassungsrueckholung-echter-browser/weg";
 import {
   type Browser,
@@ -442,8 +442,13 @@ describe("KI-WAHL K1 · EN-Wahl in Chromium steuert den Empfänger — und über
         EN("adm.ai.choice.anbieter", { name: anbieterUndModell(anthropicName) }),
       );
       expect(await p1.seite.evaluate<string>(fn(WAHLWERT), WAHLFELD)).toBe("auto");
-      // auto → openai → anthropic: zwei Pfeilanschläge, der Wert wird AM FELD nachgelesen.
-      await mitPfeilWaehlen(p1.seite, WAHLFELD, "Global", 2, "anthropic", tastatur);
+      // In der englischen Auswahlliste beginnen beide Anbieter mit „External“.
+      // Die Anfangstaste springt erst zu OpenAI, dann zu Anthropic, auch auf macOS.
+      tastatur.Global = await zuElement(p1.seite, WAHLFELD, "Global");
+      await p1.seite.keyboard.press("e");
+      expect(await p1.seite.evaluate<string>(fn(WAHLWERT), WAHLFELD)).toBe("openai");
+      await p1.seite.keyboard.press("e");
+      expect(await p1.seite.evaluate<string>(fn(WAHLWERT), WAHLFELD)).toBe("anthropic");
       await warte(
         p1.seite,
         SEITE_ENTHAELT,
@@ -582,6 +587,8 @@ describe("KI-WAHL K1 · EN-Wahl in Chromium steuert den Empfänger — und über
         importe: [VORLADEN],
         env: {
           KLARWERK_TEST_ANBIETERKANTE: kante.basis,
+          KLARWERK_TEST_ANTWORTZIEL: OPENAI_URL,
+          KLARWERK_TEST_PRUEFZIEL: ANTHROPIC_URL,
           OPENAI_API_KEY: OPENAI_SCHLUESSEL,
           OPENAI_MODEL: "gpt-4o-mini",
           ANTHROPIC_API_KEY: ANTHROPIC_SCHLUESSEL,
