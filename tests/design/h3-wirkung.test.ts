@@ -732,11 +732,12 @@ describe("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten Blatt", () => {
       expect(r.blattText).toBe(SATZ);
       // Blatt.tsx zeigt seinen eigenen Fehlersatz. Der genaue Grund wird am echten
       // Antwortvertrag geprüft, den das Expertenformular wörtlich anzeigen kann.
-      expect(r.antworten?.map((antwort) => antwort.status)).toEqual([500, 500]);
-      expect(r.antworten?.[1]?.body.message).toBe(
-        "Die KI hat keine Änderungen vorgeschlagen. Grund: local:w7-test (w7-test) gab den Text unverändert zurück.",
-      );
-      expect(r.antworten?.[1]?.body.text).toBeUndefined();
+      expect(r.antworten?.map((antwort) => antwort.status)).toEqual([500, 422]);
+      expect(r.antworten?.[1]?.body).toEqual({
+        error: "ASSIST_OHNE_VORSCHLAG",
+        message:
+          "Die KI hat keine Änderungen vorgeschlagen. Der Text wurde unverändert zurückgegeben. (w7-test)",
+      });
     }, 180_000);
   });
 

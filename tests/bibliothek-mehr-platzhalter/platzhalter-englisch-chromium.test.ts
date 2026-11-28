@@ -21,13 +21,13 @@
 // Wächter, der mehr behauptet zu decken, als er misst, ist schlimmer als keiner.
 //
 // GEDECKT: das Attribut `placeholder`, an den Feldern INNERHALB von `[data-bib-abschnitt]`, in den
-// FÜNF Abschnitten, die heute überhaupt eines tragen (`quellen`, `extern`, `beitrag`, `kopplung`,
-// `kommentare` — acht Felder, Tabelle unten), und zwar ENGLISCH gegen DEUTSCH.
+// sechs Abschnitten mit sichtbaren Eingabefeldern (`quellen`, `extern`, `provenienz`, `beitrag`,
+// `kommentare`, `kopplung` — zehn Felder, Tabelle unten), und zwar ENGLISCH gegen DEUTSCH.
 //
 // GEDECKT SEIT JOB 3944 — UND GENAU SO WEIT, WAS BEWIESEN IST: P4 belegt, dass die Klickwiederholung
 // in `mehrAufklappen` einen VERSCHLUCKTEN ersten Klick übersteht — ein Abfang in der Capture-Phase am
 // `document` nimmt den ersten Klick weg, und der zweite Versuch öffnet die Fläche wieder vollständig
-// (Abschnitte gezeichnet, alle acht Platzhalter da). WAS ANGENOMMEN BLEIBT: dass ein Neuzeichnen der
+// (Abschnitte gezeichnet, alle zehn Platzhalter da). WAS ANGENOMMEN BLEIBT: dass ein Neuzeichnen der
 // React-Fläche den Knopf im Betrieb je zurückstellt — die Begründung der Schleife weiter unten
 // (`MEHR_KLICK`, „ein Neuzeichnen der React-Fläche kann ihn zurückstellen") — ist damit NICHT
 // gemessen; P4 stellt den Fehlschlag künstlich her und sagt nichts darüber, ob er von selbst eintritt.
@@ -38,7 +38,7 @@
 //     aber eine eigene Sollwertmenge und eine eigene Aussage.
 //   · Jede Fläche AUSSERHALB von „Mehr" — die Suchzeile der Liste (`BibliothekListe.tsx:277`,
 //     `lib.searchLabel`) trägt einen Platzhalter und wird hier bewusst NICHT gezählt.
-//   · Die acht „Mehr"-Abschnitte OHNE Platzhalter (`konflikt`, `provenienz`, `herkunftskette`,
+//   · Die „Mehr"-Abschnitte OHNE Platzhalter (z. B. `konflikt`, `herkunftskette`,
 //     `historie`, `belege`, `schnappschuesse`, `anhaenge`, `nachbarschaft`).
 //   · Die schmalen Lagen (320/390 px) — gemessen wird an der 1620-px-Bühne der Vorrichtung.
 //   · Ein Platzhalter, der erst nach einer Serverantwort erscheint — die drei Fälle lesen EINEN
@@ -143,8 +143,8 @@ interface Platzhalterfund {
 //
 // DIE REIHENFOLGE IST DIE DES DOKUMENTS. Daraus — und nur daraus — kommt der `rang`, mit dem ein
 // Fund seiner Zeile zugeordnet wird; eine zweite Liste mit Rangzahlen gäbe es sonst zweimal zu
-// pflegen. Die Fundstellen in `MehrAbschnitte.tsx`: `quellen` :804/:809/:814, `extern` :919,
-// `beitrag` :979/:986, `kopplung` :1117, `kommentare` :1706.
+// pflegen. Den Zusatz in der Provenienz liefert `FachgebietFeld`. Im Abschnitt Kopplung steht
+// `AnlagenFeld` vor dem Eingabefeld für die einzelne Kopplung.
 interface Sollzeile {
   abschnitt: string;
   schluessel: string;
@@ -178,6 +178,12 @@ const SOLLWERTE: readonly Sollzeile[] = [
     englisch: "Search term …",
   },
   {
+    abschnitt: "provenienz",
+    schluessel: "wissensmetadaten.fachgebiet.platzhalter",
+    deutsch: "z. B. Instandhaltung, Qualität",
+    englisch: "e.g. maintenance, quality",
+  },
+  {
     abschnitt: "beitrag",
     schluessel: "ko.sourceContribution",
     deutsch: "Dein Beitrag / deine Begründung (Pflicht)",
@@ -190,16 +196,22 @@ const SOLLWERTE: readonly Sollzeile[] = [
     englisch: "Source / URL / reference (optional)",
   },
   {
-    abschnitt: "kopplung",
-    schluessel: "ko.couple.placeholder",
-    deutsch: "Anlagen-Kennung, z. B. Linie L4",
-    englisch: "Asset reference, e.g. line L4",
-  },
-  {
     abschnitt: "kommentare",
     schluessel: "ko.commentPlaceholder",
     deutsch: "Kommentar schreiben …",
     englisch: "Write a comment …",
+  },
+  {
+    abschnitt: "kopplung",
+    schluessel: "wissensmetadaten.anlage.mehrere",
+    deutsch: "Mehrere Anlagen mit ; trennen (; in einer Kennung: \\;)",
+    englisch: "Separate several pieces of equipment with ; (; inside a name: \\;)",
+  },
+  {
+    abschnitt: "kopplung",
+    schluessel: "ko.couple.placeholder",
+    deutsch: "Anlagen-Kennung, z. B. Linie L4",
+    englisch: "Asset reference, e.g. line L4",
   },
 ];
 
@@ -219,7 +231,7 @@ const SOLL_VERTEILUNG: ReadonlyMap<string, number> = SOLLWERTE.reduce((m, s) => 
  * Anlagenkennung, ist über die ÜBERSETZUNG nichts gesagt — dann ist der Fall nicht anwendbar, und
  * er sagt das (§9: nie still bestehen, wenn nicht gemessen wurde).
  */
-const KOPPLUNG = "kopplung";
+const KOPPLUNGS_PLATZHALTER = "ko.couple.placeholder";
 
 // ------------------------------------------------------------------------------------------------
 // DIE GEMESSENE LAGE — die Grundlage jeder Meldung dieses Falls.
@@ -591,9 +603,9 @@ function pruefen(
         `${kopf}: erwartet „${soll[erwartet]}“, gefunden „${f.text}“ (der ${andere === "deutsch" ? "deutsche" : "englische"} Platzhalter steht unübersetzt da)`,
       ];
     }
-    if (soll.abschnitt === KOPPLUNG) {
+    if (soll.schluessel === KOPPLUNGS_PLATZHALTER) {
       return [
-        `${kopf}: NICHT ANWENDBAR — erwartet „${soll[erwartet]}“, gefunden „${f.text}“; das ist weder die deutsche noch die englische Fassung, also steht dort die Anlagenkennung aus ko.asset (MehrAbschnitte.tsx:1117) und über die Übersetzung ist nichts gesagt`,
+        `${kopf}: NICHT ANWENDBAR — erwartet „${soll[erwartet]}“, gefunden „${f.text}“; das ist weder die deutsche noch die englische Fassung, also steht dort die Anlagenkennung aus ko.asset und über die Übersetzung ist nichts gesagt`,
       ];
     }
     return [`${kopf}: erwartet „${soll[erwartet]}“, gefunden „${f.text}“`];
@@ -684,7 +696,7 @@ describe("JOB 3815 · die Platzhalter unter „Mehr“ — der zweite Leser (Att
     await stand?.app.close();
   }, 60_000);
 
-  it("P1 · auf Englisch ist jeder der acht Platzhalter unter „Mehr“ englisch", () => {
+  it("P1 · auf Englisch ist jeder der zehn Platzhalter unter „Mehr“ englisch", () => {
     expect(fehler, aufbaumeldung()).toBeNull();
     const funde = en as Platzhalterfund[];
     // ERFOLGREICH LEER IST NICHT ERFOLGREICH (§9): ohne Funde wäre jede Aussage über die Sprache
@@ -700,7 +712,7 @@ describe("JOB 3815 · die Platzhalter unter „Mehr“ — der zweite Leser (Att
     expect(stand?.seitenfehler ?? ["nicht gemessen"]).toEqual([]);
   }, 60_000);
 
-  it("P2 · auf Deutsch ist jeder der acht Platzhalter deutsch — die Gegenrichtung, damit P1 nicht ins Leere greift", () => {
+  it("P2 · auf Deutsch ist jeder der zehn Platzhalter deutsch — die Gegenrichtung, damit P1 nicht ins Leere greift", () => {
     expect(fehler, aufbaumeldung()).toBeNull();
     const funde = de as Platzhalterfund[];
     expect(
@@ -714,14 +726,14 @@ describe("JOB 3815 · die Platzhalter unter „Mehr“ — der zweite Leser (Att
     expect(stand?.seitenfehler ?? ["nicht gemessen"]).toEqual([]);
   }, 60_000);
 
-  it("P3 · in BEIDEN Sprachen sind es genau acht Platzhalter, in genau dieser Verteilung", () => {
+  it("P3 · in BEIDEN Sprachen sind es genau zehn Platzhalter, in genau dieser Verteilung", () => {
     expect(fehler, aufbaumeldung()).toBeNull();
     const soll = JSON.stringify(Object.fromEntries([...SOLL_VERTEILUNG]));
     for (const [sprache, funde] of [
       ["de", de as Platzhalterfund[]],
       ["en", en as Platzhalterfund[]],
     ] as const) {
-      // KOMMT EIN NEUNTES FELD DAZU, wird dieser Fall rot und verlangt eine Zeile in SOLLWERTE —
+      // KOMMT EIN WEITERES FELD DAZU, wird dieser Fall rot und verlangt eine Zeile in SOLLWERTE —
       // das ist sein Zweck. Fällt eines weg, ebenso.
       expect(
         `${sprache}: ${funde?.length ?? 0} Platzhalter ${verteilung(funde ?? [])}`,
@@ -730,15 +742,16 @@ describe("JOB 3815 · die Platzhalter unter „Mehr“ — der zweite Leser (Att
     }
     // `kopplung` misst nur am Eintrag OHNE `ko.asset`. Steht dort die Anlagenkennung, sagt der Fall
     // das ausdrücklich, statt still zu bestehen (§9, Lieferung 5).
-    const kopplungSoll = SOLLWERTE.find((s) => s.abschnitt === KOPPLUNG) as Sollzeile;
+    const index = SOLLWERTE.findIndex((s) => s.schluessel === KOPPLUNGS_PLATZHALTER);
+    const kopplungSoll = SOLLWERTE[index] as Sollzeile;
     for (const [sprache, funde, spalte] of [
       ["de", de as Platzhalterfund[], "deutsch"],
       ["en", en as Platzhalterfund[], "englisch"],
     ] as const) {
-      const f = (funde ?? []).find((x) => x.abschnitt === KOPPLUNG) ?? null;
+      const f = fundZu(funde ?? [], index);
       expect(
         f === null ? "(kein Feld)" : f.text,
-        `„kopplung“ trägt in ${sprache} weder die deutsche noch die englische Fassung — dort steht die Anlagenkennung aus ko.asset (MehrAbschnitte.tsx:1117), dieser Fall ist an dieser Stelle NICHT ANWENDBAR und misst die Übersetzung nicht`,
+        `„kopplung“ trägt in ${sprache} weder die deutsche noch die englische Fassung — dort steht die Anlagenkennung aus ko.asset, dieser Fall ist an dieser Stelle NICHT ANWENDBAR und misst die Übersetzung nicht`,
       ).toBe(kopplungSoll[spalte]);
     }
     expect(stand?.seitenfehler ?? ["nicht gemessen"]).toEqual([]);
@@ -765,7 +778,7 @@ describe("JOB 3815 · die Platzhalter unter „Mehr“ — der zweite Leser (Att
       `die Klickwiederholung wurde nicht gebraucht — mit einem einzigen Versuch ist die Zeile in der Schleife ungemessen geblieben: ${probezeile()}`,
     ).toBeGreaterThanOrEqual(2);
     // (iv) DANACH IST DIE FLÄCHE WIRKLICH OFFEN. Ein zweiter Klick, der nur den Rahmen zeichnet,
-    // genügt nicht: es müssen alle acht Platzhalter der Sollwerttabelle wieder dastehen.
+    // genügt nicht: es müssen alle zehn Platzhalter der Sollwerttabelle wieder dastehen.
     expect(
       p?.abschnitteNachher ?? 0,
       `nach dem zweiten Klick stand kein einziger Abschnitt da — die Schleife hat die Fläche nicht geöffnet: ${probezeile()}`,
