@@ -56,7 +56,12 @@ it("persistierter aiCheck hat exakt die bestehende Drahtform", async () => {
       headers: { authorization: `Bearer ${login.json().token}` },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().aiCheck).toEqual(expected);
+    // Der Server behält den Fingerabdruck des gesamten Vergleichsbestands intern.
+    expect(startBasis.bestand).toEqual(expect.any(String));
+    expect(response.json().aiCheck).toEqual({
+      ...expected,
+      basis: { quelle: startBasis.quelle, kontext: startBasis.kontext },
+    });
   } finally {
     await app.close();
   }

@@ -1091,6 +1091,11 @@ export const SUCH_ZUORDNUNGEN: readonly SuchZuordnung[] = [
       "tests/app/ask-caption-retrieval.test.ts (WP-RETEST7 R5) — Frage und Bildfußnote zur Verschraubung der Grundplatte",
   },
   {
+    begriffe: ["nachgestellt", "nachstellen"],
+    quelle:
+      "tests/ka5/markierung-fundstelle-bleibt.test.ts (KA5-R12) — Frage und Bildfußnote zur Spannrolle der Portalanlage",
+  },
+  {
     begriffe: ["gespannt", "spannen"],
     quelle:
       "tests/structure/evidence-attachments-to-use-e2e.test.ts (SCRUM-350) — Frage zum gespannten Riemen und geprüfte Anleitung zum Spannen",

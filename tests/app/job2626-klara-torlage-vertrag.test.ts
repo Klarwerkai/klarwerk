@@ -65,6 +65,7 @@ async function koAnlegen(extra: Record<string, unknown> = {}): Promise<string> {
     type: "best_practice",
     category: "Wartung",
     author: autorId,
+    confidentiality: "intern",
     ...extra,
   } as never);
   return (ko as { id: string }).id;
@@ -88,10 +89,9 @@ describe("JOB 2626 · V — der Vertrag der Torlage", () => {
     const eintrag = out.verschlossen?.find((h) => h.id === id);
     expect(eintrag, "das getroffene Dokument fehlt in der Torlage").toBeDefined();
     expect(eintrag?.title).toBe(TITEL);
-    // Alle drei Tore sind zu — eines zu nennen und zwei zu verschweigen, schickt in die
-    // falsche Richtung (§2 des Auftrags).
+    // Der intern eingestufte Kandidat ist sichtbar. Freigabe und Volltext fehlen.
     expect(eintrag?.freigabeFehlt, "nicht validiert -> Freigabe fehlt").toBe(true);
-    expect(eintrag?.stufeFehlt, "keine Stufe persistiert -> Stufe fehlt").toBe(true);
+    expect(eintrag?.stufeFehlt, "intern ist als Stufe gesetzt").toBe(false);
     expect(eintrag?.volltextFehlt, "kein bodyText -> Volltext fehlt").toBe(true);
   });
 
@@ -106,21 +106,26 @@ describe("JOB 2626 · V — der Vertrag der Torlage", () => {
     expect("verschlossen" in out).toBe(false);
   });
 
-  it("V4 · Vertrauliches erscheint NIE — dieselbe Linie, die die Antwort schuetzt", async () => {
-    const id = await koAnlegen({ confidentiality: "vertraulich" });
-    const out = await services.ask.ask(FRAGE, autorId, "de", {
-      verschlossenSichtbarFuer: ALLE_SICHTBAR,
-    });
-    expect(out.result.answered).toBe(false);
-    // KALIBRIERUNG: die Stufe ist wirklich persistiert — sonst maesse dieser Fall nichts.
-    const ko = await services.ko.get(id);
-    expect((ko as { confidentiality?: string } | undefined)?.confidentiality).toBe("vertraulich");
-    expect(out.verschlossen?.some((h) => h.id === id) ?? false).toBe(false);
-    expect(
-      JSON.stringify(out.verschlossen ?? []),
-      "auch der Titel darf nicht reisen",
-    ).not.toContain(TITEL);
-  });
+  it.each(["vertraulich", undefined])(
+    "V4 · Schutzstufe %s: weder Kennung noch Titel offenlegen",
+    async (confidentiality) => {
+      const id = await koAnlegen({ confidentiality });
+      const out = await services.ask.ask(FRAGE, autorId, "de", {
+        verschlossenSichtbarFuer: ALLE_SICHTBAR,
+      });
+      expect(out.result.answered).toBe(false);
+      // KALIBRIERUNG: die Stufe ist wirklich persistiert — sonst maesse dieser Fall nichts.
+      const ko = await services.ko.get(id);
+      expect((ko as { confidentiality?: string } | undefined)?.confidentiality).toBe(
+        confidentiality,
+      );
+      expect(out.verschlossen?.some((h) => h.id === id) ?? false).toBe(false);
+      expect(
+        JSON.stringify(out.verschlossen ?? []),
+        "auch der Titel darf nicht reisen",
+      ).not.toContain(TITEL);
+    },
+  );
 
   it("V5 · der Betrachterfilter traegt: verneint er das Objekt, wird es nicht gemeldet", async () => {
     const id = await koAnlegen();

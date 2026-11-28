@@ -2412,10 +2412,10 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#13": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
-  // Auch hier trägt der VORSPANN die Freigabe (`baueDienste` für alle vier Fälle) — also
-  // vollzählig, sonst hinge jeder der vier allein am Dateiboden.
+  // Auch hier trägt der VORSPANN die Freigabe (`baueDienste` für alle sechs Fälle) — also
+  // vollzählig, sonst hinge jeder einzelne allein am Dateiboden.
   "tests/ki-assist-leer/assist-route-ehrliche-meldung.test.ts": {
-    gesamtboden: 11,
+    gesamtboden: 17,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 2, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
@@ -2423,6 +2423,8 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#2": { boden: 2, freigaben: [] },
       "#3": { boden: 1, freigaben: [] },
       "#4": { boden: 3, freigaben: [] },
+      "#5": { boden: 3, freigaben: [] },
+      "#6": { boden: 3, freigaben: [] },
     },
   },
   "tests/ki-assist-leer/assist-unveraendert-und-fragment.test.ts": {

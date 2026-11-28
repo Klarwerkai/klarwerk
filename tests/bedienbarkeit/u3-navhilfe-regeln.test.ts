@@ -32,7 +32,7 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 1: genau ein Kapitel auf der Rout
     // JOB 3741 (SEITENHILFE-LUECKEN): 8 → 18. Zehn Menüpunkte haben ihr Kapitel bekommen.
     // JOB 4309: 18 → 19. Der neue Punkt „Gesamtanweisungen" kommt MIT seinem Kapitel — ein
     // Menüpunkt ohne Erklärsatz hätte die Lücke wieder aufgerissen, die JOB 3741 geschlossen hat.
-    expect(treffer.length, "kein einziger Menüpunkt mit Kapitel — die Fläche fehlt").toBe(19);
+    expect(treffer.length, "kein einziger Menüpunkt mit Kapitel — die Fläche fehlt").toBe(21);
     for (const item of treffer) {
       const kapitel = HELP_TOPICS.find((t) => t.to === item.path);
       expect(navHilfeFor(item.path), `falsches Kapitel an ${item.path}`).toEqual({
@@ -97,7 +97,7 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 4: die eine ausgeschriebene Ausna
 // nicht dass sie „ungefähr passt". Ein Punkt, der in keinen Topf fällt, wäre ein stiller Rest, und
 // genau aus einem stillen Rest entsteht die nächste falsche Zahl.
 describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () => {
-  it("22 gesamt = 19 mit Hinweis + 2 ohne Kapitel + 0 mehrdeutig + 1 begründete Ausnahme", () => {
+  it("24 gesamt = 21 mit Hinweis + 2 ohne Kapitel + 0 mehrdeutig + 1 begründete Ausnahme", () => {
     const kapitelZu = (pfad: string): number =>
       HELP_TOPICS.filter((topic) => topic.to === pfad).length;
 
@@ -119,8 +119,11 @@ describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () 
     // JOB 4309: 21 → 22 (der Menüpunkt „Gesamtanweisungen"), und er fällt in den Topf „mit
     // Hinweis" (18 → 19), weil sein Hilfekapitel im selben Zug entstanden ist. Die Töpfe „ohne
     // Kapitel", „mehrdeutig" und die eine Ausnahme bleiben unberührt; die Summe geht ohne Rest auf.
-    expect(ALL_ITEMS.length, "gesamt").toBe(22);
-    expect(mitHinweis.length, "mit Hinweis").toBe(19);
+    expect(mitHinweis.map((item) => item.path)).toEqual(
+      expect.arrayContaining(["/teamassistenten", "/teamworkflows"]),
+    );
+    expect(ALL_ITEMS.length, "gesamt").toBe(24);
+    expect(mitHinweis.length, "mit Hinweis").toBe(21);
     expect(ohneKapitel.length, "ohne Kapitel").toBe(2);
     expect(mehrdeutig.length, "mehrdeutig").toBe(0);
     expect(

@@ -40,6 +40,7 @@ const QUELLE = {
   type: "best_practice" as const,
   category: "Technik",
   author: "anna",
+  confidentiality: "intern" as const,
   title: "Ventil F3",
   statement: "Die Temperatur am Ventil F3 liegt bei 80 Grad.",
 };

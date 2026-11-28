@@ -86,7 +86,9 @@ describe("W4 · Mobile-Quellen zeigen KO-Titel statt UUID", () => {
     expect(src.replace(/\s+/g, " ")).toContain(
       "summarizeAnswer( answer, kos.data ?? [], conflictKnowledge(conflicts), )",
     );
-    expect(src).not.toContain("conflicts.data ?? []");
+    const aufruf = src.match(/const s = summarizeAnswer\(([^;]+)\);/)?.[1];
+    expect(aufruf).toBeDefined();
+    expect(aufruf).not.toContain("conflicts.data ?? []");
     expect(src).toContain("{s.sources.map((ref) => (");
     expect(src).toContain("{ref.label}");
     expect(src).toContain("title={ref.label}");

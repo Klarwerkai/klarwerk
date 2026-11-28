@@ -51,7 +51,7 @@ async function aufbau() {
   });
   expect(angelegt.statusCode, angelegt.body).toBe(201);
   const experte = await login("experte@r0212.test");
-  const anlegen = async (title: string, confidentiality?: "vertraulich") =>
+  const anlegen = async (title: string, confidentiality: "intern" | "vertraulich" = "intern") =>
     (
       await services.ko.create({
         title,
@@ -59,7 +59,7 @@ async function aufbau() {
         type: "best_practice",
         category: "Anlage 1",
         author: "u-autor",
-        ...(confidentiality ? { confidentiality } : {}),
+        confidentiality,
       })
     ).id;
   const detail = async (wer: Auth, id: string): Promise<Antwort> => {

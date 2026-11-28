@@ -93,6 +93,7 @@ describe("JOB 3276 H · über die echte Route kommt ein Vorschlag oder eine Meld
     const { status, koerper } = await assist(aufbau);
 
     expect(status).toBe(503);
+    expect(koerper.error).toBe("ASSIST_OHNE_VORSCHLAG");
     expect(JSON.stringify(koerper)).not.toContain("notirt und die anzahl");
   });
 

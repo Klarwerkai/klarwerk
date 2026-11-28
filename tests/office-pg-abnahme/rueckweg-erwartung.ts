@@ -154,6 +154,7 @@ export function bestandsObjekt(id: string, bodyHtml: string | null): KnowledgeOb
     version: 1,
     originalAuthor: "admin-1",
     author: "admin-1",
+    confidentiality: "intern",
     neededValidations: 1,
     assignments: [],
     asset: null,

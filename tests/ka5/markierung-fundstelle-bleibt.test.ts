@@ -42,8 +42,10 @@ async function bestandMitFliesstextUndFussnote() {
     type: "best_practice",
     category: "Wartung",
     author: "anna",
+    confidentiality: "intern",
     bodyHtml: `<p>Die Spannrolle der Portalanlage wird halbjährlich nachgestellt.</p>${FIGURE("Ansicht der Ölwannenschraube von unten")}`,
   });
+  await services.validation.adminValidate(ko.id, "pruefer");
   return { services, ko };
 }
 
@@ -85,9 +87,14 @@ describe("KA5 · die Markierung verschiebt keine Fundstelle", () => {
       type: "best_practice",
       category: "Wartung",
       author: "anna",
+      confidentiality: "intern",
       bodyHtml: FIGURE("Die Spannrolle der Portalanlage halbjährlich nachstellen"),
     });
-    const { result } = await services.ask.ask(FRAGE, "pedi", "de", { selection: PASSAGE });
+    await services.validation.adminValidate(ko.id, "pruefer");
+    const { result } = await services.ask.ask(FRAGE, "pedi", "de", {
+      validatedOnly: true,
+      selection: PASSAGE,
+    });
     expect(result.sources).toEqual([ko.id]);
     expect(result.captionSources).toEqual([ko.id]);
   });
