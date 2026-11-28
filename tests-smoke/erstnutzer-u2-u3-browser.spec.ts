@@ -19,7 +19,7 @@
 //
 // Die erwarteten Texte stehen hier wörtlich (DE ist die Standardsprache des Smoke-Browsers). Die
 // Quelle ist `apps/web/src/i18n.ts`: `lib.searchLabel`, `lib.liste.leerSuche`, `lib.liste.erfassen`,
-// `capture.draftScope.noteAdmin`, `capture.draftScope.toLibrary`, `nav.tasks`, `help.tasks.*`.
+// `capture.draftScope.note`, `capture.draftScope.toLibrary`, `nav.tasks`, `help.tasks.*`.
 // Die Smoke-Sitzung ist der Admin aus der Ersteinrichtung.
 //
 // BENANNTE GRENZE: Die Entwurfssuche im Arbeitsraum von `/erfassen` („Entwürfe anzeigen“) misst
@@ -87,12 +87,11 @@ test("U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt i
     await page.goto("/entwuerfe");
     await expect(page.getByTestId("page-entwuerfe")).toBeVisible({ timeout: 15_000 });
 
-    // Die Entwurfswelt sagt, dass sie KEIN Bibliothekswissen enthält (Admin-Satz, weil der Admin
-    // alle Entwürfe sieht).
+    // Auch das Administratorkonto sieht hier nur seine eigenen Entwürfe.
     const suchraum = page.getByTestId("entwuerfe-suchraum");
     await expect(suchraum).toBeVisible({ timeout: 15_000 });
     await expect(suchraum).toContainText(
-      "Diese Suche durchsucht nur gespeicherte Entwürfe (Admin-Ansicht: alle) — kein Wissen aus der Bibliothek.",
+      "Diese Suche durchsucht nur deine gespeicherten Entwürfe — kein Wissen aus der Bibliothek.",
     );
 
     // Der benannte Weg in die andere Suchwelt: per Tastatur erreichbar, landet am Bibliotheksfeld.

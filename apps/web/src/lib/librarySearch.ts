@@ -150,7 +150,8 @@ export function scoreKo(
     score += tag.score;
     matched.add("tag");
   }
-  const category = hitField(ko.category, phrase, tokens, 2, 2);
+  // Ältere Listeneinträge können ohne Kategorie gespeichert sein.
+  const category = hitField(ko.category ?? "", phrase, tokens, 2, 2);
   if (category.matched) {
     score += category.score;
     matched.add("category");

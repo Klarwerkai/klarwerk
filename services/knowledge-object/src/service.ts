@@ -563,7 +563,7 @@ export interface CreateKoInput {
   title: string;
   statement: string;
   type: KnowledgeType;
-  category: string;
+  category?: string;
   // R-0431 (K2): das Fachgebiet, unabhängig von der Kategorie (Begründung am Modell, types.ts).
   // Leer oder fehlend = kein Fachgebiet angegeben; es wird nichts abgeleitet.
   domain?: string | null;
@@ -2699,7 +2699,7 @@ export class KoService {
       conditions: input.conditions ?? [],
       measures: input.measures ?? [],
       type: input.type,
-      category: input.category,
+      category: input.category ?? "",
       // R-0431 (K2): nur speichern, wenn jemand ein Fachgebiet mitbringt — kein Leerwert, keine
       // Ableitung aus der Kategorie.
       ...(domain ? { domain } : {}),
