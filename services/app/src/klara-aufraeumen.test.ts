@@ -178,8 +178,10 @@ describe("Bens B13 · `buildApp` reicht den Lauf seiner Dienstinstanz heraus —
 describe("Bens B13 · `server.ts` verdrahtet den Lauf", () => {
   it("buildApp bekommt `klaraAufraeumen`, und der Lauf geht an `starteKlaraAufraeumen`", () => {
     const quelle = readFileSync(new URL("./server.ts", import.meta.url), "utf8");
-    expect(quelle).toMatch(/buildApp\(services, \{[^}]*klaraAufraeumen: \(lauf\) => \{/);
-    expect(quelle).toMatch(/klaraAufraeumLauf = lauf;/);
-    expect(quelle).toMatch(/starteKlaraAufraeumen\(\{\s*lauf: klaraAufraeumLauf,/);
+    const optionen = /buildApp\(services, \{([\s\S]*?)^\s*\}\);/m.exec(quelle)?.[1];
+    expect(optionen).toMatch(/klaraAufraeumen: \(lauf\) => \{\s*klaraAufraeumLauf = lauf;/);
+    expect(quelle).toMatch(
+      /starteKlaraAufraeumen\(\{\s*lauf: lifecycle\.lauf\(klaraAufraeumLauf\),/,
+    );
   });
 });

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { schemas } from "./db";
 import {
   IMPORT_RUN_SOURCE_SYNC_SCHEMA,
   InMemoryQuellabgleichRepo,
@@ -70,9 +71,7 @@ describe("R-0162 · Quellabgleichsablage", () => {
       /CREATE TABLE IF NOT EXISTS import_run_source_sync/,
     );
     expect(IMPORT_RUN_SOURCE_SYNC_SCHEMA).not.toMatch(/DROP|DELETE|UPDATE|TRUNCATE|REFERENCES/i);
-    expect(readFileSync("services/app/src/db.ts", "utf8")).toContain(
-      "  IMPORT_RUN_SOURCE_SYNC_SCHEMA,\n];",
-    );
+    expect(schemas.filter((ddl) => ddl === IMPORT_RUN_SOURCE_SYNC_SCHEMA)).toHaveLength(1);
     expect(readFileSync("services/app/src/migrationsbeleg.ts", "utf8")).toContain(
       '{ stufe: "IMPORT_RUN_SOURCE_SYNC_SCHEMA", risiko: "ADDITIV" }',
     );
