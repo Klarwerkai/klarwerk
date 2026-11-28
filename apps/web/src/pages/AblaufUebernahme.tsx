@@ -28,12 +28,12 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { Ablauf, Confidentiality, DraftPayload, KnowledgeType } from "../api/types";
 import { useSession } from "../app/AuthContext";
-import { useNavGuard, useUnloadGuard } from "../app/NavGuardContext";
+import { GuardedLink, useNavGuard, useUnloadGuard } from "../app/NavGuardContext";
 import { KNOWLEDGE_TYPES } from "../components/trust/types";
 import { schwaerzeBild } from "../lib/ablaufBild";
 import {
@@ -785,9 +785,12 @@ export function AblaufUebernahme(): JSX.Element {
           {eingereicht ? (
             <output data-testid="ablauf-eingereicht" className="block text-[12.5px]">
               {t("ablauf.eingereicht")}{" "}
-              <Link to={`/wissen/${eingereicht}`} className="font-semibold underline">
+              {/* Gesamtcheck R-1329 (Nacharbeit 63): über die Wache, nicht roh. Die Seite bleibt
+                  nach dem Einreichen bearbeitbar (`aendern` setzt `dirty` wieder) — ein roher Link
+                  hätte eine danach getippte Eingabe ohne Rückfrage verworfen. */}
+              <GuardedLink to={`/wissen/${eingereicht}`} className="font-semibold underline">
                 {t("ablauf.zumObjekt")}
-              </Link>
+              </GuardedLink>
             </output>
           ) : null}
 

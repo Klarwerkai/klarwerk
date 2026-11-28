@@ -19,6 +19,7 @@ import type { KnowledgeClass } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
 // produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+import { deriveAiBillable } from "../../lib/aiAvailability";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import { useKurzeAntworten } from "../../lib/gedaechtnis";
 import { internerPfad } from "../../lib/internerPfad";
@@ -28,6 +29,7 @@ import { gespeicherteFassungHref, leserHref } from "../../lib/objektbezug";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
+import { AiCostHint } from "../AiCostHint";
 import { AnswerMarkdown } from "../AnswerMarkdown";
 import { KiArbeitsweg } from "./KiArbeitsweg";
 import { KlaraBrowserAuftraege } from "./KlaraBrowserAuftraege";
@@ -58,6 +60,7 @@ export interface KiLage {
   ohneModell: boolean;
   /** Der Status ist nicht abrufbar. */
   unbekannt: boolean;
+  kostenpflichtig?: boolean;
   extern: ExternStand | null;
 }
 
@@ -70,6 +73,7 @@ export function useKlaraKiLage(): KiLage {
     abgeschaltet,
     ohneModell: !abgeschaltet && !antwort.isLoading && !antwort.statusUnknown && !antwort.available,
     unbekannt: antwort.statusUnknown,
+    kostenpflichtig: !abgeschaltet && deriveAiBillable(status.data, "answer"),
     extern: externStand(status.data),
   };
 }
@@ -540,14 +544,17 @@ export function KlaraEchtGespraech({
               </span>
             </p>
             {g?.einwilligungAm && !ki.abgeschaltet && e.laeuftSeit === null ? (
-              <button
-                type="button"
-                data-testid="klara-schritt-nochmal"
-                onClick={() => onErneutFragen(schritt.text, schritt.objektbezug)}
-                className={`${KNOPF_KI} mt-1`}
-              >
-                {t("klaragespraech.schritt.nochmal")}
-              </button>
+              <>
+                <button
+                  type="button"
+                  data-testid="klara-schritt-nochmal"
+                  onClick={() => onErneutFragen(schritt.text, schritt.objektbezug)}
+                  className={`${KNOPF_KI} mt-1`}
+                >
+                  {t("klaragespraech.schritt.nochmal")}
+                </button>
+                <AiCostHint billable={ki.kostenpflichtig} className="ml-2" />
+              </>
             ) : null}
           </div>
         ) : null}
@@ -678,14 +685,17 @@ export function KlaraEchtGespraech({
               g.einwilligungAm &&
               !ki.abgeschaltet &&
               e.laeuftSeit === null ? (
-                <button
-                  type="button"
-                  data-testid="klara-schritt-nochmal"
-                  onClick={() => onErneutFragen(schritt.text, schritt.objektbezug)}
-                  className={`${KNOPF_KI} mt-1`}
-                >
-                  {t("klaragespraech.schritt.nochmal")}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    data-testid="klara-schritt-nochmal"
+                    onClick={() => onErneutFragen(schritt.text, schritt.objektbezug)}
+                    className={`${KNOPF_KI} mt-1`}
+                  >
+                    {t("klaragespraech.schritt.nochmal")}
+                  </button>
+                  <AiCostHint billable={ki.kostenpflichtig} className="ml-2" />
+                </>
               ) : null}
             </div>
           ) : null}

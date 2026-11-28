@@ -166,6 +166,10 @@ describe("Wissenskreislauf · Frage bis Rückmeldung mit getrennten Rollen", () 
       type: "best_practice",
       category: "Instandhaltung",
       author: b.fachmann.id,
+      // Gesamtcheck R-1329 (Entscheidung 16): ohne Stufe wäre der Eintrag „ungeklärt" (Rang 1),
+      // und die Erfolgsmeldung an Fragende ohne Freigaberang bliebe zu Recht aus. Gemeint ist ein
+      // offener Eintrag.
+      confidentiality: "intern",
     });
     const verknuepft = await post(app, b.fachmann, `/api/gaps/${gapId}/entwurf`, { koId: ko.id });
     expect(verknuepft.statusCode, verknuepft.body).toBe(200);

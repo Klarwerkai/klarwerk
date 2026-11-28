@@ -63,7 +63,10 @@ async function koMitThema(
     category: "Betrieb",
     author: over.author ?? buehne.konto.controller.id,
     tags: [thema],
-    ...(over.confidentiality ? { confidentiality: over.confidentiality } : {}),
+    // Gesamtcheck R-1329 (Entscheidung 16): ohne Stufe wäre der Eintrag „ungeklärt" (Rang 1) und
+    // für den Experten unsichtbar — L3 meint mit dem Eintrag ohne Angabe das OFFENE Gegenstück.
+    // Dieselbe Regel wie `neuesKo` in der Bühne; vertrauliche Fälle nennen ihre Stufe selbst.
+    confidentiality: over.confidentiality ?? "intern",
   });
   return ko.id;
 }

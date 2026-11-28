@@ -39,6 +39,7 @@ import { KALENDER_PFAD } from "../api/eigenerKalender";
 import type { KlaraObjektbezug } from "../api/klaraGespraech";
 import { useSession } from "../app/AuthContext";
 import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext";
+import { AiCostHint } from "../components/AiCostHint";
 import { SprachSchalter } from "../components/SprachSchalter";
 import { MeineFunktionen } from "../components/funktionen/MeineFunktionen";
 import { BegleiterSuche } from "../components/klara-begleitung/BegleiterSuche";
@@ -2462,6 +2463,7 @@ function BegleiterInhalt(): JSX.Element {
                 {t("begleiter.eingabe.senden")}
               </button>
             </div>
+            <AiCostHint billable={ki.kostenpflichtig} />
           </form>
         </>
       )}

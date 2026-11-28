@@ -24,6 +24,7 @@ import {
   GEDAECHTNIS_GEMERKT,
   GEDAECHTNIS_VERGESSEN,
 } from "../../services/app/src/routes/gedaechtnis-routes";
+import { type AnswerEvidenceSnapshot, hashAnswerSnapshot } from "../../services/ask";
 
 type App = ReturnType<typeof buildApp>;
 
@@ -166,6 +167,47 @@ describe("G1 · Fragen, Antworten und Vorlieben als eigenes Gedächtnis", () => 
 describe("G2 · Herkunft „antwort“ nur mit einer eigenen Antwort", () => {
   it("übernimmt Kennung und Zeitpunkt der eigenen Antwort", async () => {
     await eigeneAntwort(erik.id, "ans-erik-1");
+    const quelle = await services.ko.create({
+      title: "Prüfdruck Leitung 7",
+      statement: "1,5-facher Betriebsdruck.",
+      type: "best_practice",
+      category: "Wartung",
+      author: erik.id,
+      confidentiality: "intern",
+    });
+    const snapshot: AnswerEvidenceSnapshot = {
+      answerId: "ans-erik-1",
+      snapshotRevision: 1,
+      supersedesSnapshotRevision: null,
+      schemaVersion: 1,
+      capturedAt: "2026-10-07T09:30:00.000Z",
+      citedSources: [quelle.id],
+      evidence: [
+        {
+          knowledgeObjectId: quelle.id,
+          knowledgeObjectVersion: quelle.version,
+          evidenceRole: "carrying",
+          sourceRecordId: null,
+          sourceRecordIdReason: "no_source_anchor",
+          locator: null,
+          locatorReason: "no_source_anchor",
+          validationReferenceAbsenceReason: "NOT_AVAILABLE_AT_EXECUTION",
+        },
+      ],
+      resolutionId: null,
+      resolutionIdReason: "w1_not_on_answer_path",
+      validationDecisionRef: null,
+      validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
+      status: "INCOMPLETE",
+      integrityHash: "",
+      generationMode: "deterministic",
+    };
+    expect(
+      await services.answerSnapshots.appendSnapshot({
+        ...snapshot,
+        integrityHash: hashAnswerSnapshot(snapshot),
+      }),
+    ).toBe(true);
     const e = await merke(erik.token, {
       art: "frage_antwort",
       inhalt: "Prüfdruck Leitung 7?",
@@ -177,6 +219,18 @@ describe("G2 · Herkunft „antwort“ nur mit einer eigenen Antwort", () => {
       antwortId: "ans-erik-1",
       antwortAm: "2026-10-07T09:30:00.000Z",
     });
+  });
+
+  it("blendet die Antwortkopie und ihre Kennung ohne lesbaren Quellenbeleg aus", async () => {
+    await eigeneAntwort(erik.id, "ohne-beleg");
+    const e = await merke(erik.token, {
+      art: "frage_antwort",
+      inhalt: "Prüfdruck?",
+      antwort: "1,5-fach.",
+      antwortId: "ohne-beleg",
+    });
+    expect(e.antwort).toBeNull();
+    expect(e.herkunft).toEqual({ art: "antwort", antwortId: null, antwortAm: null });
   });
 
   it("eine fremde und eine unbekannte Antwortkennung antworten gleich — 404, nichts angelegt", async () => {
@@ -277,6 +331,8 @@ describe("G5 · Tür, Haltbarkeit und Aufräumlauf", () => {
       "utf8",
     );
     expect(server).toMatch(/new GedaechtnisDienst\(\{ repo: services\.gedaechtnis \}\)/);
-    expect(server).toMatch(/runSweep: \(\) => gedaechtnis\.raeumeAbgelaufeneAuf\(\)/);
+    expect(server).toMatch(
+      /runSweep: lifecycle\.lauf\(\(\) => gedaechtnis\.raeumeAbgelaufeneAuf\(\)\)/,
+    );
   });
 });

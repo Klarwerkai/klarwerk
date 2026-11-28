@@ -2,7 +2,9 @@ import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
+  EXTERNAL_SEARCH_MELDUNG,
   type ExternalKnowledgePolicyRepo,
+  ExternalSearchFailure,
   type ExternalSearchService,
   externalSearchAllowed,
   normalizeExternalKnowledgeStage,
@@ -94,11 +96,19 @@ export function externalRoutes(deps: ExternalRoutesDeps, guards: Guards): Fastif
           })),
         );
       } catch (error) {
-        // JOB 2683 D1 (Review R2-36): nach außen geht über `sendError` nur die generische `message`
-        // des Providers. R-0623 (Ben, Nacharbeit 1): ins Log geht nicht mehr der freie Netzfehlertext
+        // Die Antwort entsteht aus der Fehlerart des Providers. Ins Log geht nicht der freie Netzfehlertext
         // (`detail`: Host, DNS), sondern der Fehler über den Erlaubnislisten-Serializer — Typ, Code
         // und Quelltextstelle, request-gebunden über die Request-Id.
         request.log.warn({ err: error }, "external-search: Anfrage an den Anbieter fehlgeschlagen");
+        if (error instanceof ExternalSearchFailure) {
+          const grund = error.grund;
+          const message =
+            typeof grund === "number"
+              ? EXTERNAL_SEARCH_MELDUNG.status(grund)
+              : EXTERNAL_SEARCH_MELDUNG[grund];
+          reply.code(grund === "timeout" ? 504 : 502).send({ error: error.code, message });
+          return;
+        }
         sendError(reply, error);
       }
     });

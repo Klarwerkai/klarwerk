@@ -153,6 +153,20 @@ describe("Block C: Dirty-Flow-Module haben keine Ausgänge, die den Wächter umg
       rawNavigate: 1,
       why: "1x navigate, das bereits SELBST in guard(...) gewickelt ist (Zurück-Knopf der Kopfzeile).",
     },
+    "components/bibliothek/BibliothekLesen.tsx": {
+      rawLink: 0,
+      rawNavigate: 0,
+      why: "Die Bearbeitung meldet sich beim Navigationswächter an. Die Quelllinks stehen in der Leseansicht.",
+    },
+    // Gesamtcheck R-1329 (Nacharbeit 63): die Ablauf-Übernahme meldet einen Wächter an und kam ohne
+    // Eintrag dazu. Ihr einziger Ausgang — „Zum Wissensobjekt" nach dem Einreichen — war ein roher
+    // <Link>, obwohl die Seite danach bearbeitbar bleibt (`aendern` setzt `dirty` wieder). Er läuft
+    // jetzt über `GuardedLink`; das Budget steht deshalb auf null, nicht auf eins.
+    "pages/AblaufUebernahme.tsx": {
+      rawLink: 0,
+      rawNavigate: 0,
+      why: "Kein roher Ausgang: der Objektlink nach dem Einreichen ist ein GuardedLink (die Seite bleibt danach bearbeitbar).",
+    },
   };
 
   it("die rohe Navigation je Dirty-Flow-Modul bleibt auf dem begründeten Stand", () => {

@@ -63,6 +63,20 @@ async function setup(): Promise<{
     payload: { name: "Pruefer", email: "pruefer@j3009.test", password: "geheim12345" },
   });
   const pruefer = await login(app, "pruefer@j3009.test", "geheim12345");
+  // aufnahme:20260922:gesamt-leserechte (Entscheidung 15 · Variante B): die Rolle öffnet keine
+  // Stufe, „streng vertraulich" nie ohne gesetztes Niveau. R4 vergleicht Board und Detail auch an
+  // einem streng vertraulichen Objekt — der Kurator bekommt das Niveau deshalb über den
+  // Verwaltungsweg, wie im Betrieb.
+  const ich = await app.inject({ method: "GET", url: "/api/auth/me", headers: pruefer });
+  const niveau = await app.inject({
+    method: "PUT",
+    url: `/api/users/${(ich.json() as { id: string }).id}`,
+    headers: pruefer,
+    payload: { freigabe: "streng_vertraulich" },
+  });
+  if (niveau.statusCode >= 300) {
+    throw new Error(`Freigabeniveau nicht gesetzt: ${niveau.statusCode} ${niveau.body}`);
+  }
   const angelegt = await app.inject({
     method: "POST",
     url: "/api/users",
@@ -158,6 +172,8 @@ describe("JOB 3009 · Station 4 — der Detailabruf nennt die Stufe, auch wenn k
       type: "best_practice",
       category: "Anlage 1",
       author: "u-autor",
+      // Entscheidung 16: „intern" ausdrücklich — ohne Stufe wäre es ungeklärt und dem Experten verborgen.
+      confidentiality: "intern",
     });
 
     // KALIBRIERUNG ZUERST — ohne sie bewiese die Zeile darunter nichts.

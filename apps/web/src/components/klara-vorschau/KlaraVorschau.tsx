@@ -76,6 +76,7 @@ import { anfrageEpoche, aufRechtekontextwechsel } from "../../lib/rechtekontext"
 import { meldeVormachen } from "../../lib/vormachenAnzeige";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
+import { AiCostHint } from "../AiCostHint";
 import { AvatarBild } from "../assistenz/AvatarBild";
 import { AvatarMimik } from "../assistenz/AvatarMimik";
 // produkt:20261010:assistenz-name-avatar: die neun Zustände der Figur aus echten Ereignissen.
@@ -3552,6 +3553,7 @@ export function KlaraVorschau({
                     })}
                   </p>
                 ) : null}
+                <AiCostHint billable={istEcht && !eingabeAuftrag && ki.kostenpflichtig} />
               </form>
             </>
           ) : null}
@@ -4392,6 +4394,7 @@ export function KlaraVorschau({
                 {t("klaravorschau.eingabe.senden")}
               </button>
             )}
+            <AiCostHint billable={istEcht && !eingabeAuftrag && ki.kostenpflichtig} />
           </form>
 
           {/* Fuss: Lage der Figur, Vollbild, Ende */}

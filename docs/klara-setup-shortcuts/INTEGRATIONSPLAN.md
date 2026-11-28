@@ -72,16 +72,16 @@ diesen Kontext nicht. Deshalb:
 
 **Word-Einstellungen (H03).** Das Word-Add-in hat eine eigene Einstellungsfläche im
 Aufgabenbereich, die nur dort erreichbar ist: Das Panel läuft in einem eigenen Rahmen mit eigener
-Anmeldung, und W01–W03 sowie das „Nein“ aus W04 leben nur in der jeweiligen Panelinstanz. Aus der
+Anmeldung. W01 merkt sich die Sprachwahl im lokalen Speicher des Add-ins. W02–W03 sowie das „Nein“ aus W04 leben nur in der jeweiligen Panelinstanz. Aus der
 Web-App lassen sie sich weder lesen noch setzen; sie dorthin zu verlegen, wäre ein neuer
 Speicherweg und ist nicht Teil von AA-02. Der Bereich „Klara“ nennt deshalb in der Gruppe
 „Klara in Word“ jede Word-Einstellung mit ihrer tatsächlichen Geltung und dem direkten Zugang:
 
 | Eintrag | Geltung, wie angezeigt | Direkter Zugang |
 | --- | --- | --- |
-| W01 Sprache | gilt nur für das gerade geöffnete Word-Panel | Word › Klara › Zahnrad (`kw-zahnrad`) › Sprache |
-| W02 Text in Word mitlesen | wie W01, Vorgabe an | Word › Klara › Zahnrad › Mitlesen |
-| W03 Absatzblick | wie W01, Vorgabe aus | Word › Klara › Zahnrad › Absatzblick |
+| W01 Sprache | gespeicherte Sprachwahl des Add-ins, sonst Word-Anzeigesprache | Word › Klara › Zahnrad (`kw-zahnrad`) › Sprache |
+| W02 Text in Word mitlesen | geöffnetes Word-Panel, Vorgabe an | Word › Klara › Zahnrad › Mitlesen |
+| W03 Absatzblick | geöffnetes Word-Panel, Vorgabe aus | Word › Klara › Zahnrad › Absatzblick |
 | W04 Zustimmung externe KI | gilt für die Klara-Sitzung dieses Dokuments; erscheint nur, wenn der Server sie verlangt | Word › Klara › Zahnrad |
 | W05 Dokumentkennung | keine Einstellung; nur erklärender Satz „Word merkt sich im Dokument, zu welchem Klarwerk-Eintrag es gehört“ | keiner (nicht bedienbar) |
 

@@ -180,7 +180,9 @@ describe("F5 · Nacharbeit 1: Word, Hinweisaktionen, Bereichsname, laufende Auft
     expect(kennung.geltung).toBe("dokument");
     expect(kennung.art).not.toBe("einstellung");
     expect(kennung.speicher ?? "").toContain("Word-Dokuments");
-    for (const id of ["W01", "W02", "W03"]) {
+    expect(eintrag("W01").geltung).toBe("lokal");
+    expect(quelle(TASKPANE_JS)).toContain('window.localStorage.setItem("kw.sprache", next)');
+    for (const id of ["W02", "W03"]) {
       expect(eintrag(id).geltung, id).toBe("panelinstanz");
     }
     const host = eintrag("H03");

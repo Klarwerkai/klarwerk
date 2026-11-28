@@ -681,7 +681,7 @@
       "stand": "geliefert",
       "host": ["office"],
       "geltung": "keine",
-      "speicher": "Panelschalter W01–W03 nur in der Panelinstanz; Zustimmung W04 am Server; Dokumentkennung W05 dauerhaft in den Einstellungen des Word-Dokuments; Anmeldeschlüssel nur im Arbeitsspeicher des Panels (kein localStorage, kein Cookie)",
+      "speicher": "Sprachwahl W01 im lokalen Speicher des Add-ins; Panelschalter W02–W03 nur in der Panelinstanz; Zustimmung W04 am Server; Dokumentkennung W05 dauerhaft in den Einstellungen des Word-Dokuments; Anmeldeschlüssel nur im Arbeitsspeicher des Panels (kein localStorage, kein Cookie)",
       "recht": "ko.read",
       "ort_heute": "eigene Einstellungsfläche im Aufgabenbereich (kw-einstellungen) mit W01–W04, Gruppe „Vom Admin eingestellt“ (O01 nur lesbar) und Konto; Manifest ohne Tastenkürzel",
       "fundstellen": [
@@ -705,8 +705,8 @@
       "name": "Word: Sprache des Aufgabenbereichs (Deutsch, English, Nederlands)",
       "stand": "geliefert",
       "host": ["office"],
-      "geltung": "panelinstanz",
-      "speicher": "nur Arbeitsspeicher der Panelinstanz (Start „de“); nicht am Konto, nicht im Dokument",
+      "geltung": "lokal",
+      "speicher": "lokaler Speicher des Add-ins (kw.sprache); ohne gespeicherte Wahl gilt die Word-Anzeigesprache, ersatzweise Deutsch",
       "recht": "keine Serverprüfung",
       "ort_heute": "Word › Klara › Einstellungen › Sprache",
       "fundstellen": [
@@ -716,7 +716,7 @@
         },
         {
           "pfad": "apps/web/public/word-addin/taskpane.js",
-          "anker": "var lang = \"de\";"
+          "anker": "var lang = wordSprachwahl || wordAnzeigesprache();"
         },
         {
           "pfad": "apps/web/public/word-addin/taskpane.js",

@@ -240,7 +240,7 @@ describe("JOB 2683 · Knopf 2 · Externe Suche bei hängendem oder totem Anbiete
     const start = Date.now();
     const res = await app.inject({ method: "GET", url: "/api/external/search?q=Ventil" });
     expect(Date.now() - start).toBeLessThan(2_000);
-    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(res.statusCode).toBe(504);
     expect(res.json()).toEqual({
       error: "EXTERNAL_SEARCH_FAILED",
       message: EXTERNAL_SEARCH_MELDUNG.timeout,
@@ -254,6 +254,7 @@ describe("JOB 2683 · Knopf 2 · Externe Suche bei hängendem oder totem Anbiete
       throw new TypeError("fetch failed: getaddrinfo ENOTFOUND de.wikipedia.org");
     }, 1_000);
     const res = await app.inject({ method: "GET", url: "/api/external/search?q=Ventil" });
+    expect(res.statusCode).toBe(502);
     expect(res.json()).toEqual({
       error: "EXTERNAL_SEARCH_FAILED",
       message: EXTERNAL_SEARCH_MELDUNG.unreachable,

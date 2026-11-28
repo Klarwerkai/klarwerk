@@ -26,7 +26,8 @@ describe("SCRUM-415: Vertraulichkeit — Helfer", () => {
     expect(normalizeConfidentiality(undefined)).toBe("intern");
     expect(normalizeConfidentiality("quatsch")).toBe("intern");
     expect(normalizeConfidentiality("vertraulich")).toBe("vertraulich");
-    expect(isConfidential(undefined)).toBe(false);
+    expect(isConfidential(undefined)).toBe(true);
+    expect(isConfidential("quatsch")).toBe(true);
     expect(isConfidential("intern")).toBe(false);
     expect(isConfidential("vertraulich")).toBe(true);
     expect(isConfidential("streng_vertraulich")).toBe(true);
@@ -185,7 +186,8 @@ describe("SCRUM-415: Output Factory schließt vertrauliche KOs aus (nie in exter
   it("listet vertrauliche KOs NICHT als Output-Quelle", async () => {
     const ko = new KoService({ repo: new InMemoryKoRepo() });
     const output = new OutputService({ koService: ko });
-    const offen = await validatedKo(ko, { title: "Öffentlich" });
+    const offen = await validatedKo(ko, { title: "Intern", confidentiality: "intern" });
+    const ungeklärt = await validatedKo(ko, { title: "Ohne Einstufung" });
     const geheim = await validatedKo(ko, { title: "Geheim", confidentiality: "vertraulich" });
 
     // Auch ein Betrachter, der alles sehen darf, bekommt Vertrauliches nicht als Output-Quelle.
@@ -193,6 +195,7 @@ describe("SCRUM-415: Output Factory schließt vertrauliche KOs aus (nie in exter
     const ids = eligible.map((s) => s.id);
     expect(ids).toContain(offen.id);
     expect(ids).not.toContain(geheim.id);
+    expect(ids).not.toContain(ungeklärt.id);
   });
 
   it("verweigert das Erzeugen eines Outputs aus einem vertraulichen KO", async () => {

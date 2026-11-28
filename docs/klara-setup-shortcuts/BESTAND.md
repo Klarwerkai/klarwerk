@@ -63,7 +63,7 @@ dem Konto (Abmelden).
 
 | ID | Einstellung | Stand | Ort heute | Speicher | Geltung | Recht |
 | --- | --- | --- | --- | --- | --- | --- |
-| W01 | Sprache des Aufgabenbereichs (de/en/nl) | geliefert | Word › Klara › Einstellungen | nur Arbeitsspeicher des Panels, Start „de“ | Panelinstanz | keine Serverprüfung |
+| W01 | Sprache des Aufgabenbereichs (de/en/nl) | geliefert | Word › Klara › Einstellungen | lokale Sprachwahl (`kw.sprache`), sonst Word-Anzeigesprache | Add-in auf diesem Gerät | keine Serverprüfung |
 | W02 | Text in Word mitlesen | geliefert | wie W01, Schalter (Vorgabe an) | nur Arbeitsspeicher des Panels | Panelinstanz | keine Serverprüfung |
 | W03 | Absatzblick (Bestandsblick beim Absatzwechsel) | geliefert | wie W01, Schalter (Vorgabe aus) | nur Arbeitsspeicher des Panels | Panelinstanz | keine Serverprüfung |
 | W04 | Zustimmung zur externen KI dieser Sitzung; Ablehnung je Dokument | geliefert | wie W01, nur sichtbar, wenn der Server sie verlangt oder sie erteilt ist | Zustimmung am Server (`klara_session_consents`, `POST/DELETE /api/klara/sessions/:sessionId/consent`); das „Nein“ je Dokument nur im Arbeitsspeicher | Sitzung bzw. Dokument im Panel | `ko.read`; Bedarf und Wirkung entscheidet der Server |
@@ -71,7 +71,7 @@ dem Konto (Abmelden).
 
 Abgrenzung: W05 ist **keine** Nutzereinstellung und **keine** Anmeldung, sondern die dauerhafte
 Zuordnung eines Dokuments zu seiner Klarwerk-Akte. Die Anmeldung hält das Panel getrennt davon
-nur im Arbeitsspeicher (`officeSchluessel`, kein `localStorage`, kein Cookie). W01–W03 und das
+nur im Arbeitsspeicher (`officeSchluessel`, kein `localStorage`, kein Cookie). Die Sprachwahl W01 bleibt lokal gespeichert, sofern Word dies zulässt. W02–W03 und das
 „Nein“ aus W04 sind flüchtiger Panelzustand und beginnen bei jedem Öffnen neu.
 
 ### 2.4 Rollen- und Berechtigungsregeln (zu übernehmen, nicht zu erweitern)
@@ -126,7 +126,7 @@ eine Quelle (`apps/web/src/lib/tastenkuerzel.ts`, Apple „⌘“, sonst „Strg
 | --- | --- | --- | --- | --- |
 | H01 | Web-App (SPA, `KlaraEbene` in `AppShell.tsx`) | geliefert | alle Einstellungen E01–E10, O01–O02; A01–A07 | Tastenereignisse nur, solange Tab und Fenster aktiv sind; Browser behält reservierte Kürzel (⌘W, ⌘T, ⌘Q …) |
 | H02 | Chrome-Erweiterung „Klara im Browser“ 0.4.2 | geliefert | A08, T05; Sprache in `chrome.storage.local` | Kürzel nur über `commands` im Manifest, Nutzerbelegung nur in `chrome://extensions/shortcuts`; die Web-App kann sie nicht setzen |
-| H03 | Word-Add-in „Klara“ | geliefert | A09; Einstellungen W01–W05 im eigenen Aufgabenbereich | Manifest ohne Kürzel; Einstellungen nur im Word-Panel erreichbar (eigener Rahmen, eigene Anmeldung); dauerhaft ist nur W05 im Dokument und W04 am Server |
+| H03 | Word-Add-in „Klara“ | geliefert | A09; Einstellungen W01–W05 im eigenen Aufgabenbereich | Manifest ohne Kürzel; Einstellungen nur im Word-Panel erreichbar (eigener Rahmen, eigene Anmeldung); W01 bleibt im lokalen Speicher, W05 im Dokument und W04 am Server |
 | H04 | „KLARWERK App.app“ | geliefert | Start des lokalen Servers, öffnet den Browser | Bash-Skript ohne eigenes Fenster und ohne Ereignisschleife — **kein Ort für ein systemweites Kürzel** |
 | C01 | „Klara Begleiter“ (Swift/AppKit) | Kandidat | schwebende Figur über allen Apps, Menüleiste | einziger nativer Host mit globaler Registrierung; Hostabnahme offen |
 
