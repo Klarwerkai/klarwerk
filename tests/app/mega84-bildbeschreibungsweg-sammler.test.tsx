@@ -3003,8 +3003,9 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. Seitdem hat dieser Auftrag keine
     // Komponente hinzugefügt oder entfernt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      // Gesamtcheck vom 28.11.2026, direkt gemessen über 1155 Quelldateien.
-      komponenten: 998,
+      // 07a53edb4 ergänzt BibliotheksEinstieg in App.tsx. Der AST-Vergleich von
+      // ee11ffdd3 mit 0400b0ae9 findet genau diesen Zugang in denselben 1155 Dateien.
+      komponenten: 999,
       anbieter: 1,
       traeger: 2,
     });
