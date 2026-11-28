@@ -17,10 +17,10 @@
 // Element hier trägt genau den Text von damals. Verschöbe der Umbau einen Wert, stünde am selben
 // Element etwas anderes, und der Fall wird rot mit Soll und Ist.
 //
-// WELCHE ELEMENTE, und woher ihr Schlüssel bekannt ist: die Punkte des Kopfbands. Ihr Anzeigename
+// WELCHE ELEMENTE, und woher ihr Schlüssel bekannt ist: die Hauptpunkte der Navigation. Ihr Anzeigename
 // hat seit JOB 3105 genau eine Quelle (`apps/web/src/app/navigation.ts`, `anzeigeNameKey`) — für
 // drei Punkte weicht er vom Seitentitel ab, und diese Abweichung steht dort in `ANZEIGE_NAME_KEY`.
-// Die Zuordnung unten ist von dort abgelesen, nicht geraten. Das Kopfband steht auf allen drei
+// Die breite Standardansicht zeigt diese Hauptpunkte in der Seitenleiste. Sie steht auf allen drei
 // Flächen; dieselben sechs Punkte werden deshalb dreimal gemessen, je Fläche einmal.
 //
 // SICHTBAR HEISST SICHTBAR (Lehre 9 des Bahnprompts). Geprüft wird nicht die Anwesenheit im DOM:
@@ -44,13 +44,13 @@ const werte = JSON.parse(
 ) as Record<string, Record<string, string>>;
 
 /**
- * Kopfbandpunkt → Textschlüssel, abgelesen aus `apps/web/src/app/navigation.ts` — nicht geraten:
+ * Hauptpunkt → Textschlüssel, abgelesen aus `apps/web/src/app/navigation.ts` — nicht geraten:
  * die sechs Punkte stehen dort in `KOPFBAND_IDS` (JOB 3060, seit JOB 3503 sechs), ihr `labelKey`
  * am jeweiligen Gruppenpunkt, und für „Erfassen" und „Prüfen" überschreibt `ANZEIGE_NAME_KEY` ihn.
  *
  * `/admin` steht hier ABSICHTLICH nicht: „Einstellungen" ist kein Kopfbandpunkt, sondern eine
  * Zeile im Zahnrad-Menü (`navigation.ts:424-426`). Die FLÄCHE Einstellungen wird trotzdem
- * gemessen — die sechs Punkte werden auch dort abgelesen, denn das Kopfband steht auf jeder Seite.
+ * gemessen — die sechs Punkte werden auch dort abgelesen, denn die Seitenleiste steht in der breiten Ansicht auf jeder Seite.
  */
 const PUNKTE: ReadonlyArray<{ id: string; schluessel: string }> = [
   { id: "start", schluessel: "nav.start" },
@@ -76,10 +76,10 @@ interface Ablesung {
 }
 
 /**
- * Liest je Kopfbandpunkt den SICHTBAREN Text seiner Beschriftung.
+ * Liest die sichtbare Beschriftung jedes Hauptpunkts in der Seitenleiste.
  *
  * GELESEN WIRD DAS BESCHRIFTUNGS-`<span>`, nicht der ganze Link: der Link trägt daneben den Zähler
- * (`KopfbandPunkte.tsx:148-155`), und der gehört keinem Textschlüssel dieses Vergleichs. Wer den
+ * (`KopfbandPunkte.tsx`, Seitenleistenzeile), und der gehört keinem Textschlüssel dieses Vergleichs. Wer den
  * Link als Ganzes läse, vergliche bei gefülltem Prüfboard „Prüfen 3" mit „Prüfen" und wäre rot,
  * ohne dass ein Text falsch wäre.
  *
@@ -88,7 +88,7 @@ interface Ablesung {
  * ohne Fläche steht im Layout, ist aber nicht zu sehen).
  */
 const ABLESEN = `(ids) => ids.map((id) => {
-  const treffer = Array.from(document.querySelectorAll('header [data-kopfband-punkt="' + id + '"] span'));
+  const treffer = Array.from(document.querySelectorAll('[data-seitenleiste-punkt="' + id + '"] > span:first-child'));
   const el = treffer[0];
   if (!el) { return { id, gefunden: treffer.length, text: null, sichtbar: false }; }
   const s = getComputedStyle(el);
@@ -100,7 +100,7 @@ const ABLESEN = `(ids) => ids.map((id) => {
 
 /** Blendet GENAU die Beschriftung EINES Punktes aus — die Kalibrierung, sonst nichts an der Fläche. */
 const VERDECKEN = `(id) => {
-  const el = document.querySelector('header [data-kopfband-punkt="' + id + '"] span');
+  const el = document.querySelector('[data-seitenleiste-punkt="' + id + '"] > span:first-child');
   if (!el) { return false; }
   el.setAttribute('data-kw4367-verdeckt', '1');
   el.style.display = 'none';
@@ -128,14 +128,14 @@ function pruefe(flaeche: string, ablesungen: readonly Ablesung[]): void {
   for (const punkt of PUNKTE) {
     const ablesung = ablesungen.find((a) => a.id === punkt.id);
     const erwartet = soll(punkt.schluessel);
-    expect(ablesung, `${flaeche}: kein Kopfbandpunkt "${punkt.id}" abgelesen`).toBeDefined();
+    expect(ablesung, `${flaeche}: kein Navigationspunkt "${punkt.id}" abgelesen`).toBeDefined();
     expect(
       ablesung?.sichtbar,
-      `${flaeche}: der Kopfbandpunkt "${punkt.id}" ("${erwartet}", Schlüssel ${punkt.schluessel}) ist nicht SICHTBAR (gefunden: ${ablesung?.gefunden ?? 0})`,
+      `${flaeche}: der Navigationspunkt "${punkt.id}" ("${erwartet}", Schlüssel ${punkt.schluessel}) ist nicht SICHTBAR (gefunden: ${ablesung?.gefunden ?? 0})`,
     ).toBe(true);
     expect(
       ablesung?.text,
-      `${flaeche}: der Kopfbandpunkt "${punkt.id}" trägt einen anderen Text als am Basisstand — Schlüssel ${punkt.schluessel}`,
+      `${flaeche}: der Navigationspunkt "${punkt.id}" trägt einen anderen Text als am Basisstand — Schlüssel ${punkt.schluessel}`,
     ).toBe(erwartet);
   }
 }
@@ -150,7 +150,7 @@ describe("JOB 4367 · die gebaute App zeigt die Texte des Basisstands", () => {
     }
   });
 
-  it("B1 · Start, Bibliothek und Einstellungen tragen dieselben Kopfbandtexte wie vor dem Umbau", async () => {
+  it("B1 · Start, Bibliothek und Einstellungen zeigen dieselben Navigationsbeschriftungen wie vor dem Umbau", async () => {
     stand = await starte(FLAECHEN[0]?.pfad ?? "/start", FLAECHEN[0]?.anker ?? "main", 1440, 900);
     const seite = stand.seite;
     // Ohne gebautes `apps/web/dist` gibt es hier nichts zu messen — die Bühne sagt das selbst.
