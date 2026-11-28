@@ -39,8 +39,12 @@ async function sichtbar(page: BedienbareSeite): Promise<void> {
   const box = await page.locator(KARTE).boundingBox();
   expect(box).not.toBeNull();
   console.log(`JOB 3464 · Karte nach Auswahl: ${JSON.stringify(box)} · Viewport 390 × 740`);
-  expect(box?.y, "Prüfkarte beginnt oberhalb des Viewports").toBeGreaterThanOrEqual(0);
-  expect(box?.y, "Prüfkarte bleibt unterhalb des Viewports").toBeLessThan(740);
+  const inhalt = await page.locator("main").boundingBox();
+  if (!inhalt || !box) throw new Error("Die Prüfkarte oder ihr sichtbarer Inhaltsbereich fehlt");
+  expect(box.y, "Prüfkarte beginnt oberhalb des Inhaltsbereichs").toBeGreaterThanOrEqual(inhalt.y);
+  expect(box.y, "Prüfkarte bleibt unterhalb des Inhaltsbereichs").toBeLessThan(
+    inhalt.y + inhalt.height,
+  );
 }
 
 describe("JOB 3464 · Prüfen bei 390 px in Chromium", () => {
@@ -84,10 +88,13 @@ describe("JOB 3464 · Prüfen bei 390 px in Chromium", () => {
     const letzte = page.locator(ZEILE).last();
     await letzte.evaluate(fn('(el) => el.scrollIntoView({ block: "end", behavior: "instant" })'));
     const vorher = await page.locator(KARTE).boundingBox();
+    const inhalt = await page.locator("main").boundingBox();
+    if (!inhalt || !vorher)
+      throw new Error("Die Prüfkarte oder ihr sichtbarer Inhaltsbereich fehlt");
     expect(
-      vorher?.y,
-      "Vorbedingung: Karte liegt auch vor dem Klick außerhalb",
-    ).toBeGreaterThanOrEqual(740);
+      vorher.y,
+      "Vorbedingung: Karte liegt auch vor dem Klick außerhalb des scrollbaren Inhaltsbereichs",
+    ).toBeGreaterThanOrEqual(inhalt.y + inhalt.height);
     const titel = await letzte.textContent();
     const zeile = await letzte.boundingBox();
     expect(zeile).not.toBeNull();
