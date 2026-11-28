@@ -484,18 +484,37 @@ describe("JOB 4363 · der Stand der Bereitschaftskarte in der gebauten Fläche",
         `${MARKE}: die gestaffelte Karte trägt schon einen Hinweis — dann gab es doch eine Störung`,
       ).toBe(false);
 
-      // (2) Warten, bis auch die jüngeren Quellen abgelaufen sind (produktive Frist, 30 s), und
-      //     die fünf ab jetzt hängen lassen. Dann ein echtes Fokus-Ereignis: react-query holt
-      //     alle sechs — ohne dass irgendetwas gestört wäre.
-      await new Promise((weiter) => setTimeout(weiter, 31_000));
-      await lassHaengen(seite, juengere);
+      // Der Nutzer wechselt für mehr als die Frischefrist in ein anderes Fenster. Im sichtbaren
+      // Tab würde der 20-Sekunden-Takt das Prüfboard während dieser Zeit bereits erneuern.
+      // Headless Chromium lässt Tabs stets sichtbar. Beide Sichtbarkeitswechsel durchlaufen
+      // deshalb hier die produktiven Listener. Netz, Zeitgeber und Frischefrist laufen weiter.
       const vorAuffrischung = await abrufe(seite);
+      await seite.evaluate(
+        fn(`() => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+        window.dispatchEvent(new Event("visibilitychange"));
+      }`),
+      );
+      await new Promise((weiter) => setTimeout(weiter, 31_000));
+      expect(await abrufe(seite), "Eine der sechs Quellen wurde im Hintergrund nachgeladen").toBe(
+        vorAuffrischung,
+      );
+      await lassHaengen(seite, juengere);
       const empfangenVorher = await antwortenFuer(seite, KI_QUELLE);
+      const anfragenVorFokus = await seite.evaluate<Record<string, number>>(
+        fn("(pfade) => Object.fromEntries(pfade.map(p => [p, window.__job4363.zaehler[p] ?? 0]))"),
+        QUELLPFADE,
+      );
+      await seite.evaluate(fn('() => Reflect.deleteProperty(document, "visibilityState")'));
       expect(
         await seite.evaluate<string>(fn(FOKUS_EREIGNIS)),
         `${MARKE}: der Tab gilt als verborgen — dann holt react-query beim Fokus nichts nach`,
       ).not.toBe("hidden");
-      await warteAufAbrufe(seite, vorAuffrischung + 6);
+      await seite.waitForFunction(
+        fn("(vorher) => Object.entries(vorher).every(([p, n]) => window.__job4363.zaehler[p] > n)"),
+        anfragenVorFokus,
+        { timeout: 30_000 },
+      );
       await warteBis(
         seite,
         async () => (await antwortenFuer(seite, KI_QUELLE)) > empfangenVorher,

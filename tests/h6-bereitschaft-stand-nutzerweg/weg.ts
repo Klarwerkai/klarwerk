@@ -94,8 +94,8 @@ export const QUELLPFADE = [
  *     EMPFANGENEN Antworten (`antworten`) und den ZEITPUNKT der letzten Antwort (`zuletzt`). Der
  *     Unterschied trägt den Nachweis: „Anfrage raus" ist kein „Antwort da", und nur Letzteres
  *     erneuert einen Stand.
- *   · STÖREN: genau einen Pfadanfang mit 503 beantworten.
- *   · HÄNGEN LASSEN: die genannten Pfadanfänge bekommen eine Antwort, die NIE kommt — so lässt
+ *   · STÖREN: genau einen Quellpfad mit 503 beantworten.
+ *   · HÄNGEN LASSEN: die genannten Quellpfade bekommen eine Antwort, die NIE kommt — so lässt
  *     sich der Zustand herstellen, den BEN gemessen hat (eine Quelle antwortet, fünf bleiben
  *     unterwegs). Eine hängende Anfrage lässt sich später gezielt SCHEITERN lassen.
  *   · VERZÖGERN, in zwei Stärken. „kurz" staffelt um wenige Sekunden — das genügt überall dort,
@@ -123,7 +123,6 @@ function zaehlskript(verzoegert: readonly string[], art: Verzoegerungsart): stri
   };
   window.__job4363 = s;
   const echt = window.fetch.bind(window);
-  const trifft = (pfad, muster) => muster.some((m) => pfad.indexOf(m) === 0);
   // Bis 2 s NACH der nächsten Minutengrenze — und wenn die Grenze schon in weniger als 3 s
   // erreicht wäre, bis 2 s nach der übernächsten. So liegt die unverzögerte Antwort garantiert
   // mindestens 3 s VOR der Grenze und damit sicher in einer anderen Minute.
@@ -138,7 +137,7 @@ function zaehlskript(verzoegert: readonly string[], art: Verzoegerungsart): stri
     let pfad = roh;
     try { pfad = new URL(roh, window.location.origin).pathname; } catch (e) {}
     s.zaehler[pfad] = (s.zaehler[pfad] || 0) + 1;
-    if (trifft(pfad, s.haengt)) {
+    if (s.haengt.includes(pfad)) {
       return new Promise((_, abbrechen) => {
         (s.haengende[pfad] = s.haengende[pfad] || []).push(abbrechen);
       });
@@ -148,13 +147,13 @@ function zaehlskript(verzoegert: readonly string[], art: Verzoegerungsart): stri
       s.zuletzt[pfad] = Date.now();
       return r;
     };
-    if (s.stoerung !== null && pfad.indexOf(s.stoerung) === 0) {
+    if (pfad === s.stoerung) {
       return Promise.resolve(merke(new Response(JSON.stringify({ error: "JOB4363", message: "gestoert" }), {
         status: 503,
         headers: { "content-type": "application/json" },
       })));
     }
-    const warte = trifft(pfad, s.verzoegert)
+    const warte = s.verzoegert.includes(pfad)
       ? new Promise((weiter) => setTimeout(weiter, s.ueberMinutengrenze ? wartezeit() : s.kurzMs))
       : Promise.resolve();
     return warte.then(() => echt(eingabe, init)).then(merke);
