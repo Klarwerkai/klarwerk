@@ -22,7 +22,7 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    validation: { board: vi.fn(async () => []) },
+    validation: { boardCount: vi.fn(async () => ({ length: 0 })) },
     conflicts: { list: vi.fn(async () => []) },
     duplicates: { list: vi.fn(async () => []) },
     gaps: { summary: vi.fn(async () => ({ open: 0, byPriority: {} })) },
@@ -30,6 +30,13 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
     features: { get: vi.fn(async () => ({ features: {} })) },
     reasoner: {
+      kiLage: vi.fn(async () => ({
+        modus: "keine",
+        anbieter: null,
+        anbieterName: null,
+        herkunft: null,
+        verfuegbarkeit: null,
+      })),
       status: vi.fn(async () => ({ active: false, mode: "none", reachable: "unknown", tasks: {} })),
       config: vi.fn(async () => null),
     },
@@ -211,6 +218,7 @@ describe("JOB 3060 · H1 · Rollen-Vorschau: das Kopfband bleibt bei seinem Inve
     // FE-002 Runde 2: die Kurzbeschriftung der Suche (Stufe 3, `kopfbandStufe.ts`) — im Browser nur
     // sichtbar, wenn das Feld keinen Platz hat; jsdom zeichnet ohne CSS, das Blatt steht hier immer.
     "Wissen suchen",
+    "Keine KI · regelbasiert",
   ];
 
   it("als Admin ohne Vorschau: genau das Inventar (Zähler und Initialen ausgenommen), keine Pille", async () => {

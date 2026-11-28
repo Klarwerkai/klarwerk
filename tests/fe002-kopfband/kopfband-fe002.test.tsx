@@ -50,7 +50,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
-      validation: { board: ok([]) },
+      validation: { boardCount: ok({ length: 0 }) },
       conflicts: { list: ok([]) },
       duplicates: { list: ok([]) },
       gaps: { summary: ok({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } }) },
@@ -580,6 +580,7 @@ function erlaubteZiele(role: Role, stufe2: boolean): string[] {
   const sichtbar = [...kopfbandItems(), ...weitereBereicheItems(), ...FOOT_ITEMS]
     .filter((i) => canSee(i, role, stufe2))
     .map((i) => i.path);
+  sichtbar.push("/kalender", "/richtlinien", "/chat");
   const einstellungen = einstellungenItem();
   if (canSee(einstellungen, role, stufe2)) {
     sichtbar.push(einstellungen.path);

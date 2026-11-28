@@ -41,7 +41,18 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    validation: { board: vi.fn(async () => []) },
+    validation: { boardCount: vi.fn(async () => ({ length: 0 })) },
+    reasoner: {
+      status: vi.fn(async () => ({ active: false, mode: "none", reachable: "unknown", tasks: {} })),
+      kiLage: vi.fn(async () => ({
+        modus: "keine",
+        anbieter: null,
+        anbieterName: null,
+        herkunft: null,
+        verfuegbarkeit: null,
+      })),
+    },
+    external: { policy: vi.fn(async () => ({ stage: "blocked" })) },
     conflicts: { list: vi.fn(async () => []) },
     duplicates: { list: vi.fn(async () => []) },
     gaps: { summary: vi.fn(async () => ({ open: 0, byPriority: {} })) },

@@ -39,6 +39,14 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   // Pfad OHNE `steps`. Das ist ein Befund an einer anderen Datei und nicht Gegenstand dieses
   // Auftrags — hier steht deshalb die Antwortform, die der Server liefert, und keine Reparatur.
   const ANTWORTEN: Record<string, unknown> = {
+    "importAccess.confluence": {
+      system: "confluence",
+      enabled: false,
+      credentials: [],
+      credentialsUsable: false,
+      blocker: "missing",
+      lastConnectedAt: null,
+    },
     "learningPaths.byRole": { id: "p1", role: "admin", steps: [] },
     "gaps.summary": { total: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } },
   };

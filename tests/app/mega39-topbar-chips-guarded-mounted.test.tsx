@@ -18,6 +18,7 @@
 // der Bestätigungsdialog erscheint, und der Ort wechselt NICHT.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Die echte Rollensteuerung erhält die Admin-Sitzung, unter der die Statuszeilen sichtbar sind.
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
@@ -52,27 +53,13 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     external: {
       policy: vi.fn(async () => ({ stage: "blocked" })),
     },
-    validation: { board: vi.fn(async () => []) },
+    validation: { boardCount: vi.fn(async () => ({ length: 0 })) },
     conflicts: { list: vi.fn(async () => []) },
     duplicates: { list: vi.fn(async () => []) },
     gaps: { summary: vi.fn(async () => ({ open: 0, byPriority: {} })) },
     lifecycle: { pending: vi.fn(async () => []) },
     features: { get: vi.fn(async () => ({ features: {} })) },
   },
-}));
-
-// Die Rolle kommt in diesem Test fest von aussen: geprüft wird der ADMIN-Fall (nur dort sind die
-// Status-Zeilen überhaupt gemountet — mega38 BLOCK H).
-vi.mock("../../apps/web/src/app/RoleContext", () => ({
-  useRole: () => ({
-    role: "admin",
-    setRole: () => {},
-    stufe2: true,
-    setStufe2: () => {},
-    isSessionRole: true,
-    canPreview: true,
-    previewActive: false,
-  }),
 }));
 
 import {
@@ -84,6 +71,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider, useNavGuard } from "../../apps/web/src/app/NavGuardContext";
+import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { Kopfband } from "../../apps/web/src/shell/Kopfband";
@@ -138,7 +126,7 @@ async function mountKopfband(): Promise<{ container: HTMLElement; unmount: () =>
                 null,
                 createElement(SchmutzigeSeite),
                 createElement(OrtsAnzeige),
-                createElement(Kopfband),
+                createElement(RoleProvider, null, createElement(Kopfband)),
               ),
             ),
           ),
