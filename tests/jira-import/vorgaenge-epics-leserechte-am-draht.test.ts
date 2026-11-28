@@ -90,7 +90,10 @@ function jira(url: URL): Response {
   if (url.pathname === "/rest/api/2/project/WART/role/10001") {
     return antwort({
       actors: [
-        { type: "atlassian-user-role-actor", actorUser: { accountId: "acc-schuster" } },
+        {
+          type: "atlassian-user-role-actor",
+          actorUser: { accountId: "acc-schuster", emailAddress: ADMIN.email },
+        },
         { type: "atlassian-group-role-actor", actorGroup: { name: "wartung-team" } },
       ],
     });
@@ -214,6 +217,42 @@ describe("R-0170 · Jira-Projekt → Kandidaten → Wissensobjekte mit Leserecht
     for (const k of kandidaten) {
       expect(k.item.sourceRestrictions, k.item.externalId).toEqual(LESERECHTE);
     }
+
+    // Auch ein zweites lokales Administratorkonto ohne Mitgliedschaft im Jira-Projekt
+    // sieht die beschränkten Kandidaten nicht und kann sie nicht annehmen.
+    const fremd = {
+      name: "Admin ohne Projektrolle",
+      email: "fremd-r0170@example.com",
+      password: "nur-test-1234",
+    };
+    const anlage = await app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers,
+      payload: { ...fremd, role: "admin" },
+    });
+    expect(anlage.statusCode, anlage.body).toBe(201);
+    const anmeldung = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: fremd.email, password: fremd.password },
+    });
+    expect(anmeldung.statusCode).toBe(200);
+    const fremdeHeaders = { authorization: `Bearer ${anmeldung.json().token}` };
+    const fremdeListe = await app.inject({
+      method: "GET",
+      url: "/api/library/import/candidates",
+      headers: fremdeHeaders,
+    });
+    expect(fremdeListe.statusCode).toBe(200);
+    expect(fremdeListe.json()).toEqual([]);
+    const gesperrt = await app.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${kandidaten[0]?.id}`,
+      headers: fremdeHeaders,
+      payload: { action: "accept" },
+    });
+    expect(gesperrt.statusCode).toBe(404);
 
     // --- Annahme durch den Menschen (REVIEW-INVARIANTE) und Rücklesen ------------------------
     const quellen: Record<string, KoQuelle | undefined> = {};

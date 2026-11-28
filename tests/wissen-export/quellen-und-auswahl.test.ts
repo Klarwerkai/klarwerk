@@ -62,6 +62,7 @@ async function aufbau() {
       type: "best_practice",
       category: "Anlage 1",
       author: "admin",
+      confidentiality: "intern",
       tags: [],
       ...extra,
     });
