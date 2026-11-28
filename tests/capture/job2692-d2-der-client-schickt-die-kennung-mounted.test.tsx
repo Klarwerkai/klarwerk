@@ -371,77 +371,45 @@ afterEach(() => {
 });
 
 describe("JOB 2692 D2 · der Client schickt die Kennung — und der Server hebt damit", () => {
-  it("BILD: gespeichert ‹vertraulich›, Formular auf ‹intern› gestellt → der Client sendet source/intern/draftId aus dem Entwurf; die echte Route hält das Bild aus der Cloud", async () => {
-    const echt = await echteApp("vertraulich");
-    seiteSiehtEntwurf(echt.draftId, "vertraulich");
-    await mount();
-    await entwurfFortsetzen();
+  it.each(["vertraulich", "intern"] as const)(
+    "BILD: automatische und manuelle Beschreibung tragen die Entwurfskennung; auf dem Server gilt die gespeicherte Stufe %s",
+    async (stufe) => {
+      const echt = await echteApp(stufe);
+      seiteSiehtEntwurf(echt.draftId, stufe);
+      await mount();
+      await entwurfFortsetzen();
+      if (stufe === "vertraulich") {
+        const sel = await stufeImFormular();
+        expect(sel.value).toBe("vertraulich");
+        await change(sel, "intern");
+      }
+      await bildBeschreibenLassen();
 
-    // Der Mensch stellt die Stufe um — ungespeichert. Der Client wird ab jetzt „intern" sagen.
-    const sel = await stufeImFormular();
-    expect(sel.value, "der fortgesetzte Entwurf zeigt seine gespeicherte Stufe").toBe(
-      "vertraulich",
-    );
-    await change(sel, "intern");
+      expect(gesendet.describe).toEqual([
+        {
+          dataUrl: PNG,
+          provenance: { source: "draft", draftId: echt.draftId, confidentiality: stufe },
+        },
+        {
+          dataUrl: PNG,
+          provenance: { source: "draft", draftId: echt.draftId, confidentiality: "intern" },
+          context: expect.stringContaining("Der Kessel wird vor dem Anfahren entlüftet."),
+        },
+      ]);
 
-    await bildBeschreibenLassen();
-
-    // (1) DER CLIENT: genau ein describe-Aufruf, mit der Kennung des fortgesetzten Entwurfs —
-    //     nicht von Hand gesetzt, sondern aus der Liste über „Fortsetzen" in den Zustand gelangt.
-    expect(gesendet.describe).toHaveLength(1);
-    const { dataUrl, provenance, context } = gesendet.describe[0] as {
-      dataUrl: string;
-      provenance: Record<string, unknown>;
-      context?: string;
-    };
-    expect(dataUrl).toBe(PNG);
-    expect(provenance).toEqual({
-      source: "draft",
-      confidentiality: "intern",
-      draftId: echt.draftId,
-    });
-
-    // (2) DER SERVER: dasselbe, was der Client gesendet hat, an die echte Route — die
-    //     gespeicherte Stufe hebt; das Bild erreicht die Cloud-Vision nicht.
-    const res = await echt.app.inject({
-      method: "POST",
-      url: "/api/reasoner/describe",
-      headers: echt.headers,
-      payload: { dataUrl, ...provenance, ...(context ? { context } : {}) },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(echt.describeSpy).toHaveBeenCalledTimes(1);
-    expect(vertraulichBei(echt.describeSpy, 2), "die gespeicherte Stufe hat nicht gehoben").toBe(
-      true,
-    );
-  });
-
-  it("GEGENPROBE BILD: gespeichert ‹intern› → derselbe Weg, dieselbe Kennung, und die Cloud bleibt erreichbar", async () => {
-    const echt = await echteApp("intern");
-    seiteSiehtEntwurf(echt.draftId, "intern");
-    await mount();
-    await entwurfFortsetzen();
-    await bildBeschreibenLassen();
-
-    expect(gesendet.describe).toHaveLength(1);
-    const { dataUrl, provenance } = gesendet.describe[0] as {
-      dataUrl: string;
-      provenance: Record<string, unknown>;
-    };
-    expect(provenance).toEqual({
-      source: "draft",
-      confidentiality: "intern",
-      draftId: echt.draftId,
-    });
-    const res = await echt.app.inject({
-      method: "POST",
-      url: "/api/reasoner/describe",
-      headers: echt.headers,
-      payload: { dataUrl, ...provenance },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(vertraulichBei(echt.describeSpy, 2)).toBe(false);
-  });
+      for (const { dataUrl, provenance, context } of gesendet.describe) {
+        const res = await echt.app.inject({
+          method: "POST",
+          url: "/api/reasoner/describe",
+          headers: echt.headers,
+          payload: { dataUrl, ...provenance, ...(context !== undefined ? { context } : {}) },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(vertraulichBei(echt.describeSpy, 2)).toBe(stufe === "vertraulich");
+      }
+      expect(echt.describeSpy).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("TEXT: KI-Nachbearbeitung im fortgesetzten vertraulichen Entwurf, Formular auf ‹intern› → assist trägt die Kennung; die echte Route hält den Text aus der Cloud", async () => {
     const echt = await echteApp("vertraulich");

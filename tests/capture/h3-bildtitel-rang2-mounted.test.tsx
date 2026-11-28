@@ -24,7 +24,7 @@
 //
 // UND DIE GEGENPROBE STEHT DANEBEN: Sobald eigener Text im Blatt steht, gewinnt Rang 1 — die
 // Rangfolge ist nicht umgangen, sie wird benutzt.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
@@ -74,11 +74,16 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import "../../apps/web/src/i18n";
+import { assistenzProfilApi } from "../../apps/web/src/api/assistenzProfil";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import {
+  ladeAssistenzProfil,
+  verwerfeAssistenzProfil,
+} from "../../apps/web/src/lib/assistenzProfil";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -163,11 +168,30 @@ function mount(url: string): void {
   });
 }
 
+beforeEach(async () => {
+  // Hier wird die Antwort auf den manuellen Klick gemessen, einschließlich Abbruch und Bildwechsel.
+  vi.spyOn(assistenzProfilApi, "lesen").mockResolvedValue({
+    profil: {
+      name: "Klara",
+      avatar: null,
+      bewegung: "standard",
+      eingerichtetAm: "2026-11-01T00:00:00Z",
+      geaendertAm: "2026-11-01T00:00:00Z",
+      fassung: 1,
+      bildAutomatik: false,
+    },
+    einrichtungOffen: false,
+  });
+  await ladeAssistenzProfil("u1");
+});
+
 afterEach(() => {
   act(() => {
     root.unmount();
   });
   container.remove();
+  verwerfeAssistenzProfil();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
   document.body.innerHTML = "";
 });
