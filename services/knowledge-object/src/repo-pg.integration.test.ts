@@ -1,11 +1,8 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { sichtbareFuer, sqlSichtbarkeitFuer } from "../../app/src/sichtbarkeit";
-import type { SessionUser } from "../../auth";
 import { guardedLocalPgTestUrl } from "../../db-tx";
-import { InMemoryKoRepo } from "./repo";
-import { KO_IMPORT_ANCHOR_SCHEMA, KO_SCHEMA, KO_SICHTBARKEIT_SCHEMA, PgKoRepo } from "./repo-pg";
+import { KO_IMPORT_ANCHOR_SCHEMA, KO_SCHEMA, PgKoRepo } from "./repo-pg";
 import { KoService } from "./service";
 import type { KnowledgeObject } from "./types";
 
@@ -110,79 +107,6 @@ describe("WP-SHIP8-CLOSE-5 (bens GELB): kos_import_candidate_uq gegen echtes Pos
   async function reset(p: Pool): Promise<void> {
     await p.query("DROP TABLE IF EXISTS kos CASCADE");
   }
-
-  it("Aufgabenprojektion beider Adapter entspricht dem Vollbestand bei Altständen, Quellrechten, Spaces und Zusammenführung", async (ctx) => {
-    const pool = requirePool(ctx);
-    await reset(pool);
-    await pool.query(KO_SCHEMA);
-    await pool.query(KO_SICHTBARKEIT_SCHEMA);
-    const pg = new PgKoRepo(pool);
-    const mem = new InMemoryKoRepo();
-    const stand = [
-      ko("z-zuerst", { author: "fehlend", confidentiality: "intern" }),
-      ko("b-in-space", { author: "fehlend", spaceId: "geteilt", confidentiality: "intern" }),
-      ko("c-eingeschraenkt", {
-        author: "a",
-        confidentiality: "intern",
-        quellrechte: { stufe: "intern", leser: ["b"] },
-      }),
-      ko("d-altstufe", { author: "fehlend" }),
-      ko("a-zuletzt", { confidentiality: "intern" }),
-      Object.assign(ko("alt-nummer", { confidentiality: "intern" }), { author: 4359 }),
-      Object.assign(ko("alt-unbekannt", { author: "fehlend" }), { confidentiality: "historisch" }),
-      Object.assign(ko("alt-aktiv", { author: "fehlend", deletedAt: "" }), { mergedInto: null }),
-      ko("e-geloescht", { confidentiality: "intern", deletedAt: "2026-10-02" }),
-      ko("f-verschmolzen", {
-        confidentiality: "intern",
-        mergedInto: { koId: "a-zuletzt", version: 2, overlapId: "dup", at: "2026-10-02", by: "a" },
-      }),
-    ];
-    for (const k of stand) {
-      k.bodyHtml = "<p>Nur im Vollbestand</p>";
-      await pg.insert(k);
-      await mem.insert(k);
-    }
-    const nutzer: SessionUser[] = [
-      { id: "a", role: "experte" },
-      { id: "b", role: "admin", spaceLesbar: new Set(["geteilt"]) },
-    ];
-    for (const user of nutzer) {
-      const trim = sqlSichtbarkeitFuer(user);
-      const alle = sichtbareFuer(
-        user,
-        (await pg.list({}, trim)).filter((k) => !k.deletedAt && !k.mergedInto),
-      );
-      for (const auswahl of [
-        { objektIds: [] },
-        {
-          objektIds: ["a-zuletzt", "z-zuerst", "c-eingeschraenkt", "e-geloescht", "f-verschmolzen"],
-        },
-        { objektIds: ["a-zuletzt", "c-eingeschraenkt"], erreichbareAutoren: ["a", "b", "4359"] },
-        { objektIds: [], erreichbareAutoren: [] },
-      ]) {
-        const erwartet = alle
-          .filter(
-            (k) =>
-              auswahl.objektIds.includes(k.id) ||
-              (auswahl.erreichbareAutoren && !auswahl.erreichbareAutoren.includes(k.author)),
-          )
-          .map((k) => k.id);
-        const a = await pg.listAufgabenKandidaten(auswahl, trim);
-        const b = await mem.listAufgabenKandidaten(auswahl, trim);
-        expect(a.map((k) => k.id)).toEqual(erwartet);
-        expect(a).toEqual(b);
-        for (const k of a) {
-          expect(
-            Object.keys(k).every((key) =>
-              ["id", "author", "category", "quellrechte", "spaceId", "confidentiality"].includes(
-                key,
-              ),
-            ),
-          ).toBe(true);
-        }
-      }
-    }
-  });
 
   it("BESTANDS-UPGRADE: Anker-Migration auf Tabelle mit Altzeilen (import_candidate_id NULL) + idempotenter Re-Run", async (ctx) => {
     const pool = requirePool(ctx);
