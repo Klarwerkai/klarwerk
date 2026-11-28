@@ -153,21 +153,16 @@ const fragen = (a: Aufbau, extra: Record<string, unknown> = {}) =>
     payload: { question: FRAGE, locale: "de", questionSource: "manual", ...extra },
   });
 
-/**
- * Der Antwortkörper OHNE die Felder, die von Natur aus je Lauf verschieden sind: `answerId` ist eine
- * frische Kennung, `receipt` eine Signatur über die Uhrzeit. Alles andere MUSS gleich bleiben.
- */
+/** Laufkennungen, Signatur und gemessene Laufzeit unterscheiden sich bei derselben Fachantwort. */
 function stabil(koerper: Record<string, unknown>): Record<string, unknown> {
-  const { answerId: _kennung, receipt: _beleg, ...rest } = koerper;
-  // Gesamtcheck R-1329 (Nacharbeit 69): seit REF-02 trägt die Antwort die Referenzprüfung, und
-  // deren `pruefId` ist ebenso eine frische Kennung je Anfrage (gemessen: `ref_…` verschieden).
-  // Nur sie fällt heraus — Zustand, Gründe, Bindung und Fingerabdrücke werden weiter verglichen.
-  const pruefung = rest.referenzpruefung;
-  if (pruefung !== null && typeof pruefung === "object" && "pruefId" in pruefung) {
-    const { pruefId: _pruefKennung, ...pruefRest } = pruefung as Record<string, unknown>;
-    return { ...rest, referenzpruefung: pruefRest };
-  }
-  return rest;
+  const { answerId: _kennung, receipt: _beleg, referenzpruefung, ...rest } = koerper;
+  expect(referenzpruefung).toBeTypeOf("object");
+  const { pruefId, messung, ...pruefRest } = referenzpruefung as Record<string, unknown>;
+  expect(pruefId).toBeTypeOf("string");
+  const { dauerMs, ...messwerte } = messung as Record<string, unknown>;
+  expect(Number.isSafeInteger(dauerMs)).toBe(true);
+  expect(dauerMs).toBeGreaterThanOrEqual(0);
+  return { ...rest, referenzpruefung: { ...pruefRest, messung: messwerte } };
 }
 
 describe("KA5 · die Markierung schärft die Suche", () => {
