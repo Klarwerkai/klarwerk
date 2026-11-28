@@ -24,6 +24,8 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { extname, join, resolve } from "node:path";
 
+import type { BrowserServer } from "playwright";
+
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -118,7 +120,26 @@ export interface Seite {
 interface Browser {
   version(): string;
   newPage(opts: Record<string, unknown>): Promise<Seite>;
+  contexts(): { close(): Promise<void> }[];
   close(): Promise<void>;
+}
+
+async function beendeBrowserprozess(prozess: BrowserServer): Promise<void> {
+  // Alle Seiten sind bereits geschlossen. Beim nativen Beenden kann Chromium
+  // dennoch hängen. Nur den von dieser Bühne gestarteten Prozess einsammeln.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const zeitUm = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), 2_000);
+  });
+  try {
+    const geschlossen = prozess.close();
+    if (!(await Promise.race([geschlossen.then(() => true), zeitUm]))) {
+      await prozess.kill();
+      await geschlossen;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const MIME: Record<string, string> = {
@@ -218,10 +239,23 @@ export async function buehneAufbauen(
 ): Promise<Buehne> {
   const seitenfehler: string[] = [];
   let browser: Browser | null = null;
+  let prozess: BrowserServer | null = null;
   let app: ReturnType<typeof buildApp> | null = null;
   const schliessen = async (): Promise<void> => {
-    await browser?.close();
-    await app?.close();
+    // newPage besitzt einen eigenen Browserkontext. Dessen Seiten und laufende
+    // Anfragen beenden, bevor Chromium auf den Prozessabschluss wartet.
+    try {
+      for (const kontext of browser?.contexts() ?? []) {
+        await kontext.close();
+      }
+      await browser?.close();
+    } finally {
+      try {
+        if (prozess) await beendeBrowserprozess(prozess);
+      } finally {
+        await app?.close();
+      }
+    }
   };
   try {
     if (!existsSync(join(DIST, "index.html"))) {
@@ -259,27 +293,24 @@ export async function buehneAufbauen(
 
     const require = createRequire(import.meta.url);
     const { chromium } = require("playwright") as {
-      chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
+      chromium: {
+        launchServer(o: Record<string, unknown>): Promise<BrowserServer>;
+        connect(endpoint: string): Promise<Browser>;
+      };
     };
-    browser = await chromium.launch(
-      anzeige === undefined
-        ? {
-            headless: true,
-            args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-          }
-        : {
-            // Sichtbar: kein Einzelprozess (der sichtbare Browser braucht seine eigene
-            // Fensterprozesslage), Fenster fest oben links, damit das Display es ganz zeigt.
-            headless: false,
-            args: [
-              "--no-sandbox",
-              "--disable-gpu",
-              "--window-position=0,0",
-              `--window-size=${fenster.width},${fenster.height + 140}`,
-            ],
-            env: { ...process.env, DISPLAY: anzeige },
-          },
-    );
+    prozess = await chromium.launchServer({
+      host: "127.0.0.1",
+      headless: anzeige === undefined,
+      args: [
+        "--no-sandbox",
+        "--disable-gpu",
+        ...(anzeige === undefined
+          ? []
+          : ["--window-position=0,0", `--window-size=${fenster.width},${fenster.height + 140}`]),
+      ],
+      ...(anzeige === undefined ? {} : { env: { ...process.env, DISPLAY: anzeige } }),
+    });
+    browser = await chromium.connect(prozess.wsEndpoint());
     const version = browser.version();
     // Vorgabe 1280×800 wie das Mockup; `fenster` stellt die schmale Lage schon beim Anfahren.
     // JOB 3809: `hasTouch` kommt NUR dazu, wenn es verlangt wurde — ohne den Schalter geht hier
