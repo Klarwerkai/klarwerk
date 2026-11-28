@@ -84,7 +84,8 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
   it("2 · mit Änderungen fragt die GEMEINSAME Wache — genau ein Dialog, kein eigener daneben", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
+    const titel = feld(i18n.t("capture.wizard.titleLabel"));
+    await tippe(titel, "Zahlungsziel (neu gedacht)");
 
     expect(wacheOffen()).toBe(false);
     await klick(verlassenKnopf() as HTMLButtonElement);
@@ -102,7 +103,9 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
     // Solange nicht geantwortet ist, ist nichts passiert: Fläche steht, Bestand unberührt.
     expect(adresse()).toBe(`/erfassen?draft=${ENTWURF_ID}`);
-    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe("Zahlungsziel (neu gedacht)");
+    expect(titel.isConnected).toBe(true);
+    expect(titel.closest("[inert]")).not.toBeNull();
+    expect(titel.value).toBe("Zahlungsziel (neu gedacht)");
   });
 
   it("2b · Hier bleiben nimmt nichts weg — der geänderte Text steht weiter da", async () => {
