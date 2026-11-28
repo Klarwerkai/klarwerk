@@ -134,15 +134,16 @@ describe("R-1026 · Quellentitel unter der Antwort auf der Telefon-Fragefläche 
   beforeAll(async () => {
     try {
       stand = await h4Stand("/wissen/:frei", EMAIL, async ({ services, app, autorId }) => {
-        const ko = (await services.ko.create({
+        const ko = await services.ko.create({
           title: TITEL_LANG,
           statement: AUSSAGE,
           bodyHtml: `<p>${AUSSAGE}</p>`,
           type: "best_practice",
           category: "Instandhaltung",
+          confidentiality: "intern",
           author: autorId,
           neededValidations: 1,
-        } as never)) as { id: string };
+        });
         // Freigabe über denselben Weg wie die Oberfläche (`PUT /api/kos/:id`, action rate).
         const login = await app.inject({
           method: "POST",
