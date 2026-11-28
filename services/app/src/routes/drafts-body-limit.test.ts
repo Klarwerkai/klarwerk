@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { grossesPng } from "../../../../tests/m5c-b-bildbudget/bilder";
 import { buildApp, buildServices } from "../build-app";
 import { DRAFTS_BODY_LIMIT, DRAFT_BODY_TOO_LARGE } from "./capture-routes";
 
@@ -23,8 +24,14 @@ async function adminApp() {
 
 // ~2 MiB bodyHtml — unter dem globalen 1-MiB-Default NICHT möglich, unter DRAFTS_BODY_LIMIT problemlos.
 function bigBodyHtml(): string {
-  const img = `<img src="data:image/jpeg;base64,${"Q".repeat(200_000)}">`;
-  return `<h2>Handbuch</h2>${img.repeat(10)}`;
+  const bilder = Array.from({ length: 10 }, (_, i) => {
+    const daten = grossesPng(222, 222, i + 1).toString("base64");
+    return `<img src="data:image/png;base64,${daten}">`;
+  });
+  const html = `<h2>Handbuch</h2>${bilder.join("")}`;
+  expect(Buffer.byteLength(html)).toBeGreaterThan(1.8 * 1024 * 1024);
+  expect(Buffer.byteLength(html)).toBeLessThan(2 * 1024 * 1024);
+  return html;
 }
 
 describe("WP-D1d: /api/drafts akzeptiert dokument-große Bodies (5-MiB-Ceiling)", () => {
@@ -65,6 +72,7 @@ describe("WP-D1d: /api/drafts akzeptiert dokument-große Bodies (5-MiB-Ceiling)"
       },
     });
     expect(res.statusCode).toBe(201);
+    expect(res.json().payload.bodyHtml.match(/src="data:image\/webp;base64,/g)).toHaveLength(10);
   });
 
   it("PUT /api/drafts/:id mit großem bodyHtml → 200 (derselbe Cap greift)", async () => {
@@ -96,6 +104,7 @@ describe("WP-D1d: /api/drafts akzeptiert dokument-große Bodies (5-MiB-Ceiling)"
       },
     });
     expect(put.statusCode).toBe(200);
+    expect(put.json().payload.bodyHtml.match(/src="data:image\/webp;base64,/g)).toHaveLength(10);
   });
 });
 

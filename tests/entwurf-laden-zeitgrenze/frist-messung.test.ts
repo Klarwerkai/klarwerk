@@ -99,7 +99,7 @@ async function angemeldeteApp(): Promise<{
 describe("JOB 3782: die Frist steht über dem, was ein grosser Entwurf wirklich braucht", () => {
   it("M1: der grösstmögliche Entwurf wird am echten Routenweg VOLLSTÄNDIG geholt — mit der Dauer", async () => {
     const { app, headers } = await angemeldeteApp();
-    const nutzlast = grosserEntwurf();
+    const nutzlast = await grosserEntwurf();
     const groesse = Buffer.byteLength(JSON.stringify(nutzlast), "utf8");
     // Der Fall misst nur dann den ungünstigsten Entwurf, wenn die Nutzlast den Rahmen auch wirklich
     // ausfüllt — und sie muss unter dem Parserlimit bleiben, sonst gäbe es gar keinen Entwurf.
@@ -139,7 +139,14 @@ describe("JOB 3782: die Frist steht über dem, was ein grosser Entwurf wirklich 
       payload: { bodyHtml?: string | null; sourceImageCount?: number };
       anchorsMissing?: string[];
     };
-    expect(geholteNutzlast.payload.bodyHtml ?? "").toContain(MARKE_ENDE);
+    const html = geholteNutzlast.payload.bodyHtml ?? "";
+    expect(html).toContain(MARKE_ENDE);
+    const quellen = Array.from(
+      html.matchAll(/src="(data:image\/webp;base64,[^"]+)"/g),
+      (m) => m[1],
+    );
+    expect(quellen).toHaveLength(BILDER_IM_ENTWURF);
+    expect(new Set(quellen).size).toBe(BILDER_IM_ENTWURF);
     // Ohne diese Zahl könnte die Galerie unter dem Blatt einen Bildverlust prinzipiell nicht
     // erkennen (`lib/bildverlust.ts`: fail-closed „unbekannt"). T3 stützt sich darauf.
     expect(geholteNutzlast.payload.sourceImageCount).toBe(BILDER_IM_ENTWURF);
@@ -170,7 +177,7 @@ describe("JOB 3782: die Frist steht über dem, was ein grosser Entwurf wirklich 
       method: "POST",
       url: "/api/drafts",
       headers,
-      payload: grosserEntwurf(),
+      payload: await grosserEntwurf(),
     });
     expect(angelegt.statusCode).toBe(201);
     const kennung = (angelegt.json() as { id: string }).id;
