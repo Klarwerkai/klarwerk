@@ -202,6 +202,11 @@ describe("WP-SHIP8-FINAL (c+d+e): harte Grenzen — Queue-Kappe, Job-Timeout, Re
   it("(d) Job-Timeout: ein haengender Lauf endet nach der Frist ehrlich als failed/timeout", async () => {
     expect(AI_CHECK_JOB_TIMEOUT_MS).toBe(120_000);
     const resolved: ResolveCall[] = [];
+    let abschliessen = () => {};
+    const spaeterAbschluss = new Promise<{ ok: true }>((resolve) => {
+      abschliessen = () => resolve({ ok: true });
+    });
+    let laufSignal: AbortSignal | undefined;
     const fakeKo = {
       get: async () => undefined,
       markAiCheckPending: async () => true,
@@ -212,12 +217,24 @@ describe("WP-SHIP8-FINAL (c+d+e): harte Grenzen — Queue-Kappe, Job-Timeout, Re
     } as unknown as AppServices["ko"];
     const worker = createAiCheckWorker({
       ko: fakeKo,
-      run: () => new Promise(() => {}), // haengt fuer immer
+      run: (_koId, _umfang, signal) => {
+        laufSignal = signal;
+        return spaeterAbschluss;
+      },
       log: () => {},
       jobTimeoutMs: 20, // Frist injiziert (Konstante oben gepinnt)
     });
     worker.enqueue("ko-haengt");
-    await worker.idle();
+    try {
+      await expect.poll(() => resolved).toEqual([{ id: "ko-haengt", reason: "timeout" }]);
+      expect(laufSignal?.aborted).toBe(true);
+      // Ein Lauf, der das Abbruchsignal noch nicht verarbeitet hat, belegt weiterhin seinen Platz.
+      expect(worker.queuedCount()).toBe(1);
+    } finally {
+      abschliessen();
+      await worker.idle();
+    }
+    // Das verspätete Ergebnis überschreibt den Timeout nicht.
     expect(resolved).toEqual([{ id: "ko-haengt", reason: "timeout" }]);
   });
 

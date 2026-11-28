@@ -19,6 +19,7 @@ import {
   inMemoryRepos,
 } from "../../services/app/src/build-app";
 import type { KlaraGespraech } from "../../services/app/src/klara-gespraech";
+import type { AskResult } from "../../services/ask";
 
 type App = ReturnType<typeof buildApp>;
 type Sicht = Omit<KlaraGespraech, "kontoId" | "fassung">;
@@ -26,21 +27,25 @@ type Sicht = Omit<KlaraGespraech, "kontoId" | "fassung">;
 let services: AppServices;
 let app: App;
 let erik = { id: "", token: "" };
+let quelleId: string;
+let adminToken: string;
 
 const BASIS = "/api/me/klara";
-const MARKIERUNG = {
-  pfad: "/wissen/ko-1",
+const TITEL = "Zylinderkopfdichtung XQ42 wechseln";
+const AUSSAGE = "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet.";
+const markierung = (koId: string) => ({
+  pfad: `/wissen/${koId}`,
   seitenName: "Wissen",
-  objekt: "„Zylinderkopfdichtung XQ42 wechseln“",
-  koId: "ko-1",
+  objekt: `„${TITEL}“`,
+  koId,
   fassung: 3,
   absatz: 2,
   modus: "lesen",
   pruefstatus: "geprueft",
   lesart: "original",
   bezug: "markierung",
-  auswahl: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet.",
-};
+  auswahl: AUSSAGE,
+});
 const SEITE_FRAGEN = { pfad: "/fragen", seitenName: "Fragen", objekt: "Noch keine Frage" };
 
 async function anmelden(email: string): Promise<string> {
@@ -70,16 +75,14 @@ async function gespraechMitEinwilligung(bezug: unknown = SEITE_FRAGEN): Promise<
   return g;
 }
 
-async function eigeneAntwort(answerId: string): Promise<void> {
-  expect(
-    await services.answerSnapshots.createRecord({
-      answerId,
-      askExecutionId: `exec-${answerId}`,
-      createdAt: "2026-10-10T09:30:00.000Z",
-      schemaVersion: 1,
-      owner: { kind: "user", userId: erik.id },
-    }),
-  ).toBe(true);
+async function pruefen(id: string) {
+  const res = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${id}`,
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: { action: "admin-validate" },
+  });
+  expect(res.statusCode, res.body).toBe(200);
 }
 
 beforeEach(async () => {
@@ -90,7 +93,7 @@ beforeEach(async () => {
     url: "/api/auth/register",
     payload: { name: "Ada Admin", email: "ada@klara-kontext.test", password: "secret123" },
   });
-  const adminToken = await anmelden("ada@klara-kontext.test");
+  adminToken = await anmelden("ada@klara-kontext.test");
   const angelegt = await app.inject({
     method: "POST",
     url: "/api/users",
@@ -107,6 +110,23 @@ beforeEach(async () => {
     id: (angelegt.json() as { id: string }).id,
     token: await anmelden("erik@klara-kontext.test"),
   };
+  const quelle = await services.ko.create({
+    title: TITEL,
+    statement: "Zylinderkopfdichtung XQ42.",
+    type: "best_practice",
+    category: "Werkstatt",
+    confidentiality: "intern",
+    author: erik.id,
+  });
+  quelleId = quelle.id;
+  await services.ko.revise(
+    quelleId,
+    { statement: "Zylinderkopfdichtung XQ42 vor dem Wechsel entlasten." },
+    erik.id,
+  );
+  const fassung = await services.ko.revise(quelleId, { statement: AUSSAGE }, erik.id);
+  expect(fassung.version).toBe(3);
+  await pruefen(quelleId);
 });
 
 describe("B1 · K2 — der Bezug einer Markierung bleibt, wie er war", () => {
@@ -117,7 +137,7 @@ describe("B1 · K2 — der Bezug einer Markierung bleibt, wie er war", () => {
     const s = await auf("PUT", `${BASIS}/gespraeche/${g.id}/schritt`, {
       art: "frage",
       text: frage,
-      objektbezug: MARKIERUNG,
+      objektbezug: markierung(quelleId),
       stand: "laeuft",
     });
     expect(s.statusCode, s.body).toBe(200);
@@ -125,33 +145,49 @@ describe("B1 · K2 — der Bezug einer Markierung bleibt, wie er war", () => {
       von: "du",
       modus: "frage",
       text: frage,
-      objektbezug: MARKIERUNG,
+      objektbezug: markierung(quelleId),
     });
     expect(n.statusCode, n.body).toBe(201);
 
     const gelesen = ((await auf("GET", `${BASIS}/gespraech`)).json() as { gespraech: Sicht })
       .gespraech;
     expect(gelesen.objektbezug).toEqual(SEITE_FRAGEN);
-    expect(gelesen.nachrichten[0]?.objektbezug).toEqual(MARKIERUNG);
-    expect(gelesen.letzterSchritt?.objektbezug).toEqual(MARKIERUNG);
+    expect(gelesen.nachrichten[0]?.objektbezug).toEqual(markierung(quelleId));
+    expect(gelesen.letzterSchritt?.objektbezug).toEqual(markierung(quelleId));
   });
 });
 
 describe("B2 · K3 — Quellen mit Titel, Fassung und Prüfstatus", () => {
   it("hält die Angaben fest und weist eine Angabe zu einer nicht genannten Quelle ab", async () => {
     const g = await gespraechMitEinwilligung();
-    await eigeneAntwort("ans-k3-1");
+    const ventil = await services.ko.create({
+      title: "Ventil F3",
+      statement: "Ventil F3 entlastet die Zylinderkopfdichtung XQ42 vor dem Wechsel.",
+      type: "best_practice",
+      category: "Werkstatt",
+      confidentiality: "intern",
+      author: erik.id,
+    });
+    await pruefen(ventil.id);
+    const frage = await auf("POST", "/api/ask", {
+      question: "Wie wird die Zylinderkopfdichtung XQ42 vor dem Wechsel entlastet?",
+    });
+    expect(frage.statusCode, frage.body).toBe(200);
+    const { result: antwort, answerId } = frage.json<AskResult>();
+    expect(antwort.answered).toBe(true);
+    expect(answerId).toEqual(expect.any(String));
+    expect([...antwort.sources].sort(), frage.body).toEqual([quelleId, ventil.id].sort());
     const angaben = [
-      { koId: "ko-1", titel: "Zylinderkopfdichtung XQ42 wechseln", fassung: 3, geprueft: true },
-      { koId: "ko-2", titel: "Ventil F3", fassung: null, geprueft: null },
+      { koId: quelleId, titel: TITEL, fassung: 3, geprueft: true },
+      { koId: ventil.id, titel: ventil.title, fassung: ventil.version, geprueft: null },
     ];
     const ok = await auf("POST", `${BASIS}/gespraeche/${g.id}/nachrichten`, {
       von: "klara",
       modus: "ohne_ki",
-      text: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet.",
-      objektbezug: MARKIERUNG,
-      antwortId: "ans-k3-1",
-      quellen: ["ko-1", "ko-2"],
+      text: antwort.answer,
+      objektbezug: markierung(quelleId),
+      antwortId: answerId,
+      quellen: antwort.sources,
       quellenAngaben: angaben,
     });
     expect(ok.statusCode, ok.body).toBe(201);
@@ -159,26 +195,43 @@ describe("B2 · K3 — Quellen mit Titel, Fassung und Prüfstatus", () => {
       .gespraech;
     expect(gelesen.nachrichten[0]?.quellenAngaben).toEqual(angaben);
 
-    await eigeneAntwort("ans-k3-2");
+    const ohneFassung = await auf("POST", `${BASIS}/gespraeche/${g.id}/nachrichten`, {
+      von: "klara",
+      modus: "ohne_ki",
+      text: antwort.answer,
+      objektbezug: SEITE_FRAGEN,
+      antwortId: answerId,
+      quellen: [ventil.id],
+      quellenAngaben: [{ koId: ventil.id, titel: ventil.title, fassung: null, geprueft: null }],
+    });
+    expect(ohneFassung.statusCode, ohneFassung.body).toBe(201);
+    const erneut = (await auf("GET", `${BASIS}/gespraech`)).json<{ gespraech: Sicht }>();
+    expect(erneut.gespraech.nachrichten[1]).toMatchObject({
+      grund: "inhalt_nicht_verfuegbar",
+      antwortId: null,
+      quellen: [],
+      quellenAngaben: [],
+    });
+
     const erfunden = await auf("POST", `${BASIS}/gespraeche/${g.id}/nachrichten`, {
       von: "klara",
       modus: "ohne_ki",
       text: "x",
       objektbezug: SEITE_FRAGEN,
-      antwortId: "ans-k3-2",
-      quellen: ["ko-1"],
+      antwortId: answerId,
+      quellen: [quelleId],
       quellenAngaben: [{ koId: "ko-9", titel: "Erfunden", fassung: 1, geprueft: true }],
     });
     expect(erfunden.statusCode).toBe(400);
     // Eine Frage trägt keine Quellenangaben.
-    const frage = await auf("POST", `${BASIS}/gespraeche/${g.id}/nachrichten`, {
+    const mitQuellen = await auf("POST", `${BASIS}/gespraeche/${g.id}/nachrichten`, {
       von: "du",
       modus: "frage",
       text: "x",
       objektbezug: SEITE_FRAGEN,
       quellenAngaben: [],
     });
-    expect(frage.statusCode).toBe(400);
+    expect(mitQuellen.statusCode).toBe(400);
   });
 });
 
@@ -186,12 +239,12 @@ describe("B3 · K6 — nur bekannte, gültige Bezugsangaben", () => {
   it("weist unbekannte Werte ab; eine Markierung ohne Bezug „Markierung“ ebenso", async () => {
     const g = await gespraechMitEinwilligung();
     const falsch: Record<string, unknown>[] = [
-      { ...MARKIERUNG, bezug: "alles" },
-      { ...MARKIERUNG, modus: "admin" },
-      { ...MARKIERUNG, fassung: 0 },
-      { ...MARKIERUNG, pruefstatus: "freigegeben" },
-      { ...MARKIERUNG, bezug: "seite" }, // Markierungstext ohne Bezug „Markierung“
-      { ...MARKIERUNG, auswahl: "x".repeat(301) },
+      { ...markierung(quelleId), bezug: "alles" },
+      { ...markierung(quelleId), modus: "admin" },
+      { ...markierung(quelleId), fassung: 0 },
+      { ...markierung(quelleId), pruefstatus: "freigegeben" },
+      { ...markierung(quelleId), bezug: "seite" }, // Markierungstext ohne Bezug „Markierung“
+      { ...markierung(quelleId), auswahl: "x".repeat(301) },
     ];
     for (const bezug of falsch) {
       const r = await auf("POST", `${BASIS}/gespraeche/${g.id}/nachrichten`, {
@@ -237,7 +290,7 @@ describe("B4 · Nacharbeit 6 — der gesendete Seitenkontext bleibt am Schritt e
       },
       {
         ...SEITE_FRAGEN,
-        koId: "ko-1",
+        koId: quelleId,
         fassung: 2,
         bezug: "seite",
         kontextArt: "frage",
