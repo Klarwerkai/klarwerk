@@ -9,7 +9,7 @@
 // (3) `continue-on-error: true`, (4) ein anderer Befehl statt `npm run smoke:ui:gate:drei`.
 // „Ein Wächter, der nur prüft, ob eine Zeichenfolge vorkommt, erfüllt das nicht.“
 //
-// DIE STRUKTUR WIRD GELESEN, NICHT GESUCHT: ein kleiner Block-YAML-Leser bildet Auslöser, Jobs und
+// DIE STRUKTUR WIRD GELESEN, NICHT GESUCHT: ein YAML-Leser bildet Auslöser, Jobs und
 // Schritte; die Engines kommen aus der Kette tools/check → npm-Skript → `--project` →
 // playwright.smoke.config.ts (Gerät → Engine). D1–D3 belegen, dass Kommentare und Schrittnamen mit
 // den richtigen Wörtern nichts retten.
@@ -25,70 +25,17 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 const WURZEL = join(__dirname, "..", "..");
 const lies = (pfad: string) => readFileSync(join(WURZEL, pfad), "utf8");
 
-// ------------------------------------------------------------------------------------------------
-// Ein Block-YAML-Leser für die Teilmenge, die die Workflows hier benutzen: Abbildungen, Listen,
-// Skalare; Flusswerte (`{ … }`, `[ … ]`) bleiben Zeichenketten. Kommentarzeilen fallen weg.
-// ------------------------------------------------------------------------------------------------
-
 type Knoten = string | Knoten[] | { [schluessel: string]: Knoten };
 type Abb = { [schluessel: string]: Knoten };
-interface Zeile {
-  einzug: number;
-  inhalt: string;
-}
-
-function skalar(roh: string): string {
-  const t = roh.trim();
-  return /^(["']).*\1$/.test(t) ? t.slice(1, -1) : t;
-}
 
 function leseYaml(text: string): Knoten {
-  const zeilen: Zeile[] = text
-    .split("\n")
-    .filter((z) => z.trim().length > 0 && !z.trim().startsWith("#"))
-    .map((z) => ({ einzug: z.length - z.trimStart().length, inhalt: z.trim() }));
-  let i = 0;
-
-  function block(einzug: number): Knoten {
-    if (zeilen[i]?.inhalt.startsWith("- ")) {
-      const folge: Knoten[] = [];
-      while (zeilen[i]?.einzug === einzug && zeilen[i]?.inhalt.startsWith("- ")) {
-        const rest = (zeilen[i] as Zeile).inhalt.slice(2);
-        if (/^[\w-]+:(\s|$)/.test(rest)) {
-          zeilen[i] = { einzug: einzug + 2, inhalt: rest };
-          folge.push(block(einzug + 2));
-        } else {
-          folge.push(skalar(rest));
-          i++;
-        }
-      }
-      return folge;
-    }
-    const karte: Abb = {};
-    while (zeilen[i]?.einzug === einzug && !zeilen[i]?.inhalt.startsWith("- ")) {
-      const inhalt = (zeilen[i] as Zeile).inhalt;
-      const m = /^([\w-]+):\s*(.*)$/.exec(inhalt);
-      const schluessel = m?.[1];
-      if (!m || !schluessel) {
-        throw new Error(`YAML-Zeile nicht lesbar: ${inhalt}`);
-      }
-      const wert = m[2] ?? "";
-      i++;
-      const naechste = zeilen[i];
-      if (wert === "" && naechste && naechste.einzug > einzug) {
-        karte[schluessel] = block(naechste.einzug);
-      } else {
-        karte[schluessel] = skalar(wert);
-      }
-    }
-    return karte;
-  }
-
-  return block(zeilen[0]?.einzug ?? 0);
+  // Ausdrücke und Boolesche Schalter bleiben in der für den GitHub-Workflow geschriebenen Form.
+  return parse(text, { schema: "failsafe" }) as Knoten;
 }
 
 function abb(k: Knoten | undefined): Abb {
