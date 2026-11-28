@@ -70,6 +70,10 @@ export default {
     "quellen.fokus.aktuellerEintrag": "Heutigen Eintrag öffnen",
     "quellen.fokus.heute": "Was gilt heute? · Fassung {{version}}",
     "quellen.fokus.zurAussage": "Zurück zur Aussage",
+    "quellen.fokus.zumVergleich": "Zurück zum Satzvergleich",
+    "quellen.fokus.heutigerEintrag": "Heutiger Eintrag",
+    "quellen.fokus.inKlarwerk": "In Klarwerk öffnen (neues Fenster)",
+    "quellen.fokus.ohneVerknuepfteFassung": "Zu diesem Beleg wurde keine Fassung gespeichert.",
     "quellen.fokus.freigabeAm": "Freigegeben am {{zeit}}",
     "quellen.gespeichert.beschlussbeleg":
       "Beleg zur Freigabe · Auszug aus Notizfassung {{version}}",
@@ -151,6 +155,10 @@ export default {
     "quellen.fokus.aktuellerEintrag": "Open the current entry",
     "quellen.fokus.heute": "What applies today? · Version {{version}}",
     "quellen.fokus.zurAussage": "Back to the statement",
+    "quellen.fokus.zumVergleich": "Back to the sentence comparison",
+    "quellen.fokus.heutigerEintrag": "Current entry",
+    "quellen.fokus.inKlarwerk": "Open in Klarwerk (new window)",
+    "quellen.fokus.ohneVerknuepfteFassung": "No version was recorded for this citation.",
     "quellen.fokus.freigabeAm": "Approved on {{zeit}}",
     "quellen.gespeichert.beschlussbeleg":
       "Evidence for this approval · excerpt from note version {{version}}",
@@ -233,6 +241,10 @@ export default {
     "quellen.fokus.aktuellerEintrag": "Huidig item openen",
     "quellen.fokus.heute": "Wat geldt nu? · Versie {{version}}",
     "quellen.fokus.zurAussage": "Terug naar de uitspraak",
+    "quellen.fokus.zumVergleich": "Terug naar de zinsvergelijking",
+    "quellen.fokus.heutigerEintrag": "Huidig item",
+    "quellen.fokus.inKlarwerk": "Openen in Klarwerk (nieuw venster)",
+    "quellen.fokus.ohneVerknuepfteFassung": "Voor deze bronverwijzing is geen versie vastgelegd.",
     "quellen.fokus.freigabeAm": "Goedgekeurd op {{zeit}}",
     "quellen.gespeichert.beschlussbeleg":
       "Onderbouwing van deze goedkeuring · fragment uit notitieversie {{version}}",

@@ -2,6 +2,7 @@ import { ChevronRight, FileText, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { LiveWall } from "../../api/types";
+import { validationMineHref } from "../../lib/validationFilters";
 import { leerzustandsZeile } from "../EmptyStateCtas";
 import { RoleLink } from "../RoleLink";
 import {
@@ -263,7 +264,9 @@ function FuerDichZeile({ zeile }: { zeile: ForYouZeile }): JSX.Element {
         {text}
       </span>
       <span data-h5-zeile="true" className="shrink-0 text-[12.5px] text-muted-2">
-        {meta}
+        {erreichbar && zeile.metaKey && zeile.to === validationMineHref()
+          ? t("weiterarbeiten.pruefliste")
+          : meta}
       </span>
       {erreichbar ? (
         <ChevronRight
@@ -339,7 +342,7 @@ export function ZuletztKarte({
               className={ZEILE}
               hoverClassName="hover:bg-hairline-soft"
             >
-              {() => (
+              {(erreichbar) => (
                 <>
                   <FileText
                     size={15}
@@ -347,8 +350,15 @@ export function ZuletztKarte({
                     aria-hidden="true"
                     className="shrink-0 text-muted-2"
                   />
-                  <span data-h5-zeile="true" className={ZEILEN_TITEL}>
-                    {e.title}
+                  <span className="min-w-0 flex-1 break-words">
+                    <span data-h5-zeile="true" className="block text-[14px] text-text">
+                      {e.title}
+                    </span>
+                    {erreichbar ? (
+                      <span className="block text-[12.5px] text-muted-2">
+                        {t("weiterarbeiten.eintragLesen")}
+                      </span>
+                    ) : null}
                   </span>
                   <span data-h5-zeile="true" className="shrink-0 text-[12.5px] text-muted-2">
                     {datum}

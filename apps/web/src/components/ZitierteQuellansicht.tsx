@@ -14,12 +14,14 @@ export function ZitierteQuellansicht({
   ankerId,
   zitat,
   notizbezug,
+  oeffneAktuellenEintrag,
 }: {
   koId: string;
   fassung: number;
   ankerId: string | null;
   zitat: string;
   notizbezug?: ReturnType<typeof notizPruefbezug>;
+  oeffneAktuellenEintrag?: () => void;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const { user, isLoading } = useSession();
@@ -40,6 +42,12 @@ export function ZitierteQuellansicht({
     return <output>{t("quellen.gespeichert.fehler")}</output>;
   }
   const aktuell = beleg.data.aktuellBestaetigteFassung;
+  const aktuellerEintrag =
+    aktuell && aktuell > fassung
+      ? t("quellen.fokus.heute", { version: aktuell })
+      : t("quellen.fokus.aktuellerEintrag");
+  const linkKlasse =
+    "mt-4 inline-flex rounded-btn text-sm font-medium text-brand-text underline underline-offset-4";
   const freigabezeit =
     beleg.data.freigegebenAm && formatKoTimestamp(beleg.data.freigegebenAm, i18n.language);
   return (
@@ -60,15 +68,24 @@ export function ZitierteQuellansicht({
         freigabeperson={beleg.data.freigegebenVon ? name(beleg.data.freigegebenVon) : null}
         freigabezeit={freigabezeit}
       />
-      <Link
-        to={`/wissen/${encodeURIComponent(koId)}${notizbezug ? `?${notizbezug.anQuelle}` : ""}`}
-        data-testid="quellenfokus-aktuell"
-        className="mt-4 inline-flex rounded-btn text-sm font-medium text-brand-text underline underline-offset-4"
-      >
-        {aktuell && aktuell > fassung
-          ? t("quellen.fokus.heute", { version: aktuell })
-          : t("quellen.fokus.aktuellerEintrag")}
-      </Link>
+      {oeffneAktuellenEintrag ? (
+        <button
+          type="button"
+          data-testid="quellenfokus-aktuell"
+          className={linkKlasse}
+          onClick={oeffneAktuellenEintrag}
+        >
+          {aktuellerEintrag}
+        </button>
+      ) : (
+        <Link
+          to={`/wissen/${encodeURIComponent(koId)}${notizbezug ? `?${notizbezug.anQuelle}` : ""}`}
+          data-testid="quellenfokus-aktuell"
+          className={linkKlasse}
+        >
+          {aktuellerEintrag}
+        </Link>
+      )}
     </section>
   );
 }

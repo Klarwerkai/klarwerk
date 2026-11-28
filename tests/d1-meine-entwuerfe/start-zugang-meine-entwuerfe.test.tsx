@@ -291,6 +291,46 @@ describe("Weiterarbeiten am persönlichen Start", () => {
     expect(link?.getAttribute("href")).toBe(`/erfassen?draft=${id}`);
   });
 
+  it.each([
+    ["de", "Zur Freigabe prüfen", "Prüfliste ansehen", "Eintrag lesen"],
+    ["en", "Review for approval", "View review list", "Read entry"],
+    ["nl", "Beoordelen voor vrijgave", "Beoordelingslijst bekijken", "Item lezen"],
+  ])(
+    "%s unterscheidet die drei Ziele desselben Prüftitels",
+    async (sprache, pruefen, liste, lesen) => {
+      const at = new Date().toISOString();
+      const title = "Übergabe Nord";
+      type Board = Awaited<ReturnType<typeof endpoints.validation.board>>;
+      vi.mocked(endpoints.validation.board).mockResolvedValueOnce([
+        { id: "k1", title, version: 4, assignments: ["u1"] },
+      ] as Board);
+      vi.mocked(endpoints.notifications.list).mockResolvedValueOnce([
+        { id: "n1", koId: "k1", title, kind: "assignment", at },
+      ]);
+      vi.mocked(endpoints.livewall.get).mockResolvedValueOnce({
+        saved: [{ koId: "k1", title, status: "offen", at }],
+        helped: [],
+        helpedToday: 0,
+      });
+      await i18n.changeLanguage(sprache);
+      await mount("/start", "controller");
+
+      const gelesenerLink = (testId: string, href: string) => {
+        const links = container.querySelectorAll(`[data-testid="${testId}"] a`);
+        const ziel = Array.from(links).find((a) => a.getAttribute("href") === href);
+        expect(ziel?.textContent, href).toContain(title);
+        return ziel;
+      };
+      const pruefLink = gelesenerLink("start-weiterarbeiten", "/validierung?ko=k1&fassung=4");
+      const listenLink = gelesenerLink("h5-fuerdich", "/validierung?mine=1");
+      const leseLink = gelesenerLink("h5-zuletzt", "/wissen/k1");
+      expect(pruefLink?.textContent).toContain(pruefen);
+      expect(listenLink?.textContent).toContain(liste);
+      expect(leseLink?.textContent).toContain(lesen);
+      expect(leseLink?.textContent).toContain(i18n.t("start.zuletzt.heute"));
+    },
+  );
+
   it("hat höchstens drei direkte Schritte und zeigt keine abgelaufene oder fremde Zuweisung", async () => {
     vi.mocked(endpoints.drafts.letzteEigene).mockResolvedValueOnce({
       kontoId: "u1",

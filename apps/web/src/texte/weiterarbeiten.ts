@@ -6,6 +6,8 @@ export default {
   de: {
     "weiterarbeiten.titel": "Weiterarbeiten",
     "weiterarbeiten.pruefen": "Zur Freigabe prüfen",
+    "weiterarbeiten.pruefliste": "Prüfliste ansehen",
+    "weiterarbeiten.eintragLesen": "Eintrag lesen",
     "weiterarbeiten.entwurf": "Entwurf weiterbearbeiten",
     "weiterarbeiten.nacharbeit": "Rückmeldung bearbeiten",
     "weiterarbeiten.alleAufgaben": "Alle Aufgaben",
@@ -14,6 +16,8 @@ export default {
   en: {
     "weiterarbeiten.titel": "Continue working",
     "weiterarbeiten.pruefen": "Review for approval",
+    "weiterarbeiten.pruefliste": "View review list",
+    "weiterarbeiten.eintragLesen": "Read entry",
     "weiterarbeiten.entwurf": "Continue draft",
     "weiterarbeiten.nacharbeit": "Address feedback",
     "weiterarbeiten.alleAufgaben": "All tasks",
@@ -22,6 +26,8 @@ export default {
   nl: {
     "weiterarbeiten.titel": "Verder werken",
     "weiterarbeiten.pruefen": "Beoordelen voor vrijgave",
+    "weiterarbeiten.pruefliste": "Beoordelingslijst bekijken",
+    "weiterarbeiten.eintragLesen": "Item lezen",
     "weiterarbeiten.entwurf": "Concept verder bewerken",
     "weiterarbeiten.nacharbeit": "Feedback verwerken",
     "weiterarbeiten.alleAufgaben": "Alle taken",

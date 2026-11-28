@@ -711,12 +711,14 @@ function BegleiterInhalt(): JSX.Element {
         .filter((a) => a === vorfuehrErgebnis || a.art === "zeigen")
     : sichtbareAktionen;
   const passageSchonGezeigt =
-    Boolean(passage) && letzteWordFrage?.vergleich?.dokument.trim() === passage?.text.trim();
+    !!passage &&
+    letzteWordFrage?.stand === "erledigt" &&
+    letzteWordFrage.vergleich?.dokument.trim() === passage.text.trim();
   useEffect(() => {
-    if (vorfuehrung && offen && !menueSeite && vergleichId) {
+    if ((vorfuehrung || passageSchonGezeigt) && offen && !menueSeite && vergleichId) {
       aktuellerVergleichRef.current?.scrollIntoView?.({ block: "start" });
     }
-  }, [vorfuehrung, offen, menueSeite, vergleichId]);
+  }, [vorfuehrung, passageSchonGezeigt, offen, menueSeite, vergleichId]);
   const adapterRef = useRef(adapter);
   adapterRef.current = adapter;
   /** Das Word-Ziel in diesem Augenblick — Fenster, Host, Titel, Auswahlstand (kein Text). */
@@ -1489,6 +1491,123 @@ function BegleiterInhalt(): JSX.Element {
     }));
     setMenueSeite(ziel);
   };
+  const auswahlAktionen =
+    adapter && auswahl && !vorfuehrErgebnis ? (
+      <section
+        data-testid="begleiter-auswahl"
+        data-host={adapter.host}
+        className="space-y-1.5 rounded-card border border-hairline bg-surface px-2.5 py-2"
+      >
+        <p className={KLEINTITEL}>
+          {t("begleiter.kontext.auswahl.titel")}
+          {host ? ` · ${host}` : ""}
+        </p>
+        {!passageSchonGezeigt && (
+          <p
+            data-testid="begleiter-auswahl-text"
+            className="max-h-16 overflow-y-auto whitespace-pre-wrap text-[12px] text-text"
+          >
+            {kuerze(auswahl.text, 600)}
+          </p>
+        )}
+        {auswahl.gekuerzt || auswahl.text.length > 600 ? (
+          <p className="text-[11px] text-muted-2">
+            {t("begleiter.kontext.auswahl.gekuerzt", { laenge: auswahl.laenge })}
+          </p>
+        ) : null}
+        {/* Höchstens zwei Vorschläge — beide über DIESES Word-Fenster. */}
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            data-testid="begleiter-vorschlag-erklaeren"
+            disabled={aktionLaeuft(adapter)}
+            onClick={() => void beauftrage("frage", t("begleiter.vorschlag.erklaerenFrage"))}
+            className={KNOPF_KI}
+          >
+            {t("begleiter.vorschlag.erklaeren")}
+          </button>
+          <button
+            type="button"
+            data-testid="begleiter-vorschlag-verbessern"
+            disabled={aktionLaeuft(adapter)}
+            onClick={() => void beauftrage("frage", t("begleiter.vorschlag.verbessernFrage"))}
+            className={KNOPF_KI}
+          >
+            {t("begleiter.vorschlag.verbessern")}
+          </button>
+        </div>
+        <details data-testid="begleiter-auswahl-mehr">
+          <summary className="cursor-pointer text-[11.5px] font-semibold text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+            {t("assistenzminimal.markierung.mehr")}
+          </summary>
+          {/* Eigene Fragen zur Markierung stellt man im gemeinsamen Eingabefeld — sie
+            gehen über DIESES Word-Fenster (Nacharbeit 5, ein Einstieg). */}
+          <p className="mt-1 text-[11px] text-muted-2">{t("begleiter.kontext.frage.hinweis")}</p>
+          {einfuegeText ? (
+            <div className="mt-1.5 space-y-1">
+              <button
+                type="button"
+                data-testid="begleiter-einfuegen"
+                onClick={() => void beauftrage("einfuegen", einfuegeText)}
+                className={KNOPF}
+              >
+                {t("begleiter.kontext.einfuegen.knopf")}
+              </button>
+              <p className="text-[11px] text-muted-2">
+                {kuerze(einfuegeText, 140)} · {t("begleiter.kontext.einfuegen.hinweis")}
+              </p>
+            </div>
+          ) : null}
+        </details>
+      </section>
+    ) : null;
+  const passagenpruefung =
+    adapter && passage ? (
+      <section
+        data-testid="begleiter-pruefpassage"
+        aria-label={t("begleiter.passage.titel")}
+        className="space-y-1.5 rounded-btn border border-hairline bg-page px-2.5 py-2"
+      >
+        <p
+          data-testid="begleiter-passagenbezug"
+          className="break-words text-[12px] font-semibold text-text"
+        >
+          {t(auswahl ? "begleiter.passage.markierung" : "begleiter.passage.cursor", {
+            titel,
+          })}
+        </p>
+        {!passageSchonGezeigt && (
+          <p
+            data-testid="begleiter-passagentext"
+            className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-snug text-ink"
+          >
+            {passage.text}
+          </p>
+        )}
+        <button
+          type="button"
+          data-testid="begleiter-passage-pruefen"
+          disabled={
+            eigene.ausstehend > 0 ||
+            aktionLaeuft(adapter) ||
+            eigene.angenommen.some((e) => e.instanz === adapter.instanz) ||
+            eigene.unklar.some((e) => e.instanz === adapter.instanz)
+          }
+          onClick={() =>
+            void beauftrage(
+              "frage",
+              t("begleiter.passage.frage"),
+              adapter.instanz,
+              passage.stand,
+              passage.text,
+            )
+          }
+          className={KNOPF_KI}
+        >
+          {t("begleiter.passage.pruefen")}
+        </button>
+      </section>
+    ) : null;
   return (
     <div
       data-testid="begleiter-gespraech"
@@ -1914,6 +2033,7 @@ function BegleiterInhalt(): JSX.Element {
                   })}
                 </ul>
               )}
+              {passageSchonGezeigt && passagenpruefung}
               <div>
                 <p className={KLEINTITEL}>{t("assistenzminimal.kontext.datenweg")}</p>
                 <p className="text-[11.5px] leading-relaxed text-text">
@@ -1944,81 +2064,7 @@ function BegleiterInhalt(): JSX.Element {
             data-ansicht={vorfuehrErgebnis ? "pruefergebnis" : "gespraech"}
             className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-2.5"
           >
-            {adapter && auswahl && !vorfuehrErgebnis ? (
-              <section
-                data-testid="begleiter-auswahl"
-                data-host={adapter.host}
-                className="space-y-1.5 rounded-card border border-hairline bg-surface px-2.5 py-2"
-              >
-                <p className={KLEINTITEL}>
-                  {t("begleiter.kontext.auswahl.titel")}
-                  {host ? ` · ${host}` : ""}
-                </p>
-                {!passageSchonGezeigt && (
-                  <p
-                    data-testid="begleiter-auswahl-text"
-                    className="max-h-16 overflow-y-auto whitespace-pre-wrap text-[12px] text-text"
-                  >
-                    {kuerze(auswahl.text, 600)}
-                  </p>
-                )}
-                {auswahl.gekuerzt || auswahl.text.length > 600 ? (
-                  <p className="text-[11px] text-muted-2">
-                    {t("begleiter.kontext.auswahl.gekuerzt", { laenge: auswahl.laenge })}
-                  </p>
-                ) : null}
-                {/* Höchstens zwei Vorschläge — beide über DIESES Word-Fenster. */}
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    data-testid="begleiter-vorschlag-erklaeren"
-                    disabled={aktionLaeuft(adapter)}
-                    onClick={() =>
-                      void beauftrage("frage", t("begleiter.vorschlag.erklaerenFrage"))
-                    }
-                    className={KNOPF_KI}
-                  >
-                    {t("begleiter.vorschlag.erklaeren")}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="begleiter-vorschlag-verbessern"
-                    disabled={aktionLaeuft(adapter)}
-                    onClick={() =>
-                      void beauftrage("frage", t("begleiter.vorschlag.verbessernFrage"))
-                    }
-                    className={KNOPF_KI}
-                  >
-                    {t("begleiter.vorschlag.verbessern")}
-                  </button>
-                </div>
-                <details data-testid="begleiter-auswahl-mehr">
-                  <summary className="cursor-pointer text-[11.5px] font-semibold text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
-                    {t("assistenzminimal.markierung.mehr")}
-                  </summary>
-                  {/* Eigene Fragen zur Markierung stellt man im gemeinsamen Eingabefeld — sie
-                      gehen über DIESES Word-Fenster (Nacharbeit 5, ein Einstieg). */}
-                  <p className="mt-1 text-[11px] text-muted-2">
-                    {t("begleiter.kontext.frage.hinweis")}
-                  </p>
-                  {einfuegeText ? (
-                    <div className="mt-1.5 space-y-1">
-                      <button
-                        type="button"
-                        data-testid="begleiter-einfuegen"
-                        onClick={() => void beauftrage("einfuegen", einfuegeText)}
-                        className={KNOPF}
-                      >
-                        {t("begleiter.kontext.einfuegen.knopf")}
-                      </button>
-                      <p className="text-[11px] text-muted-2">
-                        {kuerze(einfuegeText, 140)} · {t("begleiter.kontext.einfuegen.hinweis")}
-                      </p>
-                    </div>
-                  ) : null}
-                </details>
-              </section>
-            ) : null}
+            {!passageSchonGezeigt && auswahlAktionen}
 
             {aktionFehler ? (
               <p
@@ -2055,6 +2101,9 @@ function BegleiterInhalt(): JSX.Element {
                             : undefined
                         }
                       />
+                      {passageSchonGezeigt && a.id === letzteWordFrage?.id && auswahlAktionen && (
+                        <div className="mt-2.5">{auswahlAktionen}</div>
+                      )}
                     </li>
                   ) : (
                     <li
@@ -2333,52 +2382,7 @@ function BegleiterInhalt(): JSX.Element {
                 </p>
               </details>
             ) : null}
-            {adapter && passage ? (
-              <section
-                data-testid="begleiter-pruefpassage"
-                aria-label={t("begleiter.passage.titel")}
-                className="space-y-1.5 rounded-btn border border-hairline bg-page px-2.5 py-2"
-              >
-                <p
-                  data-testid="begleiter-passagenbezug"
-                  className="break-words text-[12px] font-semibold text-text"
-                >
-                  {t(auswahl ? "begleiter.passage.markierung" : "begleiter.passage.cursor", {
-                    titel,
-                  })}
-                </p>
-                {!passageSchonGezeigt && (
-                  <p
-                    data-testid="begleiter-passagentext"
-                    className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-snug text-ink"
-                  >
-                    {passage.text}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  data-testid="begleiter-passage-pruefen"
-                  disabled={
-                    eigene.ausstehend > 0 ||
-                    aktionLaeuft(adapter) ||
-                    eigene.angenommen.some((e) => e.instanz === adapter.instanz) ||
-                    eigene.unklar.some((e) => e.instanz === adapter.instanz)
-                  }
-                  onClick={() =>
-                    void beauftrage(
-                      "frage",
-                      t("begleiter.passage.frage"),
-                      adapter.instanz,
-                      passage.stand,
-                      passage.text,
-                    )
-                  }
-                  className={KNOPF_KI}
-                >
-                  {t("begleiter.passage.pruefen")}
-                </button>
-              </section>
-            ) : null}
+            {!passageSchonGezeigt && passagenpruefung}
             <div className="flex items-center gap-1.5">
               <label htmlFor={eingabeId} className="sr-only">
                 {t("assistenzminimal.eingabe.label", { name })}

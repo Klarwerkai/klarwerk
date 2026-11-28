@@ -90,7 +90,7 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 /**
  * Die Zielseite hängt an vielen Endpunkten, die mit diesem Nachweis nichts zu tun haben. Deshalb
- * ein Proxy mit leerer Vorgabe: benannt wird NUR, was den Bericht ausmacht (`ko.list`, `ko.get`) —
+ * ein Proxy mit leerer Vorgabe: benannt wird NUR, was Start und Bibliothek für die beiden Berichte laden —
  * eine handgepflegte Vollliste wäre eine zweite, driftende Wahrheit über `api/endpoints`.
  */
 vi.mock("../../apps/web/src/api/endpoints", () => {
@@ -109,6 +109,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       evidence: leer,
       neighbors: leer,
     },
+    library: { search: vi.fn(async () => BERICHTE.map(ko)) },
     gaps: { summary: vi.fn(async () => ({ open: 0, byPriority: { hoch: 0 } })) },
     learningPaths: { byRole: vi.fn(async () => null), progress: leer },
     livewall: { get: vi.fn(async () => box.wall) },
@@ -226,7 +227,8 @@ const zeilen = (): HTMLAnchorElement[] => [
 ];
 const bericht = (): HTMLElement | null =>
   container.querySelector<HTMLElement>('[data-testid="page-wissen"]');
-const berichtText = (): string => (bericht()?.textContent ?? "").replace(/\s+/g, " ");
+const berichtText = (): string =>
+  (bericht()?.querySelector('[data-testid="bib-text"]')?.textContent ?? "").replace(/\s+/g, " ");
 
 /** Was der Browser aus `Enter` auf einem fokussierten Link macht (B-4b misst genau diesen Schritt). */
 async function aktivieren(zeile: HTMLAnchorElement): Promise<void> {
@@ -234,9 +236,14 @@ async function aktivieren(zeile: HTMLAnchorElement): Promise<void> {
   expect(document.activeElement, "die Zeile nimmt den Fokus nicht an").toBe(zeile);
   await act(async () => {
     zeile.click();
-    await flush();
   });
-  await act(flush);
+  await vi.waitFor(
+    async () => {
+      await act(flush);
+      expect(bericht()?.querySelector('[data-testid="bib-text"]')).not.toBeNull();
+    },
+    { timeout: 5000 },
+  );
 }
 
 afterEach(() => {

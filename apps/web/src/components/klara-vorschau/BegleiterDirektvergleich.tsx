@@ -4,12 +4,8 @@ import { useTranslation } from "react-i18next";
 import { endpoints } from "../../api/endpoints";
 import { useSession } from "../../app/AuthContext";
 import type { BegleiterVergleich } from "../../lib/begleiter";
-import { zitatFragment } from "../../lib/belegstelle";
-import { gespeicherteFassungHref } from "../../lib/objektbezug";
-import { useAuthorName } from "../../lib/useAuthorName";
-import { koDetailUrl } from "../../lib/wordAddin";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
-import { Belegtitel } from "../Belegtitel";
+import { Quellverweis } from "./BegleiterVergleichsquelle";
 import "./BegleiterDirektvergleich.css";
 
 const URTEIL = {
@@ -17,6 +13,19 @@ const URTEIL = {
   widersprochen: { symbol: "×", farbe: "bg-trust-crit-bg text-trust-crit-text" },
   offen: { symbol: "?", farbe: "bg-trust-warn-bg text-trust-warn-text" },
 } as const;
+
+function markierterText(text: string, marke: BegleiterVergleich["dokumentMarke"]): string | null {
+  if (
+    !marke ||
+    marke.nurKontext ||
+    marke.start < 0 ||
+    marke.end > text.length ||
+    marke.end <= marke.start
+  ) {
+    return null;
+  }
+  return text.slice(marke.start, marke.end);
+}
 
 function Wortlaut({
   text,
@@ -27,20 +36,15 @@ function Wortlaut({
   marke: BegleiterVergleich["dokumentMarke"];
   farbe: string;
 }): JSX.Element {
-  if (
-    !marke ||
-    marke.nurKontext ||
-    marke.start < 0 ||
-    marke.end > text.length ||
-    marke.end <= marke.start
-  ) {
+  const ausschnitt = markierterText(text, marke);
+  if (!marke || !ausschnitt) {
     return <>{text}</>;
   }
   return (
     <>
       {text.slice(0, marke.start)}
       <mark className={`rounded-sm px-0.5 font-semibold underline underline-offset-2 ${farbe}`}>
-        {text.slice(marke.start, marke.end)}
+        {ausschnitt}
       </mark>
       {text.slice(marke.end)}
     </>
@@ -48,54 +52,6 @@ function Wortlaut({
 }
 
 type Belegfassung = Awaited<ReturnType<typeof endpoints.ko.belegfassung>>;
-
-function Quellverweis({
-  id,
-  fassung,
-  nummer,
-  zitat,
-  quelle,
-}: {
-  id: string;
-  fassung: number | undefined;
-  nummer: number;
-  zitat: string;
-  quelle: Belegfassung | undefined;
-}): JSX.Element {
-  const { t } = useTranslation();
-  const name = useAuthorName();
-  return (
-    <div className="begleiter-quellverweis mt-1.5 text-[12px] leading-snug">
-      <a
-        href={
-          fassung
-            ? gespeicherteFassungHref(id, fassung) + zitatFragment(zitat)
-            : koDetailUrl(window.location.origin, id)
-        }
-        target="_blank"
-        rel="noopener noreferrer"
-        className="rounded-sm font-semibold text-brand-text underline underline-offset-2 focus-visible:outline focus-visible:outline-2"
-      >
-        {quelle?.titel ? (
-          <Belegtitel titel={quelle.titel} demoSeed={quelle.demoSeed} />
-        ) : (
-          t("begleiter.vergleich.quelllink", { nummer })
-        )}
-      </a>
-      {fassung !== undefined && (
-        <span className="mt-0.5 block text-muted">
-          {t("begleiter.vergleich.fassung", { fassung })}
-          {quelle &&
-            ` · ${
-              quelle.freigegebenVon
-                ? t("begleiter.vergleich.freigegebenVon", { person: name(quelle.freigegebenVon) })
-                : t("begleiter.vergleich.freigabeUnbekannt")
-            }`}
-        </span>
-      )}
-    </div>
-  );
-}
 
 export function BegleiterDirektvergleich({
   vergleich,
@@ -133,6 +89,13 @@ export function BegleiterDirektvergleich({
     }
   }
   const beleg = vergleich.belege[0];
+  const dokumentwort = widerspruch
+    ? markierterText(vergleich.dokument, vergleich.dokumentMarke)
+    : null;
+  const quellwort =
+    widerspruch && vergleich.belege.length === 1 && beleg?.woertlich
+      ? markierterText(beleg.text, vergleich.belegMarke)
+      : null;
   const wortgleich =
     aktuellePassage &&
     vergleich.art === "bestaetigt" &&
@@ -160,6 +123,31 @@ export function BegleiterDirektvergleich({
           ? t("begleiter.vergleich.wortgleich")
           : t(`begleiter.vergleich.${vergleich.art}`)}
       </h3>
+      {dokumentwort && quellwort && (
+        <p
+          data-testid="begleiter-wortpaar"
+          className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-hairline px-3 py-1.5 text-sm font-semibold [overflow-wrap:anywhere]"
+        >
+          <span className="min-w-0 text-trust-crit-text">
+            <span className="sr-only">
+              {t(
+                anderePassage
+                  ? "begleiter.vergleich.frueherePassage"
+                  : "begleiter.vergleich.dokument",
+              )}
+              :{" "}
+            </span>
+            {dokumentwort}
+          </span>
+          <span aria-hidden="true" className="text-muted">
+            →
+          </span>
+          <span className="min-w-0 text-trust-pos-text">
+            <span className="sr-only">{t("begleiter.vergleich.quelle")}: </span>
+            {quellwort}
+          </span>
+        </p>
+      )}
       <div className="space-y-2.5 p-3">
         <dl id={wortlautId} className="space-y-2.5">
           {!kurz && (

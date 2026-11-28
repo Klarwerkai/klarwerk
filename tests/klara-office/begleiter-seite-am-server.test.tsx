@@ -542,6 +542,10 @@ describe("Direktvergleich in der Klara-App", () => {
     await bis(() => Boolean(q(document, "begleiter-direktvergleich")), 160);
     expect(q(document, "begleiter-passagentext")).toBeNull();
     expect(q(document, "begleiter-pruefpassage")?.textContent).toContain("Check this passage");
+    expect(q(document, "begleiter-pruefpassage")?.closest("details")).toBe(
+      q(document, "begleiter-kontext"),
+    );
+    expect(q(document, "begleiter-pruefpassage")?.closest("form")).toBeNull();
     expect(q(document, "begleiter-direktvergleich")?.textContent).toContain(text);
     expect(feld.value).toBe("Unsent draft");
     const anders = "Guests may use the internet.";
@@ -552,6 +556,7 @@ describe("Direktvergleich in der Klara-App", () => {
       passage: { text: anders, stand: 4 },
     });
     await bis(() => q(document, "begleiter-passagentext")?.textContent === anders, 160);
+    expect(q(document, "begleiter-passage-pruefen")?.closest("form")).toBe(feld.closest("form"));
     expect(q(document, "begleiter-passagenbezug")?.textContent).toBe(
       "Vertrag Muster.docx · Selection",
     );
@@ -589,6 +594,63 @@ describe("Direktvergleich in der Klara-App", () => {
       expect(nachrichten("sprache").at(-1)).toMatchObject({ sprache });
       expect(q(document, "begleiter-passage-pruefen")).toBeNull();
     }
+  });
+
+  it("zeigt beim aktuellen Widerspruch das Urteil und das belegte Wortpaar vor den Aktionen", async () => {
+    await vorrichtung();
+    if (!aufbau) throw new Error("Vorrichtung fehlt");
+    const regel = MARKIERUNG.replace("dritten", "zweiten");
+    const quelle = await eintragMitOriginal(aufbau.app, aufbau.admin, {
+      titel: "Lieferfrist",
+      kernaussage: regel,
+    });
+    await fensterMitMarkierung(FENSTER, DOKUMENT);
+    const id = await auftragAn(FENSTER, "Stimmt das?");
+    const eingang = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+      seq: 2,
+      auswahl: MIT_MARKIERUNG,
+      passage: { text: MARKIERUNG, stand: 1 },
+    });
+    expect(eingang.json().aktionen[0].id).toBe(id);
+    const start = MARKIERUNG.indexOf("dritten");
+    const ergebnis = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+      seq: 3,
+      auswahl: MIT_MARKIERUNG,
+      passage: { text: MARKIERUNG, stand: 1 },
+      erledigt: [
+        {
+          id,
+          stand: "erledigt",
+          ergebnis: "Antwort",
+          vergleich: {
+            art: "widersprochen",
+            dokument: MARKIERUNG,
+            dokumentMarke: { start, end: start + 7 },
+            belege: [{ text: regel, quellen: [quelle.koId], woertlich: true }],
+            belegMarke: { start, end: start + 7 },
+            zeigbar: false,
+          },
+        },
+      ],
+    });
+    expect(ergebnis.statusCode, ergebnis.body).toBe(200);
+    await montiere();
+    const flaeche = await gespraechOffen();
+    await bis(() => Boolean(q(flaeche, "begleiter-wortpaar")), 160);
+    const karte = q(flaeche, "begleiter-direktvergleich") as HTMLElement;
+    const paar = q(karte, "begleiter-wortpaar") as HTMLElement;
+    expect(karte.firstElementChild?.tagName).toBe("H3");
+    expect(karte.firstElementChild?.nextElementSibling).toBe(paar);
+    expect(paar.firstElementChild?.lastChild?.textContent).toBe("dritten");
+    expect(paar.lastElementChild?.lastChild?.textContent).toBe("zweiten");
+    expect(
+      karte.compareDocumentPosition(q(flaeche, "begleiter-auswahl") as HTMLElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(q(flaeche, "begleiter-passage-pruefen")?.closest("details")?.open).toBe(false);
+    expect(
+      q(flaeche, "begleiter-eingabe-form")?.contains(q(flaeche, "begleiter-passage-pruefen")),
+    ).toBe(false);
   });
 
   it("projiziert nur das jüngste Prüfergebnis und stellt über Verlauf die ungekürzte Unterhaltung wieder her", async () => {
@@ -848,6 +910,7 @@ describe("Direktvergleich in der Klara-App", () => {
     expect(q(widerspruch, "ai-generated-notice")?.textContent).toBe(i18n.t("ai.generatedNotice"));
     expect(q(document, "begleiter-verfuegbarkeit")).toBeNull();
     expect(widerspruch.querySelector("h3")?.textContent).toContain("Contradicts the source");
+    expect(q(widerspruch, "begleiter-wortpaar")).toBeNull();
     const g = q(document, "begleiter-gespraech") as HTMLElement;
     const schalter = q<HTMLInputElement>(g, "begleiter-vorfuehransicht") as HTMLInputElement;
     expect(schalter.labels?.[0]?.textContent).toContain("Presentation view");
@@ -874,6 +937,35 @@ describe("Direktvergleich in der Klara-App", () => {
     expect(quelllink?.search).toBe("?fassung=1&ansicht=gespeichert");
     expect(new URLSearchParams(quelllink?.hash.slice(1)).get("zitat")).toBe(original);
     expect(widerspruch.textContent).toContain("Version 1");
+
+    // jsdom bietet die beiden nativen Dialogmethoden nicht an. Der eigentliche
+    // Fokus- und Fensterweg wird außerdem in den fünf Browserkonten durchlaufen.
+    HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    };
+    HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+      this.removeAttribute("open");
+    };
+    await klick(quelllink);
+    const dialog = q(document, "begleiter-vergleich-quelle") as HTMLDialogElement;
+    await bis(
+      () => q(dialog, "quellenfokus-freigabe")?.textContent?.includes("admin") === true,
+      160,
+    );
+    const retour = q(dialog, "begleiter-quelle-zurueck");
+    expect(dialog.open).toBe(true);
+    expect(document.activeElement).toBe(retour);
+    expect(retour?.textContent).toBe("Back to the sentence comparison");
+    expect(q(dialog, "quellenfokus-zitat")?.textContent).toBe(original);
+    expect(q(dialog, "gespeicherte-fassung")?.dataset.fassung).toBe("1");
+    await klick(q(dialog, "quellenfokus-aktuell"));
+    await bis(() => Boolean(q(dialog, "begleiter-quelle-heute")), 160);
+    expect(q(dialog, "begleiter-quelle-heute")?.textContent).toContain(original);
+    await klick(retour);
+    expect(q(document, "begleiter-vergleich-quelle")).toBeNull();
+    expect(document.activeElement).toBe(quelllink);
+    expect(q(document, "begleiter-direktvergleich")).toBe(widerspruch);
+    expect(feld.value).toBe("My unsent question");
 
     await klick(q(widerspruch, "begleiter-vergleich-zeigen"));
     await bis(() => draht.aufrufe.filter((a) => a.url.endsWith("/aktionen")).length >= 2, 80);
