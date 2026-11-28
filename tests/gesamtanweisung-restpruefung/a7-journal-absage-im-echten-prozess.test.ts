@@ -85,6 +85,7 @@ function journalUmgebung(): NodeJS.ProcessEnv {
     KLARWERK_LOG_LEVEL: "warn",
     NODE_ENV: "production",
     APP_BASE_URL: basis,
+    KLARWERK_TRUST_PROXY: "none",
     PORT: String(port),
     KLARWERK_DEV_PERSIST: "1",
     KLARWERK_DEV_PERSIST_FILE: journal,

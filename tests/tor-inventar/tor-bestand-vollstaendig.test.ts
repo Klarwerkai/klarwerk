@@ -424,4 +424,10 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
       );
     }
   });
+
+  it("B6 · der Schmalansicht-Smoke reserviert den Browserplatz im Kindprozess", () => {
+    const leser = "tests/smoke/frontdoor-schmalansicht-lauf.test.ts";
+    expect(holeRest()).toContain(leser);
+    expect(holeBrowser()).not.toContain(leser);
+  });
 });

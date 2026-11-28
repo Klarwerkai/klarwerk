@@ -200,7 +200,15 @@ export function spezifizierer(datei: string): string[] {
       knoten.moduleSpecifier !== undefined &&
       ts.isStringLiteralLike(knoten.moduleSpecifier)
     ) {
-      gefunden.push(knoten.moduleSpecifier.text);
+      // Die JSON-Berichtstypen starten keinen Browser. Ein Vitest, der nur den Bericht eines
+      // eigenen Smoke-Torlaufs liest, muss dessen Kindprozess den Browserplatz nehmen lassen.
+      const nurBerichtstypen =
+        ts.isImportDeclaration(knoten) &&
+        knoten.importClause?.isTypeOnly &&
+        knoten.moduleSpecifier.text === "@playwright/test/reporter";
+      if (!nurBerichtstypen) {
+        gefunden.push(knoten.moduleSpecifier.text);
+      }
     } else if (
       ts.isImportEqualsDeclaration(knoten) &&
       ts.isExternalModuleReference(knoten.moduleReference) &&
