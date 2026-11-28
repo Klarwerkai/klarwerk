@@ -53,9 +53,9 @@ describe("SCRUM-219: helpTopics", () => {
   // `gesamtanweisungen`, zum neuen Menüpunkt desselben Namens. Es steht VOR „hilfe"/„profil" und
   // damit an der Stelle seines Menüpunkts; kein bestehendes Kapitel ist weggefallen oder
   // umsortiert, was der nächste Fall mit den Kennungen festhält.
-  it("HELP_TOPICS: 22 Kapitel, eindeutige IDs, nur interne Routen", () => {
-    expect(HELP_TOPICS).toHaveLength(22);
-    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(22);
+  it("HELP_TOPICS: 24 Kapitel, eindeutige IDs, nur interne Routen", () => {
+    expect(HELP_TOPICS).toHaveLength(24);
+    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(24);
     for (const topic of HELP_TOPICS) {
       expect(topic.to.startsWith("/")).toBe(true);
       expect(topic.tags.length).toBeGreaterThan(0);
@@ -78,6 +78,8 @@ describe("SCRUM-219: helpTopics", () => {
       "lifecycle",
       "stufe2",
       "mobile",
+      "teamassistenten",
+      "teamworkflows",
       // JOB 3741: die zehn neuen, in Menü-Reihenfolge angehängt. Ihre Kennungen sind die `id` des
       // jeweiligen Menüpunkts aus `app/navigation.ts` — dort gepinnt (P1 des neuen Wächters).
       "wissensnetz",

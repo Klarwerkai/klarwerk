@@ -11,7 +11,7 @@ import { Button, Field, TextInput } from "../components/ui";
 // ABLAUF dieser Maske — die sechs Zustände, ihre Übergänge, die Mutationen — bleibt unangetastet;
 // hinzu kommen ausschließlich Anzeigeflächen unterhalb des Formulars.
 import { LegalFooter } from "../legal/LegalPages";
-import { NoticeText, takeDeclineMarker } from "../legal/NoticeBanner";
+import { NoticeText, useAblehnungsgrund } from "../legal/NoticeBanner";
 import { ToastViewport } from "../shell/ToastViewport";
 import { VORFUEHRUNG_PFAD } from "../vorfuehrung/VorfuehrungScreen";
 // JOB 1097 / D-028 + D-027: Markenfläche und Sprachwahl liegen als EINE Quelle daneben. Der
@@ -86,9 +86,8 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   const err = fehler === null ? null : maskenfehlerText(fehler, (k) => t(k), i18n.language);
   // AUFTRAG-mega61 Block D: Wer den Hinweis abgelehnt hat, landet nach dem Abmelden hier. Ohne
   // diesen Satz stünde er vor einer Anmeldemaske ohne Erklärung — eine Sackgasse mit Gedächtnis.
-  // Einmalig beim ersten Rendern gelesen UND gelöscht (`useState`-Initialisierer), damit der Satz
-  // nicht bei jedem späteren Zustandswechsel wieder auftaucht.
-  const [declined] = useState(takeDeclineMarker);
+  // Erst die Anmeldemaske im neu geladenen Dokument zeigt den Grund und verbraucht den Merker.
+  const declined = useAblehnungsgrund();
   // ==============================================================================================
   // JOB 4081 — DER MERKER, DER DIE ABSAGE DIESES BESUCHS FESTHÄLT.
   // ==============================================================================================

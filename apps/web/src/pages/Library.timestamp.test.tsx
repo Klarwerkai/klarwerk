@@ -119,7 +119,7 @@ const ISO = "2026-08-12T09:41:00.000Z";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function mount(bestand: KnowledgeObject[]): void {
+async function mount(bestand: KnowledgeObject[]): Promise<void> {
   lage.kos = bestand;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -134,6 +134,7 @@ function mount(bestand: KnowledgeObject[]): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 afterEach(() => {
@@ -166,13 +167,13 @@ function waehle(id: string): void {
 }
 
 describe("JOB 528 · Bibliothek — die Erstellzeit steht in der Meta-Zeile der Lesefläche", () => {
-  it("F1 · ein Eintrag mit createdAt trägt die Zeitangabe", () => {
-    mount([ko({ id: "a", title: "Mit Datum", createdAt: ISO })]);
+  it("F1 · ein Eintrag mit createdAt trägt die Zeitangabe", async () => {
+    await mount([ko({ id: "a", title: "Mit Datum", createdAt: ISO })]);
     expect(metaZeile()).toContain(String(formatKoTimestamp(ISO, i18n.language)));
   });
 
-  it("F2 · sie ist lokalisiert — verglichen gegen den HELFER, nicht gegen eine abgeschriebene Zeichenkette", () => {
-    mount([ko({ id: "a", createdAt: ISO })]);
+  it("F2 · sie ist lokalisiert — verglichen gegen den HELFER, nicht gegen eine abgeschriebene Zeichenkette", async () => {
+    await mount([ko({ id: "a", createdAt: ISO })]);
     // Der erwartete Text entsteht aus derselben Quelle wie die Anzeige. Eine hier fest
     // hineingeschriebene Zeichenkette würde bei jedem Locale-Wechsel der Laufzeit falsch — und
     // wäre damit ein Test über meine Tastatur statt über das Produkt.
@@ -183,22 +184,22 @@ describe("JOB 528 · Bibliothek — die Erstellzeit steht in der Meta-Zeile der 
     expect(metaZeile().endsWith(` · ${String(erwartet)}`)).toBe(true);
   });
 
-  it("F3 · Altbestand OHNE createdAt trägt sie NICHT — kein Platzhalterdatum", () => {
-    mount([ko({ id: "a", title: "Altbestand", createdAt: undefined })]);
+  it("F3 · Altbestand OHNE createdAt trägt sie NICHT — kein Platzhalterdatum", async () => {
+    await mount([ko({ id: "a", title: "Altbestand", createdAt: undefined })]);
     const zeile = metaZeile();
     expect(zeile).not.toContain(String(formatKoTimestamp(ISO, i18n.language)));
     // Kein leerhängendes Trennzeichen am Ende — die Zeile darf nicht „… · " lauten.
     expect(zeile.endsWith("·")).toBe(false);
   });
 
-  it("F4 · ein unbrauchbarer Wert trägt sie ebenfalls nicht", () => {
-    mount([ko({ id: "a", title: "Kaputt", createdAt: "kein-datum" })]);
+  it("F4 · ein unbrauchbarer Wert trägt sie ebenfalls nicht", async () => {
+    await mount([ko({ id: "a", title: "Kaputt", createdAt: "kein-datum" })]);
     expect(metaZeile()).not.toContain("kein-datum");
     expect(metaZeile().endsWith("·")).toBe(false);
   });
 
-  it("F5 · ein leerer Wert trägt sie nicht — und erzeugt KEINE 1970-Anzeige", () => {
-    mount([ko({ id: "a", title: "Leer", createdAt: "" })]);
+  it("F5 · ein leerer Wert trägt sie nicht — und erzeugt KEINE 1970-Anzeige", async () => {
+    await mount([ko({ id: "a", title: "Leer", createdAt: "" })]);
     expect(metaZeile().endsWith("·")).toBe(false);
     // Der Fall, vor dem die Ownerentscheidung ausdrücklich warnt: Die Epoche darf nirgends
     // auftauchen — weder in der Zeile noch sonst im gerenderten Text.
@@ -206,8 +207,8 @@ describe("JOB 528 · Bibliothek — die Erstellzeit steht in der Meta-Zeile der 
     expect(container.textContent).not.toContain("01.01.1970");
   });
 
-  it("F6 · bei gemischtem Bestand trägt GENAU der datierte Eintrag die Zeitangabe", () => {
-    mount([
+  it("F6 · bei gemischtem Bestand trägt GENAU der datierte Eintrag die Zeitangabe", async () => {
+    await mount([
       ko({ id: "a", title: "Mit Datum", createdAt: ISO }),
       ko({ id: "b", title: "Ohne Datum", createdAt: undefined }),
     ]);
@@ -222,14 +223,14 @@ describe("JOB 528 · Bibliothek — die Erstellzeit steht in der Meta-Zeile der 
     expect(container.textContent).not.toContain("1970");
   });
 
-  it("F8 · R-0921-Ausbau: neben Datum und Uhrzeit steht der ERSTELLER — auch nach einer Übertragung", () => {
+  it("F8 · R-0921-Ausbau: neben Datum und Uhrzeit steht der ERSTELLER — auch nach einer Übertragung", async () => {
     // Dieselbe Regel wie die Validierungskarte (`Validation.tsx`: `originalAuthor` vor `author`).
     // Vorher stand hier `author` — nach einer Übertragung also der neue Autor neben der Erstellzeit.
     lage.verzeichnis = [
       { id: "u-ersteller", name: "Erika Erstellerin" },
       { id: "u-neu", name: "Nora Neuautorin" },
     ];
-    mount([ko({ id: "a", createdAt: ISO, originalAuthor: "u-ersteller", author: "u-neu" })]);
+    await mount([ko({ id: "a", createdAt: ISO, originalAuthor: "u-ersteller", author: "u-neu" })]);
     const zeile = metaZeile();
     expect(zeile).toContain("Erika Erstellerin");
     expect(zeile).not.toContain("Nora Neuautorin");
@@ -238,17 +239,17 @@ describe("JOB 528 · Bibliothek — die Erstellzeit steht in der Meta-Zeile der 
     expect(zeile.endsWith(` · Erika Erstellerin · ${datum}`)).toBe(true);
   });
 
-  it("F8b · ohne `originalAuthor` (Altbestand) fällt die Zeile auf `author` zurück", () => {
+  it("F8b · ohne `originalAuthor` (Altbestand) fällt die Zeile auf `author` zurück", async () => {
     lage.verzeichnis = [{ id: "u-alt", name: "Alfred Altbestand" }];
-    mount([ko({ id: "a", createdAt: ISO, originalAuthor: undefined, author: "u-alt" })]);
+    await mount([ko({ id: "a", createdAt: ISO, originalAuthor: undefined, author: "u-alt" })]);
     expect(metaZeile()).toContain("Alfred Altbestand");
   });
 
-  it("F7 · KALIBRIERUNG — beide Einträge stehen wirklich in der Liste", () => {
+  it("F7 · KALIBRIERUNG — beide Einträge stehen wirklich in der Liste", async () => {
     // Ohne diesen Fall wären F3 bis F6 auch an einer leeren Seite grün. Gemessen wird an den
     // Listentiteln: sie stammen aus dem Bestand und nicht aus einer Marke, die dieser Test erst
     // ins Produkt drücken müsste.
-    mount([
+    await mount([
       ko({ id: "a", title: "Mit Datum", createdAt: ISO }),
       ko({ id: "b", title: "Ohne Datum", createdAt: undefined }),
     ]);

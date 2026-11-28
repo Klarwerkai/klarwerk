@@ -101,7 +101,7 @@ const CHIP = '[data-testid="ko-origin-word-addin"]';
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function mount(bestand: KnowledgeObject[]): void {
+async function mount(bestand: KnowledgeObject[]): Promise<void> {
   lage.kos = bestand;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -116,6 +116,7 @@ function mount(bestand: KnowledgeObject[]): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 afterEach(() => {
@@ -174,30 +175,30 @@ function de(key: string): string {
 }
 
 describe("JOB 679 D2 · Bibliothek — der Chip erscheint genau bei der Word-Herkunft", () => {
-  it("ein Treffer aus Word traegt den Chip", () => {
-    mount([ko({ id: "a", title: "Aus Word erfasst", origin: "word_addin" })]);
+  it("ein Treffer aus Word traegt den Chip", async () => {
+    await mount([ko({ id: "a", title: "Aus Word erfasst", origin: "word_addin" })]);
     expect(chips()).toHaveLength(1);
   });
 
-  it("der Chip nennt die Herkunft im Klartext und erklaert sie im Titel", () => {
-    mount([ko({ id: "a", origin: "word_addin" })]);
+  it("der Chip nennt die Herkunft im Klartext und erklaert sie im Titel", async () => {
+    await mount([ko({ id: "a", origin: "word_addin" })]);
     const chip = chips()[0];
     expect(chip?.textContent?.trim()).toBe(de("ko.originWordAddin.label"));
     expect(chip?.getAttribute("title")).toBe(de("ko.originWordAddin.hint"));
   });
 
-  it("ein Treffer ohne Herkunft traegt ihn NICHT — Altbestand ist nicht „aus Word“", () => {
-    mount([ko({ id: "a", title: "Altbestand" })]);
+  it("ein Treffer ohne Herkunft traegt ihn NICHT — Altbestand ist nicht „aus Word“", async () => {
+    await mount([ko({ id: "a", title: "Altbestand" })]);
     expect(chips()).toHaveLength(0);
   });
 
-  it("ein Treffer aus der Vordertuer traegt ihn NICHT", () => {
-    mount([ko({ id: "a", origin: "frontdoor" })]);
+  it("ein Treffer aus der Vordertuer traegt ihn NICHT", async () => {
+    await mount([ko({ id: "a", origin: "frontdoor" })]);
     expect(chips()).toHaveLength(0);
   });
 
-  it("bei gemischtem Bestand traegt ihn GENAU der Word-Treffer — Zeile fuer Zeile durchgewaehlt", () => {
-    mount([
+  it("bei gemischtem Bestand traegt ihn GENAU der Word-Treffer — Zeile fuer Zeile durchgewaehlt", async () => {
+    await mount([
       ko({ id: "a", title: "Aus Word", origin: "word_addin" }),
       ko({ id: "b", title: "Vordertuer", origin: "frontdoor" }),
       ko({ id: "c", title: "Altbestand" }),
@@ -214,8 +215,8 @@ describe("JOB 679 D2 · Bibliothek — der Chip erscheint genau bei der Word-Her
     expect(chips(), "zurueck beim Word-Treffer steht er wieder da").toHaveLength(1);
   });
 
-  it("die uebrigen Herkuenfte loesen ihn ebenfalls nicht aus", () => {
-    mount([
+  it("die uebrigen Herkuenfte loesen ihn ebenfalls nicht aus", async () => {
+    await mount([
       ko({ id: "a", origin: "tell" }),
       ko({ id: "b", origin: "studio" }),
       ko({ id: "c", origin: "expert" }),

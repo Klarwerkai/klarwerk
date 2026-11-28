@@ -127,14 +127,16 @@ function abbauen(): void {
  * eine feste Rundenzahl wäre eine Wette, kein Beleg. Läuft die Grenze ab, ist der Test rot.
  */
 async function warteAuf(kennung: string): Promise<Element> {
-  for (let i = 0; i < 60; i++) {
-    const gefunden = container.querySelector(`[data-testid=${kennung}]`);
-    if (gefunden) {
+  return vi.waitFor(
+    async () => {
+      await act(() => vi.dynamicImportSettled());
+      const gefunden = container.querySelector(`[data-testid=${kennung}]`);
+      if (!gefunden)
+        throw new Error(`Fläche „${kennung}“ fehlt: ${container.textContent?.slice(0, 360)}`);
       return gefunden;
-    }
-    await ruhen(5);
-  }
-  throw new Error(`Fläche „${kennung}“ ist nicht erschienen`);
+    },
+    { timeout: 5000 },
+  );
 }
 
 function knopf(kennung: string): HTMLButtonElement {
@@ -201,6 +203,7 @@ describe("mega62 C · die Ablehnung ist fail-closed", () => {
     expect(server.abgemeldet).toBe(1);
     expect(weitergeleitetNach).toEqual(["/"]);
     expect(container.querySelector("[data-testid=signout-blocked]")).toBeNull();
+    expect(container.querySelector('[data-testid="auth-declined-hint"]')).toBeNull();
     expect(window.sessionStorage.getItem(DECLINE_MARKER)).toBe("1");
     abbauen();
   });
