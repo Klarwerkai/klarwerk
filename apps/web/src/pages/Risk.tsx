@@ -674,6 +674,7 @@ export function Risk(): JSX.Element {
                           ))}
                         </select>
                         <select
+                          aria-label={t("risk.gapNext.assign")}
                           value={personWahl[g.id] ?? ""}
                           disabled={assign.isPending}
                           onChange={(e) => {

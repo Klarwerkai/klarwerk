@@ -2064,7 +2064,7 @@ export function Validation(): JSX.Element {
               data-testid="pruefen-stapel-bestaetigen"
               disabled={stapelLaeuft}
               onClick={() => void stapelBestaetigen()}
-              className="rounded-[9px] bg-trust-pos-fill px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-[9px] bg-trust-pos-text px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t("pruefboard.stapel.bestaetigen")}
             </button>
@@ -2871,7 +2871,7 @@ export function Validation(): JSX.Element {
                 className={cx(
                   "inline-flex items-center gap-[7px] rounded-[10px] px-[20px] py-[10px] text-[14px] leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   gut
-                    ? "bg-trust-pos-fill font-semibold text-white hover:opacity-90"
+                    ? "bg-trust-pos-text font-semibold text-white hover:opacity-90"
                     : d.verdict === "down"
                       ? "border border-hairline bg-surface text-trust-crit-text hover:bg-hairline-soft"
                       : "border border-hairline bg-surface text-text hover:bg-hairline-soft",

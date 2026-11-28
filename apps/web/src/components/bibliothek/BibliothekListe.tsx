@@ -153,7 +153,7 @@ function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }
         data-bib-text="zeile-titel"
         title={zeile.titel}
         className={cx(
-          "block truncate text-[14px] text-text",
+          "block break-words text-[14px] text-text",
           gewaehlt ? "font-semibold" : "font-medium",
         )}
       >
@@ -729,7 +729,7 @@ export function BibliothekListe({
                   aria-expanded={loeschen.offen === p.id}
                   disabled={loeschen.laeuft}
                   onClick={() => loeschen.onFragen(p.id)}
-                  className="absolute right-2 top-2.5 rounded-btn p-1.5 text-muted outline-none hover:bg-hairline-soft hover:text-text focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-45"
+                  className="absolute right-2 top-2.5 rounded-btn p-1.5 text-muted outline-none hover:bg-hairline-soft hover:text-text disabled:opacity-45"
                 >
                   <Trash2 size={15} aria-hidden="true" />
                 </button>

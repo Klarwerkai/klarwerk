@@ -2369,7 +2369,9 @@ function EvidenceIndexCard(): JSX.Element {
                 >
                   {t(`evx.kind.${r.kind}`)}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[12px] text-text">{r.label}</span>
+                <span className="min-w-0 flex-[1_1_10rem] break-words text-[12px] text-text">
+                  {r.label}
+                </span>
                 <span className="font-mono text-klein text-muted-2">
                   {t("fachwort.belegIndex.objekt", { id: r.koId })}
                 </span>
@@ -2390,7 +2392,7 @@ function EvidenceIndexCard(): JSX.Element {
                 ) : null}
                 {r.url ? (
                   // URL bewusst nur als Text (nicht klickbar) — fremde Links werden nicht verlinkt.
-                  <span className="max-w-[40%] truncate rounded-pill bg-surface px-1.5 py-0.5 font-mono text-klein text-muted-2 ring-1 ring-hairline">
+                  <span className="max-w-full break-all rounded-pill bg-surface px-1.5 py-0.5 font-mono text-klein text-muted-2 ring-1 ring-hairline">
                     {r.url}
                   </span>
                 ) : null}
@@ -2450,7 +2452,7 @@ function ProvenanceIndexCard(): JSX.Element {
               <li key={r.koId} className="flex flex-wrap items-center gap-2 py-2">
                 <Link
                   to={`/wissen/${r.koId}`}
-                  className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text hover:text-ai"
+                  className="min-w-0 flex-[1_1_10rem] break-words text-[12px] font-semibold text-text hover:text-ai"
                 >
                   {r.title}
                 </Link>
