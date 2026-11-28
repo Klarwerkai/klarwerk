@@ -149,7 +149,7 @@ describe("Q9 Sprache am echten Auth-Draht", () => {
     sprachvertrag(res.json().message, "You are not signed in.", /signed in/);
   });
   it("R12 Auffangfehler EN verbirgt interne Details", async () => {
-    vi.spyOn(services.auth, "login").mockRejectedValueOnce(new Error("internal diagnostic"));
+    vi.spyOn(services.auth, "anmelden").mockRejectedValueOnce(new Error("internal diagnostic"));
     const res = await login("en");
     expect(res.statusCode).toBe(500);
     expect(res.json().error).toBe("INTERNAL");

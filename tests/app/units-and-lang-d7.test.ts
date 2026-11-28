@@ -1,12 +1,9 @@
+import { describe, expect, it } from "vitest";
 // AUFTRAG-mega1 Block D7 (E2E-020): Dateigrößen EINHEITLICH in MB (nicht mehr „20000 KB" in der
 // Bereitschaft) und die Profil-Sprachwahl bietet DE/EN/NL wie der Header.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
+import { OBERFLAECHEN_SPRACHEN } from "../../apps/web/src/lib/sprachregister";
 import { readinessRows } from "../../apps/web/src/lib/vipReadiness";
-
-const web = (p: string): string => readFileSync(join(__dirname, "../../apps/web/src", p), "utf8");
 
 describe("Block D7: MB/KB einheitlich + Sprachumfang", () => {
   it("Bereitschaft rechnet Anhangsgröße in MB (20_000_000 Bytes → 20)", () => {
@@ -32,8 +29,8 @@ describe("Block D7: MB/KB einheitlich + Sprachumfang", () => {
     }
   });
 
-  it("Profil-Sprachwahl bietet DE/EN/NL", () => {
-    const src = web("pages/Profile.tsx");
-    expect(src).toMatch(/\["de",\s*"en",\s*"nl"\]/);
+  it("Profil und Kontomenü bieten die drei mitgelieferten Oberflächensprachen an", () => {
+    // Die tatsächlich gerenderten Knöpfe prüft regionale-sprache-aktiv für beide Flächen.
+    expect(OBERFLAECHEN_SPRACHEN).toEqual(["de", "en", "nl"]);
   });
 });

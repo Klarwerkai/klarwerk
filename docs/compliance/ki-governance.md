@@ -187,6 +187,7 @@ bereitgestellten Eingabedaten nicht wesentlich". Die Lesart steht mit Begründun
 | `select` | nicht gekennzeichnet | wählt aus, erzeugt keinen Text |
 | `conflict` | nicht gekennzeichnet | modellgenerierte Begründung wird angezeigt; fehlt dennoch in `KI_ERZEUGENDE_AUFGABEN` |
 | `duplicate` | nicht gekennzeichnet | modellgenerierte Begründung wird angezeigt; fehlt dennoch in `KI_ERZEUGENDE_AUFGABEN` |
+| `referenz` | nicht gekennzeichnet | prüft die Deckung einzelner Aussagen durch die zitierten Quellstellen. Das Prüfurteil wird getrennt von der erzeugten Antwort angezeigt. |
 | `probe` | kein gelesener Text | Anbieterprobe |
 | `gaps` | kein gelesener Text | Lückenerkennung je Bereich |
 

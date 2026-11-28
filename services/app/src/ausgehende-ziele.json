@@ -120,6 +120,26 @@
       "freigabe": "Nur die in KLARWERK_WEBHOOKS eingetragenen Ziele (ladeWebhookZiele): nur https, http nur fuer die eigene Maschine, keine Zugangsdaten in der Adresse, redirect: manual, signiert; gemeldet werden nur Kennungen von Objekten, die auch der Dienst-Schluessel-Export zeigen darf"
     },
     {
+      "kennung": "m365-kalender",
+      "zweck": "Termine über den konfigurierten Microsoft-365-Kalenderzugang lesen und bearbeiten",
+      "dateien": ["services/app/src/klara-kalender-m365.ts"],
+      "hosts": [],
+      "umgebung": [
+        "KLARWERK_KALENDER_M365_BASE_URL",
+        "KLARWERK_KALENDER_M365_TOKEN",
+        "KLARWERK_KALENDER_M365_KONTO_IDS"
+      ],
+      "freigabe": "HTTPS-Basisadresse und Zugang müssen eingerichtet sein. Nur ausdrücklich zugeordnete Klarwerk-Konto-IDs erhalten den Kalenderanbieter."
+    },
+    {
+      "kennung": "office-editor-discovery",
+      "zweck": "Editor-Aktionen für den ausgewählten Office-Anhang über die Discovery des Betreibers ermitteln",
+      "dateien": ["services/app/src/routes/office-routes.ts", "services/app/src/office-artikel.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_OFFICE_EDITOR_URL", "KLARWERK_OFFICE_EDITOR_INTERN_URL"],
+      "freigabe": "Beim Start einer berechtigten Office-Sitzung fragt der Server die Discovery an der eingerichteten Editor-Adresse ab. Der Abruf sendet keinen Dokumentinhalt."
+    },
+    {
       "kennung": "word-addin-officejs",
       "zweck": "Browser: das Word-Aufgabenfenster laedt Office.js von Microsoft",
       "dateien": ["services/app/addin-static/taskpane.html"],

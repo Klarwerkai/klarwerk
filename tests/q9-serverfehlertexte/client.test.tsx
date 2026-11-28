@@ -46,8 +46,11 @@ it("R7 aktive Sprache EN/DE/NL geht bei allen Methoden mit; Anfrage und ApiError
       const headers = new Headers(init.headers);
       expect.soft(headers.get("Accept-Language")).toBe(sprache);
       expect(headers.get("Content-Type")).toBe(body ? "application/json" : null);
+      expect(headers.get("X-Klarwerk-Host")).toBe("klarwerk_web");
       expect([...headers.keys()].sort()).toEqual(
-        body ? ["accept-language", "content-type"] : ["accept-language"],
+        body
+          ? ["accept-language", "content-type", "x-klarwerk-host"]
+          : ["accept-language", "x-klarwerk-host"],
       );
     }
   }
