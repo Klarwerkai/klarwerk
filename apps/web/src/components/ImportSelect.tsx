@@ -64,6 +64,7 @@ import {
 // WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
 import { createLatestWins } from "../lib/latestWins";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { nachGrundwoerterbuch } from "../lib/sprachNachlader";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { useAiBillable } from "../lib/useAiBillable";
 import { FacetFilter } from "./FacetFilter";
@@ -323,8 +324,12 @@ const RAHMEN_TEXTE_NL: typeof RAHMEN_TEXTE_DE = {
  */
 export function registriereRahmenTexte(): void {
   i18nInstanz.addResourceBundle("de", "translation", RAHMEN_TEXTE_DE, true, true);
-  i18nInstanz.addResourceBundle("en", "translation", RAHMEN_TEXTE_EN, true, true);
-  i18nInstanz.addResourceBundle("nl", "translation", RAHMEN_TEXTE_NL, true, true);
+  nachGrundwoerterbuch(i18nInstanz, "en", () => {
+    i18nInstanz.addResourceBundle("en", "translation", RAHMEN_TEXTE_EN, true, true);
+  });
+  nachGrundwoerterbuch(i18nInstanz, "nl", () => {
+    i18nInstanz.addResourceBundle("nl", "translation", RAHMEN_TEXTE_NL, true, true);
+  });
 }
 
 registriereRahmenTexte();

@@ -32,7 +32,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createInstance } from "../../apps/web/node_modules/i18next";
 import { fachtexteLader } from "../../apps/web/src/lib/fachtexte";
-import { sprachNachlader } from "../../apps/web/src/lib/sprachNachlader";
+import { nachGrundwoerterbuch, sprachNachlader } from "../../apps/web/src/lib/sprachNachlader";
 import {
   type Textmodul,
   basisSchluesselAusQuelltext,
@@ -219,6 +219,29 @@ describe("N · der Nachlader an einem echten i18next", () => {
     await wechsel;
     expect(i18n.language).toBe("en");
     expect(i18n.t("gruss")).toBe("Hello");
+  });
+
+  it.each([
+    ["en", "Hello"],
+    ["nl", "Hallo daar"],
+  ])("Seitentexte lassen das Grundwörterbuch %s nachladen", async (sprache, gruss) => {
+    const instanz = createInstance();
+    await instanz.use(sprachNachlader(() => Promise.resolve({ gruss }))).init({
+      lng: "de",
+      fallbackLng: "de",
+      partialBundledLanguages: true,
+      resources: { de: { translation: DEUTSCH } },
+    });
+    const ergaenze = () => instanz.addResources(sprache, "translation", { seitentitel: "Demo" });
+    nachGrundwoerterbuch(instanz, sprache, ergaenze);
+    expect(instanz.hasResourceBundle(sprache, "translation")).toBe(false);
+    await instanz.changeLanguage(sprache);
+    expect(instanz.t("gruss")).toBe(gruss);
+    expect(instanz.t("seitentitel")).toBe("Demo");
+    nachGrundwoerterbuch(instanz, sprache, () => {
+      instanz.addResources(sprache, "translation", { sofort: "OK" });
+    });
+    expect(instanz.t("sofort")).toBe("OK");
   });
 
   it("N3 scheitert das Nachladen, bleibt die Oberfläche lesbar — auf Deutsch, ohne Abbruch", async () => {
