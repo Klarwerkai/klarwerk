@@ -118,7 +118,7 @@ const API: Record<string, unknown> = {
 
 /** Sichtbare Beschriftungen — wörtlich aus `apps/web/src/i18n.ts`, DE-Block. */
 const T = {
-  entwurfSpeichern: "Entwurf sichern", // erfassen.entwurfSichern (bis JOB 3062: fd.saveDraft)
+  entwurfSpeichern: "Als Entwurf speichern", // erfassen.entwurfSichern (bis JOB 3062: fd.saveDraft)
   entwurfGespeichert: "Entwurf gespeichert.", // fd.toastSaved
 } as const;
 
@@ -375,7 +375,7 @@ test("N1 · <output hidden> steht gar nicht im AX-Baum — versteckt ist keine S
 // DER PRODUKTFALL — DER ECHTE TOAST DER ANWENDUNG, NICHT SEINE FORM.
 // ================================================================================================
 //
-// Kein nachgebautes Markup: Das Erfassungs-Blatt wird betreten, Text getippt, „Entwurf sichern"
+// Kein nachgebautes Markup: Das Erfassungs-Blatt wird betreten, Text getippt, „Als Entwurf speichern"
 // geklickt. Was danach im Baum steht, hat `ToastViewport` gerendert, ausgelöst von
 // `components/erfassen/Blatt.tsx` über `ToastContext.push`. Gemessen wird mit demselben
 // `rohsignal()` wie R1, P1 und N1.
@@ -398,7 +398,7 @@ test("PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit li
   await editor.click();
   await page.keyboard.type(SATZ);
 
-  // `exact`: ohne die Angabe matcht Playwright Teilzeichenketten — „Entwurf sichern" träfe dann
+  // `exact`: ohne die Angabe matcht Playwright Teilzeichenketten — „Als Entwurf speichern" träfe dann
   // auch den Menüeintrag „Entwürfe" nicht, wohl aber jede künftige längere Beschriftung.
   const speichern = page.getByRole("button", { name: T.entwurfSpeichern, exact: true });
   await expect(

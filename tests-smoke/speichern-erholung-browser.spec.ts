@@ -10,7 +10,7 @@ import { ensureLoggedIn } from "./support/auth";
 // `offline`, react-query hält das Speichern an, und keine Anfrage erreicht den Server. Gemessen wird
 // am Blatt (`/capture/frontdoor`, `/erfassen`) und an der Bibliothek:
 //
-//   K1/K2  „Entwurf sichern" ohne Netz → sichtbar „wartet", die Eingabe bleibt; nach der Rückkehr
+//   K1/K2  „Als Entwurf speichern" ohne Netz → sichtbar „wartet", die Eingabe bleibt; nach der Rückkehr
 //          sichtbar „gespeichert", und nach dem NEULADEN steht genau dieser Stand vom Server da.
 //   K3     der Bestand trägt danach GENAU EINEN Entwurf mit dieser Marke.
 //   K4     Seitenwechsel ohne Netz: „Entwurf speichern und wechseln" nennt den Grund und bleibt;

@@ -130,7 +130,7 @@ test("Kernfluss: Erzählen → Wissensseite → Einreichen @modell", async ({ pa
     await page.getByRole("menuitem", { name: "Öffentlich-intern" }).click();
 
     // Der gespeicherte Entwurf ist der Anker, an dem der Server die Einstufung nachprüft.
-    await page.getByRole("button", { name: "Entwurf sichern", exact: true }).click();
+    await page.getByRole("button", { name: "Als Entwurf speichern", exact: true }).click();
     await expect(page.getByText("Entwurf gespeichert.")).toBeVisible({ timeout: 15_000 });
     await expect(page).toHaveURL(/[?&]draft=[^&]+/, { timeout: 15_000 });
 

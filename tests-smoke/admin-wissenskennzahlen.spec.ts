@@ -183,8 +183,14 @@ test.describe("ADMIN-11 · Wissenskennzahlen", () => {
     await expect(page.getByTestId("wkz-filter-tage")).toHaveValue("90");
 
     // In die Arbeitsliste: derselbe Vorgang, dort mit derselben Art gefiltert.
-    await karte(page, "pruefung").getByTestId("wkz-liste").click();
-    await karte(page, "pruefung").getByTestId("wkz-arbeitsliste").click();
+    const liste = pruefung.getByTestId("wkz-liste");
+    await expect(liste).toBeVisible();
+    const arbeitsliste = pruefung.getByTestId("wkz-arbeitsliste");
+    // Beim Zurückgehen kann der Browser die geöffnete Detailliste wiederherstellen.
+    if (!(await arbeitsliste.isVisible())) {
+      await liste.click();
+    }
+    await arbeitsliste.click();
     await expect(page).toHaveURL(/\/qualitaetsaufgaben\?typ=pruefung$/);
     const vorgang = page.locator(`[data-testid="qa-zeile"][data-schluessel="pruefung:${ko}"]`);
     await expect(vorgang).toHaveCount(1, { timeout: 15_000 });

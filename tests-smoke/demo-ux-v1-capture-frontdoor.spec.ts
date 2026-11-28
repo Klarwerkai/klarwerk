@@ -127,7 +127,7 @@ const EDITOR = '[contenteditable="true"]';
 /** Sichtbare Beschriftungen — wörtlich aus `apps/web/src/i18n.ts`, DE-Block. */
 const T = {
   einreichen: "Einreichen", // erfassen.einreichen
-  entwurf: "Entwurf sichern", // erfassen.entwurfSichern
+  entwurf: "Als Entwurf speichern", // erfassen.entwurfSichern
   entwurfGespeichert: "Entwurf gespeichert.", // fd.toastSaved
   eingereicht: "Eingereicht:", // erfassen.eingereicht
   validierungOeffnen: "Validierung öffnen", // fd.openValidation
@@ -538,7 +538,7 @@ test("DEMO-UX-V1 · Fall 8: natives Einfügen verpufft während der Entwurf läd
 // Bens Befund (Runde 1): Fälle 6 und 7 enden, sobald der eingefügte Text im Feld steht — vor dem
 // Sichern und vor dem Wiederöffnen; Englisch war nur gemountet (jsdom) belegt. CAP-P1 verlangt aber
 // „Speichern/Wiederöffnen vollständig" und den echten Clipboardweg DE/EN. Dieser Fall fährt beides
-// in einem Zug: natives Tastatur-Einfügen in Titel UND Rumpf → „Entwurf sichern" über die sichtbare
+// in einem Zug: natives Tastatur-Einfügen in Titel UND Rumpf → „Als Entwurf speichern" über die sichtbare
 // Beschriftung der jeweiligen Sprache → Serverstand über `GET /api/drafts/:id` → frische Seite über
 // die Adresse → Titel und Rumpf stehen wieder da.
 //
@@ -549,7 +549,7 @@ test("DEMO-UX-V1 · Fall 8: natives Einfügen verpufft während der Entwurf läd
 // GRENZEN wie oben: nur Tastatur (Kontextmenü nicht maschinell bedienbar), nur Chromium, und der
 // Server ist der In-Memory-Smoke-Server — kein PostgreSQL-Beleg (K13 bleibt davon getrennt offen).
 for (const fall of [
-  { sprache: "de", sichern: "Entwurf sichern", gesichert: "Entwurf gespeichert." },
+  { sprache: "de", sichern: "Als Entwurf speichern", gesichert: "Entwurf gespeichert." },
   { sprache: "en", sichern: "Save draft", gesichert: "Draft saved." },
 ] as const) {
   test(`DEMO-UX-V1 · Fall 9 (${fall.sprache}): natives Einfügen übersteht Sichern und Wiederöffnen`, async ({
@@ -731,7 +731,7 @@ test("DEMO-UX-V1 · Fall 10 (en): natives Einfügen verpufft während der Entwur
 });
 
 for (const fall of [
-  { sprache: "de", sichern: "Entwurf sichern", gesichert: "Entwurf gespeichert." },
+  { sprache: "de", sichern: "Als Entwurf speichern", gesichert: "Entwurf gespeichert." },
   { sprache: "en", sichern: "Save draft", gesichert: "Draft saved." },
 ] as const) {
   test(`DEMO-UX-V1 · Fall 11 (${fall.sprache}): Bild und Beschreibung überstehen natives Einfügen, Sichern und Wiederöffnen`, async ({
@@ -815,7 +815,7 @@ async function waisenlage(page: import("@playwright/test").Page) {
 }
 
 for (const fall of [
-  { sprache: "de", sichern: "Entwurf sichern", gesichert: "Entwurf gespeichert." },
+  { sprache: "de", sichern: "Als Entwurf speichern", gesichert: "Entwurf gespeichert." },
   { sprache: "en", sichern: "Save draft", gesichert: "Draft saved." },
 ] as const) {
   test(`DEMO-UX-V1 · Fall 12 (${fall.sprache}): verwaiste Beschreibung übersteht natives Einfügen, Sichern und Wiederöffnen`, async ({
