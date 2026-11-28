@@ -227,7 +227,10 @@ describe("Lesepolicy auf den Ausgabewegen (Output Factory, SCORM)", () => {
     const { app, admin, autorin, leser } = await buehne("lr-aus-3");
 
     // Die Autorin lädt ein Bild hoch und hängt es an IHR vertrauliches Objekt.
-    const hochladen = async (wer: Auth): Promise<string> => {
+    const hochladen = async (
+      wer: Auth,
+      confidentiality: "intern" | "vertraulich",
+    ): Promise<string> => {
       const res = await app.inject({
         method: "POST",
         url: "/api/objects",
@@ -236,6 +239,7 @@ describe("Lesepolicy auf den Ausgabewegen (Output Factory, SCORM)", () => {
           name: "typenschild.png",
           mime: "image/png",
           data: PNG_DATA_URL,
+          confidentiality,
           kind: "image",
           purpose: "attachment",
         },
@@ -243,7 +247,7 @@ describe("Lesepolicy auf den Ausgabewegen (Output Factory, SCORM)", () => {
       expect(res.statusCode, res.body).toBe(201);
       return res.json().id as string;
     };
-    const fremdesBild = await hochladen(autorin);
+    const fremdesBild = await hochladen(autorin, "vertraulich");
     const traeger = await anlegen(app, autorin, { title: "Träger", confidentiality: "intern" });
     const attach = await app.inject({
       method: "PUT",
@@ -281,12 +285,22 @@ describe("Lesepolicy auf den Ausgabewegen (Output Factory, SCORM)", () => {
     const paket = await scorm(app, leser, "paket", [eigen]);
     expect(paket.statusCode).toBe(422);
 
-    // GEGENPROBE 1 — der Admin darf das Bild sehen; für ihn geht dasselbe Objekt durch.
+    // Der Admin kann das Bild intern lesen. Ein unabhängiges Lernpaket darf es nicht enthalten.
+    const rawAdmin = await app.inject({
+      method: "GET",
+      url: `/api/objects/${fremdesBild}/raw`,
+      headers: admin,
+    });
+    expect(rawAdmin.statusCode).toBe(200);
     const pAdmin = await scorm(app, admin, "pruefen", [eigen]);
-    expect(pAdmin.json().exportierbar, pAdmin.body).toBe(true);
+    expect(pAdmin.json().exportierbar, pAdmin.body).toBe(false);
+    expect(pAdmin.json().befunde).toContainEqual(
+      expect.objectContaining({ code: "MEDIA_CONFIDENTIAL", koId: eigen }),
+    );
+    expect((await scorm(app, admin, "paket", [eigen])).statusCode).toBe(422);
 
     // GEGENPROBE 2 — ein EIGENES Bild im eigenen Fließtext bleibt exportierbar (mega78-Kalibrierung).
-    const eigenesBild = await hochladen(leser);
+    const eigenesBild = await hochladen(leser, "intern");
     const mitEigenemBild = await anlegen(app, leser, {
       title: "Mein Objekt mit eigenem Bild",
       confidentiality: "intern",
