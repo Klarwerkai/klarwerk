@@ -78,8 +78,10 @@ const folie = (inhalt: string) =>
 async function deck(umsatzQ4 = "1.500 T€"): Promise<Buffer> {
   const roh = new JSZip();
   const datum = new Date("2026-10-01T08:00:00Z");
+  // Automatische ZIP-Ordner hätten den aktuellen Zeitstempel und änderten den Hash der Fassung.
   const zip = {
-    file: (name: string, inhalt: string | Buffer) => roh.file(name, inhalt, { date: datum }),
+    file: (name: string, inhalt: string | Buffer) =>
+      roh.file(name, inhalt, { date: datum, createFolders: false }),
     generateAsync: (o: { type: "nodebuffer" }) => roh.generateAsync(o),
   };
   zip.file(

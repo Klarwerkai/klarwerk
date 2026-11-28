@@ -60,7 +60,9 @@ export interface DeckFassung {
 export async function deck(f: DeckFassung = {}, bildBytes = BILD): Promise<Buffer> {
   const roh = new JSZip();
   const datum = new Date("2026-10-01T08:00:00Z");
-  const datei = (name: string, inhalt: string | Buffer) => roh.file(name, inhalt, { date: datum });
+  // Automatische ZIP-Ordner hätten den aktuellen Zeitstempel und änderten den Hash der Fassung.
+  const datei = (name: string, inhalt: string | Buffer) =>
+    roh.file(name, inhalt, { date: datum, createFolders: false });
   const reihe = [
     ...(f.neueFolieVorn ? ['<p:sldId id="258" r:id="rId4"/>'] : []),
     '<p:sldId id="256" r:id="rId2"/>',
