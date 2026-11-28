@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+    a { color: #9C5009; } a:hover { color: #C2500A; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; background: #FAF8F5; color: #1A2233; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+  <div style="background: #0E1626; color: #FAF8F5; height: 56px; padding: 0 32px; display: flex; align-items: center; gap: 36px;">
+    <div style="font-size: 16px; font-weight: 650; letter-spacing: 0.4px;">KLARWERK</div>
+    <div style="display: flex; align-items: center; gap: 26px;">
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Start</div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Fragen</div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Bibliothek</div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; color: #B9C1D2; border-bottom: 2px solid transparent;">Erfassen</div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 6px 2px; font-size: 13.5px; font-weight: 600; color: #FAF8F5; border-bottom: 2px solid #E8630A;">Prüfen</div>
+    </div>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; width: 260px; padding: 7px 12px; background: #16213A; border-radius: 9px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7E879A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+        <div style="font-size: 13px; color: #7E879A;">Suchen</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B9C1D2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      <div style="width: 30px; height: 30px; border-radius: 50%; background: #E8630A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;">PK</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; justify-content: center; overflow: hidden;">
+    <div style="width: 1040px; padding: 36px 0; display: flex; flex-direction: column; gap: 22px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div style="font-size: 26px; font-weight: 650; letter-spacing: -0.3px;">Prüfen</div>
+      <div style="display: flex; background: #EEEAE3; border-radius: 9px; padding: 2px;"><div style="padding: 6px 14px; border-radius: 7px; font-size: 13px; color: #525B6B;">Offen · 9</div><div style="padding: 6px 14px; border-radius: 7px; background: #FFFFFF; font-size: 13px; font-weight: 600; color: #1A2233; box-shadow: 0 1px 2px rgba(14, 22, 38, 0.08);">Konflikte · 2</div><div style="padding: 6px 14px; border-radius: 7px; font-size: 13px; color: #525B6B;">Duplikate · 4</div><div style="padding: 6px 14px; border-radius: 7px; font-size: 13px; color: #525B6B;">Erneut · 1</div></div>
+    </div>
+      <div style="display: flex; align-items: center; gap: 10px;"><div style="font-size: 15px; font-weight: 600;">Hohlprofile in Spritzzonen</div><span style="font-size: 11px; font-weight: 700; letter-spacing: 0.3px; color: #525B6B; background: #F2EFEA; border-radius: 999px; padding: 3px 10px;">1 von 2</span></div>
+      <div style="display: flex; gap: 20px;">
+        <div style="flex: 1; background: #FFFFFF; border: 1px solid #E9E5DE; border-radius: 14px; box-shadow: 0 1px 2px rgba(14, 22, 38, 0.05), 0 8px 24px -12px rgba(14, 22, 38, 0.12); overflow: hidden;">
+          <div style="padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="font-size: 16px; font-weight: 650;">Design Guide Rev. 0.91</div>
+            <div style="font-size: 12.5px; color: #525B6B;">Freigegeben · Konstruktion · 2026</div>
+          </div>
+          <div style="padding: 8px 22px 22px; font-size: 15px; line-height: 1.65;">Vollverschweißte Hohlprofile in Lebensmittel- und Spritzzonen <span style="background: #FBE6E6; border-radius: 4px; padding: 1px 3px;">vermeiden, weil ihre Dichtheit langfristig nicht garantiert werden kann.</span></div>
+        </div>
+        <div style="flex: 1; background: #FFFFFF; border: 1px solid #E9E5DE; border-radius: 14px; box-shadow: 0 1px 2px rgba(14, 22, 38, 0.05), 0 8px 24px -12px rgba(14, 22, 38, 0.12); overflow: hidden;">
+          <div style="padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="font-size: 16px; font-weight: 650;">Hohlprofile in Nasszonen</div>
+            <div style="font-size: 12.5px; color: #525B6B;">Offen · Konstruktion · 2023</div>
+          </div>
+          <div style="padding: 8px 22px 22px; font-size: 15px; line-height: 1.65;">Vollverschweißte Hohlprofile sind <span style="background: #FBE6E6; border-radius: 4px; padding: 1px 3px;">zulässig, wenn die Dichtheit jährlich geprüft wird.</span></div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;"><div style="display: flex; align-items: center; gap: 7px; padding: 10px 20px; background: #C2500A; color: #FFFFFF; border-radius: 10px; font-size: 14px; font-weight: 600;">Links gilt</div><div style="display: flex; align-items: center; gap: 7px; padding: 10px 20px; background: #C2500A; color: #FFFFFF; border-radius: 10px; font-size: 14px; font-weight: 600;">Rechts gilt</div><div style="padding: 10px 20px; background: #FFFFFF; color: #1A2233; border: 1px solid #E9E5DE; border-radius: 10px; font-size: 14px;">Beide gelten, je nach Kontext</div><div style="padding: 10px 20px; background: #FFFFFF; color: #1A2233; border: 1px solid #E9E5DE; border-radius: 10px; font-size: 14px;">Kein Widerspruch</div><div style="margin-left: auto; font-size: 13px; color: #525B6B;">Zweitmeinung anfragen</div></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

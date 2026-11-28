@@ -72,6 +72,7 @@
 // „behoben werden sollte" — das entscheidet Pedi. Kopfband (Z.17-20, D4) und Frage-Pille
 // (Z.22-25, D1) sind ausdruecklich nicht Gegenstand.
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
@@ -83,8 +84,7 @@ import { type Bruecke, bruecke } from "../library/job2703-bruecke";
 // TEIL 1 — DIE SOLLWERTTABELLE, aus KeinWissen.dc.html gelesen und kanonisiert.
 // ================================================================================================
 
-const ZIELBILD =
-  "/Users/peterkohnert/Documents/Projekt_klarwerk/DESIGN_ZIELBILD_20260827/KeinWissen.dc.html";
+const ZIELBILD = join(process.cwd(), "tests/design/vorlagen/20260827/KeinWissen.dc.html");
 const zielbildDa = existsSync(ZIELBILD);
 const ZEILEN: readonly string[] = zielbildDa ? readFileSync(ZIELBILD, "utf8").split("\n") : [];
 

@@ -26,7 +26,7 @@ const t = i18n.getFixedT("de");
 
 const WURZEL = resolve(process.cwd());
 const DIST = resolve(WURZEL, "apps/web/dist");
-const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Fragen.dc.html";
+const ZIELBILD = join(WURZEL, "tests/design/vorlagen/klarwerk/Fragen.dc.html");
 const ORIGIN = "http://klarwerk.test";
 
 const TITEL = "Profile in Spritzzonen";

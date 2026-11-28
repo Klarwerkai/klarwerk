@@ -30,7 +30,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 export const WURZEL = resolve(process.cwd());
 export const DIST = resolve(WURZEL, "apps/web/dist");
-export const MOCKUP = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Erfassen.dc.html";
+export const MOCKUP = join(WURZEL, "tests/design/vorlagen/klarwerk/Erfassen.dc.html");
 // ================================================================================================
 // JOB 3062 R6 — WARUM DIE BÜHNE AUF `localhost` LÄUFT UND NICHT AUF EINEM PHANTASIENAMEN.
 // ================================================================================================

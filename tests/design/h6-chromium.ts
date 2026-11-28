@@ -24,7 +24,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 export const WURZEL = resolve(process.cwd());
 export const DIST = resolve(WURZEL, "apps/web/dist");
 /** Das Zielbild liegt im Steuerungsordner (Pflichtquelle des Auftrags), nicht im Produkt. */
-export const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Admin.dc.html";
+export const ZIELBILD = join(WURZEL, "tests/design/vorlagen/klarwerk/Admin.dc.html");
 /**
  * JOB 3065 R2 — WARUM `https` UND NICHT `http`:
  *

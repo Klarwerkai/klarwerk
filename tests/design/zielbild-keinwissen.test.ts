@@ -76,8 +76,7 @@ const ANLEITUNG_DATEI = join(WURZEL, "apps/web/public/word-addin/anleitung.js");
 const BEGLEITER_DATEI = join(WURZEL, "apps/web/public/word-addin/begleiter.js");
 /** R-0336/R-0708: der Block KW-WORDVERGLEICH, geladen unmittelbar nach taskpane.js. */
 const WV_DATEI = join(WURZEL, "apps/web/public/word-addin/wortvergleich.js");
-const ZIELBILD =
-  "/Users/peterkohnert/Documents/Projekt_klarwerk/DESIGN_ZIELBILD_20260827/KeinWissen.dc.html";
+const ZIELBILD = join(WURZEL, "tests/design/vorlagen/20260827/KeinWissen.dc.html");
 const ORIGIN = "http://klarwerk.test";
 const PANEL_URL = `${ORIGIN}/word-addin/taskpane.html`;
 /** Die Frage aus dem Zielbild (Z.23) — dieselbe Frage geht hier durch das echte Panel. */

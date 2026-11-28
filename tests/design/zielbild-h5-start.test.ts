@@ -38,7 +38,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 const WURZEL = resolve(process.cwd());
 const DIST = resolve(WURZEL, "apps/web/dist");
-const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Main.dc.html";
+const ZIELBILD = join(WURZEL, "tests/design/vorlagen/klarwerk/Main.dc.html");
 const ORIGIN = "http://klarwerk.test";
 
 // ---- Das Zielbild lesen ---------------------------------------------------------------------------

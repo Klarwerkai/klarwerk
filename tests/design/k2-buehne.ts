@@ -16,13 +16,13 @@
 // `oeffnen()` derselben Seite mit anderem Plan.
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { panelQuelleAus } from "../support/panelquelle";
 
 export const WURZEL = resolve(process.cwd());
 export const TASKPANE = resolve(WURZEL, "apps/web/public/word-addin/taskpane.html");
 /** Das Zielbild vom 04.09.2026 (Pedi: „Gut."), im Steuerungsordner. */
-export const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klara/Erfassen.dc.html";
+export const ZIELBILD = join(WURZEL, "tests/design/vorlagen/klara/Erfassen.dc.html");
 export const ORIGIN = "http://klara.test";
 export const SEITE_PFAD = "/word-addin/taskpane.html";
 /** JOB 3667: die zweite ausgelieferte Datei des Fensters (Block KW-RUECKWEG). */

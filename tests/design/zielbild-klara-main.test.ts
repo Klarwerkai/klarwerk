@@ -23,8 +23,7 @@ import { panelQuelleAus } from "../support/panelquelle";
 const WURZEL = process.cwd();
 const PANEL = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
 const NACHFOLGER = join(WURZEL, "tests", "design", "zielbild-k1-antwort.test.ts");
-const ALTES_ZIELBILD =
-  "/Users/peterkohnert/Documents/Projekt_klarwerk/DESIGN_ZIELBILD_20260827/Main.dc.html";
+const ALTES_ZIELBILD = join(WURZEL, "tests/design/vorlagen/20260827/Main.dc.html");
 
 /** Die Traeger des alten Zielbilds, die im Sichtfeld standen — und nicht zurueckkommen. */
 const ALTE_TRAEGER = [

@@ -29,7 +29,7 @@ import { ORTSZEILE_WORTE, type OrtszeileSprache } from "../support/ortszeileWort
 
 export const WURZEL = resolve(process.cwd());
 export const DIST = resolve(WURZEL, "apps/web/dist");
-export const MOCKUP = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Bibliothek.dc.html";
+export const MOCKUP = join(WURZEL, "tests/design/vorlagen/klarwerk/Bibliothek.dc.html");
 /**
  * JOB 3818 — WARUM `https` UND NICHT `http`: DIESE VORRICHTUNG HAT JAHRELANG EINE GANZE
  * FEHLERKLASSE NICHT MESSEN KÖNNEN.
