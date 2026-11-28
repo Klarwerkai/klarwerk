@@ -548,6 +548,12 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
     setSpeicherlage("konfliktErneut");
   };
 
+  const titelGeaendert = (neuerTitel: string): void => {
+    setTitel(neuerTitel);
+    setGeaendert(true);
+    konfliktVeraltet();
+  };
+
   const neueLage = (l: GemeinsamLage): void => {
     qc.setQueryData(lageSchluessel(koId), l);
   };
@@ -982,11 +988,7 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
               id={titelFeld}
               data-testid="gemeinsam-titel"
               value={titel}
-              onChange={(e) => {
-                setTitel(e.target.value);
-                setGeaendert(true);
-                konfliktVeraltet();
-              }}
+              onChange={(e) => titelGeaendert(e.target.value)}
             />
             <p className="mt-3 block text-[12.5px] font-semibold text-text">
               {t("gemeinsam.feld.text")}
@@ -1000,7 +1002,12 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
               provenance={draftProvenance(lesefassung.vertraulichkeit ?? undefined, koId)}
             >
               <div data-testid="gemeinsam-editor" className="mt-1">
-                <RichTextEditor value={rumpf} onChange={inhaltGeaendert} documentTitle={titel} />
+                <RichTextEditor
+                  value={rumpf}
+                  onChange={inhaltGeaendert}
+                  documentTitle={titel}
+                  onTitelVorschlag={titelGeaendert}
+                />
               </div>
             </ImageDescribeProvider>
             <div className="mt-3 flex flex-wrap items-center gap-3">

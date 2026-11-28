@@ -25,6 +25,7 @@
 // diese Haltung praktisch bedeutet, misst Teil B — dort wird wirklich geklickt.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, useState } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
@@ -62,42 +63,38 @@ function tsxDateien(wurzel: string): string[] {
   return treffer;
 }
 
-/**
- * Der Propblock einer Einbindung.
- *
- * Die Grenze ist die EINRÜCKUNG des schliessenden `/>`: sie muss der des oeffnenden
- * `<RichTextEditor` gleichen. Ohne diese Bedingung endete der Block beim ersten `/>` einer
- * VERSCHACHTELTEN Komponente — `aiPanel={<AiAssistBox … />}` kommt in zwei der fuenf Einbindungen
- * vor, und der Block waere dort zu frueh zu Ende.
- */
-function propblock(zeilen: string[], start: number): string {
-  const einrueckung = (zeilen[start] ?? "").match(/^\s*/)?.[0] ?? "";
-  const ende = `${einrueckung}/>`;
-  for (let i = start + 1; i < zeilen.length; i += 1) {
-    if ((zeilen[i] ?? "") === ende) {
-      return zeilen.slice(start, i + 1).join("\n");
+/** Liest nur die eigenen Attribute des Editors, unabhängig von Einrückung und verschachteltem JSX. */
+function editorEinbindungen(datei: string, quelle: string): Einbindung[] {
+  if (!quelle.includes("<RichTextEditor")) return [];
+  const baum = ts.createSourceFile(datei, quelle, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const gefunden: Einbindung[] = [];
+  function besuche(n: ts.Node): void {
+    if (
+      (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) &&
+      ts.isIdentifier(n.tagName) &&
+      n.tagName.text === "RichTextEditor"
+    ) {
+      gefunden.push({
+        datei,
+        zeile: baum.getLineAndCharacterOfPosition(n.getStart(baum)).line + 1,
+        traegtUebernahme: n.attributes.properties.some(
+          (a) =>
+            ts.isJsxAttribute(a) && ts.isIdentifier(a.name) && a.name.text === "onTitelVorschlag",
+        ),
+      });
     }
+    ts.forEachChild(n, besuche);
   }
-  throw new Error(`Einbindung ab Zeile ${start + 1} hat kein schliessendes /> auf gleicher Ebene`);
+  besuche(baum);
+  return gefunden;
 }
 
 function erhebeEinbindungen(): Einbindung[] {
-  const gefunden: Einbindung[] = [];
-  for (const pfad of tsxDateien(WEB_SRC).sort()) {
-    const zeilen = readFileSync(pfad, "utf-8").split("\n");
-    zeilen.forEach((zeile, i) => {
-      if (!zeile.trimStart().startsWith("<RichTextEditor")) {
-        return;
-      }
-      const block = propblock(zeilen, i);
-      gefunden.push({
-        datei: pfad.slice(pfad.indexOf("apps/web/src")),
-        zeile: i + 1,
-        traegtUebernahme: /\bonTitelVorschlag\b/.test(block),
-      });
-    });
-  }
-  return gefunden;
+  return tsxDateien(WEB_SRC)
+    .sort()
+    .flatMap((pfad) =>
+      editorEinbindungen(pfad.slice(pfad.indexOf("apps/web/src")), readFileSync(pfad, "utf-8")),
+    );
 }
 
 // ================================================================================================
@@ -221,7 +218,24 @@ describe("JOB 2412 A · die Erhebung — wie viele Einbindungen gibt es, und wel
       "                />",
     ];
 
-    expect(propblock(zeilen, 0)).toContain("onTitelVorschlag");
+    expect(editorEinbindungen("sonde.tsx", zeilen.join("\n"))).toEqual([
+      { datei: "sonde.tsx", zeile: 1, traegtUebernahme: true },
+    ]);
+  });
+
+  it("liest einzeilige Einbindungen und zählt den Prop eines Nachbars oder Kindknotens nicht mit", () => {
+    const einbindungen = editorEinbindungen(
+      "sonde.tsx",
+      `<>
+      <RichTextEditor aiPanel={<Nachbar onTitelVorschlag={z} />} />
+      <Anderer onTitelVorschlag={z} />
+      <RichTextEditor onTitelVorschlag={z} />
+    </>`,
+    );
+    expect(einbindungen.map((e) => [e.zeile, e.traegtUebernahme])).toEqual([
+      [2, false],
+      [4, true],
+    ]);
   });
 });
 
