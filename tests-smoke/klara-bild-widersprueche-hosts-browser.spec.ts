@@ -26,7 +26,13 @@
 // entfernt.
 import { type Locator, type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
-import { PPTX_TYP, deckMit, docxMit, zeichneBild } from "./support/ocr-fundstellen-probe";
+import {
+  PPTX_TYP,
+  deckMit,
+  docxMit,
+  liesBilderImAnhang,
+  zeichneBild,
+} from "./support/ocr-fundstellen-probe";
 
 const KORREKTUREN = "/api/me/assistenz/bildkorrekturen";
 const RUMPF = "[data-testid=rumpf-bild-befunde]";
@@ -239,6 +245,7 @@ test("OCR-E05 · H06 Office im Artikel · Abweichung, Fundstellen und Neubewertu
       await nutzungshinweisQuittieren(page);
       await page.getByTestId("bib-mehr").click();
       await page.locator('[data-bib-abschnitt="anhaenge"] > summary').click();
+      await liesBilderImAnhang(page, name);
       await befundFertig(page, auswahl);
     };
     await oeffnen();

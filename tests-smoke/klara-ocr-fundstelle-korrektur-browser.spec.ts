@@ -27,6 +27,8 @@
 // isolierten Kontext `chromium-zustand` (`ZUSTAND_SPEC` in `playwright.smoke.config.ts`). Am Ende
 // werden die Berichtigungen des Prüfkontos zurückgesetzt.
 import { type Browser, type Locator, type Page, expect, test } from "@playwright/test";
+import sharp from "sharp";
+import { BILD_QUALITAET } from "../services/app/src/import/bildverkleinerung";
 import { ensureLoggedIn } from "./support/auth";
 import {
   type GezeichnetesBild,
@@ -34,6 +36,7 @@ import {
   PPTX_TYP,
   deckMit,
   docxMit,
+  liesBilderImAnhang,
   zeichneBild,
 } from "./support/ocr-fundstellen-probe";
 
@@ -720,7 +723,10 @@ async function fundstelleIn(
   zeileL: Locator,
   wort: string,
   b: GezeichnetesBild,
-  imBild: string = wort,
+  {
+    imBild = wort,
+    bildquelle = `data:image/png;base64,${b.png.toString("base64")}`,
+  }: { imBild?: string; bildquelle?: string } = {},
 ) {
   const sicher = wort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   await zeileL
@@ -733,7 +739,7 @@ async function fundstelleIn(
   const bild = await rechteck(page.getByTestId("bild-fundstelle-bild"));
   const markierung = await rechteck(page.getByTestId("bild-fundstelle-markierung"));
   const ergebnis = {
-    gleichesBild: src.split(",")[1] === b.png.toString("base64"),
+    gleichesBild: src === bildquelle,
     liegtAuf: liegtAuf(markierung, soll(bild, b, gezeichnet(b, imBild), 0)),
   };
   await schliessen(page);
@@ -807,6 +813,7 @@ test("OCR-E01/E02 · H06 Office im Artikel · Fundstelle und Berichtigung am Pow
       await nutzungshinweisQuittieren(page);
       await page.getByTestId("bib-mehr").click();
       await page.locator('[data-bib-abschnitt="anhaenge"] > summary').click();
+      await liesBilderImAnhang(page, name);
       await befundFertig(page, bereich);
     };
     await oeffnen();
@@ -820,7 +827,7 @@ test("OCR-E01/E02 · H06 Office im Artikel · Fundstelle und Berichtigung am Pow
     await page.reload();
     await oeffnen();
     const nachNeuladen = (await zeileL.getByTestId("bild-befund-text").textContent()) ?? "";
-    const berichtigtStelle = await fundstelleIn(page, zeileL, "LAGER", bild, "LAGFR");
+    const berichtigtStelle = await fundstelleIn(page, zeileL, "LAGER", bild, { imBild: "LAGFR" });
 
     // Klara zu diesem Anhang: die Fundstelle der Frage trägt die Berichtigung.
     const panel = page.locator(bereich).getByTestId("klara-bild-kontext");
@@ -877,7 +884,12 @@ test("OCR-E01/E02 · H02-Übernahmeweg (Word-Add-in-Route) · Fundstelle und Ber
     await page.goto(`/capture/frontdoor?draft=${entwurfId}`);
     await befundFertig(page, RUMPF);
     const zeileL = page.locator(RUMPF).first().getByTestId("bild-befund").first();
-    const zahl = await fundstelleIn(page, zeileL, "4711", bild);
+    // Der Word-Import speichert dieses 1200 × 260 große Bild als WebP in der Originalgröße.
+    // Verglichen wird die vollständige Anzeige mit einer Ableitung aus den gezeichneten Testpixeln.
+    const webp = await sharp(bild.png).webp({ quality: BILD_QUALITAET }).toBuffer();
+    const zahl = await fundstelleIn(page, zeileL, "4711", bild, {
+      bildquelle: `data:image/webp;base64,${webp.toString("base64")}`,
+    });
     await berichtigeIn(zeileL, "LAGER 4711");
     const amServer = await korrekturenAmServer(page);
 
