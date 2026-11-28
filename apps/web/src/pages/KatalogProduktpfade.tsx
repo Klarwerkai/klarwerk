@@ -70,7 +70,7 @@ export function KatalogProduktpfade({
                 key={pid}
                 aria-pressed={pid === produkt.id}
                 onClick={() => waehle({ produkt: pid, gruppe: "" })}
-                className={`flex w-full items-center gap-2 rounded-btn border px-2 py-2 text-left text-xs font-medium focus-visible:outline-brand ${pid === produkt.id ? "border-brand bg-brand/5" : "border-hairline"}`}
+                className={`flex w-full items-center gap-2 rounded-btn border px-2 py-2 text-left text-xs font-medium text-text focus-visible:outline-brand ${pid === produkt.id ? "border-brand bg-brand/5" : "border-hairline"}`}
               >
                 <Icon size={16} aria-hidden="true" className="shrink-0" />
                 <span className="flex-1">{t(`funktionskatalog.product.${pid}`)}</span>

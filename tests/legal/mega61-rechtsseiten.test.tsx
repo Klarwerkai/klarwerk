@@ -160,11 +160,11 @@ function artVon(dateiname: string): ts.ScriptKind {
 // ZUSAMMENFÜHRUNG (gesamt-bildbeschreibung-bedienung Nacharbeit 17, Kandidat 76e63865 mit main
 // 7f13932f): Die Entfernungen von R-1349 gelten — `write-fence-race.test.ts` fehlt im Baum,
 // `wissensraum-ort-vertrag.ts` enthält kein `import()`/`require()` mehr. Die Stelle aus
-// BILDBESCHREIBUNG-BEDIENUNG besteht unverändert (`vorher-nachher.integration.test.ts:131`,
+// BILDBESCHREIBUNG-BEDIENUNG liegt jetzt im ausgegliederten Helfer (`vorher-nachher.historisch.ts:116`,
 // `await import(/* @vite-ignore */ eintritt)`) und bleibt eingetragen. Ergebnis: zwei Einträge.
 const BEKANNT_UNAUFLOESBAR = new Set<string>([
   "tests/app/job642-testpfade-cwd-unabhaengig.test.ts:104",
-  "tests/audit-gesamt/vorher-nachher.integration.test.ts:131",
+  "tests/audit-gesamt/vorher-nachher.historisch.ts:116",
 ]);
 
 // AUFTRAG-mega86 Block D: die Modulpfade, die eine Datei WIRKLICH lädt — erhoben aus dem

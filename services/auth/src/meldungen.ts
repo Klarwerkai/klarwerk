@@ -208,6 +208,21 @@ export const MELDUNGEN = {
   // Auskunft „gibt es, gehört jemand anderem" — und damit die Existenzauskunft über einen Entwurf,
   // den der Fragende nicht sehen darf („403 verraet, dass der Entwurf existiert"). Ein nicht
   // sichtbarer Entwurf antwortet seither zeichengleich wie ein unbekannter: dieser eine Satz.
+  DOKUMENT_UNBEKANNT: {
+    de: "Diese Dokumentkennung wurde hier nicht vergeben — sie wird weder übernommen noch neu angelegt.",
+    en: "This document ID was not issued here. It cannot be used or created here.",
+    nl: "Dit document-ID is hier niet uitgegeven. Het kan hier niet worden overgenomen of aangemaakt.",
+  },
+  DRAFT_OPERATION_ID_INVALID: {
+    de: "operationId muss Text sein.",
+    en: "operationId must be a string.",
+    nl: "operationId moet tekst zijn.",
+  },
+  DRAFT_CONFIDENTIALITY_INVALID: {
+    de: "confidentiality muss intern, vertraulich oder streng_vertraulich sein.",
+    en: "confidentiality must be intern, vertraulich or streng_vertraulich.",
+    nl: "confidentiality moet intern, vertrouwelijk (vertraulich) of strikt vertrouwelijk (streng_vertraulich) zijn.",
+  },
   DRAFT_NOT_FOUND: {
     de: "Entwurf nicht gefunden.",
     en: "Draft not found.",

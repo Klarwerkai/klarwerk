@@ -339,11 +339,15 @@ export function BetroffenenrechteVerwaltung(): JSX.Element {
             <ul className={LISTE} data-testid="dateninventar">
               {v.datenarten.map((d) => (
                 <li key={d.id} className="px-3 py-2 text-[12.5px]">
-                  <span className="font-semibold text-text">{d.name}</span>
+                  <span className="font-semibold text-text">
+                    {t(`datenschutz.datenart.${d.id}`, { defaultValue: d.name })}
+                  </span>
                   <span className="text-muted-2">
                     {" "}
                     · {t(`datenschutz.verwaltung.bezug.${d.personenbezug}`)} ·{" "}
-                    {d.ablage.tabellen.length > 0 ? d.ablage.tabellen.join(", ") : d.ablage.ort}
+                    {d.ablage.tabellen.length > 0
+                      ? d.ablage.tabellen.join(", ")
+                      : t(`datenschutz.ablage.${d.id}`, { defaultValue: d.ablage.ort })}
                   </span>
                 </li>
               ))}

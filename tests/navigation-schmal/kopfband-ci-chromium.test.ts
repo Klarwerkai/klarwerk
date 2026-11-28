@@ -116,7 +116,7 @@
 //      das gezeichnete `<img>` von aussen durchsichtig und verlangt Rot.
 //   3. GEMESSEN WIRD ERST NACH BELEGTER ANKUNFT (`beurteileAnkunft`, dieselbe Datei). Vorher mass
 //      diese Datei einfach; was sie „Zeile" nannte, konnte ein Zwischenstand vor Ankunft der
-//      Zähler-Antwort (`GET /api/validation/board`) sein. Fall CI8 hält die Antwort an und verlangt
+//      Zähler-Antwort (`GET /api/validation/board/count`) sein. Fall CI8 hält die Antwort an und verlangt
 //      den begründeten Abbruch statt einer gepinnten Zahl.
 //
 // WARUM DIE URTEILE DORT UND NICHT HIER WOHNEN, steht im Kopf von `ruhe-und-sicht.ts`: ein Urteil,
@@ -369,7 +369,7 @@ async function liesTexte(): Promise<TextKasten[]> {
 //
 // WAS HIER BIS ZUM 12.09.2026 FEHLTE: diese Datei mass, sobald der Warteanker stand. Die
 // Kopfbandzeile ist zu diesem Zeitpunkt aber nicht fertig — der Zähler am Punkt „Prüfen" kommt erst
-// mit seiner Abfrage (`app/useNavBadges.ts` → `GET /api/validation/board`) und macht den Punkt dann
+// mit seiner Abfrage (`app/useNavBadges.ts` → `GET /api/validation/board/count`) und macht den Punkt dann
 // rund 15 px breiter (gemessen in JOB 3582: 884,2 px gegen 899,2 px als rechter Rand DERSELBEN
 // Zeile). Wer davor misst, pinnt einen Zwischenstand, den kein Mensch je sieht.
 //
@@ -395,7 +395,8 @@ async function liesTexte(): Promise<TextKasten[]> {
 const pause = (ms: number): Promise<void> => new Promise((fertig) => setTimeout(fertig, ms));
 
 /** Die Abfrage, mit der der Zähler am Punkt „Prüfen" kommt (`app/useNavBadges.ts`). */
-const ZAEHLER_PFAD = "/api/validation/board";
+const BOARD_PFAD = "/api/validation/board";
+const ZAEHLER_PFAD = "/api/validation/board/count";
 /** Der Kopfbandpunkt, der diesen Zähler trägt (`app/navigation.ts`, `badgeKey: "validation"`). */
 const ZAEHLER_PUNKT = "validierung";
 /**
@@ -474,7 +475,7 @@ function neuerSeitenaufbau(): void {
   nachweisErbracht = false;
 }
 
-/** Die Zahl am Punkt „Prüfen", wie die echte Route sie hergibt — einmal je Lauf. */
+/** Den Sollwert unabhängig vom Zähler aus der vollständigen Liste der Prüfaufträge ermitteln — einmal je Lauf. */
 async function zaehlerSollwert(): Promise<number> {
   if (zaehlerSoll !== null) {
     return zaehlerSoll;
@@ -485,11 +486,11 @@ async function zaehlerSollwert(): Promise<number> {
   }
   const antwort = await app.inject({
     method: "GET",
-    url: ZAEHLER_PFAD,
+    url: BOARD_PFAD,
     headers: { authorization: `Bearer ${bearer}` },
   });
   if (antwort.statusCode !== 200) {
-    throw new Error(`GET ${ZAEHLER_PFAD}: HTTP ${antwort.statusCode}`);
+    throw new Error(`GET ${BOARD_PFAD}: HTTP ${antwort.statusCode}`);
   }
   zaehlerSoll = (antwort.json() as unknown[]).length;
   return zaehlerSoll;
@@ -624,8 +625,8 @@ interface ZaehlerStand {
 const KEINE_ANKUNFT: AnkunftBefund = { eintraege: [], pufferVoll: false, statusLesbar: true };
 
 /** Die Ankunft an der STEHENDEN Seite ablesen. */
-async function liesAnkunft(): Promise<AnkunftBefund> {
-  return await seiteRoh(stand).evaluate<AnkunftBefund>(ANKUNFT, ZAEHLER_PFAD);
+async function liesAnkunft(pfad = ZAEHLER_PFAD): Promise<AnkunftBefund> {
+  return await seiteRoh(stand).evaluate<AnkunftBefund>(ANKUNFT, pfad);
 }
 
 /**
@@ -638,13 +639,17 @@ async function ladeNachweis(breite: number): Promise<void> {
   if (nachweisErbracht) {
     return;
   }
+  const seite = seiteRoh(stand);
+  const punkt = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+  // Ohne Kopfbandpunkt lädt Start das Prüfboard, mit sichtbarem Punkt auch den eigenen Zähler.
+  const pfad = punkt.punktDa ? ZAEHLER_PFAD : BOARD_PFAD;
   const begonnen = Date.now();
   let urteil: Ankunftsurteil = beurteileAnkunft(KEINE_ANKUNFT);
   for (;;) {
-    urteil = beurteileAnkunft(await liesAnkunft());
+    urteil = beurteileAnkunft(await liesAnkunft(pfad));
     if (urteil.art === "abbruch") {
       throw new Error(
-        `bei ${breite}px trägt der Ankunftsnachweis für ${ZAEHLER_PFAD} nicht: ${urteil.meldung}`,
+        `bei ${breite}px trägt der Ankunftsnachweis für ${pfad} nicht: ${urteil.meldung}`,
       );
     }
     if (urteil.art === "angekommen") {
@@ -652,13 +657,12 @@ async function ladeNachweis(breite: number): Promise<void> {
     }
     if (Date.now() - begonnen > nachweisFristMs) {
       throw new Error(
-        `bei ${breite}px liegt nach ${(nachweisFristMs / 1000).toFixed(1)} s keine erfolgreich empfangene Antwort auf ${ZAEHLER_PFAD} vor — ${urteil.meldung} ` +
-          `(${stand.abrufe.get(ZAEHLER_PFAD) ?? 0} Abrufe am Server seit Laufbeginn) — es wird NICHT still zu früh gemessen`,
+        `bei ${breite}px liegt nach ${(nachweisFristMs / 1000).toFixed(1)} s keine erfolgreich empfangene Antwort auf ${pfad} vor — ${urteil.meldung} ` +
+          `(${stand.abrufe.get(pfad) ?? 0} Abrufe am Server seit Laufbeginn) — es wird NICHT still zu früh gemessen`,
       );
     }
     await pause(25);
   }
-  const seite = seiteRoh(stand);
   const soll = await zaehlerSollwert();
   const jetzt = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
   if (jetzt.punktDa && soll > 0) {
@@ -678,8 +682,8 @@ async function ladeNachweis(breite: number): Promise<void> {
     }
   }
   console.log(
-    `${KENNUNG_3778} · Ladenachweis · ${breite}px · Antwort auf ${ZAEHLER_PFAD} im Browser angekommen nach ` +
-      `${Date.now() - begonnen} ms (${urteil.meldung}; ${stand.abrufe.get(ZAEHLER_PFAD) ?? 0} Abrufe am Server) · ` +
+    `${KENNUNG_3778} · Ladenachweis · ${breite}px · Antwort auf ${pfad} im Browser angekommen nach ` +
+      `${Date.now() - begonnen} ms (${urteil.meldung}; ${stand.abrufe.get(pfad) ?? 0} Abrufe am Server) · ` +
       `getragen hat ${
         jetzt.punktDa && soll > 0
           ? `BEIDE Hälften — Punkt „${ZAEHLER_PUNKT}“ gezeichnet, Zähler soll ${soll} sein`
@@ -1387,7 +1391,7 @@ describe("JOB 3571 · CI5 · der ehemalige Befund, nachgeführt: es steht nichts
 // ================================================================================================
 //
 // DER LADENACHWEIS VERSPRICHT ZWEI DINGE (`ladeNachweis`, oben): die Antwort auf
-// `/api/validation/board` ist im Browser angekommen — UND wo der Punkt „Prüfen" gezeichnet ist,
+// `/api/validation/board/count` ist im Browser angekommen — UND wo der Punkt „Prüfen" gezeichnet ist,
 // steht sein Zähler danach wirklich auf der Zahl, die die Route hergibt. Bis JOB 3945 war die zweite
 // Hälfte eine Zusage OHNE Messung: sie steht hinter `soll > 0`, und an der Bühne dieser Datei ist
 // das Prüfbrett leer — `soll` war in jedem Lauf 0, der Zweig ungefahren, der Satz „gemessen würde

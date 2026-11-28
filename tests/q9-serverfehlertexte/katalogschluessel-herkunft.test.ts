@@ -772,6 +772,9 @@ const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
  * `OHNE_ROUTENFALL`, sondern mit seinen zwei Fremdsprachfällen in `GEMESSEN_VON`.
  */
 const AUS_DEN_ENTWURFSROUTEN = [
+  "DOKUMENT_UNBEKANNT",
+  "DRAFT_CONFIDENTIALITY_INVALID",
+  "DRAFT_OPERATION_ID_INVALID",
   "DRAFT_NOT_FOUND",
   // aufnahme:20260922:gesamt-leserechte: `DRAFT_NOT_VISIBLE` ist mit dem Satz aus dem Katalog
   // gegangen — ein nicht sichtbarer Entwurf antwortet wie ein unbekannter (R-0239, J24 „404").
@@ -1525,6 +1528,15 @@ const OHNE_ROUTENFALL = [
  *  auch dann grün bliebe, wenn der Fallabtaster nichts mehr findet und alles „ungemessen" heisst
  *  — dann müsste nur die eine Liste wachsen, und niemand sähe, dass die Deckung verschwand. */
 const GEMESSEN_VON = {
+  DOKUMENT_UNBEKANNT: [
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · Unbekannte Dokumentkennung liefert den Fehlercode und den deutschen, englischen und niederländischen Satz",
+  ],
+  DRAFT_CONFIDENTIALITY_INVALID: [
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · Ungültige Schutzklasse liefert den Fehlercode und den deutschen, englischen und niederländischen Satz",
+  ],
+  DRAFT_OPERATION_ID_INVALID: [
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · Ungültige Vorgangskennung liefert den Fehlercode und den deutschen, englischen und niederländischen Satz",
+  ],
   // JOB 3756: der erste Schlüssel des Katalogs, der seinen Routenfall am Tag seiner Einführung
   // mitbringt. Beide Fremdsprachen hängen an EINEM Fall — fällt er aus, wandert der Schlüssel in
   // einem Zug nach `OHNE_ROUTENFALL`, und H4 nennt ihn.

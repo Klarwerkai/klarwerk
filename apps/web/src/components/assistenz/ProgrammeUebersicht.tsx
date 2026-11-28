@@ -18,9 +18,17 @@ import {
   programmeApi,
 } from "../../api/programme";
 import { useAssistenzT } from "../../lib/assistenzProfil";
+import programmeTexte from "../../texte/programme";
 import { Button } from "../ui";
 
 const PROGRAMME_KEY = ["klara", "programme"] as const;
+
+// Nur den exakten, bekannten Serverwortlaut übersetzen. Neue Grenzen bleiben im Original sichtbar.
+const registerSchluessel = new Map<string, string>(
+  Object.entries(programmeTexte.de)
+    .filter(([key]) => key.startsWith("programme.register."))
+    .map(([key, text]) => [text, key]),
+);
 
 const FAEHIGKEITEN: ReadonlyArray<{ f: Faehigkeit; schluessel: string }> = [
   { f: "lesen", schluessel: "programme.faehigkeit.lesen" },
@@ -46,6 +54,10 @@ function statusSchluessel(p: ProgrammSicht): string {
 
 export function ProgrammeUebersicht(): JSX.Element {
   const { t } = useAssistenzT();
+  const registerText = (text: string): string => {
+    const key = registerSchluessel.get(text);
+    return key ? t(key) : text;
+  };
   const abfrage = useQuery({ queryKey: PROGRAMME_KEY, queryFn: programmeApi.lesen });
   const [code, setCode] = useState<BegleiterCode | null>(null);
   const [codeFehler, setCodeFehler] = useState(false);
@@ -84,7 +96,7 @@ export function ProgrammeUebersicht(): JSX.Element {
               className="rounded-btn border border-hairline px-3 py-2 text-[12.5px]"
             >
               <p className="font-semibold">
-                {p.anzeigename} ·{" "}
+                {registerText(p.anzeigename)} ·{" "}
                 <span data-testid="programm-status">{t(statusSchluessel(p))}</span>
               </p>
               {p.os.unterstuetzt ? (
@@ -99,7 +111,10 @@ export function ProgrammeUebersicht(): JSX.Element {
                 {FAEHIGKEITEN.map(({ f, schluessel }) => (
                   <div key={f} className="contents">
                     <dt>{t(schluessel)}</dt>
-                    <dd data-testid={`faehigkeit-${f}`} title={p.faehigkeiten[f].grenze}>
+                    <dd
+                      data-testid={`faehigkeit-${f}`}
+                      title={registerText(p.faehigkeiten[f].grenze)}
+                    >
                       {t(STAND[p.faehigkeiten[f].stand])}
                     </dd>
                   </div>
@@ -110,7 +125,7 @@ export function ProgrammeUebersicht(): JSX.Element {
               ) : null}
               <ul className="list-disc pl-5 text-muted">
                 {p.grenzen.map((g) => (
-                  <li key={g}>{g}</li>
+                  <li key={g}>{registerText(g)}</li>
                 ))}
               </ul>
             </li>

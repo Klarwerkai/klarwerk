@@ -309,6 +309,14 @@ const KEINE_FARBE = new Set([
   "5xl",
   "6xl",
   "micro",
+  // Gesamtcheck R-1329 (R-0918): die übrigen benannten Größenstufen der Schriftskala
+  // (`lib/schriftskala.ts` BENANNTE_STUFEN, tailwind.config.ts fontSize) — Größen, keine Farben.
+  "klein",
+  "zaehler",
+  "fussnote",
+  "projektion",
+  "projektion-klein",
+  "projektion-titel",
   "left",
   "center",
   "right",
@@ -426,12 +434,105 @@ function klassenKonstanten(quelle: ts.SourceFile): Map<string, ts.Node | null> {
 // CommandPalette: 2,03:1 statt der wahren 2,36:1) — dieselbe Fläche, die falsche Zahl.
 type Klassenteil = { text: string; zweige: string[]; pos: number };
 
-function klassenStrings(node: ts.Node, zweige: string[], out: Klassenteil[]): void {
+// Gesamtcheck R-1329: zwei Bauformen, in denen die Flächenklasse NICHT im JSX steht, sondern in
+// einer Konstante der Datei — eine Zuordnungstabelle (`PUNKT[zustand]`) und eine Liste, deren
+// Einträge über `.map((f) => …)` als `f.klasse` ins JSX kommen. Jeder Tabellen- bzw. Listeneintrag
+// ist ein eigener Zweig. Aufgelöst wird NUR bei der Suche nach der Fläche (`flaechenKlassen`), nicht
+// für Vorfahren und Kinder: dort brächte jeder Eintrag eine weitere Textfarbe ins Spiel, und
+// „letzte gewinnt" würde die Messung verschieben.
+
+function ohneTypHuelle(node: ts.Node): ts.Node {
+  let n = node;
+  while (ts.isAsExpression(n) || ts.isSatisfiesExpression(n) || ts.isParenthesizedExpression(n)) {
+    n = n.expression;
+  }
+  return n;
+}
+
+// Die Einträge der Liste hinter einem `.map`-Parameter: `LISTE.map((f) => … f.klasse …)`.
+function listenEintraegeFuer(zugriff: ts.PropertyAccessExpression): ts.Node[] | null {
+  if (!ts.isIdentifier(zugriff.expression)) {
+    return null;
+  }
+  const name = zugriff.expression.text;
+  for (let p: ts.Node | undefined = zugriff.parent; p; p = p.parent) {
+    if (!ts.isArrowFunction(p)) {
+      continue;
+    }
+    if (!p.parameters.some((par) => ts.isIdentifier(par.name) && par.name.text === name)) {
+      continue;
+    }
+    const aufruf = p.parent;
+    if (
+      !ts.isCallExpression(aufruf) ||
+      !ts.isPropertyAccessExpression(aufruf.expression) ||
+      aufruf.expression.name.text !== "map" ||
+      !ts.isIdentifier(aufruf.expression.expression)
+    ) {
+      return null;
+    }
+    const init = AKTUELLE_KONSTANTEN.get(aufruf.expression.expression.text);
+    const liste = init ? ohneTypHuelle(init) : null;
+    return liste && ts.isArrayLiteralExpression(liste) ? [...liste.elements] : null;
+  }
+  return null;
+}
+
+function eigenschaft(objekt: ts.Node, name: string): ts.Node | null {
+  const o = ohneTypHuelle(objekt);
+  if (!ts.isObjectLiteralExpression(o)) {
+    return null;
+  }
+  for (const e of o.properties) {
+    if (ts.isPropertyAssignment(e) && e.name.getText().replace(/^["']|["']$/g, "") === name) {
+      return e.initializer;
+    }
+  }
+  return null;
+}
+
+function klassenStrings(
+  node: ts.Node,
+  zweige: string[],
+  out: Klassenteil[],
+  tabellenAufloesen: boolean,
+): void {
+  if (tabellenAufloesen && ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression)) {
+    const init = AKTUELLE_KONSTANTEN.get(node.expression.text);
+    const tabelle = init ? ohneTypHuelle(init) : null;
+    if (tabelle && ts.isObjectLiteralExpression(tabelle)) {
+      const zugriff = node.getText().replace(/\s+/g, " ");
+      for (const e of tabelle.properties) {
+        if (ts.isPropertyAssignment(e)) {
+          klassenStrings(
+            e.initializer,
+            [...zweige, `${zugriff}=${e.name.getText()}#t`],
+            out,
+            tabellenAufloesen,
+          );
+        }
+      }
+    }
+    return;
+  }
+  if (tabellenAufloesen && ts.isPropertyAccessExpression(node)) {
+    const eintraege = listenEintraegeFuer(node);
+    if (eintraege) {
+      const zugriff = node.getText().replace(/\s+/g, " ");
+      eintraege.forEach((eintrag, i) => {
+        const wert = eigenschaft(eintrag, node.name.text);
+        if (wert) {
+          klassenStrings(wert, [...zweige, `${zugriff}=${i}#t`], out, tabellenAufloesen);
+        }
+      });
+      return;
+    }
+  }
   if (ts.isIdentifier(node)) {
     const init = AKTUELLE_KONSTANTEN.get(node.text);
     if (init && !KONSTANTEN_STAPEL.has(node.text)) {
       KONSTANTEN_STAPEL.add(node.text);
-      klassenStrings(init, zweige, out);
+      klassenStrings(init, zweige, out, tabellenAufloesen);
       KONSTANTEN_STAPEL.delete(node.text);
     }
     return;
@@ -443,48 +544,55 @@ function klassenStrings(node: ts.Node, zweige: string[], out: Klassenteil[]): vo
   if (ts.isTemplateExpression(node)) {
     out.push({ text: node.head.text, zweige, pos: node.getStart() });
     for (const span of node.templateSpans) {
-      klassenStrings(span.expression, zweige, out);
+      klassenStrings(span.expression, zweige, out, tabellenAufloesen);
       out.push({ text: span.literal.text, zweige, pos: span.literal.getStart() });
     }
     return;
   }
   if (ts.isConditionalExpression(node)) {
     const bedingung = node.condition.getText().replace(/\s+/g, " ");
-    klassenStrings(node.whenTrue, [...zweige, `${bedingung}#t`], out);
-    klassenStrings(node.whenFalse, [...zweige, `${bedingung}#f`], out);
+    klassenStrings(node.whenTrue, [...zweige, `${bedingung}#t`], out, tabellenAufloesen);
+    klassenStrings(node.whenFalse, [...zweige, `${bedingung}#f`], out, tabellenAufloesen);
     return;
   }
   if (ts.isBinaryExpression(node)) {
+    // `TABELLE[x] ?? ""`: der linke Teil IST der Wert (nur bei der Flächensuche, s. oben).
+    const wertLinks =
+      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+      node.operatorToken.kind === ts.SyntaxKind.BarBarToken;
+    if (tabellenAufloesen && wertLinks) {
+      klassenStrings(node.left, zweige, out, tabellenAufloesen);
+    }
     const bedingung = node.left.getText().replace(/\s+/g, " ");
-    klassenStrings(node.right, [...zweige, `${bedingung}#t`], out);
+    klassenStrings(node.right, [...zweige, `${bedingung}#t`], out, tabellenAufloesen);
     return;
   }
   if (ts.isArrayLiteralExpression(node)) {
     for (const el of node.elements) {
-      klassenStrings(el, zweige, out);
+      klassenStrings(el, zweige, out, tabellenAufloesen);
     }
     return;
   }
   if (ts.isCallExpression(node)) {
     for (const arg of [node.expression, ...node.arguments]) {
-      klassenStrings(arg, zweige, out);
+      klassenStrings(arg, zweige, out, tabellenAufloesen);
     }
     return;
   }
   if (ts.isPropertyAccessExpression(node)) {
-    klassenStrings(node.expression, zweige, out);
+    klassenStrings(node.expression, zweige, out, tabellenAufloesen);
     return;
   }
   if (ts.isParenthesizedExpression(node)) {
-    klassenStrings(node.expression, zweige, out);
+    klassenStrings(node.expression, zweige, out, tabellenAufloesen);
     return;
   }
   if (ts.isArrowFunction(node)) {
-    klassenStrings(node.body, zweige, out);
+    klassenStrings(node.body, zweige, out, tabellenAufloesen);
     return;
   }
   if (ts.isJsxExpression(node) && node.expression) {
-    klassenStrings(node.expression, zweige, out);
+    klassenStrings(node.expression, zweige, out, tabellenAufloesen);
   }
 }
 
@@ -510,13 +618,16 @@ function classNameAusdruck(node: ts.JsxElement | ts.JsxSelfClosingElement): ts.N
   return null;
 }
 
-function klassenteile(node: ts.JsxElement | ts.JsxSelfClosingElement): Klassenteil[] {
+function klassenteile(
+  node: ts.JsxElement | ts.JsxSelfClosingElement,
+  tabellenAufloesen = false,
+): Klassenteil[] {
   const ausdruck = classNameAusdruck(node);
   if (!ausdruck) {
     return [];
   }
   const teile: Klassenteil[] = [];
-  klassenStrings(ausdruck, [], teile);
+  klassenStrings(ausdruck, [], teile, tabellenAufloesen);
   return teile;
 }
 
@@ -527,7 +638,7 @@ function flaechenKlassen(node: ts.JsxElement | ts.JsxSelfClosingElement): {
   zweige: string[];
   pos: number | null;
 } {
-  const teile = klassenteile(node);
+  const teile = klassenteile(node, true);
   const traeger = teile.find((t) => t.text.split(/\s+/).some(istFlaechenKlasse));
   const aktiv = traeger?.zweige ?? [];
   const klassen: string[] = [];
@@ -752,7 +863,9 @@ const ROH_BRAND = /\bbg-brand\b/;
 const ROH_ALPHA_WEISS = /(^|[^:\w-])bg-white\/\d+/;
 
 function sammleAkzentflaechen(): { funde: Akzentflaeche[]; rohZeilen: string[] } {
-  const dateien = dateienUnter(WEB_SRC, [".ts", ".tsx"]);
+  // Gesamtcheck R-1329: gemessen wird die gerenderte PRODUKTfläche. Testdateien unter
+  // apps/web/src (etwa die Prüfstücke in `legal/kontrast-dom-paarungen.test.tsx`) sind keine.
+  const dateien = dateienUnter(WEB_SRC, [".ts", ".tsx"]).filter((d) => !/\.test\.tsx?$/.test(d));
   const funde: Akzentflaeche[] = [];
   const rohZeilen: string[] = [];
 
@@ -844,6 +957,30 @@ const GRAFISCHE_AUSNAHMEN: { datei: string; klassen: string; grund: string }[] =
     grund:
       "Fortschrittsbalken des Lebenszyklus-Pfades: reine Länge auf bg-page-Schiene, kein Text darin " +
       "(der Zähler steht als text-muted-2 daneben).",
+  },
+  // Gesamtcheck R-1329: drei weitere rein grafische Markenflächen, jede ohne Kind und mit
+  // `aria-hidden` (Bedeutung trägt jeweils der Text daneben).
+  {
+    datei: "apps/web/src/components/bibliothek/Zeichnung.tsx",
+    klassen:
+      "pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow",
+    grund:
+      "Zeigepunkt auf einer Zeichnung: leerer, aria-hidden markierter Kreis über dem Bild; die Lage " +
+      "steht als Daten-Attribut daran, die Beschriftung trägt das Bild bzw. der Knopf.",
+  },
+  {
+    datei: "apps/web/src/pages/Qualitaetsaufgaben.tsx",
+    klassen: "mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand",
+    grund:
+      "Zustandspunkt „in Arbeit“ (Tabelle ZUSTAND_PUNKT): leerer, aria-hidden markierter Punkt; der " +
+      "Zustand steht als Text in der Zeile daneben.",
+  },
+  {
+    datei: "apps/web/src/pages/UiKit.tsx",
+    klassen: "h-6 w-6 shrink-0 rounded-pill bg-brand",
+    grund:
+      "Farbmuster „Marke“ im Bausteinkatalog (Liste FARBEN): leeres, aria-hidden markiertes " +
+      "Musterfeld; die Bezeichnung steht als text-text auf Papier daneben.",
   },
   // JOB 3060 · H1: die drei Ausnahmen der Seitenleiste (Ladepunkt-Rahmen, pulsierender Punkt,
   // Icon-Kachel; shell/Sidebar.tsx) sind mit der Seitenleiste gegangen — das Kopfband trägt keine

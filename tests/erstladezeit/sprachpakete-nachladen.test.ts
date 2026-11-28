@@ -27,7 +27,7 @@
 //       die Module und kommen im Paket `i18n.textmodule.<sprache>.js` zurück — vollständig, in
 //       Glob-Reihenfolge, ohne verrutschte Zeile; direkt importierte Module bleiben ganz, und die
 //       Startprüfung nimmt nur LEERE Blöcke der nachgeladenen Sprachen hin.
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createInstance } from "../../apps/web/node_modules/i18next";
@@ -257,15 +257,12 @@ const TEXTPAKET_ID = {
   en: join(WEB, "src", "i18n.textmodule.en.js"),
   nl: join(WEB, "src", "i18n.textmodule.nl.js"),
 } as const;
-/** Die Textmodule in Glob-Reihenfolge, wie `import.meta.glob("./texte/*.ts")` sie liefert. */
-const TEXTMODUL_DATEIEN = readdirSync(TEXTE).filter((n) => n.endsWith(".ts"));
-TEXTMODUL_DATEIEN.sort();
-
+/** Dieselben echten Textmodule wie im Produkt, unter dessen relativen Modulnamen. */
 async function echteTextmodule(): Promise<Record<string, Textmodul>> {
+  const laden = import.meta.glob<Textmodul>("../../apps/web/src/texte/*.ts", { import: "default" });
   const module: Record<string, Textmodul> = {};
-  for (const datei of TEXTMODUL_DATEIEN) {
-    const m = (await import(join(TEXTE, datei))) as { default: Textmodul };
-    module[`./texte/${datei}`] = m.default;
+  for (const [pfad, ladeModul] of Object.entries(laden)) {
+    module[pfad.replace("../../apps/web/src/", "./")] = await ladeModul();
   }
   return module;
 }
