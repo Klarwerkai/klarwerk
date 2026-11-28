@@ -29,6 +29,7 @@ const VORLAGE: Omit<CreateKoInput, "title" | "statement"> = {
   type: "best_practice",
   category: "Technik",
   author: "anna",
+  confidentiality: "intern",
 };
 
 async function stapel() {
