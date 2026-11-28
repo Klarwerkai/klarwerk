@@ -169,11 +169,37 @@ const BEGRIFFE: readonly Begriff[] = [
 /** Platzhalter tragen Bezeichner, keine Anzeigewörter (`{{trust}}`) — sie zählen nicht. */
 const ohnePlatzhalter = (text: string): string => text.replace(/\{\{[^}]*\}\}/g, "");
 
+// Entscheidung 53, R-1020 und R-1657 schreiben Markenwortlaute vor. Nur das
+// erläuterte Wort am vorgesehenen Ort gilt; derselbe Ausdruck in anderem Text bleibt ein Treffer.
+const MARKENWORT = {
+  de: {
+    entwurf: "KI-Vorschlag (Reasoner-Entwurf, nicht validiert)",
+    einleitung: "KI für die Lückenanalyse (Reasoner)",
+  },
+  en: {
+    entwurf: "AI suggestion (Reasoner draft, not validated)",
+    einleitung: "AI for gap analysis (Reasoner)",
+  },
+  nl: {
+    entwurf: "AI-voorstel (Reasoner-concept, niet gevalideerd)",
+    einleitung: "AI voor de hiaatanalyse (Reasoner)",
+  },
+} as const;
+
+function ohneErklaerteMarken(lng: Sprache, schluessel: string, text: string): string {
+  if (schluessel === "app.subtitle" && text === "Knowledge OS") return "";
+  if (schluessel === "wissenssprints.quelle.reasoner" && text === "Reasoner") return "";
+  if (schluessel === "ergebnisStufe.entwurf" && text === MARKENWORT[lng].entwurf) return "";
+  if (schluessel === "wissenssprints.einleitung")
+    return text.replace(MARKENWORT[lng].einleitung, "");
+  return text;
+}
+
 function funde(lng: Sprache, quelle: Record<string, unknown>): string[] {
   const treffer: string[] = [];
   for (const [schluessel, wert] of Object.entries(quelle)) {
     if (typeof wert !== "string" || ABGELOEST_MENGE.has(schluessel)) continue;
-    const text = ohnePlatzhalter(wert);
+    const text = ohneErklaerteMarken(lng, schluessel, ohnePlatzhalter(wert));
     for (const b of BEGRIFFE) {
       if (b.sprachen.includes(lng) && b.muster.test(text)) {
         treffer.push(`${lng}:${schluessel}:${b.id}`);
@@ -184,9 +210,28 @@ function funde(lng: Sprache, quelle: Record<string, unknown>): string[] {
 }
 
 describe("K1 · B — kein gelesener Text trägt ein Fachwort aus R-0908", () => {
-  it("B-1: über alle drei Laufzeitbestände — keine Ausnahme", () => {
+  it("B-1: über alle drei Laufzeitbestände — jede Produktmarke ist erklärt", () => {
     const alle = SPRACHEN.flatMap((lng) => funde(lng, bundle(lng))).sort();
     expect(alle, alle.join("\n")).toEqual([]);
+  });
+
+  it("eine Marke braucht am ersten Auftreten ihre Erklärung; zusätzliche und fremde Fundstellen bleiben rot", () => {
+    for (const lng of SPRACHEN) {
+      const texte = bundle(lng);
+      expect(texte["app.subtitle"]).toBe("Knowledge OS");
+      expect(texte["fachwort.markenuntertitel"]).toMatch(/Wissen|knowledge|kennis/i);
+      expect(texte["wissenssprints.quelle.reasoner"]).toBe("Reasoner");
+      expect(texte["wissenssprints.einleitung"]).toContain(MARKENWORT[lng].einleitung);
+      expect(texte["ergebnisStufe.entwurf"]).toBe(MARKENWORT[lng].entwurf);
+      expect(
+        funde(lng, {
+          "app.subtitle": "Knowledge OS 2",
+          "wissenssprints.einleitung": `${MARKENWORT[lng].einleitung} Reasoner`,
+          "ergebnisStufe.entwurf": "Reasoner",
+          "sonst.label": "Reasoner",
+        }),
+      ).toHaveLength(4);
+    }
   });
 
   it("B-2: Kalibrierung — der Bestand ist nicht leer, der Wächter prüft wirklich etwas", () => {

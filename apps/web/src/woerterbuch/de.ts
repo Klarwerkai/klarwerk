@@ -7592,7 +7592,7 @@ const de = {
   // Wortlaut der Quelle. `reasoner.draftLabel` bleibt als Bestandstext unverändert stehen.
   // Die Empfehlung sagt „ungeprüft" statt „nicht validiert": JOB 2660 hält fest, dass auf einer
   // Fläche ohne geprüfte Quelle das Wort „validiert" GAR NICHT steht — auch nicht verneint.
-  "ergebnisStufe.entwurf": "Reasoner-Entwurf, nicht validiert",
+  "ergebnisStufe.entwurf": "KI-Vorschlag (Reasoner-Entwurf, nicht validiert)",
   "ergebnisStufe.empfehlung": "Empfehlung, ungeprüft",
   "ergebnisStufe.validiert": "Validiert",
 

@@ -383,7 +383,7 @@ export default {
     "klarasetup.konflikt.taste":
       "Deze toets wordt niet ondersteund. Toegestaan zijn letters, cijfers en F1–F12.",
     "klarasetup.konflikt.palette":
-      "{{kuerzel}} kan niet: Command of Ctrl met K opent al het opdrachtenpalet ‘Pagina zoeken’.",
+      "{{kuerzel}} kan niet: Command of Ctrl met K opent al het opdrachtenpalet ‘Pagina vinden’.",
     "klarasetup.konflikt.einfach":
       "{{kuerzel}} kan niet: Command of Ctrl met één toets is in browsers en tekstvelden bezet (bijv. kopiëren, vet, nieuw tabblad). Neem Shift, Option/Alt of Control erbij.",
     "klarasetup.konflikt.browser": "{{kuerzel}} kan niet: deze combinatie gebruikt de browser.",

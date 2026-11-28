@@ -193,7 +193,7 @@ Stand; ausgeliefert ist er erst nach Ben-Prüfung, grünem Tor und Ship.
 jetzt denselben Statusblock (`FreigabeStatus`, abgeleitet in `zustand.ts` → `freigabeanzeige`):
 Standwort, „Stand N“, Bedeutung, Prüfangaben und „Nächster Schritt“ nach den Rechten des Betrachters.
 Der angenommene Stand heißt sichtbar „Freigegeben“ (bisher „Entschieden“); „Vorgelegt“ sagt
-ausdrücklich „noch nicht freigegeben“. Bei einer Freigabe stehen Stand und Zeitpunkt da; **wer**
+ausdrücklich „Zur Entscheidung vorgelegt, aber noch nicht freigegeben.“ Bei einer Freigabe stehen Stand und Zeitpunkt da; **wer**
 freigegeben oder abgelehnt hat, speichert der Server bisher nicht – das steht so auf der Seite. Eine
 zweite Person wird nicht vorausgesetzt (es gibt keine solche Kontoregel). Geprüft in
 `tests/fe001-arbeitsanleitungen/pruefstatus-uebersicht-und-detail.test.tsx`. Zusatzfrage für die

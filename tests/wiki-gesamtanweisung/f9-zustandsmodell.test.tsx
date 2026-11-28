@@ -107,9 +107,18 @@ describe("F9 · das Zustandsmodell — je Aussage ein Fall", () => {
     expect(lage.art).toBe("leer");
     const markup = lesestandMarkup(lage, leer);
     expect(markup).toContain("Diese Arbeitsanleitung hat noch keine Abschnitte.");
-    expect(markup).not.toContain("vollständig");
-    expect(markup).not.toContain("unverändert");
-    expect(markup).not.toContain("geprüft");
+    // Gesamtcheck (Nacharbeit 66): der Leerstand trägt seither die Einordnungszeile der Fläche
+    // (`leer-einordnung`, Phase „Nutzen") — sie sagt, WAS Arbeitsanleitungen sind („bündeln
+    // geprüftes Wissen zu Schritten"), nicht, in welchem Zustand DIESE ist. Sie wird für sich
+    // geprüft; jeder andere Satz des Leerstands darf weiterhin nichts davon behaupten.
+    const einordnung =
+      /<p data-testid="leer-einordnung"[^>]*>[\s\S]*?<\/p>/.exec(markup)?.[0] ?? "";
+    expect(einordnung).toContain('data-flaeche="anleitung"');
+    expect(einordnung).toContain("geprüftes Wissen zu Schritten");
+    const zustand = markup.replace(einordnung, "");
+    expect(zustand).not.toContain("vollständig");
+    expect(zustand).not.toContain("unverändert");
+    expect(zustand).not.toContain("geprüft");
   });
 
   it("auf der LEEREN Anweisung darf bearbeitet, aber nicht vorgelegt werden", () => {

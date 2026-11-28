@@ -20,17 +20,16 @@ export default {
     "mrun.task.gaps": "Lückenerkennung",
     "wissenssprints.titel": "Wissens-Sprints",
     "wissenssprints.einleitung":
-      "KLARWERK lässt den Reasoner regelmäßig je Bereich offene Konflikte, fällige Re-Validierungen, geringes Vertrauen und wenig validiertes Wissen bewerten — über die Kennzahlen dessen, was du sehen darfst. Fehlt ein Urteil, gilt die benannte Regel (Vertrauen unter 50, unter 3 validierte Objekte). Es sind Vorschläge — angelegt wird nichts.",
+      "Die KI für die Lückenanalyse (Reasoner) bewertet regelmäßig je Bereich offene Konflikte, fällige Re-Validierungen, geringes Vertrauen und wenig validiertes Wissen — über die Kennzahlen dessen, was du sehen darfst. Fehlt ein Urteil, gilt die benannte Regel (Vertrauen unter 50, unter 3 validierte Objekte). Es sind Vorschläge — angelegt wird nichts.",
     "wissenssprints.quelle.reasoner": "Reasoner",
     "wissenssprints.quelle.rule": "Regel",
-    "wissenssprints.analyse.reasoner": "Bewertet vom Reasoner ({{anbieter}}), zuletzt {{zeit}}.",
+    "wissenssprints.analyse.reasoner": "Bewertet durch die KI ({{anbieter}}), zuletzt {{zeit}}.",
     "wissenssprints.analyse.geprueft": "Zuletzt geprüft {{zeit}}.",
-    "wissenssprints.analyse.ohneUrteil":
-      "Kein Reasoner-Urteil: {{grund}}. Es gilt die benannte Regel.",
+    "wissenssprints.analyse.ohneUrteil": "Kein KI-Urteil: {{grund}}. Es gilt die benannte Regel.",
     "wissenssprints.analyse.ausstehend":
-      "Die Reasoner-Analyse für deine Sicht steht noch aus — bis dahin gilt die benannte Regel.",
+      "Die KI-Analyse für deine Sicht steht noch aus — bis dahin gilt die benannte Regel.",
     "wissenssprints.analyse.aus":
-      "Die regelmäßige Reasoner-Analyse läuft in dieser Instanz nicht — es gilt die benannte Regel.",
+      "Die regelmäßige KI-Analyse läuft in dieser Instanz nicht — es gilt die benannte Regel.",
     "wissenssprints.ursache.no-model": "kein KI-Modell eingerichtet",
     "wissenssprints.ursache.confidential":
       "vertrauliche Bereiche dürfen nicht an die eingerichtete KI",
@@ -53,16 +52,16 @@ export default {
     "mrun.task.gaps": "Gap detection",
     "wissenssprints.titel": "Knowledge sprints",
     "wissenssprints.einleitung":
-      "KLARWERK regularly has the reasoner assess open conflicts, due re-validations, low trust and little validated knowledge per area — from the figures of what you may see. Without a verdict the named rule applies (trust below 50, fewer than 3 validated objects). These are suggestions — nothing is created.",
+      "The AI for gap analysis (Reasoner) regularly assesses open conflicts, due re-validations, low trust and little validated knowledge per area — from the figures of what you may see. Without a verdict the named rule applies (trust below 50, fewer than 3 validated objects). These are suggestions — nothing is created.",
     "wissenssprints.quelle.reasoner": "Reasoner",
     "wissenssprints.quelle.rule": "Rule",
-    "wissenssprints.analyse.reasoner": "Assessed by the reasoner ({{anbieter}}), last at {{zeit}}.",
+    "wissenssprints.analyse.reasoner": "Assessed by AI ({{anbieter}}), last at {{zeit}}.",
     "wissenssprints.analyse.geprueft": "Last checked at {{zeit}}.",
-    "wissenssprints.analyse.ohneUrteil": "No reasoner verdict: {{grund}}. The named rule applies.",
+    "wissenssprints.analyse.ohneUrteil": "No AI assessment: {{grund}}. The named rule applies.",
     "wissenssprints.analyse.ausstehend":
-      "The reasoner analysis for your view is still pending — until then the named rule applies.",
+      "The AI analysis for your view is still pending — until then the named rule applies.",
     "wissenssprints.analyse.aus":
-      "The regular reasoner analysis is not running in this instance — the named rule applies.",
+      "The regular AI analysis is not running in this instance — the named rule applies.",
     "wissenssprints.ursache.no-model": "no AI model set up",
     "wissenssprints.ursache.confidential": "confidential areas may not go to the configured AI",
     "wissenssprints.ursache.model-timeout": "the AI did not answer in time",
@@ -84,18 +83,16 @@ export default {
     "mrun.task.gaps": "Hiaatdetectie",
     "wissenssprints.titel": "Kennissprints",
     "wissenssprints.einleitung":
-      "KLARWERK laat de reasoner regelmatig per gebied open conflicten, vervallen hervalidaties, laag vertrouwen en weinig gevalideerde kennis beoordelen — op basis van de kengetallen van wat jij mag zien. Zonder oordeel geldt de benoemde regel (vertrouwen onder 50, minder dan 3 gevalideerde objecten). Het zijn voorstellen — er wordt niets aangemaakt.",
+      "De AI voor de hiaatanalyse (Reasoner) beoordeelt regelmatig per gebied open conflicten, vervallen hervalidaties, laag vertrouwen en weinig gevalideerde kennis op basis van de kengetallen van wat jij mag zien. Zonder oordeel geldt de benoemde regel (vertrouwen onder 50, minder dan 3 gevalideerde objecten). Het zijn voorstellen — er wordt niets aangemaakt.",
     "wissenssprints.quelle.reasoner": "Reasoner",
     "wissenssprints.quelle.rule": "Regel",
-    "wissenssprints.analyse.reasoner":
-      "Beoordeeld door de reasoner ({{anbieter}}), laatst op {{zeit}}.",
+    "wissenssprints.analyse.reasoner": "Beoordeeld door AI ({{anbieter}}), laatst op {{zeit}}.",
     "wissenssprints.analyse.geprueft": "Laatst gecontroleerd op {{zeit}}.",
-    "wissenssprints.analyse.ohneUrteil":
-      "Geen oordeel van de reasoner: {{grund}}. De benoemde regel geldt.",
+    "wissenssprints.analyse.ohneUrteil": "Geen AI-beoordeling: {{grund}}. De benoemde regel geldt.",
     "wissenssprints.analyse.ausstehend":
-      "De reasoner-analyse voor jouw weergave staat nog uit — tot dan geldt de benoemde regel.",
+      "De AI-analyse voor jouw weergave staat nog uit — tot dan geldt de benoemde regel.",
     "wissenssprints.analyse.aus":
-      "De regelmatige reasoner-analyse draait in deze instantie niet — de benoemde regel geldt.",
+      "De regelmatige AI-analyse draait in deze instantie niet — de benoemde regel geldt.",
     "wissenssprints.ursache.no-model": "geen AI-model ingericht",
     "wissenssprints.ursache.confidential":
       "vertrouwelijke gebieden mogen niet naar de ingerichte AI",

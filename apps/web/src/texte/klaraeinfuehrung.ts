@@ -144,7 +144,7 @@ export default {
     "klaraeinfuehrung.office":
       "In Word: open the existing Klara add-in and its settings. Language, “Read text in Word” and “Paragraph view” are there. Open native Word menus yourself; Klarwerk does not detect those menus automatically.",
     "klaraeinfuehrung.sprache":
-      "“Dictate” fills the text field; review it before sending. “Speak request” and execution remain separate steps. Text input stays available. Speech recognition runs through the browser provider; the specific external audio recipient has not been established here.",
+      "“Dictate” fills the text field; review it before sending. “Speak a request” and execution remain separate steps. Text input stays available. Speech recognition runs through the browser provider; the specific external audio recipient has not been established here.",
     "klaraeinfuehrung.zurArbeit": "Continue normal work",
     "klaraeinfuehrung.zurueck": "Back",
     "klaraeinfuehrung.weiter": "Next / skip step",

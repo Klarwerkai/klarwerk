@@ -127,7 +127,7 @@ describe("R-1657 · Wissens-Sprints in der Empfehlungskarte", () => {
 });
 
 // Nacharbeit 2 (Ben: „über Reasoner", „regelmäßig"): die Fläche sagt, wer einen Vorschlag trägt,
-// und wie es um die regelmäßige Reasoner-Analyse der eigenen Sicht steht.
+// und wie es um die regelmäßige KI-Analyse der eigenen Sicht steht.
 describe("R-1657 · Nacharbeit 2 — Herkunft und Analysestand", () => {
   const quelle = (i: number) =>
     zeilen()[i]?.querySelector('[data-testid="sprint-quelle"]')?.textContent;
@@ -146,13 +146,14 @@ describe("R-1657 · Nacharbeit 2 — Herkunft und Analysestand", () => {
       },
     );
 
+    expect(container.textContent).toContain("KI für die Lückenanalyse (Reasoner)");
     expect(quelle(0)).toBe("Reasoner");
     expect(quelle(1)).toBe("Regel");
     expect(zeilen()[0]?.getAttribute("data-quelle")).toBe("reasoner");
     expect(zeilen()[0]?.querySelector('[data-testid="sprint-satz"]')?.textContent).toBe(
       "Bereich Schweißtechnik: 4 Objekte in offenen Konflikten, 12 Objekte zur Re-Validierung. 2-Tage-Sprint vorschlagen?",
     );
-    expect(stand()).toContain("Bewertet vom Reasoner (anthropic:test-modell)");
+    expect(stand()).toContain("Bewertet durch die KI (anthropic:test-modell)");
   });
 
   it("F5 · kein Urteil: die Ursache steht da, und es gilt ausdrücklich die Regel", async () => {
@@ -163,7 +164,7 @@ describe("R-1657 · Nacharbeit 2 — Herkunft und Analysestand", () => {
     });
 
     expect(stand()).toBe(
-      "Kein Reasoner-Urteil: vertrauliche Bereiche dürfen nicht an die eingerichtete KI. Es gilt die benannte Regel.",
+      "Kein KI-Urteil: vertrauliche Bereiche dürfen nicht an die eingerichtete KI. Es gilt die benannte Regel.",
     );
     expect(quelle(0)).toBe("Regel");
   });
@@ -171,7 +172,7 @@ describe("R-1657 · Nacharbeit 2 — Herkunft und Analysestand", () => {
   it("F6 · noch kein Lauf bzw. keine regelmäßige Analyse: beides wird benannt", async () => {
     await mount([], STAND);
     expect(stand()).toBe(
-      "Die Reasoner-Analyse für deine Sicht steht noch aus — bis dahin gilt die benannte Regel.",
+      "Die KI-Analyse für deine Sicht steht noch aus — bis dahin gilt die benannte Regel.",
     );
     await act(async () => {
       root.unmount();
@@ -180,7 +181,7 @@ describe("R-1657 · Nacharbeit 2 — Herkunft und Analysestand", () => {
 
     await mount([], { ...STAND, regular: false, intervalMs: null });
     expect(stand()).toBe(
-      "Die regelmäßige Reasoner-Analyse läuft in dieser Instanz nicht — es gilt die benannte Regel.",
+      "Die regelmäßige KI-Analyse läuft in dieser Instanz nicht — es gilt die benannte Regel.",
     );
   });
 });

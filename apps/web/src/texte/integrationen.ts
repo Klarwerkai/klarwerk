@@ -373,7 +373,7 @@ export default {
     "integrationen.test.schritt.ausgeschaltet":
       "De SharePoint-import is in deze installatie niet ingeschakeld. Wie toegang tot de server heeft, kan hem inschakelen (schakelaar KLARWERK_SHAREPOINT_IMPORT).",
     "integrationen.test.schritt.nichtEingerichtet":
-      "Er ontbreken gegevens of het adres is geen https-adres. Laat de als „niet ingesteld” gemarkeerde omgevingsvariabelen op de server zetten en controleer daarna opnieuw.",
+      "Er ontbreken gegevens of het adres is geen https-adres. Laat de als „niet aanwezig” gemarkeerde omgevingsvariabelen op de server zetten en controleer daarna opnieuw.",
     "integrationen.test.schritt.anmeldungAbgewiesen":
       "SharePoint heeft de opgeslagen aanmelding geweigerd. Laat het toegangskenmerk op de server vernieuwen (KLARWERK_SHAREPOINT_TOKEN) en controleer daarna opnieuw.",
     "integrationen.test.schritt.keineBerechtigung":
@@ -415,7 +415,7 @@ export default {
     "integrationen.confluence.schritt.betreiberAus":
       "De Confluence-import is vrijgegeven, maar uitgeschakeld. Schakel hem in met de knop „Import inschakelen” hierboven en controleer daarna de verbinding.",
     "integrationen.confluence.schritt.nichtEingerichtet":
-      "Er ontbreken gegevens, het adres is geen https-adres of de aanmeldwijze is onbekend. Laat de als „niet ingesteld” gemarkeerde omgevingsvariabelen op de server zetten en controleer daarna opnieuw.",
+      "Er ontbreken gegevens, het adres is geen https-adres of de aanmeldwijze is onbekend. Laat de als „niet aanwezig” gemarkeerde omgevingsvariabelen op de server zetten en controleer daarna opnieuw.",
     "integrationen.confluence.schritt.konfiguriert":
       "De gegevens staan klaar, maar de verbinding is nog niet gecontroleerd. Start hieronder de verbindingstest voordat je op verkenning en import vertrouwt.",
     "integrationen.confluence.schritt.anmeldungAbgewiesen":

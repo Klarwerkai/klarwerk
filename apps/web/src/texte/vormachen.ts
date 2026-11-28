@@ -225,7 +225,7 @@ export default {
     "vormachen.notiz.loeschen": "Delete learning note",
     "vormachen.vorschau.laden": "View preview",
     "vormachen.vorschau.titel": "Routine preview",
-    "vormachen.vorschau.modus": "Mode “result for review”: your assistant prepares, you decide.",
+    "vormachen.vorschau.modus": "Mode “Result for review”: your assistant prepares, you decide.",
     "vormachen.vorschau.beleg": "from step {{nr}}",
     "vormachen.vorschau.korrigiert": "corrected",
     "vormachen.vorschau.leer": "No step noted yet.",
@@ -399,7 +399,7 @@ export default {
     "vormachen.vorschau.laden": "Voorbeeld bekijken",
     "vormachen.vorschau.titel": "Voorbeeld van de routine",
     "vormachen.vorschau.modus":
-      "Modus ‘resultaat ter beoordeling’: je assistent bereidt voor, jij beslist.",
+      "Modus ‘Resultaat ter controle’: je assistent bereidt voor, jij beslist.",
     "vormachen.vorschau.beleg": "uit stap {{nr}}",
     "vormachen.vorschau.korrigiert": "gecorrigeerd",
     "vormachen.vorschau.leer": "Nog geen stap genoteerd.",

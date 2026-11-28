@@ -233,7 +233,7 @@ export default {
     "klaraqualitaet.vorschlag.duplikatEntscheidung":
       "You decide in the comparison whether to link, keep separate or merge – Klara changes neither entry.",
     "klaraqualitaet.vorschlag.bestaetigen":
-      "“Still valid” is set only by a person who can judge it – Klara confirms nothing.",
+      "“Still correct” is set only by a person who can judge it – Klara confirms nothing.",
     "klaraqualitaet.vorschlag.quelleErsetzen":
       "Add a current source or replace the removed one – in the entry itself.",
     "klaraqualitaet.vorschlag.quelleNachtragen": "Add a source in the entry.",
@@ -365,9 +365,9 @@ export default {
     "klaraqualitaet.bedienhilfe.erklaeren":
       "Bij een kennisbijdrage toont „Bevindingen uitleggen” open tegenstrijdigheden, duplicaten, bronouderdom en ontbrekende gegevens – telkens met bron, grondslag en onzekerheid.",
     "klaraqualitaet.bedienhilfe.vorschlag":
-      "Elke bevinding heeft een concreet voorstel. Uitleggen wijzigt en blokkeert niets; opdrachten die Klara hier nog niet herkent, open je in het werkgebied.",
+      "Elke bevinding heeft een concreet voorstel. Uitleggen wijzigt en blokkeert niets; „Als opdracht voorbereiden” zet de tekst alleen in het invoerveld. Pas met „Versturen” voer je de opdracht uit.",
     "klaraqualitaet.bedienhilfe.grundlage":
-      "„Geen grondslag” en „tegenstrijdige bronnen” staan er uitdrukkelijk. Je instellingen en voorkeuren veranderen het oordeel niet.",
+      "„Geen basis” en „tegenstrijdige bronnen” staan er uitdrukkelijk. Je instellingen en voorkeuren veranderen het oordeel niet.",
     "klaraqualitaet.bedienhilfe.rechte":
       "Klara toont alleen wat je mag zien; verborgen andere kanten worden als zodanig benoemd.",
   },

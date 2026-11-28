@@ -35,6 +35,7 @@ export default {
   praefix: "fachwort.",
   legacySchluessel: [],
   de: {
+    "fachwort.markenuntertitel": "Plattform für geprüftes Firmenwissen",
     "fachwort.vertraulichkeit.hilfe":
       "Wie vertraulich ist dieses Wissen? Öffentlich-intern ist der Standard (keine Einschränkung). Vertraulich und Streng vertraulich markieren sensibles Wissen: solche Objekte werden nie in externe Kontexte gegeben (Auswertungen/Export). Die Stufe ist ab dem Erfassen setzbar und später jederzeit änderbar — jede Änderung wird im Audit-Log festgehalten. Hinweis: Diese Kennzeichnung schränkt (noch) nicht ein, WER das Objekt sieht.",
     "fachwort.demodaten.hinweis":
@@ -97,6 +98,7 @@ export default {
     "fachwort.gesundheit.titel": "Zustand der Wissensbasis",
   },
   en: {
+    "fachwort.markenuntertitel": "Platform for verified company knowledge",
     "fachwort.vertraulichkeit.hilfe":
       "How confidential is this knowledge? “Public-internal” is the default (no restriction). “Confidential” and “Strictly confidential” mark sensitive knowledge: such objects are never sent into external contexts (reports/export). The level can be set while capturing and changed anytime afterwards — every change is recorded in the audit log. Note: this label does not (yet) restrict WHO can see the object.",
     "fachwort.demodaten.hinweis":
@@ -159,6 +161,7 @@ export default {
     "fachwort.gesundheit.titel": "State of the knowledge base",
   },
   nl: {
+    "fachwort.markenuntertitel": "Platform voor gecontroleerde bedrijfskennis",
     "fachwort.vertraulichkeit.hilfe":
       "Hoe vertrouwelijk is deze kennis? Openbaar-intern is de standaard (geen beperking). Vertrouwelijk en Streng vertrouwelijk markeren gevoelige kennis: zulke objecten worden nooit in externe contexten gegeven (rapportages/export). Het niveau kun je vanaf het vastleggen instellen en later altijd wijzigen — elke wijziging wordt in het audit-log vastgelegd. Let op: deze markering beperkt (nog) niet WIE het object ziet.",
     "fachwort.demodaten.hinweis":

@@ -441,6 +441,20 @@ export const HELP_TOPICS: readonly HelpTopicDef[] = [
   // Datengrundlage. Sie sagen, was die Seite TUT, und nennen keine Zahl (dieselbe Regel wie oben
   // bei `uploadLimits` — Zahlen kommen vom Server, nie aus einem Kapiteltext).
   {
+    id: "teamassistenten",
+    titleKey: "help.teamassistenten.title",
+    bodyKey: "help.teamassistenten.body",
+    to: "/teamassistenten",
+    tags: ["teamassistenten", "team assistants", "teamassistent instellen"],
+  },
+  {
+    id: "teamworkflows",
+    titleKey: "help.teamworkflows.title",
+    bodyKey: "help.teamworkflows.body",
+    to: "/teamworkflows",
+    tags: ["teamworkflows", "team workflows", "werkstromen"],
+  },
+  {
     id: "wissensnetz",
     titleKey: "help.wissensnetz.title",
     bodyKey: "help.wissensnetz.body",

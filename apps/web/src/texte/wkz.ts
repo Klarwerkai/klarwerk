@@ -286,7 +286,7 @@ export default {
     "wkz.k.fragen.titel": "Questions asked",
     "wkz.k.fragen.bedeutung": "How often a question was put to the knowledge base in the period.",
     "wkz.k.fragen.nenner":
-      "All “question asked” entries in the audit log, across all spaces; no question text.",
+      "All “Question asked” entries in the audit log, across all spaces; no question text.",
     "wkz.k.beantwortet.titel": "Answered without a gap",
     "wkz.k.beantwortet.bedeutung":
       "Questions in the period for which the knowledge base had an evidenced answer.",
@@ -344,7 +344,7 @@ export default {
     "wkz.wert.erklaerung":
       "It starts from the validation rate. Deducted are outdated knowledge (× 0.4), single sources (× 0.3), open gaps (4 each, at most 20) and open conflicts (5 each, at most 20). From 70 the score counts as good, from 40 as medium.",
     "wkz.wert.unbelegt":
-      "“Rating unproven” means: it is not evidenced that conflicts were searched for completely. That is why the worse figure is shown large and no band.",
+      "The label “rating not evidenced” means it is not evidenced that conflicts were searched for completely. That is why the worse figure is shown large and no band.",
     "wkz.bestand.titel": "Inventory figures",
     "wkz.bestand.erklaerung":
       "Whole inventory without period and without space or team filter, visible content only. As of {{zeit}}.",
@@ -464,7 +464,7 @@ export default {
     "wkz.k.fragen.titel": "Gestelde vragen",
     "wkz.k.fragen.bedeutung": "Hoe vaak in de periode een vraag aan de kennisbank is gesteld.",
     "wkz.k.fragen.nenner":
-      "Alle vermeldingen „vraag gesteld” in het auditlogboek, over alle spaces; zonder vraagtekst.",
+      "Alle vermeldingen „Vraag gesteld” in het auditlogboek, over alle spaces; zonder vraagtekst.",
     "wkz.k.beantwortet.titel": "Zonder lacune beantwoord",
     "wkz.k.beantwortet.bedeutung":
       "Vragen in de periode waarvoor de kennisbank een onderbouwd antwoord had.",
@@ -523,7 +523,7 @@ export default {
     "wkz.wert.erklaerung":
       "Uitgangspunt is het validatiepercentage. Afgetrokken worden verouderde kennis (× 0,4), enkele bronnen (× 0,3), open lacunes (elk 4, hoogstens 20) en open conflicten (elk 5, hoogstens 20). Vanaf 70 geldt de waarde als goed, vanaf 40 als middel.",
     "wkz.wert.unbelegt":
-      "„Indeling niet onderbouwd” betekent: niet aangetoond is dat volledig naar conflicten is gezocht. Daarom staat het slechtere getal groot en geen band.",
+      "Het label „indeling niet aangetoond” betekent: niet aangetoond is dat volledig naar conflicten is gezocht. Daarom staat het slechtere getal groot en geen band.",
     "wkz.bestand.titel": "Bestandscijfers",
     "wkz.bestand.erklaerung":
       "Hele bestand zonder periode en zonder space- of teamfilter, alleen zichtbare inhoud. Stand {{zeit}}.",

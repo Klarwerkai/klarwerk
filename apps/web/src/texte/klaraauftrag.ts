@@ -608,7 +608,7 @@ export default {
     "klaraauftrag.bedienhilfe.rueckgaengig":
       "Undo reverses a created draft (into the trash) or an edit. Opening cannot be undone because it changes nothing. Klara does not undo actions on tasks (priority, assignment, escalation) – the step says so.",
     "klaraauftrag.bedienhilfe.sprechen":
-      "“Dictate” only writes into the input field. “Speak a task” shows the task as a card – only “Send” carries it out.",
+      "“Dictate” only writes into the input field. “Speak a request” shows the task as a card – only “Send” carries it out.",
   },
   nl: {
     "klaraauftrag.quelleArt.d_routine": "uit je opgeslagen routine",

@@ -101,7 +101,11 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { ApiError } from "../../apps/web/src/api/client";
-import type { AuditEntry, ExternalResult } from "../../apps/web/src/api/types";
+import type {
+  AuditEntry,
+  ExternalResult,
+  PruefdauerAuswertung,
+} from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
 import { ANALYTICS_AUDIT_ANCHOR } from "../../apps/web/src/lib/analyticsSections";
 import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
@@ -600,6 +604,13 @@ const KENNZAHL_SCHLUESSEL = [
   "ana.openTasks", // „Auslastung"
 ] as const;
 
+const OHNE_MESSUNG = { erledigt: 0, offen: 0, medianStunden: null };
+const KEINE_PRUEFDAUER: PruefdauerAuswertung = {
+  automatisch: OHNE_MESSUNG,
+  manuell: OHNE_MESSUNG,
+  einreichen: OHNE_MESSUNG,
+};
+
 async function analyticsMontieren(leer = false): Promise<void> {
   d.setzeAntwort("analytics.overview", async () => (leer ? LEERE_UEBERSICHT : UEBERSICHT));
   d.setzeAntwort("analytics.impact", async () => (leer ? LEERE_WIRKUNG : WIRKUNG));
@@ -610,6 +621,10 @@ async function analyticsMontieren(leer = false): Promise<void> {
     unchecked: 0,
     noCoverage: 0,
   }));
+  // R-1655: die Seite zeigt seither die Prüfdauer je Zuweisungsweg, sobald eine Auswertung da ist.
+  // Der []-Rückfall des Stellvertreters ist truthy, aber keine Auswertung — die Karte las
+  // `medianStunden` an `undefined` und warf. Hier die Form des Servers ohne Messung.
+  d.setzeAntwort("validation.pruefdauer", async () => KEINE_PRUEFDAUER);
   await montiere(createElement(Analytics), "/analytics");
 }
 

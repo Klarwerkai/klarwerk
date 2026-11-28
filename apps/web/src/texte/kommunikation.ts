@@ -147,7 +147,7 @@ export default {
     "kommunikation.ereignis.zuweisung": "Review assignment and return for rework",
     "kommunikation.ereignis.frische": "Due review of your own knowledge",
     "kommunikation.ereignis.reklamation": "Reported answer about your knowledge",
-    "kommunikation.ereignis.wirkung": "“Your knowledge helped”",
+    "kommunikation.ereignis.wirkung": "“Your knowledge helped someone”",
     "kommunikation.ereignis.loeschantrag": "Deletion request (data protection)",
     "kommunikation.ereignis.qualitaet": "Conflict, duplicate or knowledge gap",
     "kommunikation.zielgruppe.leser_ohne_veroeffentlicher":
@@ -250,7 +250,7 @@ export default {
     "kommunikation.ereignis.zuweisung": "Beoordelingsopdracht en teruggave voor herwerking",
     "kommunikation.ereignis.frische": "Verschuldigde controle van eigen kennis",
     "kommunikation.ereignis.reklamation": "Gemeld antwoord over eigen kennis",
-    "kommunikation.ereignis.wirkung": "„Je kennis heeft geholpen”",
+    "kommunikation.ereignis.wirkung": "„Jouw kennis heeft geholpen”",
     "kommunikation.ereignis.loeschantrag": "Verwijderverzoek (privacy)",
     "kommunikation.ereignis.qualitaet": "Conflict, duplicaat of kennislacune",
     "kommunikation.zielgruppe.leser_ohne_veroeffentlicher":
