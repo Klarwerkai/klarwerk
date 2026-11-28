@@ -212,6 +212,29 @@ describe("JOB 3150 · Browserdeckel", () => {
     ).toEqual([]);
   });
 
+  it("ein belegtes Schloss bleibt auch bei einem falschen Erfolg der mkdir-CLI belegt", async () => {
+    const { ort, env } = werk();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    mkdirSync(lock);
+    const halter = join(lock, `pid-${process.pid}`);
+    writeFileSync(halter, `${process.pid} 1 browser echter-halter\n`);
+    const hook = join(ort, "mkdir-meldet-erfolg.bash");
+    writeFileSync(
+      hook,
+      'mkdir() { if [ "$1" = "$KLARWERK_BROWSERDECKEL_LOCK" ] && [ -d "$1" ]; then return 0; fi; command mkdir "$@"; }\n',
+    );
+    const lauf = await starte(
+      ort,
+      { ...env, BASH_ENV: hook, KLARWERK_BROWSERDECKEL_TIMEOUT: "1" },
+      "./tools/browserdeckel.sh",
+      ["smoke", "node", env.SONDE],
+    ).fertig;
+    expect(lauf.code).toBe(1);
+    expect(lauf.stderr).toContain(`Zeitgrenze 1s: PID ${process.pid} hält`);
+    expect(existsSync(halter)).toBe(true);
+    expect(existsSync(join(ort, "smoke.start"))).toBe(false);
+  });
+
   it("F1 · tools/test und npm-Smoke laufen unter demselben Deckel", async () => {
     const lauf = await paar(true);
     expect(ueberlappendePaare(lauf.fenster)).toEqual([]);
@@ -781,15 +804,6 @@ rm() {
   fi
   command rm "$@"
 }
-mkdir() {
-  local rc=0
-  command mkdir "$@" || rc=$?
-  if [ "$1" = "$KLARWERK_BROWSERDECKEL_LOCK" ] && [ -f "$SONDENPFAD/verloren-$LAUF" ]; then
-    printf '%s %s\\n' "$LAUF" "$rc" >> "$SONDENPFAD/runden"
-    : > "$SONDENPFAD/runde-$LAUF"
-  fi
-  return "$rc"
-}
 sleep() {
   if [ "$1" = 0.1 ] && [ -f "$SONDENPFAD/rm-$LAUF" ]; then
     if [ "$WEITERE_RUNDE" = 1 ] && [ -f "$SONDENPFAD/verloren-$LAUF" ] && [ ! -f "$SONDENPFAD/runde-$LAUF" ]; then
@@ -801,6 +815,15 @@ sleep() {
   command sleep "$@"
 }
 node() {
+  if [ "\${3:-}" = "$KLARWERK_BROWSERDECKEL_LOCK" ] && [[ "\${2:-}" = *mkdirSync* ]]; then
+    local rc=0
+    command node "$@" || rc=$?
+    if [ -f "$SONDENPFAD/verloren-$LAUF" ]; then
+      printf '%s %s\\n' "$LAUF" "$rc" >> "$SONDENPFAD/runden"
+      : > "$SONDENPFAD/runde-$LAUF"
+    fi
+    return "$rc"
+  fi
   if [ "\${3:-}" = "$PIDZIEL" ]; then
     vor_entfernen
     local rc=0
@@ -1496,7 +1519,7 @@ fs.openSync = function(pfad, ...args) {
       .join("\n");
     const warten = code.slice(code.indexOf('if [ "$an" = 1 ]; then'));
     expect(warten.match(/\bwhile\b/g)).toHaveLength(1);
-    expect(warten.match(/\bmkdir\b/g)).toHaveLength(1);
+    expect(warten.match(/\bmkdirSync\b/g)).toHaveLength(1);
     expect(warten.match(/\brmdir\b/g)).toHaveLength(1);
   });
 

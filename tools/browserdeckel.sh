@@ -262,7 +262,9 @@ if [ "$an" = 1 ]; then
   ohne_pid_seit=-1
   letzte_pruefwarnung=''
   letzte_typwarnung=''
-  while ! mkdir "$lock" 2>/dev/null; do
+  # Ein einzelnes mkdir(2) entscheidet, wer das Schloss erhält. Die mkdir-CLI von uutils 0.10
+  # auf Ubuntu 26.04 kann EEXIST nach ihrer vorgelagerten Existenzprüfung als Erfolg melden.
+  while ! node -e 'require("node:fs").mkdirSync(process.argv[1])' "$lock" 2>/dev/null; do
     gewartet=1
     gueltige_pid=0; raeumen=0; pid_frist_abgelaufen=0
     halter='unbekannt'; seit='unbekannt'
