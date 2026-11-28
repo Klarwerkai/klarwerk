@@ -16,7 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { aufteilung, laufzustand } from "../../tools/pflicht-pr.mjs";
 import { releaseVertrag } from "../../tools/release-vertrag.mjs";
-import { assertProof, git } from "../../tools/release.mjs";
+import { assertProof, git, schmalansichtsTest } from "../../tools/release.mjs";
 
 const produkt = fileURLToPath(new URL("../../", import.meta.url));
 const work = mkdtempSync(join(tmpdir(), "pflicht-pr-probe-"));
@@ -54,6 +54,7 @@ function probe() {
     assert(teile.every((t) => t.tests.length <= 16));
   }
   const langsam = [
+    schmalansichtsTest,
     "tests/backup-drill/restore-drill.test.ts",
     "tests/backup-drill/restore-drill-belege.test.ts",
     "tests/app/modalgrenze-abweichende-bauformen.test.ts",
@@ -66,6 +67,7 @@ function probe() {
   ];
   const teile = aufteilung(gemischt);
   assert.deepEqual(teile.flatMap((t) => t.tests).sort(), [...gemischt].sort());
+  assert.deepEqual(teile.find((teil) => teil.id === "schmalansicht").tests, [schmalansichtsTest]);
   for (const p of langsam) assert.deepEqual(teile.find((t) => t.tests.includes(p)).tests, [p]);
   for (const status of ["cancelled", "failure", "skipped"]) {
     assert.throws(() => laufzustand(true, status, "success"));
@@ -100,7 +102,8 @@ function probe() {
   const base = commit("Basis");
   const ursache = releaseVertrag.causalTests[0];
   lege(ursache, "// Auch im Gitdiff\nexport {};\n");
-  for (let i = 0; i < 49; i++) lege(`tests/auswahl/${i}.test.ts`, "export {};\n");
+  lege(schmalansichtsTest, "export {};\n");
+  for (let i = 0; i < 48; i++) lege(`tests/auswahl/${i}.test.ts`, "export {};\n");
   const sha = commit("genau 64 verschiedene Pflichtdateien");
   const out = ".local/run";
   mkdirSync(pfad("node_modules/.bin"), { recursive: true });
@@ -118,6 +121,10 @@ function probe() {
 const { writeFileSync } = require('node:fs');
 const files=process.argv.slice(3,process.argv.indexOf('--config'));
 const reportPath=process.argv.find(a=>a.startsWith('--outputFile=')).slice('--outputFile='.length);
+if (files.includes(${JSON.stringify(schmalansichtsTest)})) {
+  require('node:assert/strict').equal(process.env.KLARWERK_BROWSERDECKEL_LOCK,
+    require('node:path').join(require('node:path').dirname(reportPath), 'browser-kind.lock'));
+}
 const testResults=files.map(file=>({name:require('node:path').resolve(file),status:'passed',assertionResults:[{status:'passed',failureMessages:[]}]}));
 writeFileSync(reportPath,JSON.stringify({success:true,testResults,numTotalTests:files.length,numPassedTests:files.length,numFailedTests:0,numPendingTests:0}));
 `,

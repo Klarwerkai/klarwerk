@@ -73,6 +73,8 @@ jobs:
         with:
           name: pflicht-web-dist-${{ github.sha }}
           path: apps/web/dist/
+      - if: matrix.teil == 'schmalansicht'
+        run: npx playwright install --with-deps chromium
       - name: Pflichtteil mit denselben Stufen- und Prozessgrenzen
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
@@ -117,6 +119,24 @@ jobs:
           MATRIX_ERGEBNIS: ${{ needs.pflicht-teil.result }}
           LAUF_ABGEBROCHEN: ${{ needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled' }}
         run: node tools/pflicht-pr.mjs abschluss "$RELEASE_BASE" .local/run/ci-pflicht
+      - name: Browserbedarf des Einzelvertrags ermitteln
+        id: einzelbrowser
+        if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node --input-type=module -e '
+            import {releaseInputs, schmalansichtsTest} from "./tools/release.mjs";
+            const {tests} = releaseInputs(process.cwd(), process.env.RELEASE_BASE);
+            console.log("chromium=" + tests.includes(schmalansichtsTest));
+          ' >> "$GITHUB_OUTPUT"
+      - if: steps.einzelbrowser.outputs.chromium == 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.einzelbrowser.outputs.chromium == 'true'
+        working-directory: apps/web
+        env:
+          NODE_ENV: production
+        run: npx vite build
       - name: gemeinsamer schneller Pflichtvertrag (maximal 600 Sekunden)
         if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')
         env:

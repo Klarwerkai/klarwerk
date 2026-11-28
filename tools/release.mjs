@@ -12,6 +12,7 @@ import { assertWordAddinFassung } from "./word-addin-fassung.mjs";
 export { policyHash } from "./release-ausnahmen.mjs";
 
 export const hash = (value) => createHash("sha256").update(value).digest("hex");
+export const schmalansichtsTest = "tests/smoke/frontdoor-schmalansicht-lauf.test.ts";
 export const contractHash = hash(JSON.stringify(contract));
 export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const controls = {
@@ -259,7 +260,14 @@ export function runStages(proof, stages) {
       console.log(
         JSON.stringify({ event: "stage-invocation", name: stage.name, at: start, command }),
       );
-      const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...command], {
+      // Vitest hält den hostweiten Platz bis zum Ende der Stufe und arbeitet mit einem Worker.
+      // Der delegierte Smoke nimmt für seine eigenen seriellen Aufrufe einen Platz innerhalb
+      // dieses Pflichtlaufs. Ansonsten würde das Kind auf seinen wartenden Elternprozess warten.
+      const kindBefehl =
+        stage.name === "test" && tests.includes(schmalansichtsTest)
+          ? ["env", `KLARWERK_BROWSERDECKEL_LOCK=${join(output, "browser-kind.lock")}`, ...command]
+          : command;
+      const run = spawnSync("bash", ["tools/browserdeckel.sh", "smoke", ...kindBefehl], {
         cwd: root,
         env: environment(),
         encoding: "utf8",

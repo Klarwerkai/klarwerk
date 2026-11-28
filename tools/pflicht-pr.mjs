@@ -12,6 +12,7 @@ import {
   hash,
   releaseInputs,
   runStages,
+  schmalansichtsTest,
 } from "./release.mjs";
 
 // Bei 64 Dateien blieben dem Einzelrunner unter 4 Sekunden pro Datei inklusive Vitest-Start.
@@ -22,6 +23,7 @@ const DATEIEN_PRO_TEIL = 16;
 // Diese vollständigen Einzeldateien erreichten in den GitHub-/Gesamtläufen 53–235 Sekunden.
 // In einem Paket mit weiteren Suiten traten echte Abbrüche nach 240 Sekunden auf.
 const EIGENER_RUNNER = new Set([
+  schmalansichtsTest,
   "tests/app/modalgrenze-abweichende-bauformen.test.ts",
   "tests/beta-rollenabnahme/schreibende-tueren-am-draht.test.ts",
   "tests/capture/aufrufer-waechter.test.ts",
@@ -48,7 +50,10 @@ export function aufteilung(tests) {
   gruppen.push(...langsam.map((p) => [p]));
   return [
     { id: "vorstufen", tests: [] },
-    ...gruppen.map((tests, i) => ({ id: `test-${i + 1}`, tests })),
+    ...gruppen.map((tests, i) => ({
+      id: tests.includes(schmalansichtsTest) ? "schmalansicht" : `test-${i + 1}`,
+      tests,
+    })),
   ];
 }
 
