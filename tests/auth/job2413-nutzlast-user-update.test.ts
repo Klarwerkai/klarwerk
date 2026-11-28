@@ -2,10 +2,11 @@
 // JOB 2413 · D1 — DIE NUTZLAST VON `PgUserRepo.update`, NICHT DIE KLAMMER.
 // ================================================================================================
 //
-// WORUM ES GEHT. `update` setzt neun Spalten über nummerierte Parameter:
+// WORUM ES GEHT. `update` setzt die Kontofelder über nummerierte Parameter:
 //
 //     UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,
-//                      approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10
+//                      approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10,
+//                      oidc_issuer=$11,oidc_subject=$12,access_expires_at=$13,freigabe=$14
 //     WHERE id=$1
 //
 // Vertauscht jemand `$4` und `$5`, wandert das Salz in die Hash-Spalte und der Hash ins Salz.
@@ -85,7 +86,11 @@ const NUTZER: NutzerWerte = {
   // ihnen erzeugt keinen Typfehler, sondern eine Befristung auf dem Anlagedatum: das Konto wäre
   // ab dem Schreibvorgang sofort und dauerhaft ausgesperrt.
   accessExpiresAt: "2026-03-03T00:00:00.000Z",
-} as NutzerWerte;
+  // Gesamtcheck R-1329: die vierzehnte Spalte aus der Leserechte-Lieferung (Variante B,
+  // Entscheidung 15) — das persönliche Freigabeniveau. Ein eigener Wert, der von `role` ("admin")
+  // verschieden ist: ein Dreher zwischen beiden öffnete oder schlösse Vertrauliches unbemerkt.
+  freigabe: "streng_vertraulich",
+};
 
 /**
  * Liest aus dem GESENDETEN SQL-Text, welche Spalte an welcher Parameterposition hängt, und gibt
@@ -114,13 +119,14 @@ async function update(): Promise<Anweisung> {
 }
 
 describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
-  it("KALIBRIERUNG: die Anweisung geht raus und trägt dreizehn Parameter", async () => {
+  it("KALIBRIERUNG: die Anweisung geht raus und trägt vierzehn Parameter", async () => {
     // Ohne diesen Fall wäre jede Zuordnung unten still erfüllt, wenn gar nichts gesendet würde.
     // JOB 2686 (R2-7): waren zehn, sind zwölf — `oidc_issuer` und `oidc_subject` sind dazugekommen.
     // JOB 3665: waren zwölf, sind dreizehn — `access_expires_at` ist dazugekommen.
+    // Variante B (Freigabeniveau): waren dreizehn, sind vierzehn — `freigabe` ist dazugekommen.
     const a = await update();
 
-    expect(a.params).toHaveLength(13);
+    expect(a.params).toHaveLength(14);
     expect(a.text, "das UPDATE bindet den Nutzer nicht über die Id").toMatch(/WHERE\s+id=\$1/i);
     expect(a.params[0], "an $1 steht nicht die Id").toBe("WERT-ID");
   });
@@ -200,6 +206,10 @@ describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
     expect(wertFuerSpalte(a, "email")).toBe("WERT-EMAIL");
     expect(wertFuerSpalte(a, "role")).toBe("admin");
     expect(wertFuerSpalte(a, "approved")).toBe(true);
+    // Variante B: das Freigabeniveau steht in seiner eigenen Spalte, nicht in `role`.
+    expect(wertFuerSpalte(a, "freigabe"), "`freigabe` trägt nicht das Freigabeniveau").toBe(
+      "streng_vertraulich",
+    );
   });
 
   it("KALIBRIERUNG: die Fixture-Werte sind paarweise verschieden", async () => {
@@ -214,6 +224,10 @@ describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
       NUTZER.accessExpiresAt,
       NUTZER.name,
       NUTZER.email,
+      NUTZER.oidcIssuer,
+      NUTZER.oidcSubject,
+      NUTZER.role,
+      NUTZER.freigabe,
     ];
     expect(
       new Set(werte).size,
