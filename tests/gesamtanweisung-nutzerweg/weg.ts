@@ -27,7 +27,7 @@ import { type ChildProcessWithoutNullStreams, execFileSync } from "node:child_pr
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import {
   type Browser,
   DIST,
@@ -441,20 +441,33 @@ export interface Sichtbefund {
   flaeche: number;
 }
 
+interface Sichtseite {
+  evaluate(f: ReturnType<typeof fn>, selektor: string): Promise<Sichtbefund>;
+}
+
 /** Der WIRKLICH sichtbare Text eines Elements — oder ein Befund, der sagt, was fehlt. */
-export async function sichtbefund(seite: Seite, selektor: string): Promise<Sichtbefund> {
-  return seite.evaluate<Sichtbefund>(fn(SICHTBARER_TEXT), selektor);
+export async function sichtbefund(seite: Sichtseite, selektor: string): Promise<Sichtbefund> {
+  return seite.evaluate(fn(SICHTBARER_TEXT), selektor);
 }
 
 /** Zusicherung: dieses Element ist da, hat Fläche und trägt diesen Text SICHTBAR. */
 export async function mussSichtbarTragen(
-  seite: Seite,
+  seite: Sichtseite,
   selektor: string,
   erwartet: string,
   was: string,
+  einbaufristMs = 0,
 ): Promise<string> {
-  const befund = await sichtbefund(seite, selektor);
-  expect(befund.da, `${MARKE}: ${was} — ${selektor} steht nicht im Dokument`).toBe(true);
+  const liesElement = async (): Promise<Sichtbefund> => {
+    const stand = await sichtbefund(seite, selektor);
+    expect(stand.da, `${MARKE}: ${was} — ${selektor} steht nicht im Dokument`).toBe(true);
+    return stand;
+  };
+  // Bei einem Seitenwechsel kann das Kopfband zwischen zwei Browseraufrufen neu aufgebaut werden.
+  // Anwesenheit, sichtbarer Text und Fläche müssen aus derselben DOM-Messung stammen.
+  const befund = einbaufristMs
+    ? await vi.waitFor(liesElement, { timeout: einbaufristMs })
+    : await liesElement();
   expect(
     befund.flaeche,
     `${MARKE}: ${was} — ${selektor} hat keine Fläche auf dem Bildschirm (verborgen: ${befund.verborgen.join(" | ")})`,
@@ -621,13 +634,6 @@ export async function menuewegOhneMaus(
 ): Promise<Menuebefund> {
   const ausloeser = '[data-testid="kopfband-arbeitsbereiche"]';
   const flaeche = '[data-testid="arbeitsbereiche-menue"]';
-  await warte(
-    seite,
-    `() => !!document.querySelector('${ausloeser}')`,
-    `das Kopfband mit „Arbeitsbereiche“ (${sprache})`,
-    undefined,
-    45_000,
-  );
 
   // ── 1. „Arbeitsbereiche“: Beschriftung prüfen, dann per Tab und Enter öffnen. ─────────────────
   await mussSichtbarTragen(
@@ -635,6 +641,7 @@ export async function menuewegOhneMaus(
     ausloeser,
     sollBereiche,
     `der Einstieg heisst in „${sprache}" nicht „${sollBereiche}"`,
+    45_000,
   );
   const arbeitsbereiche = await tabUndEnter(
     seite,
