@@ -118,25 +118,23 @@ async function beschreibungSchreiben(page: Page, text: string): Promise<void> {
 async function speichernUndWiederOeffnen(page: Page): Promise<string> {
   // JOB 3062: der Knopf heisst am neuen Blatt „Als Entwurf speichern" (`erfassen.entwurfSichern`); der
   // Weg dahinter ist unverändert derselbe (`POST/PUT /api/drafts`).
-  await page.getByRole("button", { name: "Als Entwurf speichern", exact: true }).click();
-  // Erst wenn der Entwurf wirklich liegt, ist die Id da.
-  let id = "";
-  await expect
-    .poll(
-      async () => {
-        const antwort = await page.request.get("/api/drafts");
-        if (!antwort.ok()) {
-          return 0;
-        }
-        const liste = (await antwort.json()) as { id: string; updatedAt?: string }[];
-        id = liste[0]?.id ?? "";
-        return liste.length;
-      },
-      { message: "Der Entwurf ist nicht gespeichert worden", timeout: 15_000 },
-    )
-    .toBeGreaterThan(0);
+  // Die Antwort dieses Klicks nennt den gespeicherten Entwurf, auch bei bereits gefüllter Ablage.
+  const [antwort] = await Promise.all([
+    page.waitForResponse((r) => {
+      const pfad = new URL(r.url()).pathname;
+      const methode = r.request().method();
+      return (
+        (methode === "POST" && pfad === "/api/drafts") ||
+        (methode === "PUT" && /^\/api\/drafts\/[^/]+$/.test(pfad))
+      );
+    }),
+    page.getByRole("button", { name: "Als Entwurf speichern", exact: true }).click(),
+  ]);
+  expect(antwort.ok(), `Entwurf speichern: HTTP ${antwort.status()}`).toBe(true);
+  const { id } = (await antwort.json()) as { id: string };
+  expect(id).toMatch(/^\S+$/);
 
-  await page.goto(`/capture/frontdoor?draft=${id}`);
+  await page.goto(`/capture/frontdoor?draft=${encodeURIComponent(id)}`);
   await expect(page.getByRole("textbox", { name: "Wissensseite — Fließtext" }).first()).toBeVisible(
     { timeout: 15_000 },
   );
