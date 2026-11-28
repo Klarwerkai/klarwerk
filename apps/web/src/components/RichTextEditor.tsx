@@ -1910,7 +1910,9 @@ export function RichTextEditor({
 
   // Die Lage folgt dem Bild: Auswahl, Modus, jeder neue Inhalt (Tippen verschiebt das Bild),
   // Fenstergröße, Bildgröße (Laden, Zug) — ohne Dauerschleife.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `value` ist der Auslöser „Inhalt hat sich geändert".
+  // Textänderungen können nur einen sichtbaren Bildrahmen verschieben.
+  const inhaltMitBildauswahl = selectedImage && mode === "edit" ? value : null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bei einem Inhaltswechsel die Bildposition neu messen.
   useEffect(() => {
     if (mode !== "edit" || !selectedImage) {
       setBildRahmen(null);
@@ -1928,7 +1930,7 @@ export function RichTextEditor({
       window.removeEventListener("resize", vermesseBild);
       beobachter?.disconnect();
     };
-  }, [mode, selectedImage, vermesseBild, value]);
+  }, [mode, selectedImage, vermesseBild, inhaltMitBildauswahl]);
 
   const beendeGriffZug = (uebernehmen: boolean): void => {
     const zug = griffZugRef.current;
