@@ -267,13 +267,7 @@ let generation = 0;
 const hoerer = new Set<() => void>();
 let zaehler = 0;
 
-beimVergessen(() => {
-  generation += 1;
-  zustand = LEER;
-  for (const h of hoerer) {
-    h();
-  }
-});
+beimVergessen(vergissAusfuehrungen);
 
 function setzeZustand(f: (z: Zustand) => Zustand): void {
   const neu = f(zustand);
@@ -322,18 +316,14 @@ export function leseAusfuehrungen(): Ausfuehrung[] {
   return zustand.liste;
 }
 
-function leseListe(): Ausfuehrung[] {
-  return zustand.liste;
-}
-
 export function useAusfuehrungen(): Ausfuehrung[] {
   return useSyncExternalStore(
     (h) => {
       hoerer.add(h);
       return () => hoerer.delete(h);
     },
-    leseListe,
-    leseListe,
+    leseAusfuehrungen,
+    leseAusfuehrungen,
   );
 }
 
@@ -1804,7 +1794,7 @@ export async function ladeAuftraege(gespraechId: string, herkunft: Herkunft): Pr
   }
 }
 
-/** Für Tests und das Ende der Vorschau: alles Gezeigte vergessen (am Server bleibt alles). */
+/** Bei einem Konto- oder Sitzungswechsel: alles Gezeigte vergessen (am Server bleibt alles). */
 export function vergissAusfuehrungen(): void {
   generation += 1;
   setzeZustand(() => LEER);

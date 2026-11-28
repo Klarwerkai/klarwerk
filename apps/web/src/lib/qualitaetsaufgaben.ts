@@ -36,13 +36,6 @@ export const FILTER_PARAM: Record<FilterDimension, string> = {
   zustaendig: "zustaendig",
 };
 
-export const LEERER_FILTER: QualitaetsFilter = {
-  space: null,
-  typ: null,
-  zustand: null,
-  zustaendig: null,
-};
-
 function wert(params: URLSearchParams, name: string): string | null {
   const roh = (params.get(name) ?? "").trim();
   return roh === "" ? null : roh;

@@ -219,7 +219,6 @@ export function alsKlaraAuftrag(f: PersoenlicheFunktion, plan: LaufPlan): Brueck
 
 /** EQF-06-K06: die Schrittschlüssel des Aktionskerns je Planschritt eines Routinenlaufs. */
 export const ROUTINEN_SCHRITT_BERICHT = "bericht-1";
-export const ROUTINEN_SCHRITT_PRUEFEN = "pruefen-2";
 
 /**
  * AC08: Ergebnisprüfung am NACHGELESENEN Entwurf — der Titel steht genau so da, jede Auswahl steht

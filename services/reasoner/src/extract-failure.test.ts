@@ -7,7 +7,7 @@ import {
   MAX_EXTRACT_POINTS,
   ModelProvider,
   chunkForExtract,
-  excerptFoundInDocument,
+  findExcerptInDocument,
   salvageTruncatedExtract,
   vermerkeAbbruch,
 } from "./provider-model";
@@ -149,11 +149,12 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
 
   it("SCRUM-418: der tolerante Belegstellen-Rückfall erzeugt keine Zufallstreffer (Mindestlänge)", () => {
     // Kurzer, nicht enthaltener Schnipsel darf NICHT über den alnum-Rückfall matchen.
-    expect(excerptFoundInDocument("XY 7!", DOC)).toBe(false);
+    // (Gesamtcheck R-1329: gemessen am Gate selbst, `findExcerptInDocument` — nicht gefunden = null.)
+    expect(findExcerptInDocument("XY 7!", DOC)).toBeNull();
     // Frei erfundene, lange Belegstelle bleibt abgewiesen.
     expect(
-      excerptFoundInDocument("Turbine wöchentlich mit Spezialöl entlüften und prüfen", DOC),
-    ).toBe(false);
+      findExcerptInDocument("Turbine wöchentlich mit Spezialöl entlüften und prüfen", DOC),
+    ).toBeNull();
   });
 
   // SCRUM-427 (Pedi 03.07.): lange Dokumente in Abschnitten extrahieren, damit der

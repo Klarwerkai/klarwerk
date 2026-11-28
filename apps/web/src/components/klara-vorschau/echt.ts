@@ -753,10 +753,6 @@ export async function loescheGespraech(t: TFunction): Promise<void> {
 // Fragen, Stoppen, Hilfe.
 // ------------------------------------------------------------------------------------------------
 
-export function laeuft(): boolean {
-  return laufend !== null;
-}
-
 /** „Anfrage stoppen" — wirkt auch, wenn die Frage gerade noch abgelegt wird. */
 export function stoppen(): void {
   laufend?.abort();

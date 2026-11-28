@@ -18,5 +18,5 @@ export const EINFUEHRUNG_UEBUNG: TutorialDefinition = {
   ],
   textWerte: () => ({}),
   uebergabeZiel: "gedaechtnis-neu",
-  laden: () => import("./Uebung"),
+  laden: () => import("./Uebung").then((m) => ({ Demo: m.Demo, Uebergang: m.Uebergang })),
 };

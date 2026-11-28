@@ -30,6 +30,7 @@ import {
   useAssistenzStand,
   verwerfeAssistenzProfil,
 } from "../../lib/assistenzProfil";
+import { bildKorrekturStand, verwerfeBildKorrekturen } from "../../lib/bildKorrekturenStand";
 import { Button } from "../ui";
 import { AssistenzFormular } from "./AssistenzFormular";
 
@@ -41,6 +42,9 @@ export function AssistenzProfilLader(): null {
   const { user } = useSession();
   const kontoId = user?.id ?? null;
   useLayoutEffect(() => {
+    if (bildKorrekturStand().kontoId !== kontoId) {
+      verwerfeBildKorrekturen();
+    }
     if (kontoId === null) {
       verwerfeAssistenzProfil();
       return;

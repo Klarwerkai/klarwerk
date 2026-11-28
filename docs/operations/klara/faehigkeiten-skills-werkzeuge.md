@@ -16,7 +16,9 @@ Auftrag `produkt:20261011:assistenz-skills-werkzeuge`
   `netz_anfrage_anbieter`, `wissen_lesen` und `entwurf_anlegen` werden abgewiesen.
   Die Adapterinstallation ist ein eigener administrativer Schritt. Sie gilt nur für genau
   dieselbe Vertragsfassung.
-- **SKILL.md** wird nur als Ablage gelesen und wird nie ausgeführt.
+- **SKILL.md** wird nur als Beschreibung gelesen und nie ausgeführt. Gelesen wird ausschließlich
+  über den administrativen Leseweg `tools/skill-ablage-vorschau.ts` (siehe unten); einen Upload-
+  oder automatischen Einleseweg gibt es nicht.
 - **Lage bei jedem Schritt:** Sie wird bei jedem Schritt neu gelesen, auch im Hintergrund und in
   Unterschritten.
   - „Keine KI“ kommt aus `reasoner.kiAbschaltung()`.
@@ -97,3 +99,27 @@ Exitcodes: 0 heißt durchgeführt, 2 heißt Voraussetzung fehlt, 1 heißt fehlge
 - **Realer Aufruf:** Er gilt erst als belegt, wenn der Integrationsfall
   `echtaufruf-wikipedia.integration.test.ts` an einem Kandidaten grün gelaufen ist.
   Ersatztransport, Registrierung und Installation zählen nicht als Funktionsnachweis.
+
+## Administrative Vorschau einer SKILL.md
+
+Der explizite lokale Leseweg für den Ablageparser ist:
+
+```sh
+npx tsx tools/skill-ablage-vorschau.ts /ausdruecklich/gewaehlte/SKILL.md
+```
+
+Das Werkzeug gibt ausschließlich eine JSON-Beschreibung mit Herkunftspfad, Inhaltsfingerabdruck,
+Name, Beschreibung, Fassung und erkannten ignorierten Anweisungen aus. Die gewählte Datei bleibt
+unverändert. Die Vorschau speichert nichts, registriert keine Fähigkeit, installiert keinen Adapter
+und führt weder Skilltext noch darin genannte Befehle aus. Der Rückgabestand `nur_ablage` benennt
+die beschränkte Lesart des Parsers; er quittiert keine neue Speicherung durch das Werkzeug.
+
+Der Aufruf erfolgt ausdrücklich durch den Administrator. Er ist kein neuer Uploaddialog und kein
+automatischer Weg von einer Datei zur Registry. Ausführung und Installation bleiben an den
+geprüften Fähigkeitsvertrag und den vorhandenen administrativen Adapterweg gebunden.
+
+Exitcode 0: Beschreibung erzeugt; 2: kein einzelner Dateipfad gewählt; 1: Datei nicht lesbar.
+Die Gegenproben in `tests/assistenz-faehigkeiten/skill-ablage-vorschau.test.ts` bedienen das echte
+CLI mit tatsächlichen temporären Dateien und prüfen Herkunft/Hash, unveränderte Quelle,
+nicht ausgeführte fremde Anweisungen sowie die Fehlerfälle. Ihre tatsächliche Ausführung wird
+im kandidatengebundenen Prüfbericht nachgewiesen; diese Dokumentation ersetzt keinen Prüflauf.

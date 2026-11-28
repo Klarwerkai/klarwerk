@@ -10,12 +10,23 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   officeBildArt,
-  officeBildEingang,
+  officeBildQuelle,
   ohneZugriff,
   wirdGeladen,
 } from "../../apps/web/src/components/bibliothek/OfficeBildBefunde";
-import { createBildAnalyse } from "../../apps/web/src/lib/bildAutomatik";
+import { type BildQuelleEingang, createBildAnalyse } from "../../apps/web/src/lib/bildAutomatik";
 import { TEXT_JE_MARKE, bildMit, deck, markenEngine } from "./deck";
+
+// Gesamtcheck R-1329 (Aufrufer-Wächter): gemessen wird der Lesevorgang, den die Fläche WIRKLICH
+// ruft (`officeBildQuelle`, OCR-03 — Eingang samt Dateitext). Die frühere Hülle `officeBildEingang`
+// (nur der Eingang) hatte keinen Produktaufrufer und ist entfernt; dieser Zuschnitt gibt dieselbe
+// Rückgabe wie sie: der Eingang, `null` oder `"frist"`.
+async function officeBildEingang(
+  ...args: Parameters<typeof officeBildQuelle>
+): Promise<BildQuelleEingang | null | "frist"> {
+  const q = await officeBildQuelle(...args);
+  return q && q !== "frist" ? q.eingang : q;
+}
 
 const ANHANG = { id: "anh-1", name: "wartung.pptx", objectId: "obj-1" };
 

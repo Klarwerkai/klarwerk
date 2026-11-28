@@ -19,7 +19,6 @@ import {
 import {
   FRAGEN_EINSTIEG_KEYS,
   beispielIstFiktiv,
-  hatFiktiveBeispiele,
   zeigeFragenEinstieg,
 } from "../../apps/web/src/lib/fragenEinstieg";
 import { pruefGrund } from "../../apps/web/src/lib/pruefGrund";
@@ -54,7 +53,9 @@ describe("E2 · fiktiv sind genau die festen Beispiele", () => {
     const chips = buildAskExampleChips([]);
     expect(chips.length).toBeGreaterThan(0);
     expect(chips.every(beispielIstFiktiv)).toBe(true);
-    expect(hatFiktiveBeispiele(chips)).toBe(true);
+    // Gesamtcheck R-1329 (Aufrufer-Wächter): die Fläche kennzeichnet JE Chip (`Ask.tsx`,
+    // `beispielIstFiktiv`); die Hülle `hatFiktiveBeispiele` hatte keinen Produktleser und ist entfernt.
+    expect(chips.some(beispielIstFiktiv)).toBe(true);
   });
   it("Bestandsvorschläge sind nicht fiktiv, die Lücken-Frage schon", () => {
     const ko: AskExampleChip = { kind: "ko", title: "Druck am Ventil prüfen" };
@@ -65,7 +66,7 @@ describe("E2 · fiktiv sind genau die festen Beispiele", () => {
     };
     expect(beispielIstFiktiv(ko)).toBe(false);
     expect(beispielIstFiktiv(luecke)).toBe(true);
-    expect(hatFiktiveBeispiele([ko])).toBe(false);
+    expect([ko].some(beispielIstFiktiv)).toBe(false);
   });
 });
 

@@ -1187,7 +1187,164 @@ interface Ausnahme {
   readonly grund: string;
 }
 
+// BPA-06 liefert zwei ausdrücklich getrennte Nachweise (Betriebsdokument assistenz-lernen-bpa06):
+// G13 misst am hostunabhängigen Vertrag mit synthetischen Ereignissen; die Nacharbeiten ab 23
+// messen an den echten P06-Einstiegen und am einzelnen Aktionskern. Ein zweiter Schreibweg ist G03
+// zufolge ausgeschlossen. Jeder hier benannte Vertragsbaustein muss von der G13-Probe weiterhin
+// wirklich gerufen werden; ein neuer Export oder ein künftiger Produktaufruf bleibt A1/A3 sichtbar.
+const BPA06_HOSTVERTRAG = [
+  {
+    name: "beginneLernen",
+    grund:
+      "AC01 prüft Lernabsicht, Vorgang und freigegebene Anwendung im ursprünglichen Hostvertrag. Der HTTP-Start nutzt leiteLernbereichAb und VormachenDienst.starte mit dem authentischen Konto.",
+  },
+  {
+    name: "lernAnzeige",
+    grund:
+      "Der Vertrag misst Zustand, sofortige Pause und ausgeschaltetes Mikrofon für einen modellierten Host. Im Produkt zeigt die Lernanzeige den vom Server bestätigten Zustand der P06-Sitzung.",
+  },
+  {
+    name: "pausiereLernen",
+    grund:
+      "Die Pause des reinen Lerntraces muss weitere Ereignisse verhindern. Der sichtbare P06-Weg setzt über VormachenDienst.setzeZustand den Zustand der gespeicherten Sitzung.",
+  },
+  {
+    name: "setzeLernenFort",
+    grund:
+      "Der Hostvertrag erlaubt die Wiederaufnahme eines pausierten Traces. Im Produkt nimmt dieselbe Person ihre P06-Sitzung über setzeZustand wieder auf.",
+  },
+  {
+    name: "naechsteVorfuehrung",
+    grund:
+      "Der Referenzhost grenzt Vorführungen ausdrücklich ab. Die echten Erfassungsereignisse werden in vorfuehrungenAus nach Quelle und Entwurfsanlage aufgeteilt.",
+  },
+  {
+    name: "beendeLernen",
+    grund:
+      "Beim Ende des Referenztraces gehört sein letzter Abschnitt zur Ableitung. Die echte P06-Ableitung übernimmt ihre vollständigen, bereits bereinigten Vorführungen in entwerfeLernnotiz.",
+  },
+  {
+    name: "brichLernenAb",
+    grund:
+      "Die Abbruchregel des Hostvertrags entscheidet über seine synthetischen Rohdaten. VormachenDienst.brecheAb räumt die produktiven Beobachtungen der gebundenen Sitzung auf.",
+  },
+  {
+    name: "nimmAuf",
+    grund:
+      "Der Referenztrace verwirft fremde Fenster und pausierte Ereignisse. Die serverseitige Aufnahme kontrolliert die ausgewählte P06-Sitzung in beobachte und bereinigt die Daten vor der Ableitung.",
+  },
+  {
+    name: "bestaetige",
+    grund:
+      "Die ausdrückliche Freigabe bindet im Hostvertrag Person, Fassung, Wirkungen und Ziel. Beim Nutzer speichert VormachenDienst.bestaetige die aktuelle P06-Vorschau und verwirft einen überholten Stand.",
+  },
+  {
+    name: "ueberarbeite",
+    grund:
+      "Die unveränderte Ausgangsfassung muss bei der synthetischen Überarbeitung erhalten bleiben. Der produktive Weg korrigiereRoutine versieht die aktuelle Routine mit neuer Fassung und Herkunft.",
+  },
+  {
+    name: "pausiere",
+    grund:
+      "Die modellierte Funktion sperrt nach der Pause neue Läufe. Die echte Wiederanlaufprüfung liest den über setzeRoutinenZustand gespeicherten Stand der Routine.",
+  },
+  {
+    name: "setzeFort",
+    grund:
+      "Der Hostvertrag reaktiviert nur eine pausierte Funktion. Die Nutzeraktion und der anschließende Lauf greifen auf dieselbe gespeicherte P06-Routine zu.",
+  },
+  {
+    name: "loesche",
+    grund:
+      "Der Hostvertrag entfernt Schritte und Zeitplan aus seinen Werten. Die produktive Privatlöschung entfernt die persönlichen Daten aus dem gemeinsamen Routinenspeicher und sperrt auch vorbereitete Läufe.",
+  },
+  {
+    name: "darfStarten",
+    grund:
+      "Im Hostvertrag darf nur eine aktive persönliche Funktion starten, eine Lernnotiz niemals. Der Produktlauf lädt eine bestätigte P06-Routine des Kontos und prüft ihren aktuellen Zustand in planeLauf.",
+  },
+  {
+    name: "pruefeVorWirkung",
+    grund:
+      "Die synthetische Host-Gegenprobe unterscheidet fremde und selbst erzeugte Dokumentfassungen vor einem Schreibschritt. Der reale Aktionskern liest Konto, Routine und Fassung vor jeder Wirkung über routineSperre; der Word-Einstieg prüft zusätzlich das gebundene Ziel.",
+  },
+  {
+    name: "pruefeErgebnis",
+    grund:
+      "Die Referenzprüfung vergleicht einen nachgebildeten Bericht mit den Eingaben. Der Produktweg pruefeEntwurf liest Titel, Aussage, Ordnungsfelder, eingebettete Quellen und Text des tatsächlich gespeicherten Entwurfs.",
+  },
+] as const;
+
 const BEWUSST: readonly Ausnahme[] = [
+  ...BPA06_HOSTVERTRAG.map(({ name, grund }) => ({
+    schluessel: `services/app/src/assistenz-lernen.ts::${name}`,
+    grund,
+  })),
+  {
+    schluessel: "services/reasoner/src/model-concurrency.ts::resetModelBudgetForTests",
+    grund:
+      "Die Budgettests in tests/w44-ki-ausleitung/status-cache.test.ts wechseln kontrolliert die Umgebung. Der Rücksetzer liest sie neu. Ein Rücksetzen laufender Budgets im Betrieb würde deren Gültigkeit verlieren.",
+  },
+  {
+    schluessel: "services/app/src/wissenspaket.ts::baueWissenspaket",
+    grund:
+      "Der erhaltene Buffer-Vertrag für das Exportpaket dient als unabhängige Vergleichsform des HTTP-Streams. tests/wiederherstellung-export/p8-stream-und-platz.test.ts liest beide ZIP-Dateien und vergleicht Manifest und Inhalte; HTTP liefert ausschließlich den Stream.",
+  },
+  // Gesamtcheck R-1329 (Nacharbeit 37): zwei Prüfgrundlagen, deren einzige Leserin ein Driftwächter
+  // ist — dieselbe Lage wie `RICH_TEXT_ALLOWED_TAGS` (BEWUSST_WEB): eine Abschrift im Test wäre
+  // genau die Drift, gegen die er steht.
+  {
+    schluessel: "services/app/src/dateninventar.ts::inventarTabellen",
+    grund:
+      "Die Tabellenmenge des Dateninventars, gegen `migrate()` gehalten (Kopf der Datei): " +
+      "`tests/betroffenenrechte/dateninventar.test.ts` prüft damit, dass keine migrierte Tabelle " +
+      "ohne Datenart bleibt und keine erfundene geführt wird. Entfällt der Wächter, ist der " +
+      "Export zu streichen.",
+  },
+  {
+    schluessel: "services/app/src/sicherungsumfang.ts::assistenzTabellen",
+    grund:
+      "Die Tabellen der privaten Assistenzspeicher aus `SICHERUNGSUMFANG` — laut Kommentar " +
+      "dieselbe Liste wie `vergleich.assistenz` im Wiederherstellungsdrill. Gelesen von " +
+      "`tests/wiederherstellung-export/sicherungsumfang.test.ts`, der Drill und Umfang " +
+      "gegeneinander hält; eine Abschrift dort wäre die Drift selbst.",
+  },
+  // Gesamtcheck R-1329 (Nacharbeit 41): die Auslegung der Vektorkennzeichnung — dieselbe Lage wie
+  // `inventarTabellen`: eine Prüfgrundlage, deren einziger Leser die Gegenprobe ist.
+  {
+    schluessel: "services/embedding/src/provider.ts::embeddingArt",
+    grund:
+      "Liest die Art aus der Vektorversion (`stub@<dim>` | `intern:<modell>@<dim>`). Die " +
+      "Kennzeichnung selbst trägt jeder gespeicherte Vektor in seiner Version " +
+      "(kundenbetrieb-betriebsmodelle.md §2.2), und das Produkt vergleicht nur über die exakte " +
+      "Version — es muss die Art nie auswerten. Gelesen von " +
+      "`tests/kundenbetrieb-betriebsmodelle/interner-embedding-weg.test.ts` (E4).",
+  },
+  // Gesamtcheck R-1329 (Nacharbeit 40): drei Testaufbauten in Produktdateien, deren
+  // Produktgegenstück am Code belegt ist — ein Produktaufruf wäre hier jeweils der Fehler.
+  {
+    schluessel: "services/app/src/assistenz-faehigkeiten.ts::InMemoryFaehigkeitsAblage",
+    grund:
+      "Speicher-Doppel der Auftragsablage für Tests. Das Produkt legt Aufträge in jedem Betrieb " +
+      "über `ProfilFaehigkeitsAblage` im Assistenzprofil ab (`baueFaehigkeiten` in " +
+      "assistenz-faehigkeiten-anbindung.ts, G03: kein zweiter Auftragsspeicher).",
+  },
+  {
+    schluessel: "services/app/src/office-wopi-host.ts::SpeicherWopiSitzungen",
+    grund:
+      "Speicher-Doppel der Editor-Sitzungsablage für die isolierte Hostprobe " +
+      "(`tests/office-wopi-code/hostweg.test.ts`, `code-probe.integration.test.ts`). Das Produkt " +
+      "reicht die `OfficeAblage` herein (`routes/office-routes.ts`, `hostAblage`), die beendete " +
+      "Sitzungen samt Arbeitsstand sichert — eine reine Speicherablage verlöre sie.",
+  },
+  {
+    schluessel: "services/app/src/paarpflicht-aussagen.ts::paarpflichtAussagenLaden",
+    grund:
+      "Lädt Aussagen per `ko.get` OHNE Sichtbarkeit des Fragenden — ein Testaufbau für " +
+      "Dienstprüfungen der Paarpflichten. Der Produktweg (`routes/paarpflichten-routes.ts`) lädt " +
+      "bewusst über `sichtbareAussagen` und bildet die Aussagen mit `paarpflichtAussageVon`; ein " +
+      "Produktaufruf dieser Funktion umginge die Sichtbarkeit.",
+  },
   {
     schluessel: "services/app/src/embed-concurrency.ts::resetEmbedSemaphoreForTests",
     grund:
@@ -1324,6 +1481,93 @@ interface OffenerRest extends Ausnahme {
 // auch auf main niemand liest.
 
 const OFFENER_REST: readonly OffenerRest[] = [
+  {
+    schluessel: "services/app/src/programmadapter.ts::bewerteZiel",
+    grund:
+      "BPA-04 prüft für einen Bedienungshilfe-Aktionsadapter Rolle, Zweck und getestete Hostfassung. Der produktive Mac-Rückfall liest ausschließlich die Word-Markierung. Ein Anschluss für Klicks oder Eingaben ist erst nach gültiger Hostabnahme zulässig.",
+    abgrenzung: "sperre",
+    beleg:
+      "BPA-04 § 4 erlaubt ausschließlich markierung-lesen und schließt Klick, Eingabe, Koordinate, Bildschirmbild und OCR ausdrücklich aus. Die Zielregeln und Gegenfälle bleiben in tests/programmadapter/programmadapter.test.ts geprüft.",
+    belegdatei: "docs/operations/klara/programmadapter.md",
+    entscheidet: "Betrieb und Hostabnahme vor Freigabe einer konkreten Bedienungshilfe-Aktion",
+  },
+  // Gesamtcheck R-1329 (Nacharbeit 37): der Integrationsvertrag für begrenzten Support. Laut Kopf
+  // und Betriebsdokument ausdrücklich „Konzept jetzt, Betreiber nach dem PoC“ und „nirgends an
+  // `build-app.ts` angeschlossen“ — ein Anschluss vor der Betreiberbenennung öffnete einen Zugang,
+  // den die Entscheidung gerade nicht freigibt.
+  ...[
+    "SUPPORTZUGANG_VERTRAGSFASSUNG",
+    "SUPPORTZUGANG_PHASE",
+    "ZEITWERTE_HINWEIS",
+    "zeitwerteFestlegen",
+    "DIAGNOSE_UMFANG",
+    "mitInhaltszugriff",
+    "freigabeErteilen",
+    "zugriffPruefen",
+    "widerrufen",
+    "ablaufDurchsetzen",
+    "beendigungWiederholen",
+    "verlaengern",
+    "abschliessen",
+  ].map(
+    (name): OffenerRest => ({
+      schluessel: `services/app/src/supportzugang-vertrag.ts::${name}`,
+      grund:
+        "Teil des Integrationsvertrags für begrenzten Support (P11-AC01…AC08) — reine Funktionen " +
+        "ohne Speicher, Route oder Zeitgeber, gehalten von " +
+        "`tests/begrenzter-support/supportzugang-vertrag.test.ts`. Angeschlossen wird erst, wer " +
+        "den Zugang baut; vorher wäre jeder Aufrufer ein offener Supportweg.",
+      abgrenzung: "sperre",
+      beleg:
+        "produkt:20261011:peter-p11 — `supportzugang-vertrag.ts`: „Phase: Konzept jetzt, " +
+        "Betreiber nach dem PoC … Es ist nirgends an `build-app.ts` angeschlossen“; " +
+        "`SUPPORTZUGANG_PHASE.zugangAktiv: false`",
+      belegdatei: "docs/operations/begrenzter-support.md",
+      entscheidet: "Peter (Benennung des Betreibers nach dem PoC, P11)",
+    }),
+  ),
+  // Gesamtcheck R-1329 (Nacharbeit 39): die Reifegrad- und Quotenregeln des Lagebilds. „Phase:
+  // Konzept jetzt, Messung im PoC“ (`lib/lagebild.ts`); die Kapitalsicht zeigt die Stufen ohne
+  // Vergabe, weil „der Bestand keine Belege je Arbeitsweg führt; sie entstehen erst in der
+  // PoC-Messung“ (`LagebildKapital.tsx`). Ein Aufrufer vor den Belegen behauptete genau den Wert,
+  // den Entscheidung 50 untersagt.
+  ...["reifegrad", "quote"].map(
+    (name): OffenerRest => ({
+      schluessel: `apps/web/src/lib/lagebild.ts::${name}`,
+      grund:
+        "Regel des Lagebilds (Entscheidung 50: Reifegrade an Belege knüpfen, Quoten nur " +
+        "mit bekannter Grundgesamtheit), gehalten von " +
+        "`tests/lagebild/lagebild-regeln.test.ts`. Angeschlossen wird sie, sobald die " +
+        "PoC-Messung Belege je Arbeitsweg bzw. einen Sollbestand liefert.",
+      abgrenzung: "sperre",
+      beleg:
+        "produkt:20261011:peter-p13, Entscheidung 50 („Reifegrade an Belege knüpfen“) — " +
+        "p13-lagebild-wissenskapital.md: „Der Bestand führt keine Belege je Arbeitsweg … " +
+        "dass kein Reifegrad vergeben ist … Die Belege entstehen in der PoC-Messung“ (die " +
+        "Regel sperrt die Vergabe ohne Beleg, nicht den Zugang zum PoC)",
+      belegdatei: "docs/entscheidungen/p13-lagebild-wissenskapital.md",
+      entscheidet: "Peter (Messung im PoC, P13)",
+    }),
+  ),
+  // Gesamtcheck R-1329 (Nacharbeit 40): der Perplexity-Adapter. Die Anbindung installiert ihn
+  // ausdrücklich nicht („Für Perplexity gibt es KEINE Freigabe (O09 offen); diese Anbindung erteilt
+  // keine“), und es gibt für Fähigkeiten keinen sicheren Zugangsweg (`KEINE_ZUGAENGE`).
+  {
+    schluessel: "services/app/src/assistenz-faehigkeiten.ts::perplexitySuchAdapter",
+    grund:
+      "Kontrollierter Adapter der Fähigkeit `perplexity-suche`, gehalten von " +
+      "`tests/assistenz-faehigkeiten/faehigkeiten.test.ts`. Installiert wird er erst, wenn " +
+      "Anbieterfreigabe, belegte Kosten je Aufruf, Budgetzuordnung und ein sicherer Zugangsweg " +
+      "vorliegen; vorher wäre jede Installation ein ungedeckter externer Weg.",
+    abgrenzung: "sperre",
+    beleg:
+      "produkt:20261011:assistenz-skills-werkzeuge, O09 — faehigkeiten-skills-werkzeuge.md: " +
+      "„Für Perplexity fehlen Anbieterfreigabe, belegte Kosten je Aufruf und Budgetzuordnung. " +
+      "Außerdem fehlt ein sicherer Betreiberweg für den Zugang“; Produktvertrag: " +
+      "„Nicht installiert“",
+    belegdatei: "docs/operations/klara/faehigkeiten-skills-werkzeuge.md",
+    entscheidet: "Peter / Betrieb (Freigabe O09, Kosten und Zugangsweg)",
+  },
   {
     schluessel: "services/audit/src/repo.ts::pruefeValidationDecisionRef",
     grund:
@@ -1512,6 +1756,16 @@ const NEUZUGANG_GEMELDET: readonly Ausnahme[] = [];
 // Dieselbe Regel wie bei `BEWUSST`: nur Eintraege, deren Grund am Code geprueft ist.
 const BEWUSST_WEB: readonly Ausnahme[] = [
   {
+    schluessel: "apps/web/src/lib/begleiterEntwurf.ts::begleiterEntwurfZuruecksetzen",
+    grund:
+      "tests/klara-office/begleiter-seite-am-server.test.tsx setzt den Entwurf zwischen unabhängigen Proben zurück. Im Produkt gehört er der Person und ist an ihr Konto gebunden.",
+  },
+  {
+    schluessel: "apps/web/src/tutorial/seiten/daten.ts::SPEZIALWEGE",
+    grund:
+      "Der Abdeckungswächter tests/klara-seitentutorials/rahmen.test.tsx hält die regulären Seiten und separat betreuten Spezialwege gemeinsam gegen die Navigation. Der Renderer lädt die echten Spezialwege über ihre eigenen Einstiegspunkte.",
+  },
+  {
     schluessel: "apps/web/src/app/navHistory.ts::clearPopAuthorityForTests",
     grund:
       "Ausdruecklich fuer Tests gebaut — der Name sagt es. Ein Produktaufrufer waere hier der " +
@@ -1584,6 +1838,71 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
       "`tests/capture/huelle-tagbewusste-grenze.test.ts`, der daraus seine Grundmenge erhebt. Die " +
       "Produktentscheidungen lesen `FLAT_BODY_TAGS` (gemessen). Eine Abschrift der Liste im Test " +
       "waere genau die Drift, gegen die er steht; entfaellt der Test, ist der Export zu streichen.",
+  },
+  // Gesamtcheck R-1329 (Nacharbeit 42): der Leseeinstieg der Assistenz. Zwei Lieferungen halten ihn
+  // ausdrücklich angeschlossen, mit fester Rangfolge Kontoname → Leseeinstieg → neutral, und sagen
+  // dabei selbst, dass ihn im Produkt niemand setzt — eine getroffene, dokumentierte Entscheidung,
+  // kein stiller Rest.
+  {
+    schluessel: "apps/web/src/components/klara-vorschau/profil.ts::setzeAssistenzProfil",
+    grund:
+      "Setzer des Leseeinstiegs `profil.ts`. assistenz-produkteinstieg: „der Leseeinstieg " +
+      "`profil.ts` bleibt angeschlossen“ (KlaraVorschau.tsx); branchen-poc-arbeitswege: „den " +
+      "Leseeinstieg `profil.ts`, den im Produkt niemand setzt“ (LueckenVorgang.tsx). Der " +
+      "Kontoname (`lib/assistenzProfil.ts`) hat Vorrang; gesetzt wird der Einstieg nur von den " +
+      "Oberflächentests, die so ein Profil nachstellen.",
+  },
+  // Gesamtcheck R-1329 (Nacharbeit 37): am Code geprüft — Rücksetzer, die ihr Kommentar
+  // ausdrücklich nur Tests zuschreibt, und autoritative Listen, deren Wächter sie lesen.
+  {
+    schluessel: "apps/web/src/components/klara-vorschau/zustand.ts::zuruecksetzenGanz",
+    grund:
+      "„Nur für Tests: alles auf Anfang — auch die angefangene Eingabe“ (zustand.ts:426). Das " +
+      "Produkt beendet die Vorschau über `vorschauEndeZustand`, das die Eingabe bewusst stehen " +
+      "lässt; ein Produktaufruf des Ganz-Rücksetzers wäre hier der Fehler.",
+  },
+  {
+    schluessel: "apps/web/src/lib/rechtekontext.ts::rechtekontextZuruecksetzen",
+    grund:
+      "„Nur für Proben: der Anfangszustand (kein bekannter Kontext, Epoche 0, keine Hörer)“ " +
+      "(rechtekontext.ts:60). Ein Produktaufruf setzte die Epoche zurück und hebelte damit die " +
+      "Erkennung eines Rechtekontextwechsels aus.",
+  },
+  {
+    schluessel: "apps/web/src/lib/schriftskala.ts::ZIELBILD_HERKUNFT",
+    grund:
+      "Je Skalenwert die Fundstelle des wörtlichen Vorlagen-Ankers; laut Kopf geprüft in " +
+      "`tests/design-schriftskala/schriftskala.test.ts`. Die Oberfläche liest die Skala selbst, " +
+      "die Herkunft ist reine Prüfgrundlage.",
+  },
+  {
+    schluessel: "apps/web/src/lib/schriftskala.ts::PROJEKTIONS_STUFEN",
+    grund:
+      "Die drei Beamer-Stufen samt Pixelwert — autoritative Liste, gegen die " +
+      "`tests/design-schriftskala/schriftskala.test.ts` Klassen, Pixelwerte und die Abgrenzung " +
+      "zur Bildschirmskala hält. Eine Abschrift im Test wäre die Drift, gegen die er steht.",
+  },
+  {
+    schluessel: "apps/web/src/lib/schriftskala.ts::PROJEKTIONS_DATEIEN",
+    grund:
+      "„Die einzigen Dateien, in denen eine Projektionsstufe stehen darf“ (schriftskala.ts:102) — " +
+      "die Erlaubnisliste des Wächters in `schriftskala.test.ts`. Eine Abschrift im Test wäre " +
+      "die Drift, gegen die er steht.",
+  },
+  {
+    schluessel: "apps/web/src/lib/tastenkuerzel.ts::kuerzelFormen",
+    grund:
+      "„Beide Formen einer Sprache — für Prüfungen, die im Browser der jeweiligen Maschine laufen“ " +
+      "(tastenkuerzel.ts:46). Das Produkt zeigt genau EINE Form (`kuerzelText` je Plattform); " +
+      "beide zugleich braucht nur eine maschinenunabhängige Prüfung.",
+  },
+  {
+    schluessel: "apps/web/src/components/assistenz/ausdruck.ts::FEHLER_ARTEN",
+    grund:
+      "Die vollständige Aufzählung des Typs `FehlerArt` (technisch/quelle/eingabe) — gelesen von " +
+      "`tests/assistenz-profil/avatarzustaende.test.tsx`, der damit je Art einen eigenen Text " +
+      "verlangt. Das Produkt unterscheidet die Arten über den Typ; eine Abschrift im Test liefe " +
+      "beim nächsten Zugang still auseinander.",
   },
 ];
 
@@ -1721,6 +2040,24 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       fremdGenutzt(benannt("services/db-tx/src/bestandsreset.ts", "fuehreBestandsresetAus")),
       "`fuehreBestandsresetAus` wird in bestandsreset-dienst.ts gerufen — der Sammler muss das sehen",
     ).toBe(true);
+  });
+
+  it("prüft jeden getrennt erhaltenen BPA-06-Hostbaustein weiterhin in der G13-Vertragsprobe", () => {
+    const pfad = "tests/assistenz-lernen/lernen-und-wiederholen.test.ts";
+    const ast = quelleAus(pfad, readFileSync(join(WURZEL, pfad), "utf8")).ast;
+    const importe = importeAus(ast).filter(
+      (i) => i.spezifikator === "../../services/app/src/assistenz-lernen",
+    );
+    const aufrufe = new Set<string>();
+    function besuche(n: ts.Node): void {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) aufrufe.add(n.expression.text);
+      ts.forEachChild(n, besuche);
+    }
+    besuche(ast);
+    for (const { name } of BPA06_HOSTVERTRAG) {
+      const bindung = importe.find((i) => i.exportname === name);
+      expect(bindung && aufrufe.has(bindung.lokal), name).toBe(true);
+    }
   });
 
   it("A3 · KEINE LEICHEN: jeder Registereintrag trifft heute noch zu", () => {

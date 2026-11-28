@@ -123,11 +123,6 @@ export function istWaehlbareSprache(
   return waehlbareSprachen(mitgeliefert).includes(sprache);
 }
 
-/** Der Anzeigename einer angelegten Sprache — `null` für die mitgelieferten (die übersetzt werden). */
-export function nameDerAngelegtenSprache(kennung: string): string | null {
-  return angelegteSprachen().find((s) => s.kennung === kennung)?.name ?? null;
-}
-
 /** Ein Eintrag aus `GET /api/i18n/locales` — strukturell, ohne Abhängigkeit vom API-Modul. */
 interface ServerSprache {
   kennung: string;
@@ -162,9 +157,4 @@ export async function gleicheAngelegteSprachenAb(
   if (!istWaehlbareSprache(i18n.language)) {
     await i18n.changeLanguage(vorgabe);
   }
-}
-
-/** Nur für Tests: vergisst den gelesenen Stand, damit der nächste Zugriff den Speicher neu liest. */
-export function vergissAngelegteSprachen(): void {
-  stand = null;
 }

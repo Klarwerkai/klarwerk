@@ -117,11 +117,6 @@ export function abschnitte(text: string): string[] {
     .filter((a) => a.length > 0);
 }
 
-/** Der normalisierte Text: Abschnitte, getrennt durch genau eine Leerzeile. */
-export function normalisiereText(text: string): string {
-  return abschnitte(text).join("\n\n");
-}
-
 const ENTITAETEN: Readonly<Record<string, string>> = {
   amp: "&",
   lt: "<",

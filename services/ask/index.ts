@@ -185,7 +185,6 @@ export {
   FUNDSTELLEN_AUFLOESEN_MAX,
   FUNDSTELLEN_HINWEIS,
   aufKernaussagenBeschraenkt,
-  bestaetigungGilt,
   bindeAntworttext,
   bindeAussagen,
   bindungsQuelleAus,

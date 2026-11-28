@@ -2197,10 +2197,6 @@ export function findExcerptInDocument(excerpt: string, documentText: string): st
   return documentText.slice(start, last + String.fromCodePoint(lastCp).length);
 }
 
-export function excerptFoundInDocument(excerpt: string, documentText: string): boolean {
-  return findExcerptInDocument(excerpt, documentText) !== null;
-}
-
 // Modell-Antwort → geprüfte Punkteliste. Ehrlichkeit vor Vollständigkeit:
 //  - Punkte ohne Titel ODER ohne im Dokument auffindbare Belegstelle werden VERWORFEN.
 //  - sourceExcerpt ist die GEFUNDENE Stelle im Originalwortlaut, nicht die Fassung des Modells.

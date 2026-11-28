@@ -28,6 +28,7 @@ import {
   type EditorPhase,
   LADE_FRIST_MS,
   SPEICHER_FRIST_MS,
+  auswahlVomEditor,
   bereitNachricht,
   deuteNachricht,
   istVomEditor,
@@ -396,6 +397,11 @@ function EditorRahmen({
   const formular = useRef<HTMLFormElement>(null);
   const rahmen = useRef<HTMLIFrameElement>(null);
   const speicherWarten = useRef<((erfolg: boolean) => void) | null>(null);
+  // Kriterium 7 (`lib/officeEditor.ts`): ob Klara eine Auswahl aus dem Editor bekommt, entscheidet
+  // allein `auswahlVomEditor` — je Editornachricht gefragt. Heute liefert sie immer `null`; dann
+  // sagt die Fläche das sichtbar (Gesamtcheck R-1329: vorher stand der Hinweis fest da und fragte
+  // die dokumentierte Entscheidungsstelle nicht).
+  const [editorAuswahl, setEditorAuswahl] = useState<string | null>(null);
   const schreiben = sitzung.schreibweg === "direkt";
 
   useEffect(() => {
@@ -411,6 +417,7 @@ function EditorRahmen({
       if (!n) {
         return;
       }
+      setEditorAuswahl(auswahlVomEditor(n));
       const ereignis = deuteNachricht(n);
       if (ereignis.art === "rahmen-bereit") {
         rahmen.current?.contentWindow?.postMessage(bereitNachricht(), sitzung.editorHerkunft);
@@ -551,9 +558,11 @@ function EditorRahmen({
       <output data-office-phase={phase} className="mb-2 block text-[12.5px] text-muted">
         {t(`officeartikel.phase.${phase}`)}
       </output>
-      <p data-office-klara="" className="mb-2 text-[12px] text-muted">
-        {t("officeartikel.klaraOhneAuswahl")}
-      </p>
+      {editorAuswahl === null ? (
+        <p data-office-klara="" className="mb-2 text-[12px] text-muted">
+          {t("officeartikel.klaraOhneAuswahl")}
+        </p>
+      ) : null}
       <iframe
         ref={rahmen}
         name={rahmenName}

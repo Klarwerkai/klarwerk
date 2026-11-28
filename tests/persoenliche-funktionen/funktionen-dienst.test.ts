@@ -24,14 +24,15 @@ import {
   BESCHAFFUNG_FAEHIGKEITEN,
   FunktionenDienst,
   type FunktionsVorbereitung,
-  InMemoryFunktionenRepo,
   type QuelleLesen,
+  RoutinenFunktionenRepo,
   type Zeitauftrag,
   aktuelleFassung,
   entwirfFunktion,
   naechsteTermine,
-  ortszeitZuUtc,
 } from "../../services/app/src/persoenliche-funktionen";
+
+import { InMemoryRoutinenRepo } from "../../services/app/src/vormachen";
 
 const ANNA = "konto-anna";
 const BERT = "konto-bert";
@@ -51,7 +52,7 @@ const SERIE = {
 function aufbau(gespraeche?: InMemoryKlaraGespraechRepo) {
   let jetzt = Date.parse(JETZT);
   let n = 0;
-  const repo = new InMemoryFunktionenRepo();
+  const repo = new RoutinenFunktionenRepo(new InMemoryRoutinenRepo());
   const dienst = new FunktionenDienst({
     repo,
     jetzt: () => jetzt,
@@ -295,20 +296,17 @@ describe("D5 · K05 — der manuelle Lauf liest jetzt, nicht aus dem Verlauf", (
 
 describe("D6 · K06 — Serie ab Datum mit den Zeitzonenregeln der Laufzeit, ohne Wecker", () => {
   it("Sommerzeit-Lücke: 02:30 wird 03:30; Winterzeit-Doppelung: nur das erste Vorkommen", () => {
-    expect(ortszeitZuUtc("2027-03-28", "02:30", "Europe/Berlin")).toEqual({
-      utcMs: Date.parse("2027-03-28T01:30:00.000Z"),
-      hinweis: "sommerzeit_verschoben",
-    });
-    expect(ortszeitZuUtc("2026-10-25", "02:30", "Europe/Berlin")).toEqual({
-      utcMs: Date.parse("2026-10-25T00:30:00.000Z"),
-      hinweis: "winterzeit_doppelt",
-    });
-    expect(ortszeitZuUtc("2026-07-01", "08:00", "Europe/Berlin").utcMs).toBe(
-      Date.parse("2026-07-01T06:00:00.000Z"),
-    );
-    expect(ortszeitZuUtc("2026-11-02", "08:00", "Europe/Berlin").utcMs).toBe(
-      Date.parse("2026-11-02T07:00:00.000Z"),
-    );
+    for (const [datum, uhrzeit, iso, hinweis] of [
+      ["2027-03-28", "02:30", "2027-03-28T01:30:00.000Z", "sommerzeit_verschoben"],
+      ["2026-10-25", "02:30", "2026-10-25T00:30:00.000Z", "winterzeit_doppelt"],
+      ["2026-07-01", "08:00", "2026-07-01T06:00:00.000Z", null],
+      ["2026-11-02", "08:00", "2026-11-02T07:00:00.000Z", null],
+    ] as const) {
+      const z = serie({ beginn: datum, uhrzeit, zeitzone: "Europe/Berlin" });
+      expect(naechsteTermine(z, Date.parse(datum), 1)).toEqual([
+        { datum, zeitpunkt: iso, hinweis },
+      ]);
+    }
   });
 
   it("wöchentlich über die Umstellung, monatlich mit Monatsende, mit Ende und ab jetzt", () => {
@@ -451,7 +449,10 @@ describe("D8 · K08 — offene Fähigkeit konkret, kein simulierter ausführbare
 
   it("KALIBRIERUNG: erst wenn jede Fähigkeit erfüllt ist, ist nichts mehr offen", () => {
     const alle = BESCHAFFUNG_FAEHIGKEITEN.map((f) => ({ ...f, erfuellt: true }));
-    const dienst = new FunktionenDienst({ repo: new InMemoryFunktionenRepo(), faehigkeiten: alle });
+    const dienst = new FunktionenDienst({
+      repo: new RoutinenFunktionenRepo(new InMemoryRoutinenRepo()),
+      faehigkeiten: alle,
+    });
     expect(dienst.offeneFaehigkeiten()).toEqual([]);
   });
 });

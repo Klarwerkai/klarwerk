@@ -92,21 +92,3 @@ export function zoneLesbar(zone: string, sprache: string, augenblick: Date): str
     .find((t) => t.type === "timeZoneName")?.value;
   return kurz ? `${zone} (${kurz})` : zone;
 }
-
-/** Ein `datetime-local`-Wert (Ortszeit des Browsers) als UTC-Zeitpunkt — leer bleibt leer. */
-export function ortszeitZuIso(wert: string): string | null {
-  if (!wert) {
-    return null;
-  }
-  const d = new Date(wert);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-/** Ein UTC-Zeitpunkt als `datetime-local`-Wert in der Ortszeit des Browsers. */
-export function isoZuOrtszeit(iso: string): string {
-  const d = new Date(iso);
-  const zwei = (n: number): string => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${zwei(d.getMonth() + 1)}-${zwei(d.getDate())}T${zwei(
-    d.getHours(),
-  )}:${zwei(d.getMinutes())}`;
-}

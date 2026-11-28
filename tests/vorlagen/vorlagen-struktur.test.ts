@@ -19,14 +19,26 @@ import {
   wechsleVorlage,
 } from "../../apps/web/src/lib/vorlagenStruktur";
 import {
-  KEINE_VORGABE,
   STANDARD_VORLAGEN,
+  type SpaceVorgabeEingabe,
   type VorlageFassung,
   bezugAus,
   pruefeAngaben,
   pruefeVorlageEingabe,
   waehleStartvorlage,
 } from "../../services/app/src/vorlagen";
+
+// Gesamtcheck R-1329 (Aufrufer-Wächter): die Space-Vorgabe „ohne jede Vorgabe“ als Ausgangsobjekt
+// dieser Prüfung, von dem die Fälle je EIN Feld abwandeln. Bis hierher ein Export von
+// `services/app/src/vorlagen.ts`, den nur dieser Test las.
+const KEINE_VORGABE: SpaceVorgabeEingabe = {
+  verbindlicheVorlageId: null,
+  kategorien: [],
+  pflichtKategorie: false,
+  mindestensTags: 0,
+  tags: [],
+  hinweis: "",
+};
 
 const std = (id: string): VorlageFassung => {
   const v = STANDARD_VORLAGEN.find((x) => x.id === id);

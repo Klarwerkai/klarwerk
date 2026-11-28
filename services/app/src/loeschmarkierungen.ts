@@ -103,20 +103,6 @@ export class DateiLoeschmarkierungen implements LoeschmarkierungsAblage {
   }
 }
 
-export class InMemoryLoeschmarkierungen implements LoeschmarkierungsAblage {
-  readonly ort = "speicher";
-  private readonly m: Loeschmarkierung[] = [];
-
-  vermerke(m: Loeschmarkierung): Promise<void> {
-    this.m.push({ ...m });
-    return Promise.resolve();
-  }
-
-  alle(): Promise<Loeschmarkierung[]> {
-    return Promise.resolve(this.m.map((x) => ({ ...x })));
-  }
-}
-
 /** Liest den Ort aus der Umgebung; nicht gesetzt → keine Ablage. */
 export function leseLoeschmarkierungsAblage(
   env: Record<string, string | undefined> = process.env,

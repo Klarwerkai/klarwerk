@@ -69,7 +69,6 @@ export {
   parseDuplicateResponse,
   // PMO-FEA-0006: DOM-freies Extract-Parsing inkl. G-2-Belegstellen-Gate (testbar).
   parseExtractResponse,
-  excerptFoundInDocument,
   findExcerptInDocument,
   MAX_EXTRACT_POINTS,
   MAX_EXCERPT_LENGTH,

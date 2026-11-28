@@ -8,7 +8,7 @@ import {
   MAX_EXTRACT_POINTS,
   type ModelClient,
   ModelProvider,
-  excerptFoundInDocument,
+  findExcerptInDocument,
   parseExtractResponse,
 } from "./provider-model";
 import { Reasoner } from "./service";
@@ -28,17 +28,20 @@ function pointJson(points: { title: string; summary?: string; sourceExcerpt: str
   return JSON.stringify({ points });
 }
 
-describe("PMO-FEA-0006: excerptFoundInDocument (G-2-Gate)", () => {
+// Gesamtcheck R-1329 (Aufrufer-Wächter): gemessen wird das Gate, das `parseExtractResponse` WIRKLICH
+// ruft (`findExcerptInDocument`). Die frühere Hülle `excerptFoundInDocument` (dasselbe als
+// Wahrheitswert) hatte keinen Produktaufrufer und ist entfernt; „gefunden" heisst hier „nicht null".
+describe("PMO-FEA-0006: findExcerptInDocument (G-2-Gate)", () => {
   it("findet wörtliche Auszüge — auch mit abweichendem Whitespace und Groß-/Kleinschreibung", () => {
-    expect(excerptFoundInDocument("Ventil X sofort zu schließen", DOC)).toBe(true);
-    expect(excerptFoundInDocument("  ventil x   sofort zu schließen ", DOC)).toBe(true);
-    expect(excerptFoundInDocument("Dosierwert muss nach jedem\nSchichtwechsel", DOC)).toBe(true);
+    expect(findExcerptInDocument("Ventil X sofort zu schließen", DOC)).not.toBeNull();
+    expect(findExcerptInDocument("  ventil x   sofort zu schließen ", DOC)).not.toBeNull();
+    expect(findExcerptInDocument("Dosierwert muss nach jedem\nSchichtwechsel", DOC)).not.toBeNull();
   });
 
   it("weist erfundene oder paraphrasierte Auszüge zurück", () => {
-    expect(excerptFoundInDocument("Das Ventil öffnet man bei Unterdruck", DOC)).toBe(false);
-    expect(excerptFoundInDocument("", DOC)).toBe(false);
-    expect(excerptFoundInDocument("   ", DOC)).toBe(false);
+    expect(findExcerptInDocument("Das Ventil öffnet man bei Unterdruck", DOC)).toBeNull();
+    expect(findExcerptInDocument("", DOC)).toBeNull();
+    expect(findExcerptInDocument("   ", DOC)).toBeNull();
   });
 });
 
@@ -54,7 +57,7 @@ describe("R-1070: Bedeutung und Originalstelle", () => {
     ["Druck muss > 20 bar bleiben", "Druck muss < 20 bar bleiben"],
     ["Druck muss <= 20 bar bleiben", "Druck muss < 20 bar bleiben"],
   ])("weist Zeichenveränderung ab: %s => %s", (doc, quote) => {
-    expect.soft(excerptFoundInDocument(quote, doc)).toBe(false);
+    expect.soft(findExcerptInDocument(quote, doc)).toBeNull();
     expect.soft(parseExtractResponse(rawPoint(quote), doc)).toEqual([]);
   });
 
@@ -65,7 +68,7 @@ describe("R-1070: Bedeutung und Originalstelle", () => {
     ["Spalt maximal 15 mm", "5 mm"],
     ["Spalt maximal 1,5 mm", "Spalt maximal 1"],
   ])("weist angeschnittene Zahl/Vorzeichen ab: %s => %s", (doc, quote) => {
-    expect(excerptFoundInDocument(quote, doc)).toBe(false);
+    expect(findExcerptInDocument(quote, doc)).toBeNull();
   });
 
   it.each([

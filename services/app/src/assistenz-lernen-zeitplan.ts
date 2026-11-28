@@ -6,7 +6,6 @@ import { vorkommenVon } from "./klara-erinnerung";
 import {
   type Zeitplan as DZeitplan,
   SOMMERZEIT_VORGABE,
-  loeseMitRegel,
   lokalVon,
   plusTage,
 } from "./klara-erinnerung-zeit";
@@ -15,26 +14,6 @@ export interface Termin {
   readonly kennung: string;
   readonly am: number;
 }
-export interface Lokal {
-  readonly y: number;
-  readonly mo: number;
-  readonly d: number;
-  readonly h: number;
-  readonly mi: number;
-}
-const zwei = (n: number) => String(n).padStart(2, "0");
-
-/** Kompatibilität für erhaltene Originalprüfungen; die Auflösung erledigt ausschließlich D. */
-export function lokalZuUtc(zone: string, l: Lokal): number {
-  const r = loeseMitRegel(
-    { datum: `${l.y}-${zwei(l.mo)}-${zwei(l.d)}`, uhrzeit: `${zwei(l.h)}:${zwei(l.mi)}` },
-    zone,
-    SOMMERZEIT_VORGABE,
-  );
-  if (r.ms === null) throw new Error("Lokale Zeit konnte nicht aufgelöst werden.");
-  return r.ms;
-}
-
 export function faelligerTermin(
   z: Zeitplan,
   seit: number,

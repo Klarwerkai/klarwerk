@@ -62,7 +62,9 @@ const MOBILE_ROUTE = "/mobile";
 const AppShell = lazy(() =>
   mitFachtexten(import("./shell/AppShell").then((m) => ({ default: m.AppShell }))),
 );
-const Kiosk = lazy(() => mitFachtexten(import("./kiosk/Kiosk")));
+const Kiosk = lazy(() =>
+  mitFachtexten(import("./kiosk/Kiosk").then((m) => ({ default: m.default }))),
+);
 
 // ================================================================================================
 // JOB 4333 — DIE ADRESSE MUSS AUS DEM ROUTER KOMMEN, UND DESHALB STEHT SIE IN EINEM EIGENEN BAUTEIL.
