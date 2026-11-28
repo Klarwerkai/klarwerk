@@ -93,7 +93,9 @@ describe("Kante 8: Dokumentwechsel außerhalb der SPA bleiben durch beforeunload
     // Schutz, ein Anmelder weniger. Die Zusage darunter (jede Dirty-Seite braucht
     // `useUnloadGuard`) gilt für den neuen Eintrag unverändert.
     expect(dirtyFlowPages.map(rel).sort()).toEqual([
+      "components/bibliothek/BibliothekLesen.tsx",
       "components/erfassen/Blatt.tsx",
+      "pages/AblaufUebernahme.tsx",
       "pages/Capture.tsx",
       "pages/Mobile.tsx",
     ]);

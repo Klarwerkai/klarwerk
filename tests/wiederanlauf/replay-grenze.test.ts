@@ -67,6 +67,7 @@ async function validiert(services: AppServices, titel: string): Promise<string> 
     type: "best_practice",
     category: "Wartung",
     author: "anna",
+    confidentiality: "intern",
   } as never);
   await services.validation.adminValidate(ko.id, "admin");
   return ko.id;

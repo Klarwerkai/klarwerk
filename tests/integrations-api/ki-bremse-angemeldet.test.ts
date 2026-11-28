@@ -176,6 +176,7 @@ describe("R-0842 · angemeldete Sitzungen werden gebremst", () => {
       "POST /api/media/transcribe",
       // produkt:20261009:referenzki-pruefdienst (REF-02): die erneute Referenzprüfung ruft ein Modell.
       "POST /api/ask/referenzpruefung/:pruefId/erneut",
+      "POST /api/reasoner/referenzpruefung/funktionscheck",
       // BPA-13: die Übergabe eines KI-Auftrags erreicht auf dem API-Weg den gebundenen Anbieter.
       "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe",
     ]);

@@ -124,6 +124,7 @@ function text(code: string, key: string): string {
 }
 
 beforeEach(() => {
+  window.localStorage.setItem("kw.sprache", "de");
   versatzMs = 0;
   vi.spyOn(Date, "now").mockImplementation(() => echtesJetzt() + versatzMs);
 });

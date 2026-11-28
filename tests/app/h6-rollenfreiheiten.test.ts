@@ -56,7 +56,7 @@ describe("JOB 3065 H6 · Rollen-Freiheiten", () => {
   it("2 ABGELEITET · die Wortmenge je Rolle ist die erwartete (DE, ohne Dubletten, feste Ordnung)", async () => {
     await i18n.changeLanguage("de");
     const worte = (r: Role): string[] => freiheitenSchluessel(r).map((k) => i18n.t(k));
-    expect(worte("viewer")).toEqual(["fragen", "lesen"]);
+    expect(worte("viewer")).toEqual(["fragen", "lesen", "Workflows nutzen"]);
     expect(worte("experte")).toEqual(["erfassen"]);
     expect(worte("controller")).toEqual(["prüfen", "Konflikte", "Duplikate"]);
     // Der Eintrag „/admin" IST die Fläche der Einstellungen — seine Freiheiten sind ihre Themen.

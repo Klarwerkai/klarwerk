@@ -65,7 +65,7 @@ describe("B52/E · GELB-1: die Ausnahme haengt am Kandidaten", () => {
     // Die drei Stellen aus dem Befund. Sie sind an ihrem Umgebungstext erkannt, nicht an einer
     // Zeilennummer — Zeilennummern verschieben sich beim naechsten Umbau, der Text nicht.
     const stellen: Array<[string, string]> = [
-      ["Bauteil-Erhebung", 'e.kandidaten.some((k) => k.art.startsWith("aria-modal"))'],
+      ["Bauteil-Erhebung", 'k.art.startsWith("aria-modal")'],
       ["unregistrierte Vollflaechen", "spanntVollflaecheAuf(e.quelle.gestrippt)"],
       ["unregistrierte Wirkflaechen", "wirktModalAmBestand(e.quelle.gestrippt)"],
     ];
