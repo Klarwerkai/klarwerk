@@ -15,11 +15,6 @@ let root: ReturnType<typeof createRoot>;
 let vorher: typeof fetch;
 let verliertAntwort = false;
 let vortragsAnfragen: VortragsAuftrag[] = [];
-async function warten() {
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 35));
-  });
-}
 async function zeichne(lage: FolienDatenLage = w.lage) {
   await act(async () => {
     root.render(createElement(VortragVorbereitung, { lage, oeffne: () => {} }));
@@ -51,15 +46,28 @@ async function eingabe(name: string, wert: string) {
     e.dispatchEvent(new Event(e.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
   });
 }
-async function knopf(name: string) {
+async function klicke(name: string) {
   const b = [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === name);
   expect(b, name).toBeTruthy();
   await act(async () => {
     if (!b) throw new Error(`Knopf fehlt: ${name}`);
     b.click();
   });
-  await warten();
 }
+
+async function knopf(name: string) {
+  await klicke(name);
+  const gruppe = host.querySelector("fieldset");
+  if (!gruppe) throw new Error("Vortragsformular fehlt");
+  const frist = Date.now() + 5_000;
+  while (gruppe.disabled && Date.now() < frist) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+  }
+  expect(gruppe.disabled, `Vortragsformular nach „${name}“ wieder bedienbar`).toBe(false);
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   w = await vortragsWelt();
@@ -167,7 +175,7 @@ it("Q-1 · verspätete alte Antwort bleibt nach Datenwechsel geschlossen und st�
   await eingabe("Rückfrage", "Wo belegen wir 1500?");
   const alt = halteAntwort();
   try {
-    await knopf("Passenden Beleg suchen");
+    await klicke("Passenden Beleg suchen");
     await alt.bereit;
     const neu = structuredClone(w.lage) as FolienDatenLage;
     neu.datenpunkte = [];
@@ -176,14 +184,12 @@ it("Q-1 · verspätete alte Antwort bleibt nach Datenwechsel geschlossen und st�
     await zeichne();
     const aktuell = halteAntwort();
     try {
-      await knopf("Passenden Beleg suchen");
+      await klicke("Passenden Beleg suchen");
       await aktuell.bereit;
       await act(async () => alt.freigeben());
-      await warten();
       expect(ergebnis()).toBeNull();
       expect(host.querySelector("fieldset")?.disabled).toBe(true);
       await act(async () => aktuell.freigeben());
-      await warten();
       expect(ergebnis()?.textContent).toContain("1.500 T€");
       expect(host.querySelector("fieldset")?.disabled).toBe(false);
     } finally {
@@ -215,13 +221,12 @@ it("Q-1 · Kontextwechsel während frischer Speicherprüfung verhindert die alte
   await knopf("Nachbereitung prüfen und Aufgaben vorschlagen");
   const alt = halteAntwort();
   try {
-    await knopf("Als eigene Notiz und persönliche Aufgabe speichern");
+    await klicke("Als eigene Notiz und persönliche Aufgabe speichern");
     await alt.bereit;
     const neu = structuredClone(w.lage) as FolienDatenLage;
     neu.datenpunkte = [];
     await zeichne(neu);
     await act(async () => alt.freigeben());
-    await warten();
     expect(ergebnis()).toBeNull();
     expect(label("Sprechernotiz").value).toBe("Meine eigene Erklärung.");
     expect(host.textContent).toContain("Regionale Ursache erklären.");
