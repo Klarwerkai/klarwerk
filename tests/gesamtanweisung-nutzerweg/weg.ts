@@ -102,6 +102,21 @@ export async function freierPort(): Promise<number> {
   });
 }
 
+/** Auch aus Vitest muss das ausgelieferte Bündel den Offline-Dienstarbeiter registrieren. */
+export function bauePruefflaeche(): void {
+  execFileSync("npx", ["vite", "build"], {
+    cwd: join(WURZEL, "apps/web"),
+    env: {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      TMPDIR: process.env.TMPDIR,
+      NODE_ENV: "production",
+    },
+    stdio: "pipe",
+    timeout: 600_000,
+  });
+}
+
 /**
  * Die gebaute Fläche herstellen, wenn sie fehlt — einmal, mit dem echten Bündler.
  *
@@ -117,11 +132,7 @@ export function stelleFlaecheBereit(): string {
     return "war schon da";
   }
   const begonnen = Date.now();
-  execFileSync("npx", ["vite", "build"], {
-    cwd: join(WURZEL, "apps/web"),
-    stdio: "pipe",
-    timeout: 600_000,
-  });
+  bauePruefflaeche();
   if (!existsSync(join(DIST, "index.html"))) {
     throw new Error(`${MARKE}: der Bau lief durch, aber ${DIST}/index.html fehlt weiterhin.`);
   }
