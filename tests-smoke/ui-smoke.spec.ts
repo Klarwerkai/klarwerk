@@ -36,6 +36,7 @@ import {
 } from "./support/import-json-kasten";
 // Aufnahme 20260922 (R-2212): die zentrale KI-Freigabe der Instanz für die beiden @modell-Fälle.
 import { mitGrundfreigabe } from "./support/ki-freigabe";
+import { pruefePruefboardDatenlage } from "./support/pruefboard-datenlage";
 
 test.describe.configure({ mode: "serial" });
 
@@ -673,87 +674,11 @@ test("Alle Kernrouten rendern (keine weiße Seite)", async ({ page }) => {
 // Runde der Browser-Beleg für mega48 verloren gegangen: er lief nie, weil sechs Zeilen weiter oben
 // einer scheiterte. Eine Kalibrierung ist eine Zusatzaussage über den Lauf; sie darf die eigentlichen
 // Belege nicht verdecken können. Deshalb steht sie hinter allen von ihnen.
-// AUFTRAG-mega49 BLOCK A2 — DIE KALIBRIERUNG DER DATENLAGE.
-//
-// Ohne diesen Fall wäre „der mega47-Fall ist in BEIDEN Datenlagen grün" eine Behauptung ohne
-// Deckung. Denn zweimal grün heißt für sich genommen nur zweimal grün — es heißt NICHT, dass die
-// zweite Lage sich von der ersten unterschied. Genau diese Sorte ungedeckter Zusage ist der
-// Ausgangspunkt dieses Auftrags gewesen.
-//
-// Deshalb misst dieser Fall, was der Lauf zu sein behauptet, und zwar an DER Seite, um die es geht:
-//   · mit `KLARWERK_SMOKE_SEED=1` MUSS das Prüf-Board Einträge tragen (der Leer-Text ist dann weg)
-//   · ohne Seed UND in einem hermetischen Lauf MUSS es leer sein („Keine offenen Objekte.")
-// Hörte der Demo-Bestand eines Tages auf, das Prüf-Board zu füllen, wäre `smoke:ui:gate:daten`
-// keine zweite Datenlage mehr, sondern eine Wiederholung der ersten — und genau dann wird dieser
-// Fall rot, statt dass der mega47-Fall still wieder datenabhängig würde.
-//
-// AUFTRAG-mega50 BLOCK C — DIE AUFLAGE AUS SHIP 3 (SCRUM-557). Die Kalibrierung war bis hierher
-// falsch: sie erwartete den Leerzustand IMMER, wenn kein Seed gesetzt war. Das gilt aber nur in den
-// hermetischen Skripten. Im vollen Lauf (`npm run smoke:ui`) läuft der Fall „Kernfluss … @modell"
-// als ERSTER und legt selbst ein Objekt aufs Prüf-Board — die Kalibrierung meldete dann in allen
-// drei Engines rot, obwohl nichts kaputt war. Kein Seed heißt eben nicht „leer": es heißt nur
-// „nicht geseedet".
-//
-// Der Lauf muss also SAGEN können, dass der @modell-Fall nicht dabei war. Das tut
-// `KLARWERK_SMOKE_OHNE_MODELL`, gesetzt in genau den beiden hermetischen Skripten, die den
-// Leerzustand überhaupt erwarten dürfen (`smoke:ui:gate`, `smoke:ui:gate:drei` — beide fahren mit
-// `--grep-invert @modell`). `smoke:ui:gate:daten` braucht es nicht: dort entscheidet der Seed.
-//
-// KEIN ZWEIG IM PRÜFLING: die Verzweigung sitzt weiterhin hier, in der Kalibrierung. Der
-// mega47-Fall selbst kennt die Datenlage nicht und fragt sie nicht ab — er muss sie überleben.
+// Die Ersteinrichtung belegt den zugesagten Startbestand vor allen schreibenden Fällen.
+// Jeder ausgewählte Browser gleicht hier die tatsächlich gelieferten Titel mit der Warteschlange ab.
 test("mega49: die Datenlage dieses Laufs ist die zugesagte", async ({ page }) => {
   await ensureLoggedIn(page);
-  await page.goto("/validierung");
-  // Erst auf die Seite warten, sonst misst man den Ladezustand statt der Datenlage.
-  //
-  // JOB 3061 · H2: Die vier Prüfseiten stehen unter EINEM Reiterkopf; die Überschrift heisst jetzt
-  // „Prüfen", der Reiter „Offen". Gewartet wird deshalb auf den ROUTENANKER dieser Seite — er ist
-  // ohnehin die härtere Zusage (die Fehlerkarte und der Platzhalter tragen ihn nicht, eine
-  // Überschrift schon; genau darum prüft ihn auch der Fall „Alle Kernrouten rendern").
-  await expect(page.getByTestId("page-validierung")).toBeVisible({ timeout: 10_000 });
-
-  const leerText = page.getByText("Keine offenen Objekte.");
-  const geseedet = process.env.KLARWERK_SMOKE_SEED === "1";
-  const ohneModell = process.env.KLARWERK_SMOKE_OHNE_MODELL === "1";
-
-  // ================================================================================================
-  // AUFTRAG-mega59 BLOCK H3 — DER GESEEDETE ZWEIG PRÜFTE EINE ABWESENHEIT.
-  // ================================================================================================
-  //
-  // `await expect(leerText).toHaveCount(0)` ist auch im LADEZUSTAND und im FEHLERZUSTAND erfüllt
-  // (QueryState rendert den Leer-Text nur im geladenen, leeren Fall). Ein Lauf mit leerem oder
-  // fehlgeschlagenem Prüf-Board war damit grün — die Kalibrierung wurde nicht eingelöst, sie wurde
-  // behauptet. Und genau diese Kalibrierung ist die Deckung dafür, dass `smoke:ui:gate:daten` eine
-  // ZWEITE Datenlage ist und nicht eine Wiederholung der ersten.
-  //
-  // Repariert mit einer POSITIVEN Zusicherung, und mit dem Ausschluss der beiden Zwischenzustände
-  // BEVOR eine Aussage über die Datenlage fällt — sonst misst man wieder den Ladezustand.
-  if (geseedet) {
-    // Erst Lade- und Fehlerzustand ausschließen (QueryState: `state.loading` / `state.error`) …
-    await expect(page.getByText("Lädt …")).toHaveCount(0);
-    await expect(page.getByText("Etwas ist schiefgelaufen.")).toHaveCount(0);
-    // … dann die eigentliche Aussage: es sind wirklich Prüf-Einträge DA.
-    await expect(
-      page.getByTestId("validation-row").first(),
-      "geseedeter Lauf ohne einen einzigen Prüf-Eintrag — die zweite Datenlage ist keine",
-    ).toBeVisible({ timeout: 15_000 });
-    // Und die alte Abwesenheitsprüfung bleibt als Zusatz stehen (sie ist nicht falsch, nur zu schwach).
-    await expect(leerText).toHaveCount(0);
-  } else if (ohneModell) {
-    await expect(leerText.first()).toBeVisible({ timeout: 10_000 });
-  } else {
-    // Der volle Lauf: weder Seed noch Hermetik. Der @modell-Fall lief und hat das Board gefüllt.
-    // Hier eine Aussage über den Leerzustand zu treffen wäre keine Kalibrierung, sondern eine Wette
-    // auf die Reihenfolge der Fälle — und genau so eine Wette war der Fehlalarm aus Ship 3. Sie
-    // wird deshalb NICHT behauptet, und das steht laut im Bericht des Laufs statt still grün zu
-    // sein.
-    test.info().annotations.push({
-      type: "Datenlage",
-      description:
-        "voller Lauf (kein Seed, kein KLARWERK_SMOKE_OHNE_MODELL): der Leerzustand des " +
-        "Prüf-Boards wird bewusst NICHT geprüft — der @modell-Fall füllt es selbst.",
-    });
-  }
+  await pruefePruefboardDatenlage(page);
 });
 
 // ==================================================================================================
