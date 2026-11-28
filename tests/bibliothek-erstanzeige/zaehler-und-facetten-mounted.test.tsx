@@ -37,7 +37,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "../../apps/web/node_modules/@tanstack/react-query";
-import { act, createElement } from "../../apps/web/node_modules/react";
+import { act, createElement, useCallback } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { useNavBadges } from "../../apps/web/src/app/useNavBadges";
 import * as facetFilter from "../../apps/web/src/lib/facetFilter";
@@ -160,16 +160,18 @@ it("Facetten zählen gezielt neu; Labels und Menüsuche bleiben aktuell", async 
   let selection: FacetSelection = {};
   let ui: FacetRailUiState = { query: { author: "Anna" }, showAll: {} };
   let namen: Record<string, string> = { u1: "Anna", u2: "Bert" };
-  let groups: ReturnType<typeof useFacetRailGroups> = [];
+  let offen = false;
+  let groups: ReturnType<ReturnType<typeof useFacetRailGroups>> = [];
   function Sonde() {
     // Wie useAuthorName: bewusst eine neue Resolverfunktion pro Render.
-    groups = useFacetRailGroups(
-      items,
+    const liesGruppen = useFacetRailGroups(
+      useCallback(() => items, [items]),
       configs,
       selection,
       ui,
       (_key, value) => namen[value] ?? value,
     );
+    if (offen) groups = liesGruppen();
     return null;
   }
   const root = platz();
@@ -179,6 +181,9 @@ it("Facetten zählen gezielt neu; Labels und Menüsuche bleiben aktuell", async 
       await flush();
     });
   }
+  await zeichne();
+  expect(rechne).toHaveBeenCalledTimes(0);
+  offen = true;
   await zeichne();
   expect(rechne).toHaveBeenCalledTimes(1);
   expect(groups[0]?.options.map((option) => option.value)).toEqual(["u1"]);
