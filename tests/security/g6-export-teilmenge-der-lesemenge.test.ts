@@ -98,13 +98,11 @@ async function setup() {
       type: "best_practice",
       category: "Anlage 1",
       author,
+      confidentiality: vertraulich ? "vertraulich" : "intern",
       tags: [],
     });
     if (validiert) {
       await ko.setValidationState(angelegt.id, { trust: 80, status: "validiert" });
-    }
-    if (vertraulich) {
-      await ko.setConfidentiality(angelegt.id, "vertraulich", "admin");
     }
     return angelegt.id;
   }

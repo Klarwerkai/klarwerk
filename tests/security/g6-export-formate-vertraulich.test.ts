@@ -81,6 +81,7 @@ async function setup() {
   const offen = await ko.create({
     title: OFFEN,
     statement: "Vor der Wartung das Ventil entlasten.",
+    confidentiality: "intern",
     type: "best_practice",
     category: "Anlage 1",
     author: "admin",
@@ -103,6 +104,7 @@ async function setup() {
   await ko.create({
     title: ROH,
     statement: "Noch nicht geprueft.",
+    confidentiality: "intern",
     type: "best_practice",
     category: "Anlage 1",
     author: "admin",

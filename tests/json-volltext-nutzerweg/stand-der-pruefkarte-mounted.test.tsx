@@ -96,9 +96,9 @@ async function durchatmen(takte = 10): Promise<void> {
 }
 
 function istWarteschlangenLesung(eingabe: unknown, init?: RequestInit): boolean {
-  const url = String(eingabe);
+  const url = new URL(String(eingabe), window.location.href);
   const methode = (init?.method ?? "GET").toUpperCase();
-  return methode === "GET" && url.includes("/api/library/import/candidates");
+  return methode === "GET" && url.pathname === "/api/library/import/candidates";
 }
 
 /** Die Störstelle einbauen. Sie liegt über der Brücke, damit die echte App darunter bleibt. */
