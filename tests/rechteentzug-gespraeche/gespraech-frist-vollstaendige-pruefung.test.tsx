@@ -139,7 +139,7 @@ it("RC3-P1: 15-s-Anlass und tatsächlicher60-s-Ablauf; Fehler, Teilecho, hängen
   expect(text()).toContain(MARKE);
   expect(text()).toContain(EIGEN);
   const roh = structuredClone(G);
-  stoppen = starteQuellpruefung(KONTO, t);
+  stoppen = starteQuellpruefung(KONTO, () => t);
   await vi.advanceTimersByTimeAsync(15_000);
   expect(
     abrufe.filter((a) => a.method === "GET" && a.url.startsWith("/api/me/klara/")),
@@ -172,7 +172,7 @@ it("RC3-P1: 15-s-Anlass und tatsächlicher60-s-Ablauf; Fehler, Teilecho, hängen
   expect(text()).not.toContain(MARKE);
   expect(G).toEqual(roh);
   put = "voll";
-  stoppen = starteQuellpruefung(KONTO, t);
+  stoppen = starteQuellpruefung(KONTO, () => t);
   const vorFokus = abrufe.length;
   window.dispatchEvent(new Event("focus"));
   await vi.advanceTimersByTimeAsync(0);

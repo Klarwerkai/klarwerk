@@ -445,14 +445,14 @@ export function pruefeEcht(kontoId: string, t: TFunction): Promise<void> {
 }
 
 /** Der vorhandene Gesprächsanlass: 15 s sowie Fokus/Sichtbarkeit, höchstens eine eigene Lesung. */
-export function starteQuellpruefung(kontoId: string, t: TFunction): () => void {
+export function starteQuellpruefung(kontoId: string, uebersetzung: () => TFunction): () => void {
   let offen = true;
   let pruefung: Promise<void> | null = null;
   const anlass = (): void => {
     pruefeFrist();
     if (!offen || zustand.kontoId !== kontoId || document.visibilityState === "hidden" || pruefung)
       return;
-    pruefung = pruefeEcht(kontoId, t).finally(() => {
+    pruefung = pruefeEcht(kontoId, uebersetzung()).finally(() => {
       pruefung = null;
     });
   };

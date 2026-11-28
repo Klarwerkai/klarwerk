@@ -412,6 +412,9 @@ export function KlaraVorschau({
   // produkt:20261010:assistenz-name-avatar: `t` trägt den persönlichen Namen als `{{assistenz}}`;
   // Name, Motiv und Bewegung kommen aus dem kontobezogenen Profil (`lib/assistenzProfil.ts`).
   const { t, i18n } = useAssistenzT();
+  // Ereignisse und laufende Quellenprüfungen verwenden die aktuelle Oberflächensprache.
+  const tRef = useRef(t);
+  tRef.current = t;
   const assistenz = useAssistenzAnzeige();
   const produkt = betriebsart === "produkt";
   // UI-MIN-10/UI-S12 (Nacharbeit 3, Bens Befund): die BISHERIGE Produktfläche als Vergleichsbasis.
@@ -491,14 +494,14 @@ export function KlaraVorschau({
       return;
     }
     if (istEcht) {
-      void pruefeEcht(kontoId, t);
+      void pruefeEcht(kontoId, tRef.current);
     }
     // Erfolgreiche Sessionprüfung ist auch bei gleichem Rechteheader ein zusätzlicher Anlass.
-  }, [kontoId, istEcht, t, rechteEpoche, sitzung.sitzungGeprueftAm]);
+  }, [kontoId, istEcht, rechteEpoche, sitzung.sitzungGeprueftAm]);
   useEffect(() => {
-    if (kontoId && istEcht) return starteQuellpruefung(kontoId, t);
+    if (kontoId && istEcht) return starteQuellpruefung(kontoId, () => tRef.current);
     return undefined;
-  }, [kontoId, istEcht, t]);
+  }, [kontoId, istEcht]);
   // „Anfrage läuft seit … s“ — einmal je Sekunde neu gezeichnet, nur solange eine läuft.
   const [, setTakt] = useState(0);
   useEffect(() => {
@@ -520,9 +523,6 @@ export function KlaraVorschau({
   );
   const kontextRef = useRef(kontext);
   kontextRef.current = kontext;
-  // Für Ereignishörer, die einmal angemeldet werden (Markierung, Ziehen): der aktuelle Übersetzer.
-  const tRef = useRef(t);
-  tRef.current = t;
   // NACHARBEIT 3 (Bens Befund): Ein Entwurf lädt oft erst nach dem Seitenwechsel, und ein Wechsel
   // über `?draft=` setzt den Titel PROGRAMMATISCH (`Blatt.tsx` → `setTitle`) — ohne input-Ereignis.
   // Klara liest deshalb auf Seiten, deren Objekt aus einem Feld kommt (Erfassung, Fragen), das
