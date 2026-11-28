@@ -23,6 +23,7 @@ import type { KnowledgeObject, KoService } from "../../services/knowledge-object
 function ko(over: Partial<KnowledgeObject>): KnowledgeObject {
   return {
     id: "x",
+    confidentiality: "intern",
     title: "",
     statement: "",
     conditions: [],
