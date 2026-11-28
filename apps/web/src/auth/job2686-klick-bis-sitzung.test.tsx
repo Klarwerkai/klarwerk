@@ -392,20 +392,20 @@ function abbauen(): void {
  * Konto-Kreis; die Rolle kommt weiterhin aus `/api/auth/me`.
  */
 async function kontoMenueOeffnen(): Promise<void> {
-  for (let i = 0; i < 80; i += 1) {
-    const kreis = container.querySelector<HTMLButtonElement>('[data-testid="kopfband-konto"]');
-    if (kreis) {
-      await act(async () => {
-        kreis.click();
-      });
-      await ruhen(5);
-      return;
-    }
-    await ruhen(5);
-  }
-  throw new Error(
-    `Der Konto-Kreis des Kopfbands erschien nicht. Sichtbar: "${(container.textContent ?? "").slice(0, 300)}"`,
+  const kreis = await vi.waitFor(
+    async () => {
+      await act(() => vi.dynamicImportSettled());
+      const knopf = container.querySelector<HTMLButtonElement>('[data-testid="kopfband-konto"]');
+      if (!knopf) {
+        throw new Error("Der Konto-Kreis des Kopfbands erschien nicht.");
+      }
+      return knopf;
+    },
+    { timeout: 5000 },
   );
+  await act(async () => {
+    kreis.click();
+  });
 }
 
 /** Sucht einen Knopf/Link an seinem sichtbaren Text. */
