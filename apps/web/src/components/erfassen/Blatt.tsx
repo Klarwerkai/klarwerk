@@ -4087,7 +4087,9 @@ export function Blatt({
             wörtlich „Fehler = EIN Satz UNTER den Knöpfen + ,Erneut versuchen'", und das ist kein
             Formalismus: wer gerade geklickt hat, sieht auf den Knopf. Antwort und Handlung stehen
             jetzt beieinander — Fehler und Wiederholung, Erfolg und Weiterweg. */}
-        <div className="pointer-events-none sticky bottom-0 flex flex-col items-end gap-1.5 pb-7 pr-0">
+        <div
+          className={`pointer-events-none bottom-0 flex flex-col items-end gap-1.5 pb-7 pr-0 ${vertraulichkeitHinweisSteht ? "sm:sticky" : "sticky"}`}
+        >
           {/* `pointer-events-none` an der Leiste, `pointer-events-auto` an JEDEM Kind, das man
               anfassen soll: Die Leiste liegt über dem Blatt und dürfte sonst das Schreiben in der
               letzten Zeile blockieren. Beim Umzug der Lagezeile hierher war das in R6 einen Lauf
