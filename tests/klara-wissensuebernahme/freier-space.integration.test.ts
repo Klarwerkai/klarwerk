@@ -8,11 +8,11 @@ it("freier Space ohne Vorlage hält echte PG-Sperre gegen parallele Archivierung
   const container = await new GenericContainer("postgres:16-alpine")
     .withName(`klara-f-space-${randomUUID()}`)
     .withLabels({ "klarwerk.owner": "klara-f-20261020" })
-    .withEnvironment({ POSTGRES_PASSWORD: "synthetisch", POSTGRES_DB: "klara_f_space_test" })
+    .withEnvironment({ POSTGRES_PASSWORD: "synthetisch", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
-  const url = `postgresql://postgres:synthetisch@${container.getHost()}:${container.getMappedPort(5432)}/klara_f_space_test`;
+  const url = `postgresql://postgres:synthetisch@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
   const pa = createPool(url);
   const pb = createPool(url);
   let frei: () => void = () => {};

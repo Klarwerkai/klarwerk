@@ -21,11 +21,11 @@ describe("AW19 · PostgreSQL, Quellenbindung und tatsächliche Konkurrenz", () =
   let vorSchreiben: (() => Promise<void>) | undefined;
   beforeAll(async () => {
     container = await new GenericContainer("postgres:16-alpine")
-      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_fristen_test" })
+      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
       .withExposedPorts(5432)
       .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
       .start();
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_fristen_test`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     pool = createPool(url);
     zweiterPool = createPool(url);
     await migrate(pool);
@@ -293,7 +293,7 @@ describe("AW19 · PostgreSQL, Quellenbindung und tatsächliche Konkurrenz", () =
       "--username=postgres",
       "--format=custom",
       "--file=/tmp/fristen-sicherung.dump",
-      "klarwerk_fristen_test",
+      "klarwerk_test",
     ]);
     expect(dump.exitCode, dump.output).toBe(0);
     const summe = await container.exec(["sha256sum", "/tmp/fristen-sicherung.dump"]);

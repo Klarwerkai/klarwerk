@@ -15,11 +15,11 @@ function neu() {
 }
 beforeAll(async () => {
   c = await new GenericContainer("postgres:16-alpine")
-    .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klara_einfuehrung_test" })
+    .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
-  url = `postgresql://postgres:test@${c.getHost()}:${c.getMappedPort(5432)}/klara_einfuehrung_test`;
+  url = `postgresql://postgres:test@${c.getHost()}:${c.getMappedPort(5432)}/klarwerk_test`;
   const p = createPool(url);
   pools.push(p);
   await migrate(p);

@@ -88,7 +88,7 @@ beforeAll(async () => {
   container = await new GenericContainer("postgres:16-alpine")
     .withName(`klara-f15-seg-${randomUUID()}`)
     .withLabels({ "klarwerk.owner": "klara-f15-seg-20261020" })
-    .withEnvironment({ POSTGRES_PASSWORD: "f15-synthetic", POSTGRES_DB: "klara_f15_seg" })
+    .withEnvironment({ POSTGRES_PASSWORD: "f15-synthetic", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
@@ -100,7 +100,7 @@ beforeAll(async () => {
       containerId: container.getId(),
     }),
   );
-  url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klara_f15_seg`;
+  url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
   const p = createPool(url);
   const schliessen = poolAbschluss(p);
   pools.set(p, schliessen);

@@ -9,7 +9,7 @@ const poolAbschluesse: (() => Promise<void>)[] = [];
 const apps: ReturnType<typeof buildApp>[] = [];
 let url = "";
 let adminKopf: { authorization: string };
-function appFuer(db = "klara_f_test") {
+function appFuer(db = "klarwerk_test") {
   const p = createPool(`${url}/${db}`);
   poolAbschluesse.push(poolAbschluss(p));
   const app = buildApp(buildPgServices(p));
@@ -20,12 +20,12 @@ beforeAll(async () => {
   container = await new GenericContainer("postgres:16-alpine")
     .withName(`klara-f-wissen-${randomUUID()}`)
     .withLabels({ "klarwerk.owner": "klara-f-20261020" })
-    .withEnvironment({ POSTGRES_PASSWORD: "f-synthetic", POSTGRES_DB: "klara_f_test" })
+    .withEnvironment({ POSTGRES_PASSWORD: "f-synthetic", POSTGRES_DB: "klarwerk_test" })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
   url = `postgresql://postgres:f-synthetic@${container.getHost()}:${container.getMappedPort(5432)}`;
-  const p = createPool(`${url}/klara_f_test`);
+  const p = createPool(`${url}/klarwerk_test`);
   const schliessen = poolAbschluss(p);
   poolAbschluesse.push(schliessen);
   await migrate(p);
@@ -118,7 +118,7 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
   for (const r of rs) expect(r.statusCode, r.body).toBe(200);
   const id = rs[0]?.json().beitrag.id;
   expect(rs[1]?.json().beitrag.id).toBe(id);
-  const p = createPool(`${url}/klara_f_test`);
+  const p = createPool(`${url}/klarwerk_test`);
   const schliessen = poolAbschluss(p);
   poolAbschluesse.push(schliessen);
   expect(
@@ -130,7 +130,7 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
   ).toBe(1);
   await schliessen();
   for (const cmd of [
-    ["pg_dump", "-U", "postgres", "-d", "klara_f_test", "-f", "/tmp/f08.sql"],
+    ["pg_dump", "-U", "postgres", "-d", "klarwerk_test", "-f", "/tmp/f08.sql"],
     ["createdb", "-U", "postgres", "klara_f_restore_test"],
     [
       "psql",
@@ -267,7 +267,7 @@ it("F15 · Besprechungsfassung, private Übergabe und Folgeaufgabe überstehen P
   expect(erneut.json().notizId).toBe(u.json().notizId);
   expect(erneut.json().aufgaben[0].id).toBe(u.json().aufgaben[0].id);
   for (const cmd of [
-    ["pg_dump", "-U", "postgres", "-d", "klara_f_test", "-f", "/tmp/f15.sql"],
+    ["pg_dump", "-U", "postgres", "-d", "klarwerk_test", "-f", "/tmp/f15.sql"],
     ["createdb", "-U", "postgres", "klara_f_meeting_restore_test"],
     [
       "psql",
@@ -327,7 +327,7 @@ it("F15 · Besprechungsfassung, private Übergabe und Folgeaufgabe überstehen P
 });
 
 it("liest den offenen Regelvorschlag aus PostgreSQL am Prüfeinstieg und prüft die Quellrechte bei jedem Abruf", async () => {
-  const pool = createPool(`${url}/klara_f_test`);
+  const pool = createPool(`${url}/klarwerk_test`);
   poolAbschluesse.push(poolAbschluss(pool));
   const dienste = buildPgServices(pool);
   const app = buildApp(dienste);
