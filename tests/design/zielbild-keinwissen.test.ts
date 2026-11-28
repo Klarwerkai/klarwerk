@@ -465,6 +465,7 @@ let browser: Browser | null = null;
 let seite: Seite | null = null;
 let fehler: string | null = null;
 let version = "";
+let rueckwegGeladen = false;
 let askAbgegangen = 0;
 let entwuerfeAbgegangen = 0;
 let messwerte: Messwert[] = [];
@@ -561,6 +562,9 @@ describe.runIf(zielbildDa)(
               body: req.method() === "HEAD" ? "" : readFileSync(datei),
               contentType: asset[2] === "js" ? "application/javascript" : "text/css",
             });
+            if (req.method() === "GET" && url.pathname === "/word-addin/rueckweg.js") {
+              rueckwegGeladen = true;
+            }
             return;
           }
           if (url.pathname === "/api/ask" && req.method() === "POST") {
@@ -787,6 +791,10 @@ describe.runIf(zielbildDa)(
         fehler = String(e).split("\n").slice(0, 3).join(" | ");
       }
     }, 120_000);
+
+    it("lädt den ausgelieferten Rückweg des Word-Panels im Browser", () => {
+      expect(rueckwegGeladen).toBe(true);
+    });
 
     afterAll(async () => {
       await browser?.close();
