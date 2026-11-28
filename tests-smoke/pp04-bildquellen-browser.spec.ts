@@ -67,6 +67,7 @@ test("PP04 · automatischer Bildtext, Fundstelle, E02-Berichtigung und Datenpunk
     await page.locator(`[data-office-oeffnen="${anhangId}"]`).click();
   }
   await oeffnen();
+  await page.locator(`[data-office-bild-lesen="${anhangId}"]`).click();
   const befund = page
     .locator(`[data-office-bild-befund="${anhangId}"] [data-testid="bild-befund"]`)
     .first();

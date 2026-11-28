@@ -225,7 +225,12 @@ test.describe("PP-02 · Datenherkunft am PowerPoint-Anhang", () => {
     await fb.getByLabel("Wert (wie geschrieben)").fill("300 T€");
     ids.berechnet = await speichern(flaeche, fb);
 
-    // PP-04: OCR-Zahl aus der automatischen Erkennung; kein zweiter Leseauftrag.
+    // Der Nutzer startet das Lesen der Bilder am Anhang. Das Zahlenformular übernimmt denselben Befund.
+    await page.locator(`[data-office-bild-lesen="${anhangId}"]`).click();
+    const befund = page
+      .locator(`[data-office-bild-befund="${anhangId}"] [data-testid="bild-befund"]`)
+      .first();
+    await expect(befund).toHaveAttribute("data-status", "gelesen", { timeout: 180_000 });
     const fo = await erfassenAm(flaeche, "8");
     await expect(fo.locator("[data-bildtext-lesen]")).toBeDisabled();
     const ocrText = fo.locator("[data-ocr-text]");
