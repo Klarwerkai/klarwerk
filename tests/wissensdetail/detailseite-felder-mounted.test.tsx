@@ -189,6 +189,7 @@ async function mount(teil: Partial<KnowledgeObject> = {}): Promise<HTMLDivElemen
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
   return flaeche;
