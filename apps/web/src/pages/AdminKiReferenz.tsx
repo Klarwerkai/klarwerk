@@ -184,8 +184,6 @@ export function KiReferenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.
           const bereit = einsatzbereit(lage);
           return (
             <>
-              <p className="text-[12.5px] text-text">{t("referenzpruefung.admin.rolle")}</p>
-              <p className="text-[12px] text-muted-2">{t("referenzpruefung.admin.quelle")}</p>
               <p data-testid="ki-referenz-antwortmodell" className="text-[12px] text-muted">
                 {lage.antwortmodell
                   ? t("referenzpruefung.admin.antwortmodell", {
