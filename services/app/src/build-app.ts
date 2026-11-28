@@ -7004,6 +7004,7 @@ export function buildApp(
             lokalesModell: zuordnung.includes("local"),
             externeSuche: services.externalSearch !== undefined,
             mailVersand: !(services.mailer instanceof ConsoleMailer),
+            pushVersand: services.push !== undefined,
             aufbewahrung: aufbewahrungsangabenAusEnv(process.env),
           };
         },

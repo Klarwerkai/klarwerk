@@ -1108,6 +1108,176 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: { enthalten: false, grund: "Keine Angaben über die Person." },
   },
   {
+    // R-0773: erfolglose Suchen je Person (`services/ask/src/repo-pg.ts`, `ask_nulltreffer`).
+    id: "nulltreffer",
+    name: "Erfolglose Suchen je Person",
+    inhalt:
+      "Je Konto, Suchbegriff (Vergleichsschlüssel und zuletzt eingegebene Schreibweise) und Eingrenzung: Anzahl der erfolglosen Suchen und Zeitpunkt der letzten.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennung der suchenden Person zusammen mit dem von ihr eingegebenen Suchbegriff.",
+    ablage: { ort: DATENBANK, tabellen: ["ask_nulltreffer"] },
+    taetigkeit: "fragen",
+    loeschung: "Kein Löschweg für einzelne Suchbegriffe im Produkt.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Heute nicht in der Selbstauskunft — `selbstauskunft.ts` liest diese Tabelle nicht (offener Punkt).",
+    },
+    befund:
+      "Der Suchbegriff wird im Wortlaut gespeichert; er fehlt in der Selbstauskunft und hat keinen Löschweg.",
+  },
+  {
+    // R-0679 / FR-VAL-07: Geräteabos für den Push-Anstoß (`services/notifications/src/push.ts`).
+    id: "pushabos",
+    name: "Geräteabos für Push-Hinweise",
+    inhalt:
+      "Pro Gerät werden der Endpunkt beim Push-Dienst, die Schlüssel p256dh und auth, die Konto-Kennung und der Anlagezeitpunkt gespeichert. Bei aktiviertem Push erhält der Push-Dienst einen Aufruf an diesen Endpunkt mit leerem Nachrichtenrumpf.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Konto-Kennung zusammen mit einem gerätebezogenen Endpunkt beim Push-Dienst des Browserherstellers.",
+    ablage: { ort: DATENBANK, tabellen: ["push_abos"] },
+    taetigkeit: "pruefung",
+    loeschung:
+      "Bei der Abmeldung des Geräts und nach einer Zustellung mit HTTP 404 oder 410 wird das Abo entfernt. Meldet ein anderes Konto denselben Endpunkt an, ersetzt dessen Abo den Eintrag. Die Kontolöschung räumt Geräteabos nicht auf.",
+    frist:
+      "Bis zur Abmeldung, Neuzuordnung oder erkannten Ungültigkeit des Abos. Es gibt keine zeitgesteuerte Löschung.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Heute nicht in der Selbstauskunft — `selbstauskunft.ts` liest diese Tabelle nicht (offener Punkt).",
+    },
+    befund: "Die Abos bleiben nach einer Kontolöschung stehen und fehlen in der Selbstauskunft.",
+  },
+  {
+    // ADMIN-15: Lesebestätigungen und Zustimmungen zu internen Richtlinien (`unternehmensprofil.ts`).
+    id: "richtlinienhandlungen",
+    name: "Kenntnisnahmen und Zustimmungen zu internen Richtlinien",
+    inhalt:
+      "Je Richtlinie, Fassung und Person die geleistete Handlung (Kenntnisnahme oder Zustimmung) und ihr Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung der handelnden Person.",
+    ablage: { ort: DATENBANK, tabellen: ["richtlinien_handlungen"] },
+    taetigkeit: "pruefung",
+    loeschung: "Kein Löschweg; das Handlungsprotokoll ist im Code unveränderlich.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Heute nicht in der Selbstauskunft — `selbstauskunft.ts` liest diese Tabelle nicht (offener Punkt).",
+    },
+    befund: "Die eigenen Handlungen fehlen in der Selbstauskunft.",
+  },
+  {
+    // ADMIN-15: Unternehmensprofil und Fassungen der internen Richtlinien (`unternehmensprofil.ts`).
+    id: "unternehmensrichtlinien",
+    name: "Unternehmensprofil und interne Richtlinien",
+    inhalt:
+      "Profilfassungen mit Firmenname, Logo und Änderungsgrund. Richtlinienfassungen enthalten unter anderem Titel, Freitext, verantwortliche Stelle oder Person und Gültigkeitsdatum. Beide speichern die Kennung der ändernden oder veröffentlichenden Person und den Zeitpunkt.",
+    personenbezug: "moeglich",
+    personenbezugGrund:
+      "Kennungen der Bearbeiter, möglicherweise namentlich benannte Verantwortliche und Angaben über Personen im Freitext.",
+    ablage: { ort: DATENBANK, tabellen: ["unternehmensprofil_fassungen", "richtlinien_fassungen"] },
+    taetigkeit: "betrieb",
+    loeschung: "Kein Löschweg; Fassungen sind unveränderlich.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die Selbstauskunft liest weder die Profil- noch die Richtlinienfassungen. Personenbezogene Angaben in Text und Änderungsvermerk können deshalb fehlen.",
+    },
+  },
+  {
+    // R-1034 / FR-I18N-02: die gepflegten Oberflächentexte (`services/app/src/uebersetzungen.ts`).
+    id: "oberflaechentexte",
+    name: "Gepflegte Übersetzungen der Oberfläche",
+    inhalt:
+      "Je Sprache und Textschlüssel der gepflegte Text, dazu die gepflegten Sprachen mit Namen — jeweils mit Kennung der ändernden Person und Zeitpunkt.",
+    personenbezug: "moeglich",
+    personenbezugGrund:
+      "Die Kennung der bearbeitenden Person wird gespeichert. Frei gepflegte Übersetzungstexte können Personen nennen.",
+    ablage: { ort: DATENBANK, tabellen: ["ui_uebersetzungen", "ui_sprachen"] },
+    taetigkeit: "betrieb",
+    loeschung:
+      "Einzelne Übersetzungen entfernt die Verwaltung; für eingetragene Sprachen gibt es keinen Löschweg.",
+    frist: "Solange die Übersetzung gilt.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die Selbstauskunft liest die Übersetzungen, Sprachangaben und zugehörigen Änderungsvermerke nicht.",
+    },
+  },
+  {
+    // R-1656: der Co-Reading-Zähler (`services/app/src/wissensempfehlung.ts`).
+    id: "mitgelesen",
+    name: "Gemeinsam gelesene Wissensobjekte (Zähler)",
+    inhalt: "Je Paar von Wissensobjekten, wie oft beide zusammen gelesen wurden.",
+    personenbezug: "nein",
+    personenbezugGrund:
+      "Nur Kennungen von Wissensobjekten und eine Zahl — keine Kennung einer Person.",
+    ablage: { ort: DATENBANK, tabellen: ["ko_mitgelesen"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Der Bestandsreset löscht die abgeleiteten Zähler. Eine personenbezogene Einzelzuordnung ist im Zähler nicht gespeichert.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: { enthalten: false, grund: "Keine Angaben über die Person." },
+  },
+  {
+    // Instanzbindung (`instanzbindung.ts`) und Bestandsreset (`services/db-tx/src/bestandsreset-audit.ts`).
+    id: "betriebsstand",
+    name: "Instanzbindung und Läufe des Bestandsresets",
+    inhalt:
+      "Die Anlagenkennung, an die die Datenbank gebunden ist, mit Zeitpunkt; je Bestandsreset Kennung, Status und Zeitpunkte von Start, Festschreiben und Abschluss.",
+    personenbezug: "nein",
+    personenbezugGrund: "Technische Zustände ohne Kennung einer Person.",
+    ablage: { ort: DATENBANK, tabellen: ["instanz_bindung", "bestandsreset_laeufe"] },
+    taetigkeit: "betrieb",
+    loeschung:
+      "Die Instanzbindung löst nur der Betreiber ausdrücklich (bewusster Umzug); für die Resetläufe gibt es keinen Löschweg.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: { enthalten: false, grund: "Keine Angaben über die Person." },
+  },
+  {
+    id: "emailwechsel",
+    name: "Anträge auf Änderung der E-Mail-Adresse",
+    inhalt:
+      "Konto-Kennung, bisherige und beantragte E-Mail-Adresse, Hash der Bestätigungsmarke und Ablaufzeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Beide Adressen sind mit dem antragstellenden Konto verknüpft.",
+    ablage: { ort: DATENBANK, tabellen: ["email_changes"] },
+    taetigkeit: "konten",
+    loeschung:
+      "Ein neuer Antrag ersetzt den bisherigen Antrag des Kontos. Der Verbrauch einer gültigen Marke entfernt den Datensatz. Für abgelaufene oder nach einer Kontolöschung verbleibende Anträge gibt es keine automatische Bereinigung.",
+    frist: "Die Marke gilt 15 Minuten. Das Verstreichen dieser Zeit löscht den Datensatz nicht.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die Auskunft enthält die aktuelle Kontoadresse. Die Adressangaben und der Ablaufzeitpunkt aus einem noch gespeicherten Änderungsantrag fehlen.",
+    },
+    befund:
+      "Auch ungültig gewordene Anträge können die bisherige und die beantragte Adresse weiter enthalten.",
+  },
+  {
+    id: "verhaltensartefakte",
+    name: "Fassungen der KI-Verhaltensvorgaben",
+    inhalt:
+      "Schlüssel, Fassung, Aufgabe, Art, Freitext, Freigabestatus, optionaler Herkunftsfall sowie anlegende Person und Zeitpunkt. Freigegebene Inhalte können in die Anweisung an den eingesetzten Modellanbieter eingehen.",
+    personenbezug: "moeglich",
+    personenbezugGrund:
+      "Jede Fassung speichert die Kennung ihres Autors. Beispieltexte und Herkunftsangaben können weitere Personen nennen.",
+    ablage: { ort: DATENBANK, tabellen: ["verhaltensartefakte"] },
+    taetigkeit: "ki",
+    loeschung:
+      "Verwerfen legt eine neue Fassung an und beendet die Verwendung der bisherigen Vorgabe. Die früheren Fassungen bleiben gespeichert.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die Selbstauskunft liest die Autorenkennungen und Freitexte der KI-Verhaltensvorgaben nicht.",
+    },
+  },
+  {
     id: "sicherungen",
     name: "Sicherungskopien",
     inhalt: "Vollständige Datenbanksicherungen mit allen oben genannten Datenarten.",
@@ -1241,6 +1411,8 @@ export interface Betriebslage {
   externeSuche: boolean;
   /** Ein echter SMTP-Versand ist eingerichtet (nicht der Entwicklungsersatz). */
   mailVersand: boolean;
+  /** Ein Push-Sender ist eingerichtet. Ältere Bestandsaufnahmen enthalten dieses Feld nicht. */
+  pushVersand?: boolean;
 }
 
 export interface Verarbeitungstaetigkeit {
@@ -1301,29 +1473,36 @@ const OFFEN_BEIM_BETREIBER: readonly string[] = [
   "Server- und Proxy-Protokolle sowie Aufbewahrung der Sicherungen.",
 ];
 
-function empfaengerFuer(id: TaetigkeitId, lage: Betriebslage): string[] {
-  const raus: string[] = [
-    "Keine Übermittlung an Dritte durch die Anwendung; Betreiber und Hosting als Auftragsverarbeiter.",
-  ];
-  if (id === "ki" || id === "wissen" || id === "fragen" || id === "pruefung") {
+function empfaengerFuer(id: TaetigkeitId, lage: Betriebslage) {
+  const externe: string[] = [];
+  const mitKi = id === "ki" || id === "wissen" || id === "fragen" || id === "pruefung";
+  if (mitKi) {
     for (const anbieter of lage.modellAnbieter) {
-      raus.push(
+      externe.push(
         `Externer Modellanbieter „${anbieter}": Texte der jeweiligen KI-Aufgabe (nur nicht vertrauliche Inhalte); dort nicht von der Anwendung gespeichert.`,
       );
     }
-    if (lage.lokalesModell) {
-      raus.push("Lokal betriebenes Modell im Haus des Betreibers (keine Übermittlung an Dritte).");
-    }
   }
   if (lage.externeSuche && (id === "wissen" || id === "fragen")) {
-    raus.push("Externer Suchdienst: Suchbegriffe der externen Recherche.");
+    externe.push("Externer Suchdienst: Suchbegriffe der externen Recherche.");
   }
   if (lage.mailVersand && (id === "konten" || id === "pruefung")) {
-    raus.push(
+    externe.push(
       "E-Mail-Versand über den eingerichteten SMTP-Dienst: Name, E-Mail-Adresse, Benachrichtigungstext.",
     );
   }
-  return raus;
+  if (lage.pushVersand && id === "pruefung") {
+    externe.push(
+      "Push-Dienst des abonnierten Geräts: Aufruf des gerätespezifischen Endpunkts mit leerem Nachrichtenrumpf.",
+    );
+  }
+  const empfaenger = ["Betreiber und gegebenenfalls Hosting als Auftragsverarbeiter.", ...externe];
+  if (mitKi && lage.lokalesModell) {
+    empfaenger.push(
+      "Lokal betriebenes Modell im Haus des Betreibers (keine Übermittlung an Dritte).",
+    );
+  }
+  return { empfaenger, extern: externe.length > 0 };
 }
 
 /**
@@ -1341,7 +1520,7 @@ export function erzeugeVerarbeitungsverzeichnis(
     if (arten.length === 0) {
       continue;
     }
-    const extern = lage.modellAnbieter.length > 0 && empfaengerFuer(stamm.id, lage).length > 1;
+    const { empfaenger, extern } = empfaengerFuer(stamm.id, lage);
     taetigkeiten.push({
       id: stamm.id,
       name: stamm.name,
@@ -1364,9 +1543,9 @@ export function erzeugeVerarbeitungsverzeichnis(
           ),
         ),
       ],
-      empfaenger: empfaengerFuer(stamm.id, lage),
+      empfaenger,
       drittland: extern
-        ? "Möglich über den externen Modellanbieter — vom Betreiber anhand des Auftragsverarbeitungsvertrags zu prüfen."
+        ? "Möglich über die aufgeführten Dienste. Der Betreiber prüft Standort und Vertragsbedingungen der eingesetzten Empfänger."
         : "Keine Übermittlung durch die Anwendung.",
       loeschfristen: arten.map((d) => ({ name: d.name, loeschung: d.loeschung, frist: d.frist })),
       befunde: arten.flatMap((d) => (d.befund ? [`${d.name}: ${d.befund}`] : [])),
@@ -1414,6 +1593,9 @@ export function verzeichnisAlsMarkdown(v: Verarbeitungsverzeichnis): string {
   z.push(`- Lokales Modell: ${v.betriebslage.lokalesModell ? "ja" : "nein"}`);
   z.push(`- Externe Recherche: ${v.betriebslage.externeSuche ? "ja" : "nein"}`);
   z.push(`- E-Mail-Versand: ${v.betriebslage.mailVersand ? "ja" : "nein"}`);
+  if (v.betriebslage.pushVersand !== undefined) {
+    z.push(`- Geräte-Push: ${v.betriebslage.pushVersand ? "ja" : "nein"}`);
+  }
   if (v.aufbewahrung) {
     z.push(
       "",
