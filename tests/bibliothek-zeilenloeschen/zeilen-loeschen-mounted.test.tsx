@@ -374,7 +374,10 @@ describe("R-0959 · Löschen direkt aus der Trefferliste, vorher eine ruhige Zei
   });
 
   it("L3 · zwei Löschungen hintereinander aus der Trefferliste tragen beide — ohne Rest der ersten", async () => {
-    await aufbauen(DREI, ADMIN);
+    await aufbauen(DREI, ADMIN, "/bibliothek?eintrag=ko-1");
+    await act(() => vi.dynamicImportSettled());
+    const leseTitel = () => document.body.querySelector('[data-testid="bib-titel"]')?.textContent;
+    await vi.waitFor(() => expect(leseTitel()).toBe("Erster Bericht"));
 
     await loeschenAmTreffer("ko-1");
     expect(box.entfernt).toEqual(["ko-1"]);
@@ -388,8 +391,7 @@ describe("R-0959 · Löschen direkt aus der Trefferliste, vorher eine ruhige Zei
     expect(vi.mocked(endpoints.ko.remove).mock.calls).toEqual([["ko-1"], ["ko-2"]]);
     expect(zeilenIds()).toEqual(["ko-3"]);
     // Die Lesefläche rechts rückt auf den verbliebenen Eintrag, statt einen toten zu zeigen.
-    const lesen = document.body.querySelector('[data-testid="bib-lesen"]');
-    expect(lesen?.textContent).toContain("Dritter Bericht");
+    await vi.waitFor(() => expect(leseTitel()).toBe("Dritter Bericht"));
   });
 
   it("L4 · nur Berechtigte sehen den Papierkorb: als Expertin nur am eigenen Beitrag", async () => {
