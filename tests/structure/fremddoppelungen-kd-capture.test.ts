@@ -435,11 +435,8 @@ const FREMDE: readonly Fremdrelation[] = [
     groessen: [29],
     was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
   },
-  {
-    dritt: "apps/web/src/components/Wissensuebergabe.tsx",
-    groessen: [29, 26],
-    was: "Die Übergabe teilt die Optionsliste sowie den Fehler-Toast mit der Bibliothek.",
-  },
+  // 897f33753 entfernte die unbenutzte Übergabefläche samt Optionsliste und Fehler-Toast.
+  // Den verbliebenen Vorschauinhalt scannt messe() wie jede andere Komponente weiterhin.
   {
     dritt: "apps/web/src/pages/AblaufUebernahme.tsx",
     groessen: [29, 29, 29],

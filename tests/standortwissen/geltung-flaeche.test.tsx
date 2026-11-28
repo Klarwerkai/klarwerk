@@ -213,7 +213,7 @@ describe("R-1633 · Fragekontext auf der Fragen-Seite", () => {
     expect(c.querySelector('[data-testid="ask-fragekontext-schicht"]')).toBeNull();
     await frage(c);
     expect(askMock).toHaveBeenCalledTimes(1);
-    expect(askMock.mock.calls[0]).toEqual([FRAGE, "de"]);
+    expect(askMock).toHaveBeenCalledWith(FRAGE, "de", [], undefined, expect.any(AbortSignal));
     expect(c.querySelector('[data-testid="ask-geltung"]')).toBeNull();
   });
 
@@ -229,12 +229,13 @@ describe("R-1633 · Fragekontext auf der Fragen-Seite", () => {
     await klicke(c, '[data-testid="ask-fragekontext-umschalten"]');
     await frage(c);
     expect(askMock).toHaveBeenCalledTimes(1);
-    expect(askMock.mock.calls[0]).toEqual([
+    expect(askMock).toHaveBeenCalledWith(
       FRAGE,
       "de",
       [],
       { werk: "Werk Nord", schicht: "Frühschicht" },
-    ]);
+      expect.any(AbortSignal),
+    );
     const auskunft = c.querySelector<HTMLElement>('[data-testid="ask-geltung"]');
     expect(auskunft?.textContent).toContain(
       i18n.t("geltung.frage.gewichtet", { kontext: "Werk Nord · Frühschicht" }),
