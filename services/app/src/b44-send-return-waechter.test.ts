@@ -61,7 +61,11 @@ interface Fund {
 function erhebe(muster: RegExp): Fund[] {
   const funde: Fund[] = [];
   for (const datei of produktCodeDateien()) {
-    const src = ohneKommentare(readFileSync(datei, "utf8"));
+    const roh = readFileSync(datei, "utf8");
+    muster.lastIndex = 0;
+    if (!muster.test(roh)) continue;
+    muster.lastIndex = 0;
+    const src = ohneKommentare(roh, datei);
     for (const m of src.matchAll(muster)) {
       const index = m.index ?? 0;
       funde.push({

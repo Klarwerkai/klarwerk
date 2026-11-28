@@ -33,8 +33,11 @@ interface TestKo {
    * Die SCHLAGWÖRTER — auffindbar, aber nicht relevanzbildend. Genau diese Asymmetrie hat der
    * Bestand wirklich: die Suche liest Schlagwörter mit (Effective Search Document), das Relevanzmaß
    * des Reasoners liest sie NICHT (`refMatchText` = Titel, Aussage, Fußnoten, Fließtext).
+   * Gesamtcheck R-1329: unter dem ECHTEN Feldnamen `tags`. Seit R-0473 (aus main) prüft der
+   * Fragedienst jeden gebundenen Fragebegriff auch an Kategorie und `tags` — ein Eigenname wie
+   * `schlagwoerter` war für ihn unsichtbar, und ko-a fiel trotz Treffers heraus.
    */
-  schlagwoerter: string;
+  tags: string[];
 }
 
 const BESTAND: TestKo[] = [
@@ -42,7 +45,7 @@ const BESTAND: TestKo[] = [
     id: "ko-a",
     title: "Bremsleitung Montage Standard",
     statement: "Die Montage der Bremsleitung erfolgt nach Plan.",
-    schlagwoerter: "Kaltstart",
+    tags: ["Kaltstart"],
     status: "validiert",
     trust: 90,
     confidentiality: "intern",
@@ -53,7 +56,7 @@ const BESTAND: TestKo[] = [
     id: "ko-b",
     title: "Bremsleitung Montage im Kaltstart",
     statement: "Bei der Montage der Bremsleitung im Kaltstart zuerst die Ölwannenschraube lösen.",
-    schlagwoerter: "",
+    tags: [],
     status: "validiert",
     trust: 40,
     confidentiality: "intern",
@@ -102,7 +105,7 @@ function messplatz(opts: { antwortet: boolean } = { antwortet: true }): Messplat
       const gesucht = terms.map((t) => t.toLowerCase());
       return BESTAND.filter((ko) =>
         gesucht.some((t) =>
-          `${ko.title} ${ko.statement} ${ko.schlagwoerter}`.toLowerCase().includes(t),
+          `${ko.title} ${ko.statement} ${ko.tags.join(" ")}`.toLowerCase().includes(t),
         ),
       )
         .sort((a, b) => b.trust - a.trust)

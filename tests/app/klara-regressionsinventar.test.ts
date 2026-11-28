@@ -185,6 +185,7 @@ const ACHSEN: Achse[] = [
 // aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
+  "tests/erstladezeit/sprachpakete-nachladen.test.ts",
   // ARBEITSWEGE AM SELBEN ARTIKEL (produkt:20261007:arbeitswege-objekt): Klara nennt Seite, Kennung
   // und Fassung aus derselben Quelle wie „Fragen". Die Datei montiert `KlaraAssistant` und kommt
   // über die Inhaltsachse `komponente` herein; „klara" steht NICHT im Pfad, K5 bleibt deshalb

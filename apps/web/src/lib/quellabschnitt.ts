@@ -8,7 +8,7 @@
 // denselben Stand zeigen, steht die Regel hier als Spiegel.
 //
 // KEIN IMPORT AUS `services/`: der webbuild-Stage im Dockerfile kopiert NUR `apps/web`. Die Bindung
-// an das Original leistet `tests/aw03-herkunft/gespeicherte-fassung-oeffnen.test.tsx`, der beide
+// an das Original leistet `tests/aw03-herkunft/w3-gebundene-quelle-aktueller-vertrag.test.tsx`, der beide
 // Regeln über dieselben Anker vergleicht.
 import type { KoSource, Quellabschnitt } from "../api/types";
 

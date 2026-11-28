@@ -169,6 +169,15 @@ describe("N11 · Übernahme ohne Einstufung ergibt „intern“ — außerhalb v
   it("I3 — GEGENPROBE: mitgelieferte vertrauliche Stufen bleiben an beiden Wegen unverändert", async () => {
     const a = await aufbauen();
     const kv = await ueberKandidat(a, item("Schaltschrank", TEXT_VERTRAULICH, "vertraulich"));
+    const konto = await a.app.inject({ method: "GET", url: "/api/auth/me", headers: a.headers });
+    expect(konto.statusCode).toBe(200);
+    const freigabe = await a.app.inject({
+      method: "PUT",
+      url: `/api/users/${konto.json().id}`,
+      headers: a.headers,
+      payload: { freigabe: "streng_vertraulich" },
+    });
+    expect(freigabe.statusCode, freigabe.body).toBe(200);
     const js = await ueberJsonImport(a, item("Notfallcode", TEXT_STRENG, "streng_vertraulich"));
     expect(await gespeicherteStufe(a, kv)).toBe("vertraulich");
     expect(await gespeicherteStufe(a, js)).toBe("streng_vertraulich");

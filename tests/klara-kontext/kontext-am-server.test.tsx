@@ -22,7 +22,7 @@
 //   C4 · K6 — Anweisungen im markierten Inhalt lösen nichts aus: kein Löschen, kein Seitenwechsel.
 //
 // Echte Tastatur, echte Mausmarkierung und echtes Layout misst
-// `tests-smoke/klara-kontext-browser.spec.ts`. jsdom kennt kein Layout: die Fläche einer Markierung
+// `tests-smoke/klara-kontext-artikel-browser.spec.ts`. jsdom kennt kein Layout: die Fläche einer Markierung
 // (`Range.getBoundingClientRect`) wird hier mit festen Zahlen ergänzt, sonst nichts.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {

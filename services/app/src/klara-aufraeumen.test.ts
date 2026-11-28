@@ -19,7 +19,7 @@ import type { IntervalHandle } from "./trash-sweep-scheduler";
 // rief nur ein Test. Gemessen wird hier der Produktpfad in drei Gliedern: der Zeitgeber startet den
 // Lauf (Start und Tick), `buildApp` reicht den Lauf SEINER Dienstinstanz heraus, und `server.ts`
 // verdrahtet beides. Die Fehlerkombination selbst (Rennen, Ausfall) misst
-// `services/klara-consent-protokoll.test.ts`; hier steht ihr Endzustand: eine abgelaufene Sitzung
+// `services/app/src/services/klara-consent-protokoll.test.ts`; hier steht ihr Endzustand: eine abgelaufene Sitzung
 // mit einem Erteilungseintrag, zu dem keine Zustimmungszeile und kein Endeintrag existiert.
 
 const TAGE_32 = 32 * 24 * 60 * 60 * 1000;

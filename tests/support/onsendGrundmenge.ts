@@ -15,6 +15,7 @@
 // GELTUNGSBEREICH: Diese Datei ist eine TESTHILFE und enthält keine Zusicherung.
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { REPO_WURZEL } from "./repoPfad";
 
 export { REPO_WURZEL };
@@ -64,8 +65,27 @@ export function produktCodeDateien(dir: string = REPO_WURZEL, ebene = 0): string
  * eine bloße Erwähnung („hier stand ein async onSend") zählt nicht als Registrierung, Fundstellen
  * bleiben zitierfähig.
  */
-export function ohneKommentare(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(/(^|\s)\/\/.*$/gm, (m) => m.replace(/[^\n]/g, " "));
+export function ohneKommentare(src: string, datei = "quelle.ts"): string {
+  const quelle = ts.createSourceFile(datei, src, ts.ScriptTarget.Latest, false);
+  const bereiche = new Map<number, number>();
+  const merken = (start: number, ende: number) => {
+    bereiche.set(start, ende);
+  };
+  const lesen = (knoten: ts.Node) => {
+    const kinder = knoten.getChildren(quelle);
+    if (kinder.length === 0) {
+      ts.forEachLeadingCommentRange(src, knoten.pos, merken);
+      ts.forEachTrailingCommentRange(src, knoten.end, merken);
+    } else {
+      for (const kind of kinder) lesen(kind);
+    }
+  };
+  lesen(quelle);
+  let ergebnis = "";
+  let position = 0;
+  for (const [start, ende] of [...bereiche].sort(([a], [b]) => a - b)) {
+    ergebnis += src.slice(position, start) + src.slice(start, ende).replace(/[^\r\n]/g, " ");
+    position = ende;
+  }
+  return ergebnis + src.slice(position);
 }

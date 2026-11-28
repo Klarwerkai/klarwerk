@@ -13,7 +13,7 @@
 //        KEINEN eigenen Begriff (gemessen mit der echten Bindung `undVerknuepfteFragebegriffe`);
 //        Markierungen gehören dem Konto.
 // Den Weg gegen den echten Server misst `kontext-am-server.test.tsx`, den Browser
-// `tests-smoke/klara-kontext-browser.spec.ts`.
+// `tests-smoke/klara-kontext-artikel-browser.spec.ts`.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const netz = vi.hoisted(() => ({
