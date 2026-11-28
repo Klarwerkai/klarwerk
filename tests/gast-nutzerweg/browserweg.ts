@@ -666,11 +666,19 @@ export async function fahreDenGanzenWeg(a: WegAufbau): Promise<WegBefund> {
       await fokusMussSichtbarSein(adminSeite, feld);
       await adminSeite.keyboard.type(wert);
     }
-    // Die Rolle: von der Vorgabe „Experte" (ROLES[1]) eine Stufe hinauf zu „Betrachter" (ROLES[0]),
-    // mit der Pfeiltaste an der nativen Auswahl.
+    // Die native Auswahlliste per Tab erreichen und über ihren sichtbaren Optionsnamen
+    // bedienen. Auf macOS öffnet die erste Pfeiltaste das Menü, während Linux bereits
+    // eine andere Option auswählt. Die Textsuche funktioniert in der geschlossenen Liste.
     tastatur.rollenauswahl = await tabBisZu(adminSeite, `${karte} select`, 20);
     await fokusMussSichtbarSein(adminSeite, "Rollenauswahl");
-    await adminSeite.keyboard.press("ArrowUp");
+    const rollenname = await adminSeite.evaluate<string>(
+      fn(
+        `(s) => (document.querySelector(s + ' select option[value="viewer"]')?.textContent ?? "").trim()`,
+      ),
+      karte,
+    );
+    expect(rollenname, "die Auswahl nennt die Leserolle").not.toBe("");
+    await adminSeite.keyboard.type(rollenname);
     expect(
       await adminSeite.evaluate<string>(
         fn(`(s) => (document.querySelector(s + " select") || {}).value || ""`),
