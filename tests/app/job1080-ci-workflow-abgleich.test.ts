@@ -240,7 +240,6 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
     expect(teile).toContain("fromJSON(needs.pflicht-plan.outputs.matrix");
     expect(teile).toContain("name: pflicht-pr-${{ github.sha }}-${{ matrix.teil }}");
     expect(ende).toContain("needs: [pflicht-plan, pflicht-teil]");
-    expect(ende).toMatch(/^ {4}if: always\(\)$/m);
     expect(ende).toContain("pattern: pflicht-pr-${{ github.sha }}-*");
     expect(ende).toContain("PLAN_ERGEBNIS: ${{ needs.pflicht-plan.result }}");
     expect(ende).toContain("MATRIX_ERGEBNIS: ${{ needs.pflicht-teil.result }}");
@@ -251,6 +250,24 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
       "if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')",
     );
     expect(ende).toContain("name: pflicht-${{ github.sha }}");
+  });
+
+  it("bricht den laufenden Sammler bei manuellem Abbruch ab und wertet gescheiterte Vorstufen aus", () => {
+    const ende = jobBlock("pflicht");
+    const sammler =
+      "!cancelled() || needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled'";
+    expect(ende.split("\n").find((zeile) => zeile.startsWith("    if:"))).toBe(
+      `    if: \${{ ${sammler} }}`,
+    );
+    expect(ende).toContain(
+      `if: \${{ github.event_name == 'pull_request' && (${sammler}) }}\n        env:\n          RELEASE_BASE:`,
+    );
+    expect(ende).toContain(
+      "uses: actions/upload-artifact@v4\n        if: ${{ !cancelled() }}\n        with:\n          name: pflicht-${{ github.sha }}",
+    );
+    for (const zeile of ende.split("\n").filter((z) => z.includes("cancelled()"))) {
+      expect(zeile.trim()).toMatch(/^(?:- )?if:/);
+    }
   });
 
   it("übergibt das Produktionsbündel desselben Commits vor dem Vitest-Aufruf an jeden Testteil", () => {

@@ -270,9 +270,17 @@ writeFileSync(reportPath,JSON.stringify({success:true,testResults,numTotalTests:
   );
   rot(() => rmSync(pfad(beleg)), restore, /test-1/);
   rmSync(pfad(datei));
-  cli(["abschluss", base, `${out}/ende`], 1, { MATRIX_ERGEBNIS: "cancelled" });
-  assert(json(datei).fehler.includes("GitHub-Matrix: cancelled"));
-  rmSync(pfad(datei));
+  // Alle Teilbelege sind grün. Der Zustand des GitHub-Laufs entscheidet zusätzlich.
+  for (const status of ["failure", "cancelled"]) {
+    cli(["abschluss", base, `${out}/ende`], 1, { MATRIX_ERGEBNIS: status });
+    const matrixFehler = json(datei);
+    assert.equal(matrixFehler.success, false);
+    assert.deepEqual(matrixFehler.fehler, [`GitHub-Matrix: ${status}`]);
+    rmSync(pfad(datei));
+  }
+  const abbruch = cli(["abschluss", base, `${out}/ende`], 1, { LAUF_ABGEBROCHEN: "true" });
+  assert.match(abbruch.stderr, /GitHub-Lauf abgebrochen/);
+  assert(!existsSync(pfad(datei)));
   cli(["abschluss", base, `${out}/ende`], 1, { PLAN_ERGEBNIS: "failure" });
   assert(!existsSync(pfad(datei)));
 }

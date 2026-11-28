@@ -90,7 +90,9 @@ jobs:
 
   pflicht:
     needs: [pflicht-plan, pflicht-teil]
-    if: always()
+    # Ein später manueller Abbruch muss auch den laufenden Sammler abbrechen.
+    # Abgebrochene Vorstufen meldet der Sammler ausdrücklich als fehlgeschlagen.
+    if: ${{ !cancelled() || needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -111,7 +113,7 @@ jobs:
           pattern: pflicht-pr-${{ github.sha }}-*
           path: .local/run/ci-pflicht/teile/
       - name: PR-Auswahl und gegebenenfalls alle Teilbelege prüfen
-        if: always() && github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' && (!cancelled() || needs.pflicht-plan.result == 'cancelled' || needs.pflicht-teil.result == 'cancelled') }}
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
           PLAN_ERGEBNIS: ${{ needs.pflicht-plan.result }}
@@ -143,7 +145,7 @@ jobs:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: pflicht-${{ github.sha }}
           path: .local/run/ci-pflicht/
