@@ -42,6 +42,8 @@ function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
     measures: [],
     type: "best_practice",
     category: "Anlage 1",
+    confidentiality: "intern",
+    sources: [],
     tags: [],
     confidence: 0,
     trust: 80,

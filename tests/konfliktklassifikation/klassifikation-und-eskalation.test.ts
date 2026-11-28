@@ -586,15 +586,20 @@ describe("R-0263 · Geltungsbereich und Vorrang zwischen genau zwei Punkten", ()
     expect((await service.get(c.id))?.status).toBe("offen");
   });
 
-  it("am Dienst: „Beide gelten“ legt keinen Vorrang fest — auch nicht nach erneuter Eskalation", async () => {
+  it("eine endgültige Vorrangentscheidung bleibt bestehen; „Beide gelten“ ist ein eigener Ausgang", async () => {
     const { service } = dienst();
     const c = await service.create({ koA: "A", koB: "B", type: "truth", description: "x" });
     await service.escalate(c.id);
     await service.resolve(c.id, "mensch", "A gilt", { art: "ueberstimmt", gilt: "A" });
+    await expect(service.escalate(c.id)).rejects.toMatchObject({ code: "ALREADY_RESOLVED" });
     expect((await service.get(c.id))?.vorrang?.vorrangKo).toBe("A");
-    await service.escalate(c.id);
-    await service.resolve(c.id, "mensch", "Beide gelten, je nach Kontext.");
-    expect((await service.get(c.id))?.vorrang).toBeUndefined();
+
+    const zweiter = await service.create({ koA: "C", koB: "D", type: "truth", description: "y" });
+    await service.escalate(zweiter.id);
+    await service.resolve(zweiter.id, "mensch", "Beide gelten, je nach Kontext.");
+    const entschieden = await service.get(zweiter.id);
+    expect(entschieden?.status).toBe("geloest");
+    expect(entschieden?.vorrang).toBeUndefined();
   });
 
   it("über die echte Route: nur die zwei Punkte tragen den Vorrang, kein Objekt wird verändert", async () => {
