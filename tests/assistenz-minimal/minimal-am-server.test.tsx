@@ -142,7 +142,7 @@ function mitSprache(): void {
     cancel: () => {
       ausgabe.abgebrochen += 1;
     },
-    getVoices: () => [],
+    getVoices: () => [{ name: "Teststimme", lang: "de-DE", localService: true }],
     addEventListener: () => {},
     removeEventListener: () => {},
   };
@@ -841,7 +841,8 @@ describe("M6 · UI-MIN-03/13 — Mikrofon am Eingabefeld: Diktat ohne Senden, Ab
     // Vorlesen einer Antwort: als Vorgang sichtbar, direkt stoppbar.
     const klara = nachrichten().filter((n) => n.dataset.von === "klara");
     await klick(klara[klara.length - 1]?.querySelector('[data-testid="klara-vorlesen"]'));
-    expect(ausgabe.gesprochen.length).toBe(1);
+    expect(ausgabe.gesprochen).toHaveLength(1);
+    expect(ausgabe.gesprochen[0]?.voice).toMatchObject({ lang: "de-DE", localService: true });
     expect(q(document, "klara-vorgaenge")?.querySelector('[data-art="vorlesen"]')).not.toBeNull();
     const vorher = ausgabe.abgebrochen;
     await klick(q(document, "klara-vorlesen-stoppen"));

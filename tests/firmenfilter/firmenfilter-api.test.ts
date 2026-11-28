@@ -39,7 +39,6 @@ import {
   halbwertszeitenAusVerlauf,
 } from "../../services/knowledge-object/src/frische";
 import { type ModelClient, ModelProvider, Reasoner } from "../../services/reasoner";
-import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import { GOOD_CONFLICT, GOOD_DUPLICATE } from "../review26-teilpruefung-ursache/fixture";
 
 type App = ReturnType<typeof buildApp>;
@@ -122,11 +121,22 @@ async function mitNeutralemModell(services: ReturnType<typeof buildServices>) {
       return system.includes('"relation"') ? GOOD_CONFLICT : GOOD_DUPLICATE;
     },
   };
-  services.reasoner = new Reasoner(new ModelProvider(client));
-  // Nacharbeit 7: ausdrücklich AUCH für vertrauliche Inhalte freigegeben (wie es ein Administrator
-  // setzt). Ohne diese Freigabe bleibt jeder Vergleich mit dem vertraulichen Nachbarn E2 aus, und
-  // der stille Abgleich von Leas Einträgen kann nicht gelingen (Prüflauf: fehlgeschlagen je Takt).
-  await erteileKiFreigabe(services.reasoner, { oeffentlicheKi: true, vertraulicheInhalte: true });
+  // Nacharbeit 7: ohne Urteil über Paare mit dem vertraulichen Nachbarn E2 bleibt jeder dieser
+  // Vergleiche aus, und der stille Abgleich von Leas Einträgen kann nicht gelingen (Prüflauf:
+  // fehlgeschlagen je Takt).
+  // Gesamtcheck R-1329 (Nacharbeit 57, Freigabe-Wächter F2): die Attrappe steht deshalb als LOKALES
+  // Modell in der Kette (fünfter Parameter), nicht als öffentlicher Anbieter. Ein lokales Modell, das
+  // vertrauliche Inhalte nicht ablehnt, beurteilt diese Paare ohne jede Freigabe (`chainForChoice`
+  // in `services/reasoner/src/service.ts`). Vorher stand sie als öffentlicher Anbieter und brauchte
+  // die zweite, vertrauliche Freigabe — die das Register `VERTRAULICH_ERLAUBT`
+  // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`) keinem Bestandstest erteilt.
+  services.reasoner = new Reasoner(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    new ModelProvider(client),
+  );
 }
 
 /** Firma A mit vollständigem Bestand. Vorbereitung über HTTP; Space/Prüfstand über den Dienst. */

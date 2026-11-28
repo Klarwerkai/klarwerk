@@ -719,6 +719,46 @@ const EIGENTUEMER: readonly string[] = ["tests/admin-ki-freigabe/", "tests/admin
  */
 const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
   [
+    "tests/assistenz-minimal/minimal-am-server.test.tsx",
+    "Der montierte Assistent führt Aufträge gegen den kontrollierten Dienst aus. Der Aufbau der Auftragsfälle braucht die Grundfreigabe, damit sie Übergabe und Stopp messen.",
+  ],
+  [
+    "tests/ki-lauf-protokoll/stabile-laufkennung.test.ts",
+    "Prüft Laufkennungen über Erfolg, Ausweichversuch, Abbruch und Protokollfehler. Die Grundfreigabe schaltet im Aufbau den kontrollierten ersten Modellversuch frei.",
+  ],
+  [
+    "tests/klara-kontext/frage-zur-word-markierung.test.ts",
+    "Der Vergleich einer Word-Passage misst den freigegebenen Beleg und den aufgerufenen Modellport. Der gemeinsame Aufbau erteilt nur die Grundfreigabe.",
+  ],
+  [
+    "tests/klara-kontext/freie-aussage-pruefen.test.ts",
+    "Der allgemeine Frageweg prüft frei eingegebene Aussagen über HTTP. Der kontrollierte Modellport zeichnet den Prompt auf; beim reinen Suchaufruf muss er leer bleiben.",
+  ],
+  [
+    "tests/select-lauf-protokoll/authentifizierter-actor-live.test.ts",
+    "Misst am echten HTTP-Zugang, welchem Konto der Modelllauf zugeordnet wird. Die Grundfreigabe macht Erfolgs- und Fehlerprotokolle der Transportattrappe erreichbar.",
+  ],
+  [
+    "tests/teamassistenten/office-einwilligung.test.ts",
+    "Prüft die persönliche Einwilligung unabhängig vom allgemeinen Modellschalter. Der gemeinsame Aufbau aktiviert die Grundfreigabe für den kontrollierten Testanbieter.",
+  ],
+  [
+    "tests/w44-ki-ausleitung/modell-budget-abbruch-protokoll.test.ts",
+    "Zwei Fälle testen das Modellresultat und seinen Fehler bei ausgefallener Protokollierung. Die Grundfreigabe lässt die kontrollierten Modelltransporte anlaufen.",
+  ],
+  [
+    "tests/w44-ki-ausleitung/provider-ursachen.test.ts",
+    "Die Fälle ordnen Fehler der Anbieterattrappe ein und prüfen, dass nur die neutrale Ursache ausgegeben wird. Dafür muss der Anbieter im Test aufgerufen werden.",
+  ],
+  [
+    "tests/w44-ki-ausleitung/status-cache.test.ts",
+    "Der bewusste Verbindungstest des Administrators muss den kontrollierten Modellport erreichen, während wiederholte öffentliche Statusabfragen nur den Cache lesen.",
+  ],
+  [
+    "tests/w44-ki-ausleitung/worker-spaetmutation.test.ts",
+    "Prüft am kontrollierten Modellport, wie der laufende Hintergrundauftrag abbricht. Dafür braucht sein Reasoner die Grundfreigabe für den begonnenen Versuch.",
+  ],
+  [
     "tests/review26-teilpruefung-ursache/fixture.ts",
     "JOB 3484 misst echte Judge-Ausgänge bis zum Runner: ohne Grundfreigabe entstünde no-model " +
       "statt des injizierten Providerfehlers. Vertrauliche Paare bleiben gesperrt; der Aufbau " +
@@ -816,9 +856,10 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
   ],
   [
     "tests/reasoner/mega61-ki-kennzeichnung.test.ts",
-    "Ein Fall: `assist` mit ANTWORTENDEM Modell (demo false) — nur an einem echten Vorschlag ist " +
-      "prüfbar, dass er KEINE KI-Kennzeichnung trägt. Alle anderen Fälle laufen ohne Anbieter " +
-      "über den deterministischen Ersatz und bleiben unangetastet.",
+    "`assist` mit ANTWORTENDEM Modell (demo false) — nur an einem echten Vorschlag ist prüfbar, " +
+      "dass er KEINE KI-Kennzeichnung trägt. Seit R-0604 (G22, mega83 A) dazu die drei " +
+      "Modellweg-Fälle vorn (answer, interview, describe): nur ein wirklich antwortendes Modell " +
+      "trägt die Kennzeichnung. Die Rückfall- und Ausnahmefälle laufen ohne Anbieter.",
   ],
   [
     "tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts",
@@ -1194,6 +1235,131 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "der Kette und „extern“ wäre unmessbar; L1/L3/L4 bekommen keine — L3 IST der Sperrfall (Cloud " +
       "eingerichtet, Freigabe fehlt → lokal). Nie mehr als die Grundfreigabe, kein Modellaufruf.",
   ],
+  // ---- Gesamtcheck R-1329 (Nacharbeit 57): die Helferbenutzer, die nach den Nachträgen oben in die
+  // Fläche kamen, ohne hier zu stehen (F1 meldete neunzehn), dazu zwei Aufbauten, die die Freigabe
+  // bis hierher von Hand schrieben und jetzt den Helfer benutzen (F2). Je Zeile der eigene Grund,
+  // nachgelesen an der Datei. `tests/firmenfilter/firmenfilter-api.test.ts` steht NICHT hier: seine
+  // Attrappe ist jetzt ein lokales Modell und braucht keine Freigabe mehr.
+  [
+    "tests/antwort-quellendeckung/wege-nur-geprueftes.test.ts",
+    "Nur W-WORD-EINWILLIGUNG: der mitschreibende Anbieter muss WIRKLICH gerufen werden, damit " +
+      "messbar ist, was mit Einwilligung in den Modellkontext reist — und dass Ungeprüftes dort " +
+      "fehlt. Ohne Grundfreigabe bliebe der Kontext leer. Nie mehr als die Grundfreigabe.",
+  ],
+  [
+    "tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts",
+    "ZELLE 2 braucht einen Antwortkörper aus dem echten Dienst mit WIRKLICH antwortendem Anbieter " +
+      "(`modellKoerper`, demo false); nur daran ist die serverseitige KI-Kennzeichnung prüfbar. " +
+      "Ohne Grundfreigabe antwortete der Rückfall. Nie mehr als die Grundfreigabe.",
+  ],
+  [
+    "tests/capture/gesamt-ocr-interview-kontext.test.ts",
+    "R1 misst, dass der erkannte Bildtext in der Anfrage steht, die das Netz verlassen würde (nur " +
+      "`fetch` ersetzt). Ohne Grundfreigabe ginge gar nichts hinaus, und R2 (vertraulich) wäre keine " +
+      "Aussage über die Vertraulichkeitsregel mehr. Nie mehr als die Grundfreigabe.",
+  ],
+  [
+    "tests/foto-wissen/foto-interview-reasoner.test.ts",
+    "Ein Fall: `Reasoner.interview` mit Befund muss das Modell WIRKLICH fragen (ein Aufruf, " +
+      "KI-Kennzeichnung `interview`). Ohne Grundfreigabe antwortete die feste Foto-Frage des " +
+      "Rückfalls. Die übrigen Fälle sprechen den Provider direkt an und bekommen nichts.",
+  ],
+  [
+    "tests/import-volltext/grenzwert-hinter-der-deckseite.test.ts",
+    "V1 und der Rechte-Aufbau (`aufbauen`) brauchen einen echten Prompt: gemessen wird, ob der " +
+      "Grenzwert aus dem Dokumenttext dort steht (V1, R3) oder nicht (R1, R2). Ohne Grundfreigabe " +
+      "entstünde kein Prompt, und die Null der Sperrfälle sagte nichts.",
+  ],
+  [
+    "tests/ki-arbeitsbegleitung/bpa13-arbeitsweg-am-server.test.ts",
+    "Die Lage der KI-Arbeitsbegleitung liest die zentrale Adminfreigabe; der Weg am echten Server " +
+      "(Vorbereiten, Übergabe, Ergebnis) setzt sie voraus. Ohne Grundfreigabe stünde jeder Auftrag " +
+      "auf „gesperrt“, und die Negativfälle prüften die falsche Sperre. Kein Modellaufruf.",
+  ],
+  [
+    "tests/pruefung-hintergrund/nachholen-und-abgleich.test.ts",
+    "Der Hintergrundlauf holt Prüfungen nach und gleicht ab, mit einer steuerbaren Modellattrappe " +
+      "als öffentlichem Anbieter. Ohne Grundfreigabe stünde kein Modell in der Kette, jeder Lauf " +
+      "endete „kein-modell“, und Budget, Abbruch und Protokoll wären unmessbar.",
+  ],
+  [
+    "tests/reasoner/r0046-bildbeschreibung-haertung.test.ts",
+    "Die Abbruch- und Deckelfälle am Dienst (`beschreibe`) brauchen einen WIRKLICH erlaubten " +
+      "Bildaufruf: nur dann entsteht die überlange oder abgerissene Antwort, deren Behandlung " +
+      "gemessen wird. Ohne Grundfreigabe käme `no-model`. Nie mehr als die Grundfreigabe.",
+  ],
+  [
+    "tests/rechteentzug-gespraeche/hintergrund-entzug-worker.test.ts",
+    "Der Entzug wirkt im BEREITS laufenden Worker: dafür muss der fiktive Testanbieter wirklich " +
+      "gerufen werden und mitten im Vergleich anhalten. Ohne Grundfreigabe gäbe es keinen Aufruf, " +
+      "und „kein weiterer Aufruf nach dem Entzug“ wäre eine Aussage über null.",
+  ],
+  [
+    "tests/referenzki-adminauswahl/lage-und-funktionscheck.test.ts",
+    "L1, L3, L4 und F3 lesen die Referenzlage bei ERTEILTER Grundfreigabe (öffentliche Optionen " +
+      "erlaubt, Prüfer über den Reasoner). L2 ist der Sperrfall und bekommt nichts — dort sind die " +
+      "öffentlichen Optionen gesperrt. Nie mehr als die Grundfreigabe.",
+  ],
+  [
+    "tests/referenzki-adminauswahl/route-einstieg.test.ts",
+    "E2 setzt über den ECHTEN Adminweg eine Zuordnung mit Grundfreigabe und prüft, dass das " +
+      "Speichern der Referenzliste beides unverändert lässt. Die Nutzlast entsteht seit Nacharbeit 57 " +
+      "über den Helfer statt von Hand (F2). E1 ist der Sperrfall und bekommt nichts.",
+  ],
+  [
+    "tests/referenzki-pruefdienst/abbruch-bis-transport.test.ts",
+    "T1–T5 messen, dass ein Abbruch das Signal bis zum TRANSPORT trägt — dafür muss der externe " +
+      "Prüferaufruf erlaubt sein und wirklich beginnen. Ohne Grundfreigabe käme es nie zur " +
+      "Übertragung, und das Signal hätte nichts abzubrechen.",
+  ],
+  [
+    "tests/referenzki-pruefdienst/beobachtung.ts",
+    "Die echte Modellbeobachtung (REF-02, K10) fragt je fiktivem Fall ein ECHTES Prüfmodell über den " +
+      "echten Reasoner; ohne Grundfreigabe ginge kein Aufruf hinaus. Seit Nacharbeit 57 über den " +
+      "Helfer statt von Hand (F2). Die Fälle sind fiktiv und nicht vertraulich.",
+  ],
+  [
+    "tests/referenzki-pruefdienst/reasoner-referenzpruefer.test.ts",
+    "Die Prüferwahl ist nur bei erteilter Grundfreigabe eine Frage von Unabhängigkeit und Liste; " +
+      "ohne sie hieße jede externe Option „nicht freigegeben“. P3b misst genau diese Sperre zuerst " +
+      "ohne, dann mit Grundfreigabe; P4c hält Vertrauliches ohne zweite Freigabe draussen.",
+  ],
+  [
+    "tests/uebernahme-standard-intern/datei-import-bis-egress.test.ts",
+    "E1–E3 messen, dass der Anker eines importierten INTERNEN Objekts den Modelltransport öffnet; " +
+      "G1–G3 sind die Sperrfälle (gespeichert vertraulich, nichts geht hinaus). Ohne Grundfreigabe " +
+      "wäre der Transport immer zu, und die Sperrfälle bewiesen nichts.",
+  ],
+  [
+    "tests/vertraulichkeit-pflicht/word-uebernahme-bis-wissensobjekt.test.ts",
+    "E1 und MU1 messen, dass der Anker eines übernommenen INTERNEN Objekts den Transport öffnet; G, " +
+      "MG und MK sind Sperrfälle (vertraulich bzw. unklassifiziert, nichts geht hinaus). Ohne " +
+      "Grundfreigabe wäre der Weg immer zu, und die Gegenfälle bewiesen nichts.",
+  ],
+  [
+    "tests/wissenspruefung-istvertrag/vollabgleich.test.ts",
+    "Gezählt werden die Vergleiche, die WIRKLICH beim Modell ankommen (gedeckelt 20, vollständig der " +
+      "ganze Bestand). Ohne Grundfreigabe stünde die Attrappe in keiner Kette, jeder Zähler bliebe " +
+      "0, und „vollständig“ wäre von „gedeckelt“ nicht zu unterscheiden.",
+  ],
+  [
+    "tests/wissenssprints/reasoner-lueckenurteil.test.ts",
+    "G1 misst, was beim Lückenurteil hinausgeht (nur Name und Zähler) und dass ein Lauf `gaps` " +
+      "entsteht — dafür muss das Modell wirklich urteilen. G4 ist der Sperrfall (vertraulich und " +
+      "nur Cloud, das Modell sieht nichts). Nie mehr als die Grundfreigabe.",
+  ],
+  [
+    "tests/zweitmeinung/fragedienst.test.ts",
+    "F1 und F4 vergleichen zwei WIRKLICH antwortende Modelle (öffentlich und lokal) über dieselben " +
+      "Kandidaten; F3 zählt genau einen Aufruf ohne Anforderung. Ohne Grundfreigabe antwortete das " +
+      "öffentliche Modell nie, und die Zweitmeinung verglich nichts.",
+  ],
+  [
+    "tests/zweitmeinung/reasoner-zweitmeinung.test.ts",
+    "Z1, Z2, Z6, Z7 und Z11 vergleichen ein öffentliches Erstmodell mit dem lokalen Zweitmodell; " +
+      "dafür muss das öffentliche wirklich antworten. Z4 und Z10 sind die Sperrfälle OHNE " +
+      "Adminfreigabe und bekommen ausdrücklich nichts. Nie mehr als die Grundfreigabe.",
+  ],
 ]);
 
 /**
@@ -1205,6 +1371,48 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
  * eine spätere Runde den Schalter nicht beiläufig irgendwo setzen — F2 wird rot.
  */
 const VERTRAULICH_ERLAUBT: readonly string[] = [];
+
+/** Die beiden Freigabefelder — wer sie im Code nennt, steht unter F2. */
+const FREIGABEFELDER: readonly string[] = ["oeffentlicheKi", "vertraulicheInhalte"];
+
+/**
+ * DAS VIERTE REGISTER · wer die Feldnamen nennt, ohne die Freigabe zu SCHREIBEN — je Zeile mit Grund.
+ *
+ * Gesamtcheck R-1329 (Nacharbeit 57). F2 verbietet, die Freigabefelder von Hand zu schreiben, und
+ * misst das am Feldnamen im Code. Drei Bestandsdateien nennen die Namen aber nur LESEND: zwei prüfen
+ * die vom Server veröffentlichte Lage (`lage.freigabe`), eine führt den Namen als Fundstelle einer
+ * Dokumentzuordnung. Keine von ihnen setzt eine Freigabe — die beiden Referenz-Dateien erteilen sie
+ * über den Helfer und stehen deshalb zugleich in F1 und F4.
+ *
+ * Nur diese ganzen Leseausdrücke und Fundstellen sind ausgenommen. Auch in diesen Dateien
+ * erkennt F2 weitere Verwendungen der Felder, einschließlich einer Zuweisung über einen Alias.
+ */
+const LAGEVERGLEICH =
+  "expect(lage.freigabe).toEqual({ oeffentlicheKi: true, vertraulicheInhalte: false });";
+const FELDNAMEN_NUR_LESEND: ReadonlyMap<string, readonly string[]> = new Map([
+  [
+    "tests/referenzki-adminauswahl/lage-und-funktionscheck.test.ts",
+    [LAGEVERGLEICH, "expect(reasoner.referenzLage().freigabe.oeffentlicheKi).toBe(false);"],
+  ],
+  ["tests/referenzki-adminauswahl/route-einstieg.test.ts", [LAGEVERGLEICH]],
+  [
+    "tests/wissenspruefung-istvertrag/istvertrag-fundstellen.test.ts",
+    [
+      '["services/reasoner/src/service.ts", ["private oeffentlicheKiErlaubt", "vertraulicheInhalte"]],',
+    ],
+  ],
+]);
+
+function schreibtFreigabeVonHand(pfad: string, code: string): boolean {
+  const lesestellen = FELDNAMEN_NUR_LESEND.get(pfad);
+  const zuPruefen = lesestellen
+    ? code
+        .split("\n")
+        .filter((zeile) => !lesestellen.includes(zeile.trim()))
+        .join("\n")
+    : code;
+  return FREIGABEFELDER.some((feld) => new RegExp(`\\b${feld}\\b`).test(zuPruefen));
+}
 
 // ================================================================================================
 // F6 (JOB 3570) — DIE FLÄCHE HÄLT SICH SELBST VOLLSTÄNDIG.
@@ -1335,6 +1543,19 @@ const OHNE_FREIGABE_MIT_GRUND: ReadonlyMap<string, string> = new Map([
       "Vertraulichkeit scheiterte — ohne Freigabe wäre die Ursache „kein Modell“ und der Fall rot. " +
       "Seine Null (`cloudAufrufe` 0, `:450`) bleibt dabei unangetastet. Auch hier sperrt die " +
       "Modulgrenze den Helfer aus (s. Kopf dieses Registers).",
+  ],
+  // Gesamtcheck R-1329 (Nacharbeit 57): zwei Bestandsdateien, die F6 als unversorgt meldete.
+  [
+    "tests/reasoner/model-client-denkblock.test.ts",
+    "(C) Prüft den Antwortleser des Anthropic-Clients und `ModelProvider` DIREKT (`denkenderProvider`, " +
+      "`:89`), ohne `Reasoner`: keine Zuordnung, kein `setTaskConfig`, keine Stelle, an der eine " +
+      "Freigabe wirken könnte. Der Transport ist eine Attrappe ohne Netz.",
+  ],
+  [
+    "tests/reasoner/r1643-argumentationskette.test.ts",
+    "(C) Misst die Argumentationskette an `ModelProvider.answer` DIREKT (`:74`, `:85`) mit einem " +
+      "Fake-Client, ohne `Reasoner`: keine Zuordnung und keine Entscheidungsstelle, an der eine " +
+      "Freigabe zu setzen wäre. Die übrigen Fälle prüfen reine Funktionen.",
   ],
 ]);
 
@@ -1720,6 +1941,143 @@ interface Dateiakte {
  * in messbarer Form: keine Erwartung gesenkt, keine Freigabe dazugeschmuggelt.
  */
 const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
+  "tests/assistenz-minimal/minimal-am-server.test.tsx": {
+    gesamtboden: 227,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      "#1": { boden: 15, freigaben: [] },
+      "#2": { boden: 17, freigaben: [] },
+      "#3": { boden: 10, freigaben: [] },
+      "#4": { boden: 4, freigaben: [] },
+      "#5": { boden: 12, freigaben: [] },
+      "#6": { boden: 9, freigaben: [] },
+      "#7": { boden: 13, freigaben: [] },
+      "#8": { boden: 8, freigaben: [] },
+      "#9": { boden: 15, freigaben: [] },
+      "#10": { boden: 6, freigaben: [] },
+      "#11": { boden: 7, freigaben: [] },
+      "#12": { boden: 10, freigaben: [] },
+      "#13": { boden: 2, freigaben: [] },
+      "#14": { boden: 3, freigaben: [] },
+      "#15": { boden: 13, freigaben: [] },
+      "#16": { boden: 2, freigaben: [] },
+      "#17": { boden: 8, freigaben: [] },
+      "#18": { boden: 15, freigaben: [] },
+      "#19": { boden: 11, freigaben: [] },
+      "#20": { boden: 3, freigaben: [] },
+      "#21": { boden: 9, freigaben: [] },
+      "#22": { boden: 6, freigaben: ["erteileKiFreigabe(halter.dienste.reasoner)"] },
+      "#23": { boden: 11, freigaben: [] },
+      "#24": { boden: 6, freigaben: [] },
+      "#25": { boden: 4, freigaben: [] },
+      "#26": { boden: 5, freigaben: [] },
+      "#27": { boden: 3, freigaben: [] },
+    },
+  },
+  "tests/ki-lauf-protokoll/stabile-laufkennung.test.ts": {
+    gesamtboden: 30,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 4, freigaben: [AM_REASONER] },
+      L1: { boden: 3, freigaben: [] },
+      L2: { boden: 4, freigaben: [] },
+      L3: { boden: 4, freigaben: [] },
+      L4: { boden: 3, freigaben: [] },
+      L5: { boden: 4, freigaben: [] },
+      L6: { boden: 4, freigaben: [] },
+      L7: { boden: 4, freigaben: [] },
+    },
+  },
+  "tests/klara-kontext/frage-zur-word-markierung.test.ts": {
+    gesamtboden: 81,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 2, freigaben: [ZUORDNUNG('"openai"')] },
+      "#1": { boden: 6, freigaben: [] },
+      "#2": { boden: 29, freigaben: [] },
+      "#3": { boden: 6, freigaben: [] },
+      "#4": { boden: 4, freigaben: [] },
+      "#5": { boden: 4, freigaben: [] },
+      "#6": { boden: 2, freigaben: [] },
+      "#7": { boden: 3, freigaben: [] },
+      "#8": { boden: 7, freigaben: [] },
+      "#9": { boden: 4, freigaben: [] },
+      "#10": { boden: 5, freigaben: [] },
+      "#11": { boden: 5, freigaben: [] },
+      "#12": { boden: 3, freigaben: [] },
+      "#13": { boden: 1, freigaben: [] },
+    },
+  },
+  "tests/klara-kontext/freie-aussage-pruefen.test.ts": {
+    gesamtboden: 18,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 10, freigaben: [ZUORDNUNG('"openai"')] },
+      "#1": { boden: 8, freigaben: [] },
+    },
+  },
+  "tests/select-lauf-protokoll/authentifizierter-actor-live.test.ts": {
+    gesamtboden: 43,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 9, freigaben: [AM_REASONER] },
+      "#1": { boden: 7, freigaben: [] },
+      "#2": { boden: 7, freigaben: [] },
+      "#3": { boden: 5, freigaben: [] },
+      "#4": { boden: 6, freigaben: [] },
+      "#5": { boden: 9, freigaben: [] },
+    },
+  },
+  "tests/teamassistenten/office-einwilligung.test.ts": {
+    gesamtboden: 20,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 8, freigaben: [ZUORDNUNG('"openai"')] },
+      "#1": { boden: 0, freigaben: [] },
+      "#2": { boden: 0, freigaben: [] },
+      "#3": { boden: 6, freigaben: [] },
+      "#4": { boden: 6, freigaben: [] },
+    },
+  },
+  "tests/w44-ki-ausleitung/modell-budget-abbruch-protokoll.test.ts": {
+    gesamtboden: 39,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      "#1": { boden: 5, freigaben: [] },
+      "#2": { boden: 6, freigaben: [] },
+      "#3": { boden: 4, freigaben: [] },
+      "#4": { boden: 10, freigaben: ["erteileKiFreigabe(r)"] },
+      "#5": { boden: 5, freigaben: ["erteileKiFreigabe(r)"] },
+      "#6": { boden: 4, freigaben: [] },
+      "#7": { boden: 5, freigaben: [] },
+    },
+  },
+  "tests/w44-ki-ausleitung/provider-ursachen.test.ts": {
+    gesamtboden: 6,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 5, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+    },
+  },
+  "tests/w44-ki-ausleitung/status-cache.test.ts": {
+    gesamtboden: 13,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      "#1": { boden: 13, freigaben: ["erteileKiFreigabe(s.reasoner)"] },
+    },
+  },
+  "tests/w44-ki-ausleitung/worker-spaetmutation.test.ts": {
+    gesamtboden: 4,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      "#1": { boden: 4, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+    },
+  },
   // JOB 3484 R10: nur Register/Fallakten nachgeführt; F1–F7 und die leere Vertraulichkeitsliste
   // bleiben unverändert. Mutation: einen Eintrag entfernen → F1 rot; Cloud-Null löschen → F4 rot.
   "tests/review26-teilpruefung-ursache/fixture.ts": {
@@ -1940,10 +2298,28 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#7": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
     },
   },
+  // Gesamtcheck R-1329 (Nacharbeit 57): seit R-0604 (G22, mega83 A) stehen drei Modellweg-Fälle vorn,
+  // und ihr gemeinsamer Aufbau `mitModell()` erteilt die Grundfreigabe im VORSPANN — die Datei ist
+  // damit vollzählig zu führen. Der Assist-Fall heißt jetzt `#10` (vorher `#7`); `#3` erteilt am
+  // eigenen Vision-Reasoner. Die Rückfall-Fälle `#6`–`#8` und die Ausnahmefälle bekommen nichts.
   "tests/reasoner/mega61-ki-kennzeichnung.test.ts": {
-    gesamtboden: 23,
+    gesamtboden: 29,
+    vollzaehlig: true,
     faelle: {
-      "#7": { boden: 2, freigaben: ["erteileKiFreigabe(mitModell)"] },
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(r)"] },
+      "#1": { boden: 5, freigaben: [] },
+      "#2": { boden: 4, freigaben: [] },
+      "#3": { boden: 3, freigaben: ["erteileKiFreigabe(vision)"] },
+      "#4": { boden: 2, freigaben: [] },
+      "#5": { boden: 1, freigaben: [] },
+      "#6": { boden: 2, freigaben: [] },
+      "#7": { boden: 2, freigaben: [] },
+      "#8": { boden: 3, freigaben: [] },
+      "#9": { boden: 1, freigaben: [] },
+      "#10": { boden: 2, freigaben: ["erteileKiFreigabe(mitModell)"] },
+      "#11": { boden: 1, freigaben: [] },
+      "#12": { boden: 1, freigaben: [] },
+      "#13": { boden: 2, freigaben: [] },
     },
   },
   "tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts": {
@@ -1963,8 +2339,11 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       C1b: { boden: 6, freigaben: ["erteileKiFreigabe(zweite)"] },
     },
   },
+  // Gesamtcheck R-1329 (Nacharbeit 58): gemessen 43 ausgeführte Erwartungen (Syntaxbaum), Fall für
+  // Fall P1 7 · P2 3 · P3 5 · P4 6 · P5 2 · P6 5 · P7 5 · P8 5 · P9 5. Woher die frühere 44 kam,
+  // ist nicht belegt; dieser Auftrag hat die Datei nicht verändert. Die Fallböden bleiben gleich.
   "tests/openai-anbieterfalle/openai-budget-parameter.test.ts": {
-    gesamtboden: 44,
+    gesamtboden: 43,
     faelle: {
       "#1": { boden: 7, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#6": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -2146,10 +2525,12 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#12": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
+  // Gesamtcheck R-1329 (Nacharbeit 57): R-1070 hat vor diesem Fall „Kontrolle: unverändertes
+  // Vorzeichen" eingefügt — derselbe Fall (Modellfehler beim extract) heißt jetzt `#16`.
   "services/reasoner/src/extract.test.ts": {
     gesamtboden: 41,
     faelle: {
-      "#15": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#16": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "services/reasoner/src/model-concurrency.test.ts": {
@@ -2344,7 +2725,7 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
     },
   },
   "tests/ask/mega61-vertraulich-kein-cloud-kontext.test.ts": {
-    gesamtboden: 15,
+    gesamtboden: 19,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -2352,6 +2733,7 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       // G1–G3 sind die SPERRFÄLLE dieser Datei: das vertrauliche Objekt darf den Modellkontext
       // nicht erreichen. Sie leben von der Grundfreigabe im VORSPANN (sonst liefe gar kein Modell)
       // und bekommen nie eine eigene, großzügigere daneben.
+      P6: { boden: 4, freigaben: [] },
       G1: { boden: 4, freigaben: [] },
       G2: { boden: 3, freigaben: [] },
       G3: { boden: 1, freigaben: [] },
@@ -2444,20 +2826,24 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#15": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
+  // Gesamtcheck R-1329 (Nacharbeit 57): der V2-Prüfaufbau hat „V2-E1u · Kalibrierung" an vierter
+  // Stelle eingefügt (11 ausgeführte Erwartungen). Die Fälle dahinter rücken um eins — ihre Böden
+  // sind unverändert: E1 jetzt `#5`, E2 `#6`, E3 `#7`, E4 `#8`, E5 `#9`, E6 `#10`.
   "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts": {
-    gesamtboden: 62,
+    gesamtboden: 73,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 6, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#1": { boden: 1, freigaben: [] },
       "#2": { boden: 8, freigaben: [] },
       "#3": { boden: 10, freigaben: [] },
-      "#4": { boden: 15, freigaben: [] },
-      "#5": { boden: 5, freigaben: [] },
-      "#6": { boden: 6, freigaben: [] },
+      "#4": { boden: 11, freigaben: [] },
+      "#5": { boden: 15, freigaben: [] },
+      "#6": { boden: 5, freigaben: [] },
       "#7": { boden: 6, freigaben: [] },
-      "#8": { boden: 2, freigaben: [] },
-      "#9": { boden: 3, freigaben: [] },
+      "#8": { boden: 6, freigaben: [] },
+      "#9": { boden: 2, freigaben: [] },
+      "#10": { boden: 3, freigaben: [] },
     },
   },
   "tests/library/import-json-zero-model-calls.test.ts": {
@@ -2692,7 +3078,7 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   // Die Freigabe unter `#11` ist der Aufbau `chokepointAufbau()` des B5-Blocks — er steht im
   // Textbereich des vorangehenden Falls, ein Artefakt der Zerlegung, kein Sperrfall mit Freigabe.
   "services/reasoner/src/anbieterbindung.test.ts": {
-    gesamtboden: 37,
+    gesamtboden: 69,
     vollzaehlig: true,
     faelle: {
       VORSPANN: {
@@ -2721,7 +3107,23 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#13": { boden: 3, freigaben: [] },
       "#14": { boden: 3, freigaben: [] },
       "#15": { boden: 3, freigaben: [] },
-      "#16": { boden: 2, freigaben: [] },
+      // Gesamtcheck R-1329 (Nacharbeit 57): R-0590 (Ben nacharbeit-1/-3) hat hinter `#16` den Aufbau
+      // `ausweichAufbau()` (Textbereich von `#16`, ein Artefakt der Zerlegung wie unter `#11`) und
+      // neun Fälle angehängt: kein nicht gleichwertiger Ausweichweg hinter der Zustimmung, für
+      // `answer` (`#17`–`#21`) und `structure` (`#22`–`#25`). Ausgezählt am heutigen Stand.
+      "#16": {
+        boden: 2,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { answer: "auto" } })'],
+      },
+      "#17": { boden: 4, freigaben: [] },
+      "#18": { boden: 5, freigaben: [] },
+      "#19": { boden: 4, freigaben: [] },
+      "#20": { boden: 2, freigaben: [] },
+      "#21": { boden: 2, freigaben: [] },
+      "#22": { boden: 5, freigaben: [] },
+      "#23": { boden: 5, freigaben: [] },
+      "#24": { boden: 2, freigaben: [] },
+      "#25": { boden: 2, freigaben: [] },
     },
   },
   // Auftrag gesamt-ki-einwilligung: VOLLZÄHLIG aus demselben Grund (`aufbau()` im VORSPANN). Unter
@@ -2729,7 +3131,7 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   // der Admin-Wechsel von `assist` auf OpenAI MITTEN in der Anfrage — der Gegenstand dieses Falls,
   // dessen Erwartung gerade ist, dass OpenAI nichts bekommt.
   "tests/app/einwilligung-anbieter-je-aufgabe.test.ts": {
-    gesamtboden: 36,
+    gesamtboden: 50,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
@@ -2750,7 +3152,16 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       },
       "#6": { boden: 7, freigaben: [] },
       "#7": { boden: 4, freigaben: [] },
-      "#8": { boden: 8, freigaben: [] },
+      // Gesamtcheck R-1329 (Nacharbeit 57): R-0590 (Ben nacharbeit-1) hat hinter `#8` den Aufbau
+      // `antwortAufbau()` (Textbereich von `#8`, ein Artefakt der Zerlegung) und drei Fälle
+      // angehängt — der Grund des gesperrten Ausweichwegs erreicht die Fläche. Ausgezählt am Stand.
+      "#8": {
+        boden: 8,
+        freigaben: ['mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic" } })'],
+      },
+      "#9": { boden: 4, freigaben: [] },
+      "#10": { boden: 8, freigaben: [] },
+      "#11": { boden: 2, freigaben: [] },
     },
   },
   // Auftrag ki-modus-wahrheit (Ben nacharbeit-7). Nicht vollzählig: der VORSPANN gibt nichts frei.
@@ -2769,6 +3180,395 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       L7: { boden: 3, freigaben: [AM_REASONER] },
       L8: { boden: 4, freigaben: [AM_REASONER] },
       W2: { boden: 7, freigaben: [AM_REASONER] },
+    },
+  },
+
+  // ---- Gesamtcheck R-1329 (Nacharbeit 57) · die Akten zum Registernachtrag oben. ----------------
+  // Die Fallgrenzen folgen `fallStellen` (Kennung „X1 ·", sonst die Stelle `#n`), die Freigaben ihrem
+  // Wortlaut im Code. Die BÖDEN sind von Hand am heutigen Stand ausgezählt: gezählt sind die Zeilen,
+  // die mit `expect(` beginnen — eine UNTERGRENZE der ausgeführten Erwartungen, die der Syntaxbaum
+  // zählt; ein selbst gefahrener Lauf liegt dieser Nacharbeit nicht vor. Vollzählig sind die Dateien,
+  // deren VORSPANN freigibt (die Regel unter `Dateiakte`); die Sperrfälle stehen mit leerer Liste.
+  "tests/antwort-quellendeckung/wege-nur-geprueftes.test.ts": {
+    gesamtboden: 52,
+    faelle: {
+      "#8": { boden: 13, freigaben: [AM_REASONER] },
+    },
+  },
+  "tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts": {
+    gesamtboden: 34,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 12, freigaben: [AM_REASONER] },
+      "#1": { boden: 5, freigaben: [] },
+      "#2": { boden: 3, freigaben: [] },
+      "#3": { boden: 3, freigaben: [] },
+      "#4": { boden: 3, freigaben: [] },
+      "#5": { boden: 3, freigaben: [] },
+      "#6": { boden: 1, freigaben: [] },
+      "#7": { boden: 4, freigaben: [] },
+    },
+  },
+  "tests/capture/gesamt-ocr-interview-kontext.test.ts": {
+    gesamtboden: 61,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(mutable.reasoner)"] },
+      R1: { boden: 4, freigaben: [] },
+      // SPERRFALL: vertraulich eingestuft — der erkannte Text erreicht das Netz nicht.
+      R2: { boden: 2, freigaben: [] },
+      R3: { boden: 4, freigaben: [] },
+      P1: { boden: 6, freigaben: [] },
+      K1: { boden: 3, freigaben: [] },
+      K2: { boden: 1, freigaben: [] },
+      K3: { boden: 2, freigaben: [] },
+      K4: { boden: 1, freigaben: [] },
+      K5: { boden: 1, freigaben: [] },
+      K6: { boden: 1, freigaben: [] },
+      K7: { boden: 4, freigaben: [] },
+      K8: { boden: 2, freigaben: [] },
+      K9: { boden: 3, freigaben: [] },
+      K10: { boden: 4, freigaben: [] },
+      K11: { boden: 3, freigaben: [] },
+      K12: { boden: 1, freigaben: [] },
+      K13: { boden: 6, freigaben: [] },
+      K14: { boden: 7, freigaben: [] },
+      E1: { boden: 2, freigaben: [] },
+      E2: { boden: 2, freigaben: [] },
+      E3: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/foto-wissen/foto-interview-reasoner.test.ts": {
+    gesamtboden: 48,
+    faelle: {
+      "#13": { boden: 4, freigaben: [AM_REASONER] },
+    },
+  },
+  // Der zweite Aufruf steht im Rechte-Aufbau `aufbauen` zwischen V1 und R1 — im Textbereich von V1.
+  "tests/import-volltext/grenzwert-hinter-der-deckseite.test.ts": {
+    gesamtboden: 42,
+    faelle: {
+      V1: { boden: 7, freigaben: [AM_REASONER, AM_REASONER] },
+      // SPERRFÄLLE: vertraulich bzw. unvalidiert — der Grenzwert erreicht den Prompt nicht.
+      R1: { boden: 6, freigaben: [] },
+      R2: { boden: 4, freigaben: [] },
+      R3: { boden: 3, freigaben: [] },
+    },
+  },
+  "tests/ki-arbeitsbegleitung/bpa13-arbeitsweg-am-server.test.ts": {
+    gesamtboden: 102,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 5, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 13, freigaben: [] },
+      "#2": { boden: 15, freigaben: [] },
+      "#3": { boden: 4, freigaben: [] },
+      "#4": { boden: 10, freigaben: [] },
+      "#5": { boden: 4, freigaben: [] },
+      "#6": { boden: 14, freigaben: [] },
+      "#7": { boden: 3, freigaben: [] },
+      "#8": { boden: 9, freigaben: [] },
+      "#9": { boden: 3, freigaben: [] },
+      "#10": { boden: 9, freigaben: [] },
+      "#11": { boden: 2, freigaben: [] },
+      "#12": { boden: 4, freigaben: [] },
+      "#13": { boden: 5, freigaben: [] },
+      "#14": { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/pruefung-hintergrund/nachholen-und-abgleich.test.ts": {
+    gesamtboden: 91,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 9, freigaben: [] },
+      "#2": { boden: 4, freigaben: [] },
+      "#3": { boden: 5, freigaben: [] },
+      "#4": { boden: 8, freigaben: [] },
+      "#5": { boden: 13, freigaben: [] },
+      "#6": { boden: 9, freigaben: [] },
+      "#7": { boden: 18, freigaben: [] },
+      "#8": { boden: 5, freigaben: [] },
+      "#9": { boden: 2, freigaben: [] },
+      "#10": { boden: 3, freigaben: [] },
+      "#11": { boden: 4, freigaben: [] },
+      "#12": { boden: 2, freigaben: [] },
+      "#13": { boden: 9, freigaben: [] },
+    },
+  },
+  "tests/reasoner/r0046-bildbeschreibung-haertung.test.ts": {
+    gesamtboden: 25,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [AM_REASONER] },
+      "#1": { boden: 4, freigaben: [] },
+      "#2": { boden: 3, freigaben: [] },
+      "#3": { boden: 2, freigaben: [] },
+      "#4": { boden: 1, freigaben: [] },
+      "#5": { boden: 3, freigaben: [] },
+      "#6": { boden: 4, freigaben: [] },
+      "#7": { boden: 3, freigaben: [] },
+      "#8": { boden: 3, freigaben: [] },
+      "#9": { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/rechteentzug-gespraeche/hintergrund-entzug-worker.test.ts": {
+    gesamtboden: 9,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      H1: { boden: 4, freigaben: [] },
+      H2: { boden: 2, freigaben: [] },
+      H3: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/referenzki-adminauswahl/lage-und-funktionscheck.test.ts": {
+    gesamtboden: 46,
+    faelle: {
+      L1: {
+        boden: 7,
+        freigaben: [
+          'mitKiFreigabe({ global: "openai", perTask: {}, referenzpruefung: ["anthropic", "local"] })',
+        ],
+      },
+      // SPERRFALL: ohne Freigabe für externe Verarbeitung sind die öffentlichen Optionen gesperrt.
+      L2: { boden: 5, freigaben: [] },
+      L3: {
+        boden: 5,
+        freigaben: [
+          'mitKiFreigabe({ global: "openai", perTask: {}, referenzpruefung: ["anthropic", "local"] })',
+          'mitKiFreigabe({ global: "deterministic", perTask: {}, referenzpruefung: ["local"] })',
+        ],
+      },
+      L4: {
+        boden: 5,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: {}, referenzpruefung: ["anthropic"] })',
+          'mitKiFreigabe({ global: "anthropic", perTask: { answer: "openai" } })',
+        ],
+      },
+      F3: { boden: 6, freigaben: ['mitKiFreigabe({ global: "openai", perTask: {} })'] },
+    },
+  },
+  "tests/referenzki-adminauswahl/route-einstieg.test.ts": {
+    gesamtboden: 78,
+    faelle: {
+      // SPERRFALL: nicht berechtigte Rollen und ohne Anmeldung — nichts geändert, kein Modellaufruf.
+      E1: { boden: 10, freigaben: [] },
+      E2: {
+        boden: 23,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: { structure: "local" } })',
+          'mitKiFreigabe({ global: "anthropic", perTask: { structure: "local" }, referenzpruefung: ["local", "anthropic"], })',
+        ],
+      },
+    },
+  },
+  "tests/referenzki-pruefdienst/abbruch-bis-transport.test.ts": {
+    gesamtboden: 16,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: {
+        boden: 0,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: {}, referenzpruefung: ["anthropic"] })',
+        ],
+      },
+      T1: { boden: 4, freigaben: [] },
+      T2: { boden: 3, freigaben: [] },
+      T3: { boden: 2, freigaben: [] },
+      T4: { boden: 2, freigaben: [] },
+      T5: { boden: 5, freigaben: [] },
+    },
+  },
+  // Ein Aufbauhelfer ohne eigene Fälle (wie `review26-teilpruefung-ursache/fixture.ts`).
+  "tests/referenzki-pruefdienst/beobachtung.ts": {
+    gesamtboden: 0,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: {
+        boden: 0,
+        freigaben: ["mitKiFreigabe({ global: wahl, perTask: {}, referenzpruefung: [wahl] })"],
+      },
+    },
+  },
+  "tests/referenzki-pruefdienst/reasoner-referenzpruefer.test.ts": {
+    gesamtboden: 43,
+    faelle: {
+      P1: {
+        boden: 7,
+        freigaben: [
+          'mitKiFreigabe({ global: "openai", perTask: {}, referenzpruefung: ["openai", "anthropic"] })',
+          'mitKiFreigabe({ global: "anthropic", perTask: {} })',
+        ],
+      },
+      P1b: {
+        boden: 2,
+        freigaben: [
+          'mitKiFreigabe({ global: "openai", perTask: {}, referenzpruefung: ["openai"] })',
+        ],
+      },
+      P1c: {
+        boden: 3,
+        freigaben: [
+          'mitKiFreigabe({ global: "deterministic", perTask: {}, referenzpruefung: ["openai"] })',
+        ],
+      },
+      P2: {
+        boden: 2,
+        freigaben: [
+          'mitKiFreigabe({ global: "openai", perTask: {}, referenzpruefung: ["openai"] })',
+        ],
+      },
+      P2b: {
+        boden: 2,
+        freigaben: [
+          'mitKiFreigabe({ global: "openai", perTask: {}, referenzpruefung: ["local", "anthropic"] })',
+        ],
+      },
+      // P3b misst zuerst die SPERRE ohne Adminfreigabe, dann denselben Prüfer mit Grundfreigabe.
+      P3b: { boden: 5, freigaben: ['mitKiFreigabe({ global: "openai", perTask: {} })'] },
+      P3c: {
+        boden: 1,
+        freigaben: [
+          'mitKiFreigabe({ global: "auto", perTask: {}, referenzpruefung: ["anthropic", "local"] })',
+        ],
+      },
+      P4a: {
+        boden: 7,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: {}, referenzpruefung: ["anthropic"] })',
+        ],
+      },
+      P4b: {
+        boden: 3,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: {}, referenzpruefung: ["anthropic"] })',
+        ],
+      },
+      // SPERRFALL am Chokepoint: vertraulich ohne zweite Freigabe, null Aufrufe.
+      P4c: {
+        boden: 2,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: {}, referenzpruefung: ["anthropic"] })',
+        ],
+      },
+    },
+  },
+  "tests/uebernahme-standard-intern/datei-import-bis-egress.test.ts": {
+    gesamtboden: 33,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 11, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 1, freigaben: [] },
+      "#2": { boden: 1, freigaben: [] },
+      "#3": { boden: 6, freigaben: [] },
+      "#4": { boden: 3, freigaben: [] },
+      // SPERRFÄLLE G1–G3 (`#5`, `#7`, `#9`): gespeichert vertraulich, nichts geht hinaus.
+      "#5": { boden: 5, freigaben: [] },
+      "#6": { boden: 2, freigaben: [] },
+      "#7": { boden: 2, freigaben: [] },
+      "#8": { boden: 1, freigaben: [] },
+      "#9": { boden: 1, freigaben: [] },
+    },
+  },
+  "tests/vertraulichkeit-pflicht/word-uebernahme-bis-wissensobjekt.test.ts": {
+    gesamtboden: 61,
+    vollzaehlig: true,
+    faelle: {
+      // P6 prüft die fehlende Sicht nach dem Anheben im Fall #7 am 404-Antworttext.
+      VORSPANN: { boden: 7, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 3, freigaben: [] },
+      "#2": { boden: 4, freigaben: [] },
+      // SPERRFÄLLE G, MG und MK (`#3`, `#5`, `#6`): vertraulich bzw. unklassifiziert, kein Egress.
+      "#3": { boden: 7, freigaben: [] },
+      "#4": { boden: 6, freigaben: [] },
+      "#5": { boden: 7, freigaben: [] },
+      "#6": { boden: 8, freigaben: [] },
+      "#7": { boden: 9, freigaben: [] },
+      "#8": { boden: 6, freigaben: [] },
+      "#9": { boden: 4, freigaben: [] },
+    },
+  },
+  "tests/wissenspruefung-istvertrag/vollabgleich.test.ts": {
+    gesamtboden: 46,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(s.reasoner)"] },
+      "#1": { boden: 3, freigaben: [] },
+      "#2": { boden: 4, freigaben: [] },
+      "#3": { boden: 3, freigaben: [] },
+      "#4": { boden: 5, freigaben: [] },
+      "#5": { boden: 7, freigaben: [] },
+      "#6": { boden: 2, freigaben: [] },
+      "#7": { boden: 10, freigaben: [] },
+      "#8": { boden: 5, freigaben: [] },
+      "#9": { boden: 1, freigaben: [] },
+      "#10": { boden: 6, freigaben: [] },
+    },
+  },
+  "tests/wissenssprints/reasoner-lueckenurteil.test.ts": {
+    gesamtboden: 19,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [AM_REASONER] },
+      G1: { boden: 9, freigaben: [] },
+      G2: { boden: 3, freigaben: [] },
+      G3: { boden: 3, freigaben: [] },
+      // SPERRFALL: vertraulich und nur Cloud — das Modell sieht nichts.
+      G4: { boden: 2, freigaben: [] },
+      G5: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/zweitmeinung/fragedienst.test.ts": {
+    gesamtboden: 24,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: {
+        boden: 0,
+        freigaben: ['mitKiFreigabe({ global: "openai", perTask: {}, zweitmeinung: "local" })'],
+      },
+      F1: { boden: 9, freigaben: [] },
+      F2: { boden: 3, freigaben: [] },
+      F3: { boden: 4, freigaben: [] },
+      F4: { boden: 8, freigaben: [] },
+    },
+  },
+  "tests/zweitmeinung/reasoner-zweitmeinung.test.ts": {
+    gesamtboden: 46,
+    faelle: {
+      Z1: {
+        boden: 11,
+        freigaben: ['mitKiFreigabe({ global: "openai", perTask: {}, zweitmeinung: "local" })'],
+      },
+      Z2: {
+        boden: 1,
+        freigaben: ['mitKiFreigabe({ global: "openai", perTask: {}, zweitmeinung: "local" })'],
+      },
+      Z3: { boden: 4, freigaben: ['mitKiFreigabe({ global: "openai", perTask: {} })'] },
+      // SPERRFALL: externes Zweitmodell ohne Adminfreigabe — der Anbieter wird nie gefragt.
+      Z4: { boden: 4, freigaben: [] },
+      Z6: {
+        boden: 3,
+        freigaben: ['mitKiFreigabe({ global: "openai", perTask: {}, zweitmeinung: "local" })'],
+      },
+      Z7: {
+        boden: 2,
+        freigaben: ['mitKiFreigabe({ global: "openai", perTask: {}, zweitmeinung: "local" })'],
+      },
+      Z9: {
+        boden: 5,
+        freigaben: [
+          'mitKiFreigabe({ global: "local", perTask: {} })',
+          'mitKiFreigabe({ global: "local", perTask: {}, zweitmeinung: "openai" })',
+        ],
+      },
+      // SPERRFALL: ohne Adminfreigabe geht nichts hinaus, also auch keine Kostenbehauptung.
+      Z10: { boden: 2, freigaben: [] },
+      Z11: {
+        boden: 6,
+        freigaben: ['mitKiFreigabe({ global: "openai", perTask: {}, zweitmeinung: "local" })'],
+      },
     },
   },
 };
@@ -3012,7 +3812,6 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
   });
 
   it("F2 · niemand schreibt die Freigabefelder von Hand — auch diese Datei nicht", () => {
-    const felder = ["oeffentlicheKi", "vertraulicheInhalte"];
     // `bestand` schneidet NUR diesen Wächterblock weg (er misst den Vertrag und muss die Namen
     // nennen dürfen). Der Bestandsteil dieser Datei wird geprüft wie jeder andere — das ist die
     // Korrektur (c) aus dem Kopf dieses Blocks.
@@ -3026,11 +3825,36 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
     // Ein Wächter, der die BEGRÜNDUNG der Zurückhaltung bestraft, treibt sie aus den Dateien
     // heraus. `bestandCode` blendet Kommentare aus und lässt ZEICHENKETTEN stehen — die vier
     // Dateien, die `kiFreigabe: { oeffentlicheKi: true }` wirklich schreiben, bleiben rot.
-    const vonHand = testquellen().filter((p) => {
-      const quelle = bestandCode(p);
-      return felder.some((feld) => quelle.includes(feld));
-    });
+    const vonHand = testquellen().filter((p) => schreibtFreigabeVonHand(p, bestandCode(p)));
     expect(vonHand).toEqual([]);
+    // Gesamtcheck R-1329 (Nacharbeit 57) · KALIBRIERUNG der Wortgrenze und des vierten Registers, in
+    // beiden Richtungen. Ein anderer Bezeichner mit demselben Anfang ist kein Freigabefeld; das Feld
+    // selbst bleibt rot, auch lesend — außer in einer Datei des Registers, und dort wird jede
+    // weitere Verwendung jenseits der geprüften Leseausdrücke wieder rot.
+    const fremd = (code: string): boolean =>
+      schreibtFreigabeVonHand("tests/kalibrierung/f2-fremd.test.ts", code);
+    expect(fremd("const lage = { oeffentlicheKiFreigegeben: true };")).toBe(false);
+    expect(fremd("if (!this.oeffentlicheKiErlaubt(false)) {}")).toBe(false);
+    expect(fremd("const hart = { kiFreigabe: { oeffentlicheKi: true } };")).toBe(true);
+    expect(fremd("expect(lage.freigabe).toEqual({ oeffentlicheKi: true });")).toBe(true);
+    expect(fremd('const auchHart = cfg["vertraulicheInhalte"];')).toBe(true);
+    expect(FELDNAMEN_NUR_LESEND.size).toBeGreaterThan(0);
+    for (const [datei, lesestellen] of FELDNAMEN_NUR_LESEND) {
+      const code = bestandCode(datei);
+      for (const lesestelle of lesestellen) {
+        expect(code.split("\n").map((zeile) => zeile.trim())).toContain(lesestelle);
+        expect(schreibtFreigabeVonHand(datei, lesestelle)).toBe(false);
+        expect(
+          schreibtFreigabeVonHand(datei, `${lesestelle}\nzustand.oeffentlicheKi = true;`),
+        ).toBe(true);
+      }
+      expect(
+        schreibtFreigabeVonHand(datei, "payload: { kiFreigabe: { oeffentlicheKi: true } }"),
+      ).toBe(true);
+      expect(schreibtFreigabeVonHand(datei, "const alias = { vertraulicheInhalte: true };")).toBe(
+        true,
+      );
+    }
     // KALIBRIERUNG der Unterscheidung, an der sie hängt — beide Richtungen, sonst bewiese die Zeile
     // oben vielleicht nur, dass nirgends etwas steht. Ein Feldname in Prosa ist keine Zuweisung;
     // derselbe Name als Eigenschaft oder in einer Zeichenkette ist eine und bleibt rot.

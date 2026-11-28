@@ -50,8 +50,8 @@ import { afterAll, describe, expect, it } from "vitest";
 const WURZEL = join(__dirname, "..", "..");
 const WERKZEUGORDNER = join(WURZEL, "tools");
 
-/** Das geprüfte Werkzeug. Es ist der einzige gemessene Lader — s. MESSUNG unten. */
-const WERKZEUG = "tools/bodytext-nachziehen.ts";
+/** Die CLI-Werkzeuge, die die App-Wurzel laden und vor der Datenbank den Startvertrag prüfen. */
+const WERKZEUGE = ["tools/bodytext-nachziehen.ts", "tools/datenintegritaet.ts"];
 
 /**
  * Mehrteilige Meldungen als Liste statt als Kette. Grund: Biome verbietet den Mischbau
@@ -67,7 +67,7 @@ const satz = (...teile: readonly string[]): string => teile.join("");
 const WEG_ZURUECK = [
   "",
   "SO WIRD ES WIEDER GRÜN:",
-  `  1. In ${WERKZEUG} steht als ERSTE Anweisung von \`main()\`:`,
+  "  1. Im betroffenen Werkzeug steht als erste Anweisung von main():",
   "       pruefeStartvertrag(process.env);",
   '     Importiert aus "../services/app/src/start-vertrag" — die VORHANDENE Funktion, keine Kopie,',
   "     keine eigene Liste, keine nachgebaute Meldung.",
@@ -283,6 +283,8 @@ const LADER = BEFUNDE.filter((b) => b.ladestellen.length > 0);
 // unter `tools/` nennt ausser `bodytext-nachziehen.ts` keine Datei `services/app` in einem
 // Importspezifizierer — die einzige weitere Erwähnung steht in einem Kommentar
 // (`tools/anhang-herkunft-feststellen.ts:6`, `services/app/src/sichtbarkeit.ts`) und ist keine Ladestelle.
+// Seither lädt auch `tools/datenintegritaet.ts` (R-0846/R-1437, Bereinigung) die App-Wurzel — und
+// ruft den Vertrag zuerst (W1/W2 je Werkzeug, Prozessnachweis in `werkzeug-prozess.test.ts`).
 //
 // DESHALB IST DIESE LISTE LEER — und das ist ein gemessener Befund, kein weggelassener Fall.
 // Die Schranke steht trotzdem in BEIDE Richtungen und ist scharf:
@@ -514,8 +516,8 @@ function envZugriffe(wurzel: ts.Node, name: string): ts.Node[] {
   return sammle(wurzel, (n) => ts.isPropertyAccessExpression(n) && n.name.text === name);
 }
 
-describe("JOB 3797 · der Startvertrag am vierten Einstiegspunkt", () => {
-  it("W1 · das Werkzeug ruft den Vertrag in main() — vor dem Verbindungs-String und vor der App-Wurzel", () => {
+describe("JOB 3797 · der Startvertrag an den Werkzeug-Einstiegspunkten", () => {
+  it.each(WERKZEUGE)("W1 · %s prüft den Vertrag vor DB und App-Wurzel", (WERKZEUG) => {
     const sf = quelltext(WERKZEUG);
     const main = findeFunktion(sf, "main");
     expect(
@@ -587,51 +589,54 @@ describe("JOB 3797 · der Startvertrag am vierten Einstiegspunkt", () => {
     ).toEqual([]);
   });
 
-  it("W2 · der CLI-Riegel fängt den Wurf — kein blosses `void main()`", () => {
-    const sf = quelltext(WERKZEUG);
-    // Die Deklaration ist keine `CallExpression` — gefunden werden nur echte Aufrufe.
-    const mainAufrufe = aufrufe(sf, "main");
-    expect(
-      mainAufrufe.length,
-      `${WERKZEUG} · es gibt keinen Aufruf von \`main()\` mehr — der CLI-Riegel ist weg.${WEG_ZURUECK}`,
-    ).toBeGreaterThan(0);
+  it.each(WERKZEUGE)(
+    "W2 · %s: der CLI-Riegel fängt den Wurf — kein blosses `void main()`",
+    (WERKZEUG) => {
+      const sf = quelltext(WERKZEUG);
+      // Die Deklaration ist keine `CallExpression` — gefunden werden nur echte Aufrufe.
+      const mainAufrufe = aufrufe(sf, "main");
+      expect(
+        mainAufrufe.length,
+        `${WERKZEUG} · es gibt keinen Aufruf von \`main()\` mehr — der CLI-Riegel ist weg.${WEG_ZURUECK}`,
+      ).toBeGreaterThan(0);
 
-    const nackt = mainAufrufe.filter((n) => {
-      const eltern = n.parent;
-      // `void main()` — der Fall vor diesem Auftrag.
-      if (eltern !== undefined && eltern.kind === ts.SyntaxKind.VoidExpression) {
-        return true;
-      }
-      // `main().catch(…)` — der Fänger. Alles andere gilt als ungefangen.
-      return !(
-        eltern !== undefined &&
-        ts.isPropertyAccessExpression(eltern) &&
-        eltern.name.text === "catch"
-      );
-    });
-    expect(
-      nackt.map((n) => `Zeile ${zeileVon(sf, n.getStart(sf))}: ${n.parent?.getText(sf).trim()}`),
-      satz(
-        `${WERKZEUG} · der CLI-Riegel ruft \`main()\` ohne \`.catch(…)\`. Was in \`main()\` wirft — `,
-        "und der Startvertrag wirft dort — wird zur unbehandelten Zurückweisung: zwölf Zeilen ",
-        `Stapelspur mit \`at ModuleJob.run\` statt eines Satzes.${WEG_ZURUECK}`,
-      ),
-    ).toEqual([]);
+      const nackt = mainAufrufe.filter((n) => {
+        const eltern = n.parent;
+        // `void main()` — der Fall vor diesem Auftrag.
+        if (eltern !== undefined && eltern.kind === ts.SyntaxKind.VoidExpression) {
+          return true;
+        }
+        // `main().catch(…)` — der Fänger. Alles andere gilt als ungefangen.
+        return !(
+          eltern !== undefined &&
+          ts.isPropertyAccessExpression(eltern) &&
+          eltern.name.text === "catch"
+        );
+      });
+      expect(
+        nackt.map((n) => `Zeile ${zeileVon(sf, n.getStart(sf))}: ${n.parent?.getText(sf).trim()}`),
+        satz(
+          `${WERKZEUG} · der CLI-Riegel ruft \`main()\` ohne \`.catch(…)\`. Was in \`main()\` wirft — `,
+          "und der Startvertrag wirft dort — wird zur unbehandelten Zurückweisung: zwölf Zeilen ",
+          `Stapelspur mit \`at ModuleJob.run\` statt eines Satzes.${WEG_ZURUECK}`,
+        ),
+      ).toEqual([]);
 
-    // Anti-Vakuum: der Fänger muss auch etwas AUSGEBEN und den Exit setzen, sonst schluckt er nur.
-    const riegel = readFileSync(join(WURZEL, WERKZEUG), "utf8");
-    const fangblock = riegel.slice(riegel.indexOf("main()"));
-    expect(
-      /process\.stderr\.write/.test(fangblock),
-      `${WERKZEUG} · der Fänger schreibt nichts auf stderr — ein stiller Abbruch ist schlimmer als ` +
-        `eine Stapelspur.${WEG_ZURUECK}`,
-    ).toBe(true);
-    expect(
-      /process\.exitCode\s*=/.test(fangblock),
-      `${WERKZEUG} · der Fänger setzt keinen Exit-Code — der Prozess endete mit 0 und ein ` +
-        `Aufrufskript hielte den Abbruch für Erfolg.${WEG_ZURUECK}`,
-    ).toBe(true);
-  });
+      // Anti-Vakuum: der Fänger muss auch etwas AUSGEBEN und den Exit setzen, sonst schluckt er nur.
+      const riegel = readFileSync(join(WURZEL, WERKZEUG), "utf8");
+      const fangblock = riegel.slice(riegel.indexOf("main()"));
+      expect(
+        /process\.stderr\.write/.test(fangblock),
+        `${WERKZEUG} · der Fänger schreibt nichts auf stderr — ein stiller Abbruch ist schlimmer als ` +
+          `eine Stapelspur.${WEG_ZURUECK}`,
+      ).toBe(true);
+      expect(
+        /process\.exitCode\s*=/.test(fangblock),
+        `${WERKZEUG} · der Fänger setzt keinen Exit-Code — der Prozess endete mit 0 und ein ` +
+          `Aufrufskript hielte den Abbruch für Erfolg.${WEG_ZURUECK}`,
+      ).toBe(true);
+    },
+  );
 
   it("W3/A · jedes Werkzeug, das die App-Wurzel lädt, ruft den Vertrag oder steht im Altbestand", () => {
     expect(
@@ -679,23 +684,21 @@ describe("JOB 3797 · der Startvertrag am vierten Einstiegspunkt", () => {
 
     // Die Namensmenge der Lader — EXAKT, in beide Richtungen. Ein neuer Lader gehört gemessen und
     // hier eingetragen (und trägt dann entweder den Vertrag oder einen Altbestandseintrag).
-    expect(LADER.map((b) => b.datei)).toEqual([WERKZEUG]);
+    expect(LADER.map((b) => b.datei)).toEqual(WERKZEUGE);
 
     // Und die Einstiegspunkte im Sinn von JOB 3776 Lieferpunkt 1: Lader MIT CLI-Riegel.
-    expect(LADER.filter((b) => b.hatCliRiegel).map((b) => b.datei)).toEqual([WERKZEUG]);
+    expect(LADER.filter((b) => b.hatCliRiegel).map((b) => b.datei)).toEqual(WERKZEUGE);
 
     // Die gemeldete ZEILE zeigt auf die wirkliche Ladestelle — geprüft am Quelltext selbst, nicht
     // an derselben Suche. Ohne das wäre `Datei:Zeile` im Befund eine Zahl ohne Deckung.
-    const quellzeilen = readFileSync(join(WURZEL, WERKZEUG), "utf8").split("\n");
-    const stellen = LADER.flatMap((b) => b.ladestellen);
-    expect(stellen.length, `${WERKZEUG} · keine Ladestelle gefunden — der Gang misst nichts.`).toBe(
-      1,
-    );
-    for (const stelle of stellen) {
-      expect(
-        quellzeilen[stelle.zeile - 1] ?? "",
-        `${WERKZEUG} · die gemeldete Zeile ${stelle.zeile} enthält gar keine Ladestelle.`,
-      ).toContain("build-app");
+    for (const lader of LADER) {
+      const quellzeilen = readFileSync(join(WURZEL, lader.datei), "utf8").split("\n");
+      expect(lader.ladestellen.length, lader.datei).toBe(1);
+      for (const stelle of lader.ladestellen) {
+        expect(quellzeilen[stelle.zeile - 1] ?? "", `${lader.datei}:${stelle.zeile}`).toContain(
+          "build-app",
+        );
+      }
     }
 
     // Anti-Vakuum: der Gang muss Dateien wirklich GELESEN haben. Sechs Werkzeuge tragen heute einen

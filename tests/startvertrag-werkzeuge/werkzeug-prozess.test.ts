@@ -196,7 +196,7 @@ function starteWerkzeug(
 }
 
 describe("JOB 3797 P · das Werkzeug bricht mit einem Satz ab", () => {
-  it("P1 · Produktion, BEIDE Pflichtwerte fehlen → eine Zeile mit BEIDEN Namen, keine Stapelspur", () => {
+  it("P1 · Produktion, alle drei Pflichtwerte fehlen → eine Zeile mit allen Namen, keine Stapelspur", () => {
     const lauf = starteWerkzeug({ NODE_ENV: "production" });
     expect(lauf.code, `Ausgabe:\n${lauf.fehlerausgabe}`).not.toBe(0);
     expect(
@@ -205,7 +205,8 @@ describe("JOB 3797 P · das Werkzeug bricht mit einem Satz ab", () => {
     ).toContain("StartvertragError");
     expect(lauf.ersteFehlerzeile).toContain("APP_BASE_URL");
     expect(lauf.ersteFehlerzeile).toContain("DATABASE_URL");
-    expect(lauf.ersteFehlerzeile).toContain("Pflichtwert(e)");
+    expect(lauf.ersteFehlerzeile).toContain("KLARWERK_TRUST_PROXY");
+    expect(lauf.ersteFehlerzeile).toContain("3 Pflichtwert(e)");
     // Keine Stapelspur aus dem Modullader — der Mangel, gegen den dieser Auftrag steht.
     expect(lauf.fehlerausgabe, `Ausgabe:\n${lauf.fehlerausgabe}`).not.toContain("at ModuleJob.run");
     // EINE Zeile heisst EINE Zeile: der Fänger schreibt genau eine, nicht zwölf.
@@ -218,7 +219,11 @@ describe("JOB 3797 P · das Werkzeug bricht mit einem Satz ab", () => {
   }, 120_000);
 
   it("P2 · Produktion, nur APP_BASE_URL fehlt → genau dieser eine Name", () => {
-    const lauf = starteWerkzeug({ NODE_ENV: "production", DATABASE_URL: UNERREICHBAR });
+    const lauf = starteWerkzeug({
+      NODE_ENV: "production",
+      DATABASE_URL: UNERREICHBAR,
+      KLARWERK_TRUST_PROXY: "none",
+    });
     expect(lauf.code).not.toBe(0);
     expect(lauf.ersteFehlerzeile).toContain("APP_BASE_URL");
     expect(lauf.ersteFehlerzeile).toContain("1 Pflichtwert(e)");
@@ -246,6 +251,7 @@ describe("JOB 3797 P · das Werkzeug bricht mit einem Satz ab", () => {
       DATABASE_URL: UNERREICHBAR,
       KLARWERK_DB_URL: UNERREICHBAR,
       APP_BASE_URL: "https://demo.klarwerk.ai",
+      KLARWERK_TRUST_PROXY: "none",
     });
     // DIE DIAGNOSE STEHT VOR DER ERSTEN ZUSICHERUNG, nicht hinter der letzten. Runde 1 baute sie
     // erst unmittelbar vor der Schlusszusicherung; jeder frühere Fehlschlag — Vertragsabbruch,
@@ -437,4 +443,31 @@ describe("JOB 3797 P · das Werkzeug bricht mit einem Satz ab", () => {
     // Anti-Drift-Riegel, und der steht in P4. Stünde er auch hier, röteten zwei Fälle aus EINEM
     // Grund — ein zweiter Prüfweg zur selben Sache. P6 kalibriert die Sonden, P4 wendet sie an.
   });
+});
+
+describe("datenintegritaet: Startvertrag und Import-Riegel", () => {
+  it("direkter Aufruf ohne Produktionspflichtwerte bricht vor der DB ab", () => {
+    const lauf = starteWerkzeug({ NODE_ENV: "production" }, [
+      "--import",
+      "tsx",
+      "tools/datenintegritaet.ts",
+    ]);
+    expect(lauf.code).toBe(2);
+    expect(lauf.ersteFehlerzeile).toContain("StartvertragError");
+    expect(lauf.fehlerausgabe).toContain("APP_BASE_URL");
+    expect(lauf.fehlerausgabe).not.toMatch(/\n\s+at /);
+    expect(lauf.ausgabe).toBe("");
+  }, 120_000);
+  it("Import führt weder Vertrag noch Datenbankarbeit aus", () => {
+    const lauf = starteWerkzeug({ NODE_ENV: "production" }, [
+      "--import",
+      "tsx",
+      "--input-type=module",
+      "-e",
+      "await import('./tools/datenintegritaet.ts');",
+    ]);
+    expect(lauf.code).toBe(0);
+    expect(lauf.fehlerausgabe).toBe("");
+    expect(lauf.ausgabe).toBe("");
+  }, 120_000);
 });

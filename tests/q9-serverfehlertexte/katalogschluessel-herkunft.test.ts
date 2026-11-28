@@ -661,6 +661,8 @@ const GEWORFEN = [
   "ACCESS_EXPIRY_UNREADABLE",
   "ACCOUNT_NOT_FOUND",
   "CURRENT_PASSWORD_INCORRECT",
+  "EMAIL_CHANGE_INVALID",
+  "EMAIL_CHANGE_UNAVAILABLE",
   "EMAIL_TAKEN",
   "INTERNAL",
   "INVALID_CREDENTIALS",
@@ -668,6 +670,7 @@ const GEWORFEN = [
   "LAST_ADMIN_DEMOTION",
   "NOT_APPROVED",
   "OIDC_ACCOUNT_MISSING",
+  "PASSWORD_MANAGED_BY_SSO",
   "RESET_TOKEN_INVALID",
   // R-0562 (eigene Zwei-Faktor-Anmeldung): sieben neue Katalogschlüssel, geworfen in `service.ts`.
   // Sechs davon bringen ihren Routenfall in EN/NL mit (`GEMESSEN_VON`, tests/zweifaktor/
@@ -681,17 +684,21 @@ const GEWORFEN = [
   "SECOND_FACTOR_REQUIRED",
   "SECOND_FACTOR_SETUP_MISSING",
   "SELF_DEMOTION_FORBIDDEN",
+  "SSO_CONFIRMATION_REQUIRED",
   "USER_NOT_FOUND",
   "WEAK_PASSWORD",
 ];
 
-/** Wörtlich in einem `meldung("…", sprache)` der Routen (gemessen: 20 Aufrufe in `routes.ts`,
- *  davon 19 mit wörtlichem Schlüssel). */
+/** Wörtliche Schlüssel in den Meldungsaufrufen der Auth-Routen. */
 const AUS_DER_ROUTE = [
   "ADMIN_REQUIRED",
   "ALREADY_SETUP",
+  "EMAIL_CHANGE_BODY",
+  "EMAIL_CHANGE_INVALID",
+  "EMAIL_CHANGE_SUBJECT",
   "EMAIL_REQUIRED",
   "INTERNAL",
+  "INVALID_REQUEST_BODY",
   "LOGIN_RATE_LIMITED",
   "NAME_REQUIRED",
   "NOT_SIGNED_IN",
@@ -772,6 +779,8 @@ const AUS_DEN_ENTWURFSROUTEN = [
   // Aufnahme entwurf-in-gemeinsamen-pool-geben: der Eingabefehler des Pool-Schalters
   // (`PUT /api/drafts/:id/pool`), dieselbe Datei. Am Draht gemessen in EN/NL (s. `GEMESSEN_VON`).
   "DRAFT_POOL_INVALID",
+  // Fehlende oder nicht mehr verfügbare Quelle beim Übernehmen eines Entwurfs.
+  "DRAFT_SOURCE_NOT_AVAILABLE",
   "PERMISSION_DENIED",
 ];
 
@@ -1482,6 +1491,8 @@ const OHNE_ROUTENFALL = [
   // Zurücksetzen und den Auth-Guard, nie die Nutzerverwaltung.
   "ACCOUNT_NOT_FOUND",
   "CURRENT_PASSWORD_INCORRECT",
+  "EMAIL_CHANGE_INVALID",
+  "EMAIL_CHANGE_UNAVAILABLE",
   "EMAIL_TAKEN",
   "LAST_ADMIN_DELETION",
   "LAST_ADMIN_DEMOTION",
@@ -1490,12 +1501,20 @@ const OHNE_ROUTENFALL = [
   // Konto mit zweitem Faktor (die Ersteinrichtung legt ein frisches Konto ohne an).
   "SECOND_FACTOR_REQUIRED",
   "SELF_DEMOTION_FORBIDDEN",
+  "PASSWORD_MANAGED_BY_SSO",
+  "SSO_CONFIRMATION_REQUIRED",
   "USER_NOT_FOUND",
   // Eingangsprüfungen, Rechte und Schalter der Routen. Gesendet in `routes.ts`, aber kein Fall
   // liest ihren Text in EN oder NL.
   "ADMIN_REQUIRED",
   "ALREADY_SETUP",
   "EMAIL_REQUIRED",
+  "INVALID_REQUEST_BODY",
+  // Diese Texte werden als Betreff und Rumpf der Bestätigungsmail versandt.
+  "EMAIL_CHANGE_SUBJECT",
+  "EMAIL_CHANGE_BODY",
+  // Der Erfassungsweg sendet diesen Katalogtext bei fehlender Quelle.
+  "DRAFT_SOURCE_NOT_AVAILABLE",
   "NAME_REQUIRED",
   "REGISTRATION_DISABLED",
   "REGISTRATION_RATE_LIMITED",

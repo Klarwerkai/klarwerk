@@ -7,7 +7,6 @@ import {
   mitModellKontext,
   resetModelBudgetForTests,
 } from "../../services/reasoner/src/model-concurrency";
-import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 // KVS-S3 Beleg (Runde 2): EIN globaler, sequentieller Takt — bestellte Zusammenfassungen eines
 // Kontos (Modell künstlich 300 ms) verzögern die schlichte Erinnerung eines anderen Kontos; die
 // KI-Anfragebremse (HTTP-Hook) zählt diese Modellaufrufe nicht. Fiktive Daten, app.close().
@@ -44,8 +43,14 @@ async function main() {
     },
     { rejectsConfidential: false },
   );
-  services.reasoner = new Reasoner(new ModelProvider(client));
-  await erteileKiFreigabe(services.reasoner, { oeffentlicheKi: true, vertraulicheInhalte: true });
+  // Private Notizen laufen über die lokale Attrappe. Auch hier zählt der echte Modellport das Budget je Konto.
+  services.reasoner = new Reasoner(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    new ModelProvider(client),
+  );
   try {
     const PW = "Kvs-fiktiv-Kennwort-9";
     const auf = (
