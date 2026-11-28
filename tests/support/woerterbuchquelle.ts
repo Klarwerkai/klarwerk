@@ -352,6 +352,14 @@ export interface SpaetereRegister {
 export const SPAETERE_REGISTER: SpaetereRegister = {
   ergaenzt: [
     {
+      beleg: "f54a86675 Kontoprotokoll für Ausscheiden und Weisungsbefugnis",
+      schluessel: [
+        "audit.action.user_ausgeschieden",
+        "audit.action.user_ausscheiden_beendet",
+        "audit.action.user_weisungsbefugnis_set",
+      ],
+    },
+    {
       beleg: "d7cd765ab Ask-Wartezustand und Abbruch",
       schluessel: [
         "ask.wartestand.dauer",

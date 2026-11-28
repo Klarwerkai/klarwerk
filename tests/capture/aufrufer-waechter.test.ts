@@ -76,7 +76,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { WURZEL, istExportiert, posix, quelldateien, quelleAus } from "../../tools/modalgrenze";
 
 /**
@@ -1932,8 +1932,13 @@ const GEDULDET = new Set<string>([
 ]);
 
 describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
+  let bestand: ReturnType<typeof erhebe>;
+  beforeAll(() => {
+    bestand = erhebe();
+  });
+
   it("A1 · DER FANG: kein neuer Export ohne Nicht-Test-Aufrufer", () => {
-    const { ohneAufrufer, exporte, gelesen } = erhebe();
+    const { ohneAufrufer, exporte, gelesen } = bestand;
 
     // Ohne diese zwei Zeilen wäre der Fall auch dann grün, wenn der Sammler leer liefe — ein
     // leergelaufener Sammler meldet dasselbe wie ein sauberer Baum.
@@ -1969,17 +1974,8 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
   it("A2 · KALIBRIERUNG: der Sammler erkennt echte Aufrufer und faellt nicht auf Nennungen herein", () => {
     // Pflicht in beide Richtungen. Ohne sie misst ein Befund den Sammler statt den Code — und
     // genau daran ist der erste Anlauf dieses Waechters gescheitert (s. `verwendungen`).
-    const { exporte, ohneAufrufer, fremdGenutzt } = erhebe();
+    const { exporte, ohneAufrufer, fremdGenutzt } = bestand;
     expect(exporte).toBeGreaterThan(500);
-    const finde = (name: string): Fund => {
-      const treffer = ohneAufrufer.find((f) => f.name === name);
-      if (treffer) return treffer;
-      // Nicht in der Fundliste heisst: er hat einen Aufrufer. Fuer die Probe brauchen wir ihn trotzdem.
-      const alle = erhebe();
-      const roh = alle.ohneAufrufer.find((f) => f.name === name);
-      return roh ?? { datei: "", name, exportname: name, zeile: 0, art: "" };
-    };
-
     /** Ein Prueffund fuer einen BENANNTEN Export — dort fallen Bezeichner und Exportname zusammen. */
     const benannt = (datei: string, name: string): Fund => ({
       datei,
@@ -2030,7 +2026,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
     // BEDINGT ohne Produktaufrufer bleibt (`BEWUSST`, eine reine Testhilfe): Altfälle aus
     // `OFFENER_REST` taugen dafür nicht, weil sie verdrahtet oder entfernt werden sollen
     // (`PgWriteFence` ist auf main entfernt, `pruefeValidationDecisionRef` inzwischen angeschlossen).
-    expect(finde("resetEmbedSemaphoreForTests").datei).toBe(
+    expect(ohneAufrufer.find((f) => f.name === "resetEmbedSemaphoreForTests")?.datei).toBe(
       "services/app/src/embed-concurrency.ts",
     );
 
@@ -2067,7 +2063,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
     // vollstaendiger Testpfad im Kommentar auf eine existierende Datei zeigt).
     // Wird ein Altfall verdrahtet, MUSS er aus dem Register verschwinden, sonst waechst die Liste
     // zu einem Friedhof.
-    const { ohneAufrufer } = erhebe();
+    const { ohneAufrufer } = bestand;
     const heute = new Set(ohneAufrufer.map(schluessel));
 
     const erledigt = [...GEDULDET].filter((s) => !heute.has(s)).sort();
