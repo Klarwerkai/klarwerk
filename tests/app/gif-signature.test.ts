@@ -8,7 +8,8 @@ import { validateDescribeImageDataUrl } from "../../services/reasoner";
 const gifUrl = (signature: string): string =>
   `data:image/gif;base64,${Buffer.concat([
     Buffer.from(signature, "latin1"),
-    Buffer.alloc(8),
+    // 1 × 1 Pixel, globale Palette, Bilddeskriptor, LZW-Daten und Abschluss.
+    Buffer.from("01000100800000000000ffffff2c00000000010001000002024401003b", "hex"),
   ]).toString("base64")}`;
 
 describe("WP-BILD-1g: exakte GIF-Signatur (GIF87a | GIF89a)", () => {

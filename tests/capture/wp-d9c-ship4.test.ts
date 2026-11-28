@@ -7,12 +7,16 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
+  CAPTURE_FILE_TEXT,
   fileImportHasContent,
+  imageTransferSummary,
   wholeDocumentDraftPayload,
 } from "../../apps/web/src/lib/captureFromFile";
 import { utf8ByteLength } from "../../apps/web/src/lib/docx";
 import { type PptxUnzip, extractPptxRich } from "../../apps/web/src/lib/pptx";
 import { DRAFTS_BODY_LIMIT } from "../../services/app/src/routes/capture-routes";
+
+import { grossesPng } from "../m5c-b-bildbudget/bilder";
 
 const URI_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
 const URI_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -23,18 +27,7 @@ function enc(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
-function noiseBytes(length: number): Uint8Array {
-  const out = new Uint8Array(length);
-  let s = 0x9e3779b9;
-  for (let i = 0; i < length; i += 1) {
-    s ^= s << 13;
-    s ^= s >>> 17;
-    s ^= s << 5;
-    s |= 0;
-    out[i] = s & 0xff;
-  }
-  return out;
-}
+const grenzbild = grossesPng(1000, 900);
 
 function unzipOf(files: Record<string, Uint8Array>): PptxUnzip {
   return () => files;
@@ -56,7 +49,7 @@ describe("WP-D9c ROT-Fix 1: All-images-dropped-Kombinationsfall", () => {
     const files: Record<string, Uint8Array> = {
       "ppt/slides/slide1.xml": enc(pictureOnlySlide("rId2")),
       "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/big.png")),
-      "ppt/media/big.png": noiseBytes(2_700_000),
+      "ppt/media/big.png": grenzbild,
     };
     const res = await extractPptxRich(new ArrayBuffer(0), {
       unzip: unzipOf(files),
@@ -66,7 +59,19 @@ describe("WP-D9c ROT-Fix 1: All-images-dropped-Kombinationsfall", () => {
     expect(res.text).toBe("");
     expect(res.imageCount).toBe(1); // die QUELLE hatte ein Bild …
     expect(res.embeddedImages).toBe(0); // … aber der finale Deckel hat es gedroppt
+    expect(grenzbild.byteLength).toBeGreaterThanOrEqual(2_700_000);
+    expect(grenzbild.byteLength).toBeLessThan(5 * 1024 * 1024);
     expect(res.droppedImageBudget).toBe(1);
+    for (const originalAttached of [true, false]) {
+      const meldungen = imageTransferSummary(res.imageTransfer, { originalAttached }).notices.map(
+        (n) => n.key,
+      );
+      const mit = CAPTURE_FILE_TEXT.imagesAllDropped;
+      const ohne = CAPTURE_FILE_TEXT.imagesAllDroppedNoOriginal;
+      expect(meldungen).toContain(originalAttached ? mit : ohne);
+      expect(meldungen).not.toContain(originalAttached ? ohne : mit);
+      expect(meldungen).not.toContain(CAPTURE_FILE_TEXT.imagesKept);
+    }
     expect(res.html).not.toContain("<figure>");
     // ALT (nur Rest nach Drop): Ablehnung. NEU (Quell-Signal): importierbar → fileOriginal wird gesetzt.
     expect(fileImportHasContent(res.text, res.html, res.imageCount > 0)).toBe(true);
@@ -86,9 +91,15 @@ describe("WP-D9c ROT-Fix 1: All-images-dropped-Kombinationsfall", () => {
     expect(src).toContain("sourceHadImages = docx.totalImages > 0");
     expect(src).toContain("sourceHadImages = pptx.imageCount > 0");
     // Original erst NACH dem Gate → All-dropped-Deck erreicht den Original-Anhang.
-    expect(src.indexOf("fileImportHasContent(text, rich.html, sourceHadImages)")).toBeLessThan(
-      src.indexOf("setFileOriginal({"),
+    const nachPruefung = src.slice(
+      src.indexOf("if (!fileImportHasContent(text, rich.html, sourceHadImages))"),
     );
+    const merktOriginal = nachPruefung.indexOf("setFileOriginal(original)");
+    expect(merktOriginal).toBeGreaterThan(0);
+    const vorbereiten = nachPruefung.slice(0, merktOriginal);
+    expect(vorbereiten).toContain("return;");
+    expect(vorbereiten).toContain("const original = {");
+    expect(vorbereiten).toContain("readFileAsDataUrl(f)");
     // Meldungswahl: „übernommen" NUR wenn wirklich Bilder im Beitrag sind.
     // JOB 513/D3B (Ownerentscheidung Option b): die Entscheidung hängt jetzt am VERTRAG statt an der
     // alten `imageInfo`-Bilanz. Der Pin wandert mit — er prüft weiterhin genau das, was er immer
@@ -101,9 +112,6 @@ describe("WP-D9c ROT-Fix 1: All-images-dropped-Kombinationsfall", () => {
     expect(src).toContain("mergeSlideImageTransfer(");
     // Der Speicherzeitpunkt entscheidet über den Vertrag, gekoppelt an den echten Anhang-Erfolg.
     expect(src).toContain("imageTransferSummary(imageTransfer, { originalAttached })");
-    const lib = readFileSync(resolve(process.cwd(), "apps/web/src/lib/captureFromFile.ts"), "utf8");
-    expect(lib).toContain("keptImages > 0");
-    expect(lib).toContain("CAPTURE_FILE_TEXT.imagesAllDropped");
   });
 
   it("die All-dropped-Meldung existiert DE/EN/NL und behauptet keinen Uebernahme-Erfolg", () => {
@@ -130,7 +138,7 @@ describe("WP-D9c Evidenz 4: echter Draft-Payload unter dem Server-Ceiling", () =
     const files: Record<string, Uint8Array> = {
       "ppt/slides/slide1.xml": enc(slide),
       "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/big.png")),
-      "ppt/media/big.png": noiseBytes(2_700_000),
+      "ppt/media/big.png": grenzbild,
     };
     const res = await extractPptxRich(new ArrayBuffer(0), {
       unzip: unzipOf(files),

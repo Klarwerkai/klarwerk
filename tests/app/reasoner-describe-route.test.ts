@@ -6,11 +6,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { MAX_DESCRIBE_IMAGE_BYTES } from "../../services/reasoner";
 
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+import { PNG_ROT } from "../m5-docx-bildunterschriften/docx-bauen";
+import { grossesPng } from "../m5c-b-bildbudget/bilder";
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
 
-const pngUrl = (extraBytes = 8): string =>
-  `data:image/png;base64,${Buffer.concat([PNG_MAGIC, Buffer.alloc(extraBytes)]).toString("base64")}`;
+const kleinesBild = `data:image/png;base64,${PNG_ROT}`;
+const grossesBild = grossesPng(850, 800);
+const grosseBildUrl = `data:image/png;base64,${grossesBild.toString("base64")}`;
 
 type TestServices = ReturnType<typeof buildServices>;
 
@@ -57,13 +59,15 @@ describe("WP-BILD-1f (bens P2): task-spezifische Parsergrenzen", () => {
   });
 
   it("describe mit GROSSEM gültigem Bild (~2 MB) passiert die große Grenze → 200", async () => {
+    expect(grossesBild.length).toBeGreaterThan(2_000_000);
+    expect(grossesBild.length).toBeLessThan(MAX_DESCRIBE_IMAGE_BYTES);
     const app = buildApp(buildServices());
     const headers = await loginHeaders(app);
     const res = await app.inject({
       method: "POST",
       url: "/api/reasoner/describe",
       headers,
-      payload: { dataUrl: pngUrl(2_000_000), source: "draft", confidentiality: "intern" },
+      payload: { dataUrl: grosseBildUrl, source: "draft", confidentiality: "intern" },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { text: string | null; demo: boolean; fallbackReason?: string };
@@ -76,7 +80,7 @@ describe("WP-BILD-1f (bens P2): task-spezifische Parsergrenzen", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/reasoner/describe",
-      payload: { dataUrl: pngUrl(2_000_000) },
+      payload: { dataUrl: grosseBildUrl },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -135,10 +139,10 @@ describe("WP-BILD-1f (bens P3): strikte, frühe Bild-Validierung — null Provid
       method: "POST",
       url: "/api/reasoner/describe",
       headers,
-      payload: { dataUrl: pngUrl(), source: "draft", confidentiality: "intern" },
+      payload: { dataUrl: kleinesBild, source: "draft", confidentiality: "intern" },
     });
     expect(res.statusCode).toBe(200);
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]?.[0]).toBe(pngUrl());
+    expect(spy.mock.calls[0]?.[0]).toBe(kleinesBild);
   });
 });

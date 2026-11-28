@@ -56,6 +56,7 @@ interface Dok {
   body: { innerHTML: string };
 }
 interface Fenster {
+  localStorage: { removeItem(key: string): void; setItem(key: string, value: string): void };
   Office?: unknown;
   Word?: unknown;
   addEventListener(typ: string, fn: unknown): void;
@@ -365,6 +366,7 @@ function sprache(code: "de" | "en" | "nl"): void {
 
 describe("JOB 3096 · M5 · das Bild im Word-Panel", () => {
   beforeEach(() => {
+    umgebung.window.localStorage.removeItem("kw.sprache");
     vi.useFakeTimers({ shouldAdvanceTime: true });
     bilderAbrufe = [];
     rawAbrufe = [];
@@ -680,18 +682,22 @@ describe("JOB 3096 · M5 · das Bild im Word-Panel", () => {
     }
   });
 
-  it("P10 · ohne Word (Office fehlt) ist der Knopf gesperrt — ohne Word gibt es weder Markierung noch Einfuegen", async () => {
-    const lage = erlaubt();
-    meFolge = [lage.me as Sitzung];
-    vi.stubGlobal("fetch", router(lage));
-    const quelle = read(TASKPANE);
-    const { markup, script: skript } = splitTaskpane(quelle);
-    umgebung.document.body.innerHTML = markup;
-    umgebung.window.Office = undefined;
-    umgebung.window.Word = undefined;
-    new Function(skript)();
-    await leerlauf(20);
-    expect(el("m5-bild-btn").disabled).toBe(true);
-    expect(el("m5-bild-btn").getAttribute("title")).toBe(wortlaut("noOffice"));
-  });
+  it.each(["de", "en", "nl"])(
+    "P10 · ohne Word ist der Knopf gesperrt und der Grund in %s sichtbar",
+    async (sprache) => {
+      umgebung.window.localStorage.setItem("kw.sprache", sprache);
+      const lage = erlaubt();
+      meFolge = [lage.me as Sitzung];
+      vi.stubGlobal("fetch", router(lage));
+      const quelle = read(TASKPANE);
+      const { markup, script: skript } = splitTaskpane(quelle);
+      umgebung.document.body.innerHTML = markup;
+      umgebung.window.Office = undefined;
+      umgebung.window.Word = undefined;
+      new Function(skript)();
+      await leerlauf(20);
+      expect(el("m5-bild-btn").disabled).toBe(true);
+      expect(el("m5-bild-btn").getAttribute("title")).toBe(wortlaut("noOffice", sprache));
+    },
+  );
 });

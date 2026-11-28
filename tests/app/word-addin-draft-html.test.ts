@@ -6,6 +6,8 @@
 // Bilder überleben, cid:-/externe Bilder und Skripte fallen weg.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { pruefeBildpixel } from "../m5-docx-bildunterschriften/bildpixel";
+import { PNG_ROT } from "../m5-docx-bildunterschriften/docx-bauen";
 
 // Realistisch verkleinertes Word-HTML (getSelectedDataAsync(Html) liefert ein Voll-Dokument;
 // das Taskpane schneidet den body-Inhalt heraus — hier steht er bereits geschnitten).
@@ -13,7 +15,7 @@ const WORD_BODY_HTML = [
   '<h1 class="MsoTitle">Wartung der Presse</h1>',
   '<p class="MsoNormal"><span style="mso-bidi-font-weight:bold"><b>Wichtig:</b> vor Beginn</span> die Anlage freischalten.</p>',
   "<table><tr><td>Schritt</td><td>Dauer</td></tr><tr><td>Freischalten</td><td>5 min</td></tr></table>",
-  '<p><img src="data:image/png;base64,iVBORw0KGgo=" alt="Typenschild"></p>',
+  `<p><img src="data:image/png;base64,${PNG_ROT}" alt="Typenschild"></p>`,
   '<p><img src="cid:image001.png@01DB" alt="nicht geliefert"></p>',
   "<script>alert(1)</script>",
 ].join("");
@@ -66,7 +68,10 @@ describe("WP-KLARA-2: Word-HTML → Draft über den bestehenden Sanitizer-Vertra
     expect(body).toContain("<table>");
     expect(body).toContain("<td>Freischalten</td>");
     // data:image überlebt; cid:-Bild (Word hat es nicht geliefert) und Skript fallen weg.
-    expect(body).toContain('src="data:image/png;base64,iVBORw0KGgo="');
+    const bilder = [...body.matchAll(/<img\b[^>]*src="([^"]+)"[^>]*>/g)];
+    expect(bilder).toHaveLength(1);
+    expect(bilder[0]?.[0]).toContain('alt="Typenschild"');
+    await pruefeBildpixel(bilder[0]?.[1] ?? "", PNG_ROT);
     expect(body).not.toContain("cid:");
     expect(body).not.toContain("<script");
     expect(body).not.toContain("alert(1)");

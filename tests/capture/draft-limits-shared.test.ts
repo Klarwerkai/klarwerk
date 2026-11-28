@@ -6,10 +6,11 @@
 // Oberfläche hält die Werte jetzt selbst. Bens Anliegen bleibt bindend, dieser Test tritt an die
 // Stelle des Imports: er vergleicht beide Objekte Schlüssel für Schlüssel und Wert für Wert und
 // wird rot, sobald eine Seite geändert wird, ohne dass die andere nachgezogen wird.
-// Ein Test DARF beide Seiten importieren — nur der Produktpfad von apps/web muss frei von
-// services/-Importen sein; das prüft der zweite Block hier.
+// Ein Test DARF beide Seiten importieren — der zweite Block prüft, dass Vite alle echten Laufzeitimporte
+// im Webbuild auflösen kann. Der Profilzeitlöser wird eigens in diese Stufe kopiert.
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { DRAFT_LIMITS as UI_LIMITS } from "../../apps/web/src/lib/draftLimits";
 import { DRAFT_LIMITS as SERVER_LIMITS } from "../../services/capture/src/draft-limits";
@@ -46,9 +47,68 @@ describe("Block D: Oberfläche und Persistenzgrenze halten dieselben Grenzen", (
   });
 });
 
-describe("AUFTRAG-mega8 Block A: der Produktcode der Oberfläche kennt services/ nicht", () => {
-  it("keine Datei unter apps/web/src importiert aus services/", () => {
-    const root = join(__dirname, "../../apps/web/src");
+// Vite entfernt reine Typimporte. Für ausgeführten Code zählt der Inhalt der Webbuild-Stufe.
+const repo = resolve(__dirname, "../..");
+
+function fehlendeLaufzeitimporte(
+  datei: string,
+  quelle: string,
+  kopiert: ReadonlySet<string>,
+): string[] {
+  if (!quelle.includes("services/")) return [];
+  const js = ts.transpileModule(quelle, {
+    fileName: datei,
+    compilerOptions: {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+      jsx: ts.JsxEmit.Preserve,
+    },
+  }).outputText;
+  const fehlend: string[] = [];
+  for (const { fileName } of ts.preProcessFile(js, true, true).importedFiles) {
+    const ziel = relative(
+      repo,
+      resolve(fileName.startsWith(".") ? dirname(datei) : repo, fileName),
+    );
+    if (!ziel.startsWith("services/")) continue;
+    const modul = ts.resolveModuleName(
+      fileName,
+      datei,
+      { moduleResolution: ts.ModuleResolutionKind.Bundler },
+      ts.sys,
+    ).resolvedModule;
+    if (!modul || !kopiert.has(relative(repo, modul.resolvedFileName))) fehlend.push(fileName);
+  }
+  return fehlend;
+}
+
+describe("AUFTRAG-mega8 Block A: alle Laufzeitimporte der Oberfläche liegen im Webbuild", () => {
+  it("prüft auch Weitergaben und dynamische Importe, reine Typverträge entfallen beim Bauen", () => {
+    const datei = join(repo, "apps/web/src/lib/probe.ts");
+    const zeit = "../../../../services/app/src/klara-erinnerung-zeit";
+    const quelle = `import type { Vertrag } from "../../../../services/typ";
+      export { loeseLokal } from "${zeit}";
+      export const laden = () => import("${zeit}");`;
+    expect(fehlendeLaufzeitimporte(datei, quelle, new Set())).toEqual([zeit, zeit]);
+    expect(
+      fehlendeLaufzeitimporte(
+        datei,
+        quelle,
+        new Set(["services/app/src/klara-erinnerung-zeit.ts"]),
+      ),
+    ).toEqual([]);
+  });
+
+  it("jeder Laufzeitimport aus services/ wird im Docker-Webbuild am selben Pfad bereitgestellt", () => {
+    const docker = readFileSync(join(repo, "Dockerfile"), "utf8");
+    const stufe = /^FROM [^\n]+ AS webbuild\n([\s\S]*?)^FROM /im.exec(docker)?.[1];
+    if (!stufe) throw new Error("Die Webbuild-Stufe fehlt im Dockerfile.");
+    const kopiert = new Set<string>();
+    for (const treffer of stufe.matchAll(/^COPY (services\/\S+) (\S+)$/gm)) {
+      const [, quelle, ziel] = treffer;
+      if (quelle && (ziel === quelle || ziel === `${dirname(quelle)}/`)) kopiert.add(quelle);
+    }
+    const root = join(repo, "apps/web/src");
     const files: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -59,16 +119,11 @@ describe("AUFTRAG-mega8 Block A: der Produktcode der Oberfläche kennt services/
     };
     walk(root);
     expect(files.length).toBeGreaterThan(0);
-
-    // Trifft die Modulspezifizierer selbst — `from "…services/…"` (deckt auch mehrzeilige
-    // import-/export-Listen ab) und `import("…services/…")`. Genau diese Pfade kann rollup im
-    // Container nicht auflösen. Bloße Erwähnungen in Kommentaren (wie in draftLimits.ts) sind
-    // erlaubt und lösen hier nicht aus.
-    const offenders = files.filter((file) =>
-      /from\s*["'][^"']*services\/|import\(\s*["'][^"']*services\//.test(
-        readFileSync(file, "utf8"),
+    const fehlend = files.flatMap((file) =>
+      fehlendeLaufzeitimporte(file, readFileSync(file, "utf8"), kopiert).map(
+        (specifier) => `${relative(repo, file)}: ${specifier}`,
       ),
     );
-    expect(offenders).toEqual([]);
+    expect(fehlend).toEqual([]);
   });
 });
