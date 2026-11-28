@@ -1,7 +1,6 @@
 # Zusammenschaltung der Module — der Vertrag
 
-*R-1141, mit R-1148 als Inventar (Aufnahme 20260922, zentrale-module-aufteilen). Stand: Kandidat
-`69ac08a3`. Beschrieben wird die vorhandene Verdrahtung; diese Datei ändert keine.*
+*R-1141, mit R-1148 als Inventar (Aufnahme 20260922, zentrale-module-aufteilen). Stand der Verdrahtung vom 28. November 2026.*
 
 **Was diese Datei zusagt.** Sie nennt jedes beteiligte Modul, jede Ablage mit ihren zwei Adaptern,
 jede Einhängestelle von `assembleServices` und die gemeinsamen Klammern. Dass sie mit dem Code
@@ -110,7 +109,7 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `lifecycleRepo` | `InMemoryLifecycleRepo` | `PgLifecycleRepo` |
 | `objects` | `InMemoryObjectRepo` | `PgObjectRepo` |
 | `candidates` | `InMemoryCandidateRepo` | `PgCandidateRepo` |
-| `importRuns` | `InMemoryImportRunRepo` | `PgImportRunRepo` |
+| `importRuns` | `InMemoryAuflistbareImportRunRepo` | `PgAuflistbareImportRunRepo` |
 | `externalSources` | `InMemoryExternalSourceRepo` | `PgExternalSourceRepo` |
 | `dokumente` | `InMemoryDokumentaktenRepo` | `PgDokumentaktenRepo` |
 | `modelRuns` | `InMemoryModelRunRepo` | `PgModelRunRepo` |
@@ -122,12 +121,18 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `uploadLimits` | `InMemoryUploadLimitsRepo` | `PgUploadLimitsRepo` |
 | `nulltreffer` | `InMemoryNulltrefferRepo` | `PgNulltrefferRepo` |
 | `answerSnapshots` | `InMemoryAnswerSnapshotRepo` | `PgAnswerSnapshotRepo` |
+| `kantenRepo` | `DeduplizierenderKantenBestand` | `PgKantenRepo` |
+| `halbwertszeitVerlauf` | `InMemoryHalbwertszeitVerlauf` | `PgHalbwertszeitVerlauf` |
+| `conflictMemory` | `InMemoryConflictMemoryRepo` | `PgConflictMemoryRepo` |
+| `paarpflichten` | `InMemoryPaarpflichtRepo` | `PgPaarpflichtRepo` |
+| `quellabgleich` | `InMemoryQuellabgleichRepo` | `PgQuellabgleichRepo` |
+| `pushAbos` | `InMemoryPushAboRepo` | `PgPushAboRepo` |
 
 **Einhängestellen ausserhalb von `AppRepos`** — die Optionen von `assembleServices`. Sie stehen
 dort und nicht in `AppRepos`, weil die Dev-Persistenz sie nicht journalieren soll oder (noch) nicht
 kann: ein neuer Schlüssel in `AppRepos` verlangt einen Eintrag in `MUTATING_METHODS`. Folge, an
 `AppServices` ausgeschrieben: im Dev-Journal-Betrieb überleben diese Bestände einen Neustart nicht,
-im Postgres-Betrieb schon.
+im Postgres-Betrieb schon. Für `kanten` gilt die gemeinsame, journalisierte Ablage aus `AppRepos`. Optionale Uhren und der Vektorspeicher sind gesondert ausgewiesen.
 
 | Option | ohne Injektion (Speicher, Dev-Journal) | Postgres (`buildPgServices`) |
 | --- | --- | --- |
@@ -135,7 +140,7 @@ im Postgres-Betrieb schon.
 | `searchProjections` | Speicherfassung, die sich der `KoService` über dasselbe KO-Repo baut | `PgKoSearchProjectionRepo` |
 | `klaraSessions` | Speicherablage | `PgKlaraSessionRepo` |
 | `lesevarianten` | Speicherablage | `PgLesevariantenRepo` |
-| `kanten` | deduplizierender Speicherbestand | `PgKantenRepo` |
+| `kanten` | übernimmt standardmäßig `repos.kantenRepo` | verwendet dieselbe Ablage `kantenRepo` aus dem ersten Argument |
 | `anweisungen` | flüchtige Ablage, die mit aktiver Dev-Persistenz Schreibzugriffe ablehnt | `PgAnweisungRepo` |
 | `brandingSettings` | Speicherablage | `PgBrandingSettingsRepo` |
 | `confluenceImportSchalter` | `InMemoryConfluenceImportSchalterRepo` (Betreiberschalter des Confluence-Imports) | `PgConfluenceImportSchalterRepo` |
@@ -144,6 +149,42 @@ im Postgres-Betrieb schon.
 | `meetingBezuege` | `SpeicherMeetingBezugAblage` (BPA-16, kein Neustartschutz) | `PgMeetingBezugAblage` |
 | `uebersetzungen` | `InMemoryUebersetzungRepo` (im Betrieb gepflegte Oberflächentexte und angelegte Sprachen, R-1034) | `PgUebersetzungRepo` |
 | `bestandsreset` | keiner — ohne Datenbank gibt es den Bestandsreset absichtlich nicht (Route: „nicht verfügbar") | `pgBestandsresetDienst(rohPool)` (Folgenvorschau + `fuehreBestandsresetAus`) |
+| `begriffe` | `InMemoryBegriffeRepo` | `PgBegriffeRepo` |
+| `spaces` | `InMemorySpacesRepo` | `PgSpacesRepo` |
+| `chat` | `InMemoryChatRepo` | `PgChatRepo` |
+| `gemeinsameEntwuerfe` | `InMemoryGemeinsamerEntwurfRepo` | `PgGemeinsamerEntwurfRepo` |
+| `teams` | `InMemoryTeamsRepo` | `PgTeamsRepo` |
+| `teamassistentRepo` | `InMemoryTeamassistentRepo` | `PgTeamassistentRepo` |
+| `teamworkflowRepo` | `InMemoryTeamworkflowRepo` | `PgTeamworkflowRepo` |
+| `workflowLaufRepo` | `InMemoryWorkflowLaeufe` | `PgWorkflowLaeufe` |
+| `vorlagen` | `InMemoryVorlagenAblage` | `PgVorlagenAblage` |
+| `verantwortungNachfolge` | `InMemoryNachfolgeRepo` | `PgNachfolgeRepo` |
+| `livewallFotos` | `InMemoryLiveWallFotoRepo` | `PgLiveWallFotoRepo` |
+| `gedaechtnis` | `InMemoryGedaechtnisRepo` | `PgGedaechtnisRepo` |
+| `verhaltensartefakte` | `InMemoryVerhaltensartefaktRepo` | `PgVerhaltensartefaktRepo` |
+| `mitgelesen` | `InMemoryMitgelesenRepo` | `PgMitgelesenRepo` |
+| `klaraGespraeche` | `InMemoryKlaraGespraechRepo` | `PgKlaraGespraechRepo` |
+| `vormachenRoutinen` | `InMemoryRoutinenRepo` | `PgRoutinenRepo` |
+| `eigenerKalender` | `InMemoryEigenerKalenderRepo` | `PgEigenerKalenderRepo` |
+| `klaraFristen` | `InMemoryKlaraFristenRepo` | `PgKlaraFristenRepo` |
+| `klaraNotizen` | `InMemoryKlaraNotizRepo` | `PgKlaraNotizRepo` |
+| `klaraAufgaben` | `InMemoryKlaraAufgabeRepo` | `PgKlaraAufgabeRepo` |
+| `klaraErinnerungen` | `inMemoryErinnerungAblage` | `pgErinnerungAblage` |
+| `klaraKalender` | `InMemoryKalenderZuordnungRepo` | `PgKalenderZuordnungRepo` |
+| `assistenzProfile` | `InMemoryAssistenzProfilRepo` | `PgAssistenzProfilRepo` |
+| `produktbudget` | `InMemoryProduktbudgetRepo` | `PgProduktbudgetRepo` |
+| `vektorSpeicher` | kein Vektorspeicher | `PgEmbeddingStore` |
+| `datenpunkte` | `SpeicherDatenpunktAblage` | `PgDatenpunktAblage` |
+| `kenntnisnahmen` | `InMemoryKenntnisnahmeRepo` | `PgKenntnisnahmeRepo` |
+| `kenntnisnahmeUhr` | `Date.now` | Systemuhr (`Date.now`) |
+| `veroeffentlichungsZustellungen` | `InMemoryVeroeffentlichungsZustellungRepo` | `PgVeroeffentlichungsZustellungRepo` |
+| `kommunikation` | `InMemoryKommunikationRepo` | `PgKommunikationRepo` |
+| `loeschantraege` | `InMemoryLoeschantragRepo` | `PgLoeschantragRepo` |
+| `datenschutzUhr` | `Date.now` | Systemuhr (`Date.now`) |
+| `unternehmen` | `InMemoryUnternehmenRepo` | `PgUnternehmenRepo` |
+| `verstaendnisfragen` | `InMemoryVerstaendnisfragenRepo` | `PgVerstaendnisfragenRepo` |
+
+Die Optionen `kenntnisnahmeUhr` und `datenschutzUhr` sind austauschbare Uhren. Der Produktionsserver verwendet jeweils die Systemzeit. Beim Zusammenbau der Spaces ergänzt `TeamAufloesendeSpaces` die hinterlegte Ablage um die Auflösung der Teammitglieder.
 
 ## 5 Gemeinsame Klammern
 
