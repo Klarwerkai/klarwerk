@@ -268,6 +268,15 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     ]);
   });
 
+  it.each([
+    ["aufsicht.ts", "const identisch = async <T>(wert: T): Promise<T> => wert;"],
+    ["ansicht.tsx", "const text = <p>Browserprüfung</p>;"],
+  ])("liest den Browserstart nach der Syntax von %s", (name, anfang) => {
+    const quelle = join(arbeitsordner, name);
+    writeFileSync(quelle, [anfang, 'const { chromium } = require("playwright");'].join("\n"));
+    expect(spezifizierer(quelle)).toContain("playwright");
+  });
+
   it("B1 · der Browser-Aufruf faehrt exakt die berechneten Chromium-Tests", () => {
     expect(holeBrowser()).toEqual([...holeBefund().browserTests].sort());
   });

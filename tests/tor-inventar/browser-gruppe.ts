@@ -159,7 +159,7 @@ function loeseRelativAuf(vonDatei: string, spezifizierer: string): string | unde
  */
 export function spezifizierer(datei: string): string[] {
   const text = readFileSync(datei, "utf8");
-  const baum = ts.createSourceFile(datei, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX);
+  const baum = ts.createSourceFile(datei, text, ts.ScriptTarget.Latest, false);
 
   // ----------------------------------------------------------------------------------------------
   // GANG 1 — die Namen sammeln, unter denen in DIESER Datei `require` erreichbar ist.
