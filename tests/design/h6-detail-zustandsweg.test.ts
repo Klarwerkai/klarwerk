@@ -851,15 +851,17 @@ const INHALT_LIES = `(async ([reiter, zeile, behaelter, bereich]) => {
   const ruhig = () => {
     const k = karte();
     return k !== null && !k.matches('[data-einst="laedt"]') && k.querySelector('[data-einst="laedt"]') === null
-      && k.querySelector('[data-einst="stand"]') === null && k.querySelector('[data-einst="abfrage-fehler"]') === null;
+      && k.querySelector('[data-einst="stand"], [data-einst="bereitschaft-stand"], [data-einst="abfrage-fehler"]') === null;
   };
   await warte(ruhig, 20000);
   // Nachrangige Abfragen (z. B. Namen im Prüfprotokoll) dürfen noch auflaufen.
   await new Promise((r) => setTimeout(r, 1500));
-  if (!ruhig()) return { fehler: 'Karte kam nicht zur Ruhe: ' + behaelter };
   const knoepfe = [...karte().querySelectorAll('[data-einst="hilfe"]')];
   knoepfe.forEach((b) => { if (b.getAttribute('aria-expanded') !== 'true') b.click(); });
   await warte(() => karte().querySelectorAll('[data-einst="hilfemenue"]').length >= knoepfe.length, 4000);
+  // Auch während des Öffnens der Hilfen kann eine Auffrischung starten. Alle Sprachen am
+  // ruhenden Bestand vergleichen, einschließlich der eigenen Standzeile der Bereitschaftskarte.
+  if (!(await warte(ruhig, 20000))) return { fehler: 'Karte kam nicht zur Ruhe: ' + behaelter };
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
   const sichtbar = (el) => {
     if (!el) return false;
