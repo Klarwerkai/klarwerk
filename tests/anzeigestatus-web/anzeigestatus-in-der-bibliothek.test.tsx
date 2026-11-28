@@ -166,7 +166,7 @@ Element.prototype.scrollIntoView = () => {};
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function mount(adresse = "/bibliothek"): void {
+async function mount(adresse = "/bibliothek"): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -180,6 +180,7 @@ function mount(adresse = "/bibliothek"): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 beforeEach(() => {
@@ -272,8 +273,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
   // ----------------------------------------------------------------------------------------------
   // R-1 · IN PRÜFUNG — an der Liste UND an der Lesefläche, im selben Fall.
   // ----------------------------------------------------------------------------------------------
-  it("R-1 · ein zugewiesener Eintrag heisst in Liste und Pille „In Prüfung“ — der danebenliegende „Offen“", () => {
-    mount();
+  it("R-1 · ein zugewiesener Eintrag heisst in Liste und Pille „In Prüfung“ — der danebenliegende „Offen“", async () => {
+    await mount();
     expect(zeilenWort("k-pruefung")).toBe(WORT("status.pruefung"));
     // Die Kalibrierung: eine Fläche, die pauschal EIN Wort zeichnet, fällt hier durch.
     expect(zeilenWort("k-offen")).toBe(WORT("status.offen"));
@@ -286,8 +287,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
   // ----------------------------------------------------------------------------------------------
   // R-2 · ABGELEHNT (crit) UND RE-VALIDIERUNG (warn).
   // ----------------------------------------------------------------------------------------------
-  it("R-2 · ein rot bewerteter Eintrag heisst „Abgelehnt“ und trägt den Ton `crit`", () => {
-    mount();
+  it("R-2 · ein rot bewerteter Eintrag heisst „Abgelehnt“ und trägt den Ton `crit`", async () => {
+    await mount();
     expect(zeilenWort("k-abgelehnt")).toBe(WORT("status.abgelehnt"));
     expect(zeilenTon("k-abgelehnt")).toBe("crit");
     waehle("k-abgelehnt");
@@ -295,8 +296,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
     expect(pille().ton).toBe("crit");
   });
 
-  it("R-2b · ein fälliger Eintrag heisst „Re-Validierung“ und trägt den Ton `warn`", () => {
-    mount();
+  it("R-2b · ein fälliger Eintrag heisst „Re-Validierung“ und trägt den Ton `warn`", async () => {
+    await mount();
     expect(zeilenWort("k-reval")).toBe(WORT("status.revalidierung"));
     expect(zeilenTon("k-reval")).toBe("warn");
     waehle("k-reval");
@@ -307,8 +308,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
   // ----------------------------------------------------------------------------------------------
   // R-3 · FEHLT DAS FELD, STEHT DAS HEUTIGE WORT DA — UND DER ANKER SAGT ES.
   // ----------------------------------------------------------------------------------------------
-  it("R-3 · ohne erhobene Auskunft bleibt es beim gespeicherten Status; der Anker nennt `bestand`", () => {
-    mount();
+  it("R-3 · ohne erhobene Auskunft bleibt es beim gespeicherten Status; der Anker nennt `bestand`", async () => {
+    await mount();
     // Nutzerentscheid Antwort 54: der validierte Zustand heisst sichtbar „Fachlich bestätigt".
     expect(zeilenWort("k-ohne")).toBe(WORT("pruefablauf.wissensstatus.validiert"));
     expect(zeilenAnker("k-ohne")).toEqual({ herkunft: "bestand", ungeprueft: [] });
@@ -316,8 +317,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
     expect(pille().anker.herkunft).toBe("bestand");
   });
 
-  it("R-3b · Gegenprobe: mit erhobener Auskunft nennt der Anker `server`", () => {
-    mount();
+  it("R-3b · Gegenprobe: mit erhobener Auskunft nennt der Anker `server`", async () => {
+    await mount();
     expect(zeilenAnker("k-pruefung")).toEqual({ herkunft: "server", ungeprueft: ["konflikt"] });
     waehle("k-pruefung");
     expect(pille().anker).toEqual({ herkunft: "server", ungeprueft: ["konflikt"] });
@@ -326,8 +327,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
   // ----------------------------------------------------------------------------------------------
   // R-4 · DER KONFLIKT WIRKT AUF WORT, TON *UND* UMSCHALTER — der Fall, an dem der Umschalter fiel.
   // ----------------------------------------------------------------------------------------------
-  it("R-4 · ein validierter Eintrag mit offenem Konflikt heisst „Konflikt“ und trägt `crit`", () => {
-    mount();
+  it("R-4 · ein validierter Eintrag mit offenem Konflikt heisst „Konflikt“ und trägt `crit`", async () => {
+    await mount();
     expect(zeilenWort("k-konflikt")).toBe(WORT("status.konflikt"));
     expect(zeilenTon("k-konflikt")).toBe("crit");
     waehle("k-konflikt");
@@ -335,8 +336,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
     expect(pille().ton).toBe("crit");
   });
 
-  it("R-4b · derselbe Eintrag fällt aus „Freigegeben“ heraus und unter „Offen“ hinein", () => {
-    mount("/bibliothek?zustand=validiert");
+  it("R-4b · derselbe Eintrag fällt aus „Freigegeben“ heraus und unter „Offen“ hinein", async () => {
+    await mount("/bibliothek?zustand=validiert");
     expect(sichtbareIds()).not.toContain("k-konflikt");
     // Kalibrierung: OHNE Konflikt stünde er dort — dieselbe Fläche, dieselbe Adresse.
     act(() => {
@@ -344,12 +345,12 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
     });
     container.remove();
     box.konflikte = [];
-    mount("/bibliothek?zustand=validiert");
+    await mount("/bibliothek?zustand=validiert");
     expect(sichtbareIds()).toContain("k-konflikt");
   });
 
-  it("R-4c · unter „Offen“ steht er, unter „Freigegeben“ nur, was wirklich freigegeben ist", () => {
-    mount("/bibliothek?zustand=offen");
+  it("R-4c · unter „Offen“ steht er, unter „Freigegeben“ nur, was wirklich freigegeben ist", async () => {
+    await mount("/bibliothek?zustand=offen");
     expect(sichtbareIds()).toContain("k-konflikt");
     expect(sichtbareIds()).toContain("k-pruefung");
     expect(sichtbareIds()).toContain("k-abgelehnt");
@@ -360,8 +361,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
   // ----------------------------------------------------------------------------------------------
   // R-5 · ÜBER DEM DECKEL: KEINE FEINERE STUFE, UND DIE LÜCKE STEHT AM ANKER.
   // ----------------------------------------------------------------------------------------------
-  it("R-5 · über dem Listendeckel steht der gespeicherte Status, und der Anker nennt die vier ungeprüften Eingänge", () => {
-    mount();
+  it("R-5 · über dem Listendeckel steht der gespeicherte Status, und der Anker nennt die vier ungeprüften Eingänge", async () => {
+    await mount();
     expect(zeilenWort("k-deckel")).toBe(WORT("status.offen"));
     expect(zeilenAnker("k-deckel").ungeprueft).toEqual([
       "bewertungen",
@@ -382,8 +383,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
   // ----------------------------------------------------------------------------------------------
   // R-0 · KEIN NEUES WORT AUF DEM BILDSCHIRM (H4 verbietet Erklärtext auf der Lesefläche).
   // ----------------------------------------------------------------------------------------------
-  it("R-0 · die Anker tragen keinen sichtbaren Text — die Auskunft ist rein maschinenlesbar", () => {
-    mount();
+  it("R-0 · die Anker tragen keinen sichtbaren Text — die Auskunft ist rein maschinenlesbar", async () => {
+    await mount();
     for (const el of container.querySelectorAll('[data-testid="bib-zustand-anker"]')) {
       expect((el.textContent ?? "").trim()).toBe("");
     }

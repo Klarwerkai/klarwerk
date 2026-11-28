@@ -227,6 +227,7 @@ async function mount(): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   // JOB 3068 (N5): die Kollisions-Auskunft steht wieder in der LESESPALTE, ohne einen Klick. Bis
   // dahin lag sie im Abschnitt „Konflikt" hinter der zugeklappten Zeile „Mehr" — und war damit für

@@ -159,6 +159,7 @@ async function mount(rolle: Role, eintritt = "/wissen/ko-1"): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
 }
 

@@ -170,7 +170,7 @@ function wechsleBreite(schmal: boolean): void {
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function flaeche(adresse: string): void {
+async function flaeche(adresse: string): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -184,6 +184,7 @@ function flaeche(adresse: string): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 beforeEach(() => {
@@ -226,9 +227,9 @@ const ZURUECK_TEXT = (): string =>
   i18n.t("nb.back", { title: i18n.t("nav.library") as string }) as string;
 
 describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
-  it("F1 · schmal mit gewähltem Treffer: der Bericht trägt die Fläche allein, die Liste steht nicht daneben", () => {
+  it("F1 · schmal mit gewähltem Treffer: der Bericht trägt die Fläche allein, die Liste steht nicht daneben", async () => {
     setzeBreite(true);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     // Der Bericht ist da — und zwar der gewählte.
     expect(da("bib-lesen")).not.toBeNull();
     expect(leseTitel()).toBe(KOS[1]?.title);
@@ -238,9 +239,9 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(zeilen()).toHaveLength(0);
   });
 
-  it("F2 · der Rückweg ist da, sichtbar, mit der Tastatur erreichbar — und führt zur Liste", () => {
+  it("F2 · der Rückweg ist da, sichtbar, mit der Tastatur erreichbar — und führt zur Liste", async () => {
     setzeBreite(true);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     const knopf = rueckweg();
     expect(knopf).not.toBeNull();
     // Ein echtes <button type="button">: DAS ist der Vertrag, der es im Browser mit Enter und
@@ -269,10 +270,10 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(rueckweg()).toBeNull();
   });
 
-  it("F3 · der Rückweg verliert nichts: Suchbegriff, Filter und Zeilen stehen, es wird nichts neu abgerufen", () => {
+  it("F3 · der Rückweg verliert nichts: Suchbegriff, Filter und Zeilen stehen, es wird nichts neu abgerufen", async () => {
     setzeBreite(true);
     // Suchbegriff UND Facettenwahl in der Adresse: „Anlage 1" lässt k1 und k2 übrig, k3 fällt raus.
-    flaeche("/bibliothek?q=entl%C3%BCften&category=Anlage+1&eintrag=k2");
+    await flaeche("/bibliothek?q=entl%C3%BCften&category=Anlage+1&eintrag=k2");
     expect(da("bib-lesen")).not.toBeNull();
     const rufeVorher = stand.rufe;
     act(() => {
@@ -293,9 +294,9 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(stand.rufe).toBe(rufeVorher);
   });
 
-  it("F4 · breit bleibt breit: Liste und Bericht stehen nebeneinander, kein Rückweg drängt sich dazwischen", () => {
+  it("F4 · breit bleibt breit: Liste und Bericht stehen nebeneinander, kein Rückweg drängt sich dazwischen", async () => {
     setzeBreite(false);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(da("bib-liste")).not.toBeNull();
     expect(da("bib-lesen")).not.toBeNull();
     expect(leseTitel()).toBe(KOS[1]?.title);
@@ -303,9 +304,9 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(rueckweg()).toBeNull();
   });
 
-  it("F5 · schmal ohne Wahl: die Liste trägt die Fläche — kein leerer Bericht, kein Rückweg ins Nichts", () => {
+  it("F5 · schmal ohne Wahl: die Liste trägt die Fläche — kein leerer Bericht, kein Rückweg ins Nichts", async () => {
     setzeBreite(true);
-    flaeche("/bibliothek");
+    await flaeche("/bibliothek");
     expect(da("bib-liste")).not.toBeNull();
     expect(zeilen()).toHaveLength(KOS.length);
     expect(da("bib-lesen")).toBeNull();
@@ -315,9 +316,9 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(container.querySelector('[data-testid="bib-zeile"][aria-current="true"]')).toBeNull();
   });
 
-  it("F6 · keine unsichtbaren Tab-Ziele: was schmal nicht auf der Fläche steht, ist auch nicht im DOM", () => {
+  it("F6 · keine unsichtbaren Tab-Ziele: was schmal nicht auf der Fläche steht, ist auch nicht im DOM", async () => {
     setzeBreite(true);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     // Mit Bericht: kein einziges Bedienelement der Liste — weder Suchfeld noch Menüs noch Zeilen.
     for (const marke of ["bib-suche", "bib-menue-filter", "bib-menue-bereich", "bib-liste-menue"]) {
       expect(da(marke)).toBeNull();
@@ -332,9 +333,9 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(da("bib-suche")).not.toBeNull();
   });
 
-  it("F7 · der Fokus geht mit: in den Bericht hinein und auf die gelesene Zeile zurück", () => {
+  it("F7 · der Fokus geht mit: in den Bericht hinein und auf die gelesene Zeile zurück", async () => {
     setzeBreite(true);
-    flaeche("/bibliothek");
+    await flaeche("/bibliothek");
     const zeile = zeilen().find((z) => z.getAttribute("data-bib-id") === "k2");
     expect(zeile).toBeDefined();
     act(() => {
@@ -351,10 +352,10 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     );
   });
 
-  it("F8 · schmal mit Bericht: der Auffrischungssatz samt Wiederholknopf steht auf der Fläche — genau einmal", () => {
+  it("F8 · schmal mit Bericht: der Auffrischungssatz samt Wiederholknopf steht auf der Fläche — genau einmal", async () => {
     stand.auffrischungScheitert = true;
     setzeBreite(true);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     // Die Liste, an der der Satz sonst hängt (`BibliothekFlaeche` → `hinweis`), ist schmal nicht da.
     expect(da("bib-liste")).toBeNull();
     // Der Satz steht trotzdem auf der Fläche — ein Hinweis, den man auf dem Telefon nicht sieht,
@@ -372,10 +373,10 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(stand.rufe).toBeGreaterThan(vorher);
   });
 
-  it("F8b · KALIBRIERUNG breit: derselbe Satz steht weiterhin an der Liste, genau einmal", () => {
+  it("F8b · KALIBRIERUNG breit: derselbe Satz steht weiterhin an der Liste, genau einmal", async () => {
     stand.auffrischungScheitert = true;
     setzeBreite(false);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     const liste = da("bib-liste");
     expect(liste).not.toBeNull();
     expect(
@@ -385,9 +386,9 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(liste?.querySelector('[data-testid="bib-hinweis-erneut"]')).not.toBeNull();
   });
 
-  it("F9 · Breitenwechsel ohne Neuladen: breit → schmal → breit, ohne zweiten Abruf", () => {
+  it("F9 · Breitenwechsel ohne Neuladen: breit → schmal → breit, ohne zweiten Abruf", async () => {
     setzeBreite(false);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(da("bib-liste")).not.toBeNull();
     expect(da("bib-lesen")).not.toBeNull();
     const rufeVorher = stand.rufe;
@@ -405,9 +406,9 @@ describe("JOB 3121 · UX-14 · schmal trägt EINE Fläche", () => {
     expect(stand.rufe).toBe(rufeVorher);
   });
 
-  it("F10 · die Zustandsanker (JOB 3072) bleiben in beiden Anordnungen unsichtbar", () => {
+  it("F10 · die Zustandsanker (JOB 3072) bleiben in beiden Anordnungen unsichtbar", async () => {
     setzeBreite(true);
-    flaeche("/bibliothek");
+    await flaeche("/bibliothek");
     const anker = da("bib-zustand-anker-liste");
     expect(anker).not.toBeNull();
     expect(anker?.hasAttribute("hidden")).toBe(true);
