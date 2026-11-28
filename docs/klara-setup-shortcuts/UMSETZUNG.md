@@ -8,12 +8,8 @@ oder Hostabnahme. `tests/klara-setup-shortcuts/umsetzung-doku.test.ts` prüft je
 
 ## 1. Entscheidung Option 1 (verbindlich)
 
-- Kürzel wirken **innerhalb des aktiven Klarwerk-Fensters** (Web-App, Host H01). Die Oberfläche nennt
-  genau das: „in Klarwerk, solange das Klarwerk-Fenster aktiv ist … In anderen Programmen wie Word,
-  Mail oder Finder wirken sie nicht – das ist für später vorgemerkt.“
-- **Systemweit** (Option B der [Entscheidungsvorlage](./ENTSCHEIDUNG-SYSTEMWEIT.md)) ist vorgemerkt,
-  nicht gebaut. Die Ablage (Konto, physische Taste plus Modifikatoren) kann ein späterer nativer Host
-  ohne Umbau lesen.
+- Alle sieben Aktionen funktionieren **innerhalb des aktiven Klarwerk-Fensters**.
+- Auf dem Mac kann der verbundene Klara-Begleiter das persönlich belegte Suchkürzel auch über anderen Programmen registrieren. Der Status ist im Klara-Menü sichtbar. Änderungen der Belegung übernimmt der nächste Abgleich innerhalb von 30 Sekunden. Die übrigen Aktionen benötigen das aktive Klarwerk-Fenster.
 - **Standard:** jede Aktion ist ab Werk **unbelegt**. Control+Command+K bleibt ein ungeprüfter
   Kandidat — und ist in der Web-App ausdrücklich abgelehnt, weil die Befehlspalette jede ⌘/Strg-
   Kombination mit K abfängt.
@@ -46,6 +42,7 @@ Nicht ins Setup (wie im Plan): E04 (Einrichtungsband), E09/E10 (Sitzungszustand)
 | Diktieren (`diktieren`) | „Diktieren“ der Sprachleiste | `apps/web/src/components/klara-vorschau/KlaraSprache.tsx` | Web | Spracherkennung des Browsers und Mikrofonfreigabe; sonst öffnet das Kürzel nur das Gespräch mit dem vorhandenen Hinweis |
 | Auftrag sprechen / Aufnahme (`auftragSprechen`) | „Auftrag sprechen“ der Sprachleiste | `apps/web/src/components/klara-vorschau/KlaraSprache.tsx` | Web | wie Diktieren; gesendet wird erst nach Prüfung der Karte |
 | Aufnahme stoppen (`aufnahmeStoppen`) | „Aufnahme stoppen“ | `apps/web/src/components/klara-vorschau/KlaraSprache.tsx` | Web | eine laufende Aufnahme |
+| Suche öffnen (`suchen`) | Befehlspalette für Seiten und Wissen | `apps/web/src/shell/CommandPalette.tsx` und `apps/desktop/klara-begleiter/Sources/Suchkuerzel.swift` | Web, macOS | angemeldet, für die systemweite Suche zusätzlich verbundener Begleiter und persönlich belegtes Suchkürzel |
 | Vorlesen stoppen (`vorlesenStoppen`) | `stoppeVorlesen()` | `apps/web/src/components/klara-vorschau/vorlesen.ts` | Web | — |
 
 Anker im Code: `data-testid="klara-diktieren"`, `data-testid="klara-auftrag-sprechen"`,
@@ -61,7 +58,7 @@ Anker im Code: `data-testid="klara-diktieren"`, `data-testid="klara-auftrag-spre
   keine Kürzel; die Chrome-Belegung verwaltet Chrome (`chrome://extensions/shortcuts`).
 - *Senden, Übersetzen, Notiz, Fähigkeit ausführen* (A04–A07): brauchen Kontext oder eine bewusste
   Bestätigung (u. a. Chat-Auftrag: „nur durch bewusstes Senden“) und werden nicht per Kürzel ausgelöst.
-- *Systemweite Auslösung*: vorgemerkt (Option 1), kein nativer Host im Hauptstand.
+- *Systemweite Auslösung weiterer Aktionen*: Der macOS-Begleiter registriert ausschließlich das Suchkürzel.
 
 ## 4. Ausführung und Konflikte (AA-04)
 

@@ -45,6 +45,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { transferableAbortController } from "node:util";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // ================================================================================================
@@ -311,9 +312,27 @@ function installiereTransport(): void {
     if (kekse.size > 0) {
       kopf.set("cookie", keksKopf());
     }
-    const antwort = await echtesFetch(url, { ...init, headers: kopf, redirect: "manual" });
-    nimmKekse(antwort);
-    return antwort;
+    // Node-Fetch akzeptiert nur Signale aus dem Node-Realm. Einen Abbruch aus jsdom weiterreichen.
+    const steuerung = transferableAbortController();
+    const signal = init?.signal;
+    const abbrechen = () => steuerung.abort(signal?.reason);
+    if (signal?.aborted) {
+      abbrechen();
+    } else {
+      signal?.addEventListener("abort", abbrechen, { once: true });
+    }
+    try {
+      const antwort = await echtesFetch(url, {
+        ...init,
+        headers: kopf,
+        redirect: "manual",
+        signal: steuerung.signal,
+      });
+      nimmKekse(antwort);
+      return antwort;
+    } finally {
+      signal?.removeEventListener("abort", abbrechen);
+    }
   }) as typeof fetch;
 }
 
