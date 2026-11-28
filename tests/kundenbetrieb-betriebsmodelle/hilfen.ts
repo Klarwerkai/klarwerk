@@ -2,6 +2,7 @@
 // beantwortet, und ein Node-Kindprozess, der asynchron läuft — ein synchroner Aufruf hielte die
 // Ereignisschleife an, und der Server in DIESEM Prozess könnte nie antworten.
 import { execFile } from "node:child_process";
+import { once } from "node:events";
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -33,6 +34,13 @@ export interface HealthServer {
   schliessen(): Promise<void>;
 }
 
+export async function lokalerTestport(server: Server): Promise<number> {
+  const bereit = once(server, "listening");
+  server.listen(0, "127.0.0.1");
+  await bereit;
+  return (server.address() as AddressInfo).port;
+}
+
 /** Ein Server auf 127.0.0.1, der unter `/health` die Antwort der Funktion liefert. */
 export async function healthServer(antwort: (adresse: string) => unknown): Promise<HealthServer> {
   let adresse = "";
@@ -45,8 +53,7 @@ export async function healthServer(antwort: (adresse: string) => unknown): Promi
     rueckgabe.setHeader("content-type", "application/json");
     rueckgabe.end(JSON.stringify(antwort(adresse)));
   });
-  await new Promise<void>((bereit) => server.listen(0, "127.0.0.1", () => bereit()));
-  const port = (server.address() as AddressInfo).port;
+  const port = await lokalerTestport(server);
   adresse = `http://127.0.0.1:${port}`;
   return {
     port,

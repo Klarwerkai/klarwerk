@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 // R-1349: das Prüfmodell liegt bei den Tests; im Produkt stehen nur noch die beiden Listen.
 import {
@@ -8,6 +9,7 @@ import {
   klassifiziereStufe,
 } from "../../../tests/support/migrationsmodell";
 import { KO_SEARCH_PROJECTION_SCHEMA, KO_SICHTBARKEIT_SCHEMA } from "../../knowledge-object";
+import { schemas as ausgefuehrteDdl } from "./db";
 import { IRREVERSIBLE_DATENMIGRATIONEN, MIGRATIONS_SOLLLISTE } from "./migrationsbeleg";
 
 // SCRUM-496 (die Lehre): Auf Postgres brach /duplikate ab, weil OVERLAP_SCHEMA + OVERLAP_SETTINGS_SCHEMA
@@ -44,63 +46,65 @@ function walkTsFiles(dir: string): string[] {
 //
 // JOB 498 D8: mit `AUDIT_HASH_VERSION_SCHEMA` sind es FÜNF reine ALTER-Stufen, und die Menge
 // umfasst 34 statt 33 Konstanten. Die Zahlen stehen hier, weil sie sonst still veralten.
-function exportedDdlSchemas(): string[] {
-  const names = new Set<string>();
+function exportierteDdlQuellen(): Map<string, string> {
+  const quellen = new Map<string, string>();
   const re = /export const (\w+_SCHEMA)\s*=\s*`([\s\S]*?)`/g;
   for (const file of walkTsFiles(SERVICES_DIR)) {
     const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(re)) {
-      const [, name, body] = m;
-      if (name && body && istStrukturstufe(body)) {
-        names.add(name);
+    for (const [, name, body] of src.matchAll(re)) {
+      if (name && body && istStrukturstufe(body)) quellen.set(name, body);
+    }
+  }
+  return quellen;
+}
+
+// Nur die wirklichen Listenelemente zählen, unabhängig von Kommentaren über Migrationen.
+// Die Werte kommen aus demselben Array, das migrate dem PostgreSQL-Client übergibt.
+function leseSchemaNamen(): string[] {
+  const src = ts.createSourceFile(DB_FILE, readFileSync(DB_FILE, "utf8"), ts.ScriptTarget.Latest);
+  for (const anweisung of src.statements) {
+    if (!ts.isVariableStatement(anweisung)) continue;
+    for (const variable of anweisung.declarationList.declarations) {
+      if (!ts.isIdentifier(variable.name) || variable.name.text !== "schemas") continue;
+      if (!variable.initializer || !ts.isArrayLiteralExpression(variable.initializer)) {
+        throw new Error("schemas ist kein Array.");
       }
+      return variable.initializer.elements.map((element) => {
+        if (!ts.isIdentifier(element))
+          throw new Error(`Unbekannte DDL-Stufe: ${element.getText(src)}`);
+        return element.text;
+      });
     }
   }
-  return [...names].sort();
+  throw new Error("schemas fehlt in db.ts.");
 }
 
-// Der Quelltext einer Schemakonstante, so wie er wirklich ausgeführt wird — für die Klassifikation.
+const schemaQuellen = exportierteDdlQuellen();
+const schemaNamen = leseSchemaNamen();
+
 function ddlVon(name: string): string {
-  const re = new RegExp(`export const ${name}\\s*=\\s*\`([\\s\\S]*?)\``);
-  for (const file of walkTsFiles(SERVICES_DIR)) {
-    const treffer = re.exec(readFileSync(file, "utf8"));
-    if (treffer?.[1]) {
-      return treffer[1];
-    }
-  }
-  return "";
-}
-
-// Die Kennungen der `schemas`-Liste in ihrer AUSGEFÜHRTEN Reihenfolge (nicht sortiert — die
-// Reihenfolge ist Vertragsbestandteil, s. db.ts:62-67).
-function migrateSchemaNamen(): string[] {
-  return [...migrateSchemaList().matchAll(/\b([A-Z][A-Z0-9_]*_SCHEMA)\b/g)]
-    .map((m) => m[1] as string)
-    .filter((name, i, alle) => alle.indexOf(name) === i);
-}
-
-// Der Inhalt der `schemas`-Liste in migrate() (die tatsächlich ausgeführten DDLs).
-function migrateSchemaList(): string {
-  const src = readFileSync(DB_FILE, "utf8");
-  const start = src.indexOf("const schemas = [");
-  expect(start, "schemas-Liste in db.ts nicht gefunden").toBeGreaterThanOrEqual(0);
-  const end = src.indexOf("];", start);
-  expect(end, "Ende der schemas-Liste in db.ts nicht gefunden").toBeGreaterThan(start);
-  return src.slice(start, end);
+  const position = schemaNamen.indexOf(name);
+  return ausgefuehrteDdl[position] ?? "";
 }
 
 describe("SCRUM-496: migrate() deckt alle Modul-DDL-Schemas ab", () => {
   it("jede exportierte DDL-*_SCHEMA-Konstante ist in migrate() referenziert", () => {
-    const schemas = exportedDdlSchemas();
+    const schemas = [...schemaQuellen.keys()];
     // Absicherung: der Scanner findet überhaupt etwas (sonst wäre der Test wertlos).
     expect(schemas.length).toBeGreaterThanOrEqual(15);
-    const list = migrateSchemaList();
-    const missing = schemas.filter((name) => !new RegExp(`\\b${name}\\b`).test(list));
+    expect(schemaNamen).toHaveLength(ausgefuehrteDdl.length);
+    const missing = schemas.filter((name) => {
+      if (schemaNamen.includes(name)) return false;
+      // Zusammengesetzte DDL (z. B. Lagebild → Managementprofile) zählt nur, wenn der
+      // vollständige SQL-Text des Moduls in einer tatsächlich ausgeführten Stufe vorkommt.
+      const sql = schemaQuellen.get(name);
+      return !sql || !ausgefuehrteDdl.some((stufe) => stufe.includes(sql));
+    });
     expect(missing, `nicht migrierte DDL-Schemas: ${missing.join(", ")}`).toEqual([]);
   });
 
   it("die conflicts-Tabellen (SCRUM-496) sind explizit migriert", () => {
-    const list = migrateSchemaList();
+    const list = schemaNamen;
     for (const name of ["CONFLICTS_SCHEMA", "OVERLAP_SCHEMA", "OVERLAP_SETTINGS_SCHEMA"]) {
       expect(list.includes(name), `${name} fehlt in migrate()`).toBe(true);
     }
@@ -121,7 +125,7 @@ describe("SCRUM-496: migrate() deckt alle Modul-DDL-Schemas ab", () => {
 // getrennt vergessen werden), und diese Prüfung pinnt genau das.
 describe("G27 Welle 1 (Abschnitt J): die additive V1→V2-Stufe der Suchprojektion läuft in migrate()", () => {
   it("die Nachrüststufe steht im migrierten Schema-String — nicht in einer zweiten, freien Konstante", () => {
-    expect(migrateSchemaList()).toContain("KO_SEARCH_PROJECTION_SCHEMA");
+    expect(schemaNamen).toContain("KO_SEARCH_PROJECTION_SCHEMA");
     expect(KO_SEARCH_PROJECTION_SCHEMA).toMatch(
       /ADD COLUMN IF NOT EXISTS\s+body_text\s+text NOT NULL DEFAULT ''/i,
     );
@@ -131,7 +135,7 @@ describe("G27 Welle 1 (Abschnitt J): die additive V1→V2-Stufe der Suchprojekti
   });
 
   it("die Suchprojektion wird NACH dem KO-Schema migriert (pg_trgm und `kos` müssen stehen)", () => {
-    const list = migrateSchemaList();
+    const list = schemaNamen;
     expect(list.indexOf("KO_SCHEMA")).toBeGreaterThanOrEqual(0);
     expect(list.indexOf("KO_SEARCH_PROJECTION_SCHEMA")).toBeGreaterThan(list.indexOf("KO_SCHEMA"));
   });
@@ -141,10 +145,9 @@ describe("G27 Welle 1 (Abschnitt J): die additive V1→V2-Stufe der Suchprojekti
 // AUFTRAG-BASIC-380 · T-M-3 — DIE VIERTE ALTER-ONLY-STUFE BRAUCHT IHREN EIGENEN PIN.
 // ================================================================================================
 //
-// DIE GEMESSENE LÜCKE IM WÄCHTER (BASIC 379 §2.5, hier nachgemessen): `exportedDdlSchemas()` oben
-// sammelt nur *_SCHEMA-Konstanten, DEREN TEMPLATE EIN `CREATE TABLE` TRÄGT. Eine reine
-// ALTER-Stufe fällt durch dieses Netz — sie ist exportiert, sie sieht aus wie ein Schema, und der
-// generische Test übersieht sie schweigend. Drei solche Stufen gab es bereits
+// DIE DAMALIGE LÜCKE IM WÄCHTER (BASIC 379 §2.5): Die Inventur sammelte nur *_SCHEMA-Konstanten,
+// deren Template ein `CREATE TABLE` enthielt. Exportierte reine ALTER-Stufen blieben dadurch
+// im generischen Test unberücksichtigt. Drei solche Stufen gab es bereits
 // (KO_IMPORT_ANCHOR_SCHEMA, KO_CREATE_OPERATION_SCHEMA, AUDIT_EVENT_ID_SCHEMA); sie hängen alle an
 // eigens benannten Prüfungen. KO_SICHTBARKEIT_SCHEMA ist die vierte, AUDIT_HASH_VERSION_SCHEMA
 // (JOB 498 D8) die fünfte — letztere hängt am Inventurfall weiter unten und braucht deshalb
@@ -159,7 +162,7 @@ describe("BASIC 380 (T-M-3): die ALTER-only-Stufe KO_SICHTBARKEIT_SCHEMA läuft 
   it("sie steht in der ausgeführten schemas-Liste — der generische Wächter fängt sie NICHT", () => {
     // Der Nachweis, dass der generische Wächter sie wirklich nicht sieht: sie trägt kein CREATE TABLE.
     expect(KO_SICHTBARKEIT_SCHEMA).not.toMatch(/CREATE TABLE/i);
-    expect(migrateSchemaList()).toContain("KO_SICHTBARKEIT_SCHEMA");
+    expect(schemaNamen).toContain("KO_SICHTBARKEIT_SCHEMA");
   });
 
   it("sie legt genau die drei Schlüsselspalten des Trims an — generiert, nicht geschrieben", () => {
@@ -178,7 +181,7 @@ describe("BASIC 380 (T-M-3): die ALTER-only-Stufe KO_SICHTBARKEIT_SCHEMA läuft 
   });
 
   it("sie wird NACH dem KO-Schema migriert (`kos` muss stehen, bevor daran geALTERt wird)", () => {
-    const list = migrateSchemaList();
+    const list = schemaNamen;
     expect(list.indexOf("KO_SICHTBARKEIT_SCHEMA")).toBeGreaterThan(list.indexOf("KO_SCHEMA"));
   });
 
@@ -199,7 +202,7 @@ describe("BASIC 380 (T-M-3): die ALTER-only-Stufe KO_SICHTBARKEIT_SCHEMA läuft 
 // Lücke kennt. Der Kommentar bei :114-116 behauptete deshalb eine Abdeckung, die es nicht gab —
 // BASIC4 727/D1 §3.3 hat das nachgemessen, BEN hat es bestätigt.
 //
-// DIESER FALL PRÜFT DIE INVENTUR STATT DER EINZELSTUFE. Er ist rot, solange `exportedDdlSchemas()`
+// DIESER FALL PRÜFT DIE INVENTUR STATT DER EINZELSTUFE. Er ist rot, wenn die Inventur nur
 // auf `CREATE TABLE` filtert — und er bleibt grün, ohne dass jemand ihn anfasst, wenn eine fünfte
 // ALTER-only-Stufe dazukommt.
 //
@@ -220,7 +223,7 @@ const ALTER_ONLY_STUFEN = [
 
 describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke", () => {
   it("jede ALTER-only-Stufe der schemas-Liste steht in der Inventur", () => {
-    const inventur = exportedDdlSchemas();
+    const inventur = [...schemaQuellen.keys()];
     for (const name of ALTER_ONLY_STUFEN) {
       expect(
         inventur,
@@ -250,7 +253,7 @@ describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke",
 // stellen das fest und halten es fest.
 describe("JOB 727 D2: die ausgeschriebene Sollliste deckt die ausgeführte Liste — beidseitig", () => {
   it("keine ausgeführte Stufe fehlt in der Sollliste, und keine Sollstufe ist überzählig", () => {
-    const ausgefuehrt = migrateSchemaNamen();
+    const ausgefuehrt = schemaNamen;
     const soll = MIGRATIONS_SOLLLISTE.map((s) => s.stufe);
     expect(
       soll.filter((s) => !ausgefuehrt.includes(s)),
@@ -263,7 +266,7 @@ describe("JOB 727 D2: die ausgeschriebene Sollliste deckt die ausgeführte Liste
   });
 
   it("die Sollliste steht in der ausgeführten Reihenfolge — sie ist Vertragsbestandteil", () => {
-    expect(MIGRATIONS_SOLLLISTE.map((s) => s.stufe)).toEqual(migrateSchemaNamen());
+    expect(MIGRATIONS_SOLLLISTE.map((s) => s.stufe)).toEqual(schemaNamen);
   });
 
   it("jede Stufe trägt genau die Risikoklasse, die ihr Quelltext hergibt", () => {
@@ -314,7 +317,7 @@ describe("JOB 727 D2: die ausgeschriebene Sollliste deckt die ausgeführte Liste
     expect(a.beleghash).toBe(b.beleghash);
     expect(a.stufen).toHaveLength(MIGRATIONS_SOLLLISTE.length);
     expect(a.stufen[0]?.ordinal).toBe(0);
-    expect(a.stufen.map((s) => s.stufe)).toEqual(migrateSchemaNamen());
+    expect(a.stufen.map((s) => s.stufe)).toEqual(schemaNamen);
     expect(a.hoechstesRisiko).toBe("IRREVERSIBEL");
     for (const stufe of a.stufen) {
       expect(stufe.quellhash, `${stufe.stufe} ohne Quellhash`).toMatch(/^[0-9a-f]{64}$/);
