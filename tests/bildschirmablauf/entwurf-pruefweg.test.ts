@@ -10,6 +10,7 @@
 //
 // Originalkriterien: K1, K2, K3, K4, K5 (Serverrand), K6, K8. Die KI-Prüfung nach dem Einreichen
 // läuft mit dem ECHTEN Hintergrund-Worker des Bestands; `fetch` wird über den ganzen Weg beobachtet.
+import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Ablauf } from "../../apps/web/src/api/types";
 import {
@@ -25,6 +26,7 @@ import {
   uebernahmeSchluessel,
 } from "../../apps/web/src/lib/ablaufImport";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { datenQuelle, pngBytes } from "../rueckweg-bilder-nutzerweg/pruefbilder";
 import { demoKennwort } from "../support/demoZugang";
 
 afterEach(() => {
@@ -40,11 +42,31 @@ const FORMULIERUNG: AblaufFormulierung = {
   taste: (k) => `Drücke ${k}`,
 };
 
-// Getrennte Beispieldaten: eindeutige, erkennbare Bildinhalte je Schritt. Das „sensible" Bild trägt
-// die Base64-Folge von „SENSIBEL" — nach dem Schwärzen darf sie nirgends mehr stehen.
-const BILD_SENSIBEL = "data:image/png;base64,U0VOU0lCRUxfQklMRA==";
-const BILD_GESCHWAERZT = "data:image/png;base64,R0VTQ0hXQUVSWlQ=";
-const BILD = (n: number) => `data:image/png;base64,QklMRF8${n}AAAA`;
+// Die Bilder sind echte, eindeutig unterscheidbare 2×2-Raster. Am ersten Schritt wird Rot
+// durch Schwarz ersetzt. Die Farbe bleibt auch nach einer erneuten Kodierung prüfbar.
+function bild(farbe: readonly [number, number, number]): string {
+  return datenQuelle(pngBytes({ nr: 1, breite: 2, hoehe: 2, punkt: () => farbe }));
+}
+const BILD_SENSIBEL = bild([255, 0, 0]);
+const BILD_GESCHWAERZT = bild([0, 0, 0]);
+const BILD = (n: number) => bild([0, n * 40, 255]);
+
+async function bildpixel(quellen: readonly string[]): Promise<Buffer[]> {
+  return Promise.all(
+    quellen.map(async (quelle) => {
+      const teile = /^data:image\/(?:png|webp);base64,(.+)$/.exec(quelle);
+      if (!teile?.[1]) throw new Error("Rasterquelle fehlt");
+      const dekoder = sharp(Buffer.from(teile[1], "base64"));
+      expect(await dekoder.metadata()).toMatchObject({ width: 2, height: 2 });
+      return dekoder.ensureAlpha().raw().toBuffer();
+    }),
+  );
+}
+
+function rumpfbilder(html: string): string[] {
+  return Array.from(html.matchAll(/<img\b[^>]*?\bsrc="([^"]+)"/g), (m) => m[1] ?? "");
+}
+
 const TITEL = "Angebot anlegen, prüfen und speichern (Prüfweg-Test)";
 
 const DATEI = JSON.stringify({
@@ -262,7 +284,12 @@ describe("Bildschirmablauf: Übernahme → Bearbeitung → Prüfweg → Wiederho
     // K4: weder als Text noch als Bild bleibt eine auslesbare Kopie im gespeicherten Entwurf.
     const entwurfRoh = JSON.stringify(neuGeladen.json());
     expect(entwurfRoh).not.toContain("Musterfirma");
-    expect(entwurfRoh).not.toContain("U0VOU0lCRUxfQklMRA");
+    expect(entwurfRoh).not.toContain(BILD_SENSIBEL);
+    const sollpixel = await bildpixel([BILD_GESCHWAERZT, BILD(2), BILD(4), BILD(3)]);
+    expect(sollpixel[0]).toEqual(
+      Buffer.from([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255]),
+    );
+    expect(await bildpixel(rumpfbilder(p2.bodyHtml))).toEqual(sollpixel);
 
     // ---- K5 (Serverrand): ein unvollständiger Ablauf wird abgewiesen, der Stand bleibt ----------
     const kaputt = await app.inject({
@@ -316,7 +343,8 @@ describe("Bildschirmablauf: Übernahme → Bearbeitung → Prüfweg → Wiederho
     expect(ko.bodyHtml).toContain("außerhalb Klarwerks aufgezeichnet mit Testrekorder");
     expect(ko.bodyHtml).toContain("Beobachteter Ablauf");
     expect(ko.bodyHtml).not.toContain("Musterfirma");
-    expect(JSON.stringify(ko)).not.toContain("U0VOU0lCRUxfQklMRA");
+    expect(JSON.stringify(ko)).not.toContain(BILD_SENSIBEL);
+    expect(await bildpixel(rumpfbilder(ko.bodyHtml))).toEqual(sollpixel);
     // Die Struktur des Entwurfs reist nicht ins Objekt — nur der geprüfte Rumpf.
     expect("ablauf" in (ko as Record<string, unknown>)).toBe(false);
 

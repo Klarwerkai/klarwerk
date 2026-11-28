@@ -28,6 +28,7 @@
 //     eingefrorenen Wert zurückgibt, besteht die Gegenprobe NICHT — sie wirft.
 import { Buffer } from "node:buffer";
 import { deflateSync } from "node:zlib";
+import sharp from "sharp";
 import { unzipSync, zipSync } from "../../apps/web/node_modules/fflate";
 import { BILD_BREITE, BILD_BYTES, BILD_HOEHE, BILD_ROHZEILEN, BMP_BYTES, crc32 } from "./messung";
 import { BILANZ_PRAEFIX, type Sprache, bilanzAussage } from "./quittungspruefer";
@@ -434,9 +435,14 @@ function gleich(a: Uint8Array, b: Uint8Array): boolean {
 
 /**
  * Der Bildnachweis eines gespeicherten Rumpfs gegen das Deck: Quittungszahlen, Bildzahl und die
- * BYTES jedes Bildes in Reihenfolge. Leere Liste = stimmt; jede Zeile ist ein benannter Befund.
+ * Originalbytes vor dem Speichern bzw. dekodierte Pixel der WebP-Ableitung danach. Leere Liste = stimmt; jede Zeile ist ein benannter Befund.
  */
-export function rumpfBefunde(html: string, sprache: Sprache, deck: readonly Deckbild[]): string[] {
+export async function rumpfBefunde(
+  html: string,
+  sprache: Sprache,
+  deck: readonly Deckbild[],
+  stand: "import" | "speicher",
+): Promise<string[]> {
   const befunde: string[] = [];
   const soll = sollbilanz(deck);
   const beleg = belegText(html);
@@ -455,12 +461,34 @@ export function rumpfBefunde(html: string, sprache: Sprache, deck: readonly Deck
   if (da.length !== erwartet.length) {
     befunde.push(`${da.length} Bilder im Rumpf statt ${erwartet.length}`);
   }
-  erwartet.forEach((b, i) => {
+  for (const [i, b] of erwartet.entries()) {
     const bild = da[i];
-    if (bild && !gleich(bild.bytes, b.bytes)) {
-      befunde.push(`Bild ${i + 1} (${b.datei}) trägt andere Bytes als die Originaldatei`);
+    if (!bild) continue;
+    if (stand === "import") {
+      if (!gleich(bild.bytes, b.bytes)) {
+        befunde.push(`Bild ${i + 1} (${b.datei}) trägt andere Bytes als die Originaldatei`);
+      }
+      continue;
     }
-  });
+    const dekoder = sharp(bild.bytes);
+    const kopf = await dekoder.metadata();
+    if (
+      bild.mime !== "image/webp" ||
+      kopf.format !== "webp" ||
+      kopf.width !== BILD_BREITE ||
+      kopf.height !== BILD_HOEHE
+    ) {
+      befunde.push(`Bild ${i + 1} (${b.datei}) hat ein anderes Format oder andere Abmessungen`);
+    }
+    const rgba = await dekoder.ensureAlpha().raw().toBuffer();
+    if (
+      !b.pixel ||
+      rgba.length !== BILD_BREITE * BILD_HOEHE * 4 ||
+      !rgba.every((wert, j) => wert === (j % 4 === 3 ? 255 : b.pixel?.[j - Math.floor(j / 4)]))
+    ) {
+      befunde.push(`Bild ${i + 1} (${b.datei}) hat andere Pixel als die Originaldatei`);
+    }
+  }
   return befunde;
 }
 

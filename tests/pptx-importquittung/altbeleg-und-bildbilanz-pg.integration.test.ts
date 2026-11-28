@@ -199,7 +199,10 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
     }
     const alt = historischerEntwurf();
     const zwilling = await zwillingsEntwurf();
-    expect(rumpfBefunde(zwilling.bodyHtml ?? "", "de", ZWILLINGSDECK), "PPTX vor POST").toEqual([]);
+    expect(
+      await rumpfBefunde(zwilling.bodyHtml ?? "", "de", ZWILLINGSDECK, "import"),
+      "PPTX vor POST",
+    ).toEqual([]);
 
     // ---- Instanz 1: speichern ----------------------------------------------------------------
     const eins = await instanz(pool, true);
@@ -219,6 +222,7 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
         expect(rumpf, "Altbeleg bereits in der POST-Annahme unverändert").toBe(alt.bodyHtml);
       } else {
         pruefeZwillingsAnnahme(rumpf, zwilling.bodyHtml ?? "");
+        expect(await rumpfBefunde(rumpf, "de", ZWILLINGSDECK, "speicher")).toEqual([]);
         expect(angenommen.payload.sourceImageCount).toBe(zwilling.sourceImageCount);
       }
       annahmen.push(angenommen);

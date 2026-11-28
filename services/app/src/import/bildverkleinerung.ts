@@ -478,7 +478,12 @@ async function ableiten(quelle: Buffer): Promise<Buffer | Uebersprungsgrund> {
         fit: "inside",
         withoutEnlargement: true,
       })
-      .webp({ quality: BILD_QUALITAET })
+      // Kleine Grafiken bleiben auch nach erneutem Speichern pixelgetreu. Das RGBA-Budget
+      // begrenzt die verlustfreie Verarbeitung unabhängig von der Kompression der Quelle.
+      .webp({
+        quality: BILD_QUALITAET,
+        lossless: breite * hoehe * 4 <= BILD_KLEIN_GENUG_BYTES,
+      })
       .toBuffer();
   } catch {
     // Absichtlich ohne den Fehlertext: er käme aus libvips, wäre englisch und technisch, und die

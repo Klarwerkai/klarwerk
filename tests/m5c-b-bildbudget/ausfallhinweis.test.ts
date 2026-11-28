@@ -67,19 +67,21 @@ describe("JOB 3400 R3 · der Ausfall wird am betroffenen Bild benannt", () => {
       `<figcaption data-image-id="${kennung(heil ?? "")}">Figure 2: Bolted connection</figcaption>`,
     );
 
-    // 4. KEIN BILD IST VERSCHWUNDEN, das defekte steht mit seiner Originalquelle da, das gute ist
-    //    abgeleitet — der Hinweis ersetzt kein Bild, er begleitet es.
+    // Das fehlerhafte Bild bleibt durch seine Figure mit Beschriftung und Hinweis zugeordnet.
+    // Seine Eingabebytes dürfen weder als Bild noch an anderer Stelle im Entwurf stehen.
     const quellen = bildquellen(g.bodyHtml);
-    expect(quellen, "Ein Bild ist still verschwunden").toHaveLength(2);
-    expect(quellen[0]).toBe(`data:image/png;base64,${defektesPng().toString("base64")}`);
-    expect(
-      Buffer.from(rumpf(quellen[1] ?? ""), "base64").byteLength,
-      "Das gute Bild wurde wegen des defekten Nachbarn nicht abgeleitet",
-    ).toBeLessThan(Buffer.from(GUTES_PNG, "base64").byteLength);
+    expect(bildquellen(defekt ?? "")).toEqual([]);
+    expect(g.bodyHtml).not.toContain(defektesPng().toString("base64"));
+    expect(quellen).toHaveLength(1);
+    expect(quellen).toEqual(bildquellen(heil ?? ""));
+    expect(quellen[0]).toMatch(/^data:image\/webp;base64,/);
+    expect(Buffer.from(rumpf(quellen[0] ?? ""), "base64").byteLength).toBeLessThan(
+      Buffer.from(GUTES_PNG, "base64").byteLength,
+    );
 
     // 5. DER FLIESSTEXT STEHT UNVERÄNDERT, und die Antwort bleibt bei ihrer bisherigen Auskunft.
     expect(g.bodyHtml).toContain("Die Verschraubung erfolgt von unten.");
-    expect(g.bilanz).toEqual({ imagesTotal: 2, imagesEmbedded: 2, imagesDropped: 0 });
+    expect(g.bilanz).toEqual({ imagesTotal: 2, imagesEmbedded: 1, imagesDropped: 0 });
     expect(g.ableitung).toEqual({
       imagesShrunk: 1,
       imagesKeptOriginal: 1,

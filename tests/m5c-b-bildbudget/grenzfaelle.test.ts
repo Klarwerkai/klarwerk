@@ -99,20 +99,17 @@ describe("JOB 3400 · Gegenfälle des Add-in-Bildwegs", () => {
     ];
     const g = await uebernehmen(absaetze);
     const quellen = bildquellen(g.bodyHtml);
-    // Kein stiller Verlust: das defekte Bild steht mit seiner ORIGINALQUELLE da — genau so, wie es
-    // ohne diesen Durchgang im Entwurf gestanden hätte. Es wurde nicht weggeworfen.
-    expect(quellen, "Ein Bild ist still verschwunden").toHaveLength(2);
-    expect(quellen[0], "Das defekte Bild hat seine Originalquelle verloren").toBe(
-      `data:image/png;base64,${defektesPng().toString("base64")}`,
-    );
-    // Und das gute Bild daneben ist trotzdem abgeleitet worden.
-    const gut = Buffer.from(rumpf(quellen[1] ?? ""), "base64");
+    expect(quellen).toHaveLength(1);
+    expect(g.bodyHtml).not.toContain(defektesPng().toString("base64"));
+    expect(g.bodyHtml).toContain("nicht gelesen werden");
+    expect(quellen[0]).toMatch(/^data:image\/webp;base64,/);
+    const gut = Buffer.from(rumpf(quellen[0] ?? ""), "base64");
     expect(
       gut.byteLength,
       "Das gute Bild wurde wegen des defekten Nachbarn nicht verkleinert",
     ).toBeLessThan(Buffer.from(GUTES_PNG, "base64").byteLength);
     expect(g.sourceImageCount).toBe(2);
-    expect(g.bilanz).toEqual({ imagesTotal: 2, imagesEmbedded: 2, imagesDropped: 0 });
+    expect(g.bilanz).toEqual({ imagesTotal: 2, imagesEmbedded: 1, imagesDropped: 0 });
     // SICHTBAR STATT NUR IM PROTOKOLL: die ANTWORT der Route nennt den Ausfall und seinen Grund.
     // Ohne diese drei Felder stünde „ein Bild ist defekt" nur in einer Logdatei, die kein Mensch
     // am Bildschirm sieht.
@@ -131,31 +128,40 @@ describe("JOB 3400 · Gegenfälle des Add-in-Bildwegs", () => {
     // `src`-Bytes beweisen keine Darstellbarkeit" — deshalb wird auch das kleine Bild WIRKLICH
     // dekodiert, bevor seine Quelle als brauchbare Ableitung durchgeht.
     //
-    // Die Antwort bleibt dieselbe wie beim grossen Defekt: nichts wird weggeworfen, die
-    // Originalquelle bleibt stehen, und der Grund heisst beim Namen „nicht-dekodierbar".
     const klein = kleinesDefektesPng().toString("base64");
     const g = await uebernehmen([{ art: "bild", png: klein, alt: "klein-kaputt.png" }]);
-    expect(bildquellen(g.bodyHtml)).toEqual([`data:image/png;base64,${klein}`]);
+    expect(bildquellen(g.bodyHtml)).toEqual([]);
+    expect(g.bodyHtml).not.toContain(klein);
+    expect(g.bodyHtml).toContain("nicht gelesen werden");
     expect(g.ableitung).toEqual({
       imagesShrunk: 0,
       imagesKeptOriginal: 1,
       imageSkipReasons: ["nicht-dekodierbar"],
     });
-    expect(g.bilanz).toEqual({ imagesTotal: 1, imagesEmbedded: 1, imagesDropped: 0 });
+    expect(g.bilanz).toEqual({ imagesTotal: 1, imagesEmbedded: 0, imagesDropped: 0 });
   });
 
-  it("F3 · ein kleines HEILES Bild geht weiterhin unverändert durch", async () => {
-    // Die Gegenprobe zu F2: die neue Dekodierprobe darf nicht jedes kleine Bild verdächtigen. Ein
-    // kleines, heiles PNG behält seine Quelle mit dem Grund „schon-klein-genug" — eine erneute
-    // verlustbehaftete Kodierung kostete hier Qualität, ohne Bytes zu sparen.
-    const heil = grossesPng(64, 64, 7).toString("base64");
-    const g = await uebernehmen([{ art: "bild", png: heil, alt: "klein-heil.png" }]);
-    expect(bildquellen(g.bodyHtml)).toEqual([`data:image/png;base64,${heil}`]);
-    expect(g.ableitung).toEqual({
-      imagesShrunk: 0,
-      imagesKeptOriginal: 1,
-      imageSkipReasons: ["schon-klein-genug"],
+  it("F3 · ein kleines heiles Bild behält alle Pixel nach der Normalisierung", async () => {
+    const heil = grossesPng(64, 64, 7);
+    const g = await uebernehmen([
+      { art: "bild", png: heil.toString("base64"), alt: "klein-heil.png" },
+    ]);
+    const quellen = bildquellen(g.bodyHtml);
+    expect(quellen).toHaveLength(1);
+    expect(quellen[0]).toMatch(/^data:image\/webp;base64,/);
+    const gespeichert = Buffer.from(rumpf(quellen[0] ?? ""), "base64");
+    expect(await sharp(gespeichert).metadata()).toMatchObject({
+      format: "webp",
+      width: 64,
+      height: 64,
     });
+    expect(await sharp(gespeichert).raw().toBuffer()).toEqual(await sharp(heil).raw().toBuffer());
+    expect(g.ableitung).toEqual({
+      imagesShrunk: Number(gespeichert.length < heil.length),
+      imagesKeptOriginal: 0,
+      imageSkipReasons: [],
+    });
+    expect(g.bilanz).toEqual({ imagesTotal: 1, imagesEmbedded: 1, imagesDropped: 0 });
   });
 
   it("G · eine PIXELBOMBE wird abgewiesen, ohne den Entwurf oder das gute Bild zu verlieren", async () => {
@@ -167,13 +173,13 @@ describe("JOB 3400 · Gegenfälle des Add-in-Bildwegs", () => {
       { art: "bild", png: GUTES_PNG, alt: "heil.png" },
     ]);
     const quellen = bildquellen(g.bodyHtml);
-    expect(quellen, "Der Entwurf hat ein Bild verloren").toHaveLength(2);
-    expect(quellen[0], "Die Pixelbombe wurde nicht bei ihrer Originalquelle belassen").toBe(
-      `data:image/png;base64,${bombe}`,
-    );
-    const gut = Buffer.from(rumpf(quellen[1] ?? ""), "base64");
+    expect(quellen).toHaveLength(1);
+    expect(g.bodyHtml).not.toContain(bombe);
+    expect(g.bodyHtml).toContain("nicht gelesen werden");
+    expect(quellen[0]).toMatch(/^data:image\/webp;base64,/);
+    const gut = Buffer.from(rumpf(quellen[0] ?? ""), "base64");
     expect(gut.byteLength).toBeLessThan(Buffer.from(GUTES_PNG, "base64").byteLength);
-    expect(g.bilanz).toEqual({ imagesTotal: 2, imagesEmbedded: 2, imagesDropped: 0 });
+    expect(g.bilanz).toEqual({ imagesTotal: 2, imagesEmbedded: 1, imagesDropped: 0 });
     expect(g.ableitung).toEqual({
       imagesShrunk: 1,
       imagesKeptOriginal: 1,
@@ -191,7 +197,7 @@ describe("JOB 3400 · Gegenfälle des Add-in-Bildwegs", () => {
     const quelle = `data:image/png;base64,${zuGross.toString("base64")}`;
     const v = bildVerkleinerung();
     const raus = await v.mapImage(quelle);
-    expect(raus, "Die zu grosse Eingabe wurde doch angefasst").toBe(quelle);
+    expect(raus).toBe("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==");
     expect(v.bericht.uebersprungen).toEqual(["eingabe-zu-gross"]);
     expect(v.bericht.verkleinert).toBe(0);
   });
