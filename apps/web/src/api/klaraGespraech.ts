@@ -171,7 +171,7 @@ export const klaraGespraechApi = {
         question,
         locale,
         ...(thread.length > 0 ? { thread } : {}),
-        ...(seitenbezug ? { seitenbezug } : {}),
+        ...(seitenbezug ? { seitenbezug } : { getippteAussagePruefen: true }),
       },
       signal,
     ),

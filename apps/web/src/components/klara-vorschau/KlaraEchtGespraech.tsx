@@ -9,11 +9,14 @@
 //   · die Einwilligung dieses Gesprächs (ohne sie geht keine Frage los);
 //   · jede Nachricht mit ihrer Herkunft („KI-Antwort" nur bei `demo: false`) und ihrem Speicherstand.
 // Die Eingabe, der Stopp und die Figur stehen in `KlaraVorschau.tsx`.
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { endpoints } from "../../api/endpoints";
 import { useReasonerStatus } from "../../api/hooks";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import type { KnowledgeClass } from "../../api/types";
+import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
 // produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
 import { useAssistenzT } from "../../lib/assistenzProfil";
@@ -21,8 +24,9 @@ import { useKurzeAntworten } from "../../lib/gedaechtnis";
 import { internerPfad } from "../../lib/internerPfad";
 import { KNOWLEDGE_CLASS_META } from "../../lib/knowledgeClass";
 import { formatKoTimestamp } from "../../lib/koDates";
-import { leserHref } from "../../lib/objektbezug";
+import { gespeicherteFassungHref, leserHref } from "../../lib/objektbezug";
 import { useAiAvailable } from "../../lib/useAiAvailable";
+import { useAuthorName } from "../../lib/useAuthorName";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
 import { AnswerMarkdown } from "../AnswerMarkdown";
 import { KiArbeitsweg } from "./KiArbeitsweg";
@@ -103,52 +107,89 @@ function BezugVonDamals({ b }: { b: KlaraObjektbezug }): JSX.Element | null {
   );
 }
 
-/** Klara 03 · K3: jede Quelle mit Titel, Fassung und Prüfstatus — oder ehrlich ohne Angabe. */
+/** Die Freigabe gehört zur zitierten Fassung, auch wenn inzwischen jemand eine neuere freigab. */
+function Freigabeperson({ koId, fassung }: { koId: string; fassung: number }): JSX.Element | null {
+  const { t } = useAssistenzT();
+  const { user } = useSession();
+  const name = useAuthorName();
+  const beleg = useQuery({
+    queryKey: ["begleiter-belegfassung", user?.id, koId, fassung],
+    queryFn: user ? () => endpoints.ko.belegfassung(koId, fassung) : skipToken,
+    retry: false,
+    gcTime: 0,
+  });
+  if (
+    !beleg.isSuccess ||
+    beleg.isFetching ||
+    beleg.data.id !== koId ||
+    beleg.data.fassung !== fassung
+  )
+    return null;
+  return (
+    <span className="text-muted">
+      {beleg.data.freigegebenVon
+        ? t("begleiter.vergleich.freigegebenVon", { person: name(beleg.data.freigegebenVon) })
+        : t("begleiter.vergleich.freigabeUnbekannt")}
+    </span>
+  );
+}
+
+/** Titel und tatsächlich zitierte Fassung stehen direkt am Urteil. */
 function QuellenZeile({
   n,
   kompakt = false,
-}: {
-  n: EchtNachricht;
-  /**
-   * produkt:20261011:assistenz-minimalistische-oberflaeche (UI-MIN-09): Titel bleiben sichtbar und
-   * eine Ungewissheit (nicht geprüft, Prüfstand unbekannt) ebenso; Fassung und Prüfstand jeder
-   * Quelle stehen auf Wunsch in „Fassung und Prüfstand“.
-   */
-  kompakt?: boolean;
-}): JSX.Element {
+}: { n: EchtNachricht; kompakt?: boolean }): JSX.Element {
   const { t } = useAssistenzT();
   const angaben = new Map((n.quellenAngaben ?? []).map((a) => [a.koId, a]));
-  if (kompakt) {
-    return (
-      <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
-        <li className={KLEINTITEL}>{t("klaragespraech.quellen")}</li>
-        {n.quellen.map((q) => {
-          const a = angaben.get(q);
-          const geprueft =
-            a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
-          return (
-            <li
-              key={q}
-              data-testid="klara-quelle"
-              data-ko={q}
-              data-fassung={a?.fassung ?? ""}
-              data-geprueft={geprueft}
-              className="flex flex-wrap items-center gap-1"
+  return (
+    <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
+      <li className={KLEINTITEL}>{t("klaragespraech.quellen")}</li>
+      {n.quellen.map((q) => {
+        const a = angaben.get(q);
+        const geprueft = a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
+        const fassung = a?.fassung ?? null;
+        return (
+          <li
+            key={q}
+            data-testid="klara-quelle"
+            data-ko={q}
+            data-fassung={fassung ?? ""}
+            data-geprueft={geprueft}
+            className="flex flex-wrap items-center gap-1"
+          >
+            <Link
+              to={
+                fassung
+                  ? gespeicherteFassungHref(q, fassung)
+                  : leserHref({ koId: q, fassung: null })
+              }
+              className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-semibold text-text hover:border-ink/30"
             >
-              <Link
-                to={leserHref({ koId: q, fassung: a?.fassung ?? null })}
-                className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-semibold text-text hover:border-ink/30"
+              [{a?.kandidatenIndex ?? "?"}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
+            </Link>
+            {fassung ? (
+              <span className="text-muted">{t("klarakontext.fassung", { nr: fassung })}</span>
+            ) : !kompakt ? (
+              <span className="text-muted">
+                {t(a ? "klarakontext.quelle.fassungUnbekannt" : "klarakontext.quelle.ohneAngaben")}
+              </span>
+            ) : null}
+            {a && (!kompakt || geprueft !== "ja") ? (
+              <span
+                className={
+                  geprueft === "ja"
+                    ? "font-semibold text-text"
+                    : "font-semibold text-trust-warn-text"
+                }
               >
-                [{a?.kandidatenIndex ?? "?"}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
-              </Link>
-              {a && geprueft !== "ja" ? (
-                <span className="font-semibold text-trust-warn-text">
-                  {t(`klarakontext.quelle.geprueft.${geprueft}`)}
-                </span>
-              ) : null}
-            </li>
-          );
-        })}
+                {t(`klarakontext.quelle.geprueft.${geprueft}`)}
+              </span>
+            ) : null}
+            {fassung && geprueft !== "nein" ? <Freigabeperson koId={q} fassung={fassung} /> : null}
+          </li>
+        );
+      })}
+      {kompakt && (
         <li>
           <details data-testid="klara-quellen-details">
             <summary className="cursor-pointer text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
@@ -174,52 +215,7 @@ function QuellenZeile({
             </ul>
           </details>
         </li>
-      </ul>
-    );
-  }
-  return (
-    <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
-      <li className={KLEINTITEL}>{t("klaragespraech.quellen")}</li>
-      {n.quellen.map((q) => {
-        const a = angaben.get(q);
-        const geprueft = a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
-        return (
-          <li
-            key={q}
-            data-testid="klara-quelle"
-            data-ko={q}
-            data-fassung={a?.fassung ?? ""}
-            data-geprueft={geprueft}
-            className="flex flex-wrap items-center gap-1"
-          >
-            <Link
-              to={leserHref({ koId: q, fassung: a?.fassung ?? null })}
-              className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-semibold text-text hover:border-ink/30"
-            >
-              [{a?.kandidatenIndex ?? "?"}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
-            </Link>
-            {a ? (
-              <span className="text-muted">
-                {a.fassung
-                  ? t("klarakontext.fassung", { nr: a.fassung })
-                  : t("klarakontext.quelle.fassungUnbekannt")}
-                {" · "}
-                <span
-                  className={
-                    geprueft === "ja"
-                      ? "font-semibold text-text"
-                      : "font-semibold text-trust-warn-text"
-                  }
-                >
-                  {t(`klarakontext.quelle.geprueft.${geprueft}`)}
-                </span>
-              </span>
-            ) : (
-              <span className="text-muted-2">{t("klarakontext.quelle.ohneAngaben")}</span>
-            )}
-          </li>
-        );
-      })}
+      )}
     </ul>
   );
 }
@@ -246,10 +242,13 @@ function NachrichtEcht({
   const istAntwort = n.modus === "ki" || n.modus === "ohne_ki";
   // Klara 03 · K3: eine Antwort ohne jede Quelle hat keine Grundlage — das steht als Kennzeichen da.
   const ohneGrundlage = n.modus === "ohne_ki" && n.quellen.length === 0;
+  const keineBelegteAntwort = ohneGrundlage && n.grund === "keine_belegte_antwort";
+  const nachrichtentext = keineBelegteAntwort ? t("klaragespraech.antwort.keine") : n.text;
   // Klara 06: nur eine vom Server bestätigte Nachricht mit Inhalt (kein Fehler, kein Stopp).
   const notizFaehig =
     gespraechId !== null &&
     n.gespeichert === "ja" &&
+    !keineBelegteAntwort &&
     n.modus !== "fehler" &&
     n.modus !== "abgebrochen";
   return (
@@ -329,27 +328,35 @@ function NachrichtEcht({
         ) : null}
       </div>
       {istAntwort ? (
-        kurz ? (
+        kurz && !keineBelegteAntwort ? (
           <details data-testid="klara-antwort-kurz">
             <summary className="cursor-pointer font-semibold">
               {t("klaragedaechtnis.vollstaendig")}
             </summary>
-            <AnswerMarkdown text={n.text} className="text-[12px] leading-relaxed text-text" />
+            <AnswerMarkdown
+              text={nachrichtentext}
+              className="text-[12px] leading-relaxed text-text"
+            />
           </details>
         ) : (
-          <AnswerMarkdown text={n.text} className="text-[12px] leading-relaxed text-text" />
+          <AnswerMarkdown
+            text={nachrichtentext}
+            className="text-[12px] leading-relaxed text-text"
+          />
         )
       ) : (
-        <p className="whitespace-pre-line">{n.text}</p>
+        <p className="whitespace-pre-line">{nachrichtentext}</p>
       )}
       {/* Klara 03: Quellen mit Titel, Fassung und Prüfstatus (ersetzt die blossen [n]-Verweise). */}
       {istAntwort && n.quellen.length > 0 ? <QuellenZeile n={n} kompakt={kompakt} /> : null}
       {/* Klara 02: jede Antwort und jeder Hilfetext kann vorgelesen werden — nur auf Klick.
           Klara 06: eine GESPEICHERTE Nachricht kann zur privaten Notiz werden; der Server übernimmt
           Wortlaut und Ort aus dem eigenen Gespräch. Derselbe Vorgang je Nachricht: keine Doppelnotiz. */}
-      {(n.von === "klara" && n.text) || notizFaehig ? (
+      {(n.von === "klara" && nachrichtentext) || notizFaehig ? (
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {n.von === "klara" && n.text ? <VorlesenKnopf id={n.id} text={n.text} /> : null}
+          {n.von === "klara" && nachrichtentext ? (
+            <VorlesenKnopf id={n.id} text={nachrichtentext} />
+          ) : null}
           {notizFaehig && gespraechId ? (
             <button
               type="button"
@@ -376,8 +383,8 @@ function NachrichtEcht({
               onClick={() =>
                 starteEntwurf(
                   { art: "gespraech", gespraechId, nachrichtId: n.id },
-                  t("klaraerinnerung.bezug.gespraech", { auszug: kurzText(n.text) }),
-                  kurzText(n.text),
+                  t("klaraerinnerung.bezug.gespraech", { auszug: kurzText(nachrichtentext) }),
+                  kurzText(nachrichtentext),
                 )
               }
               className={KNOPF}

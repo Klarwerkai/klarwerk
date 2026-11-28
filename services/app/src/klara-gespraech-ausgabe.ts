@@ -48,6 +48,22 @@ function objektQuellen(b: KlaraObjektbezug): Quelle[] {
   return b.koId ? [{ id: b.koId, ...(b.fassung !== undefined ? { fassung: b.fassung } : {}) }] : [];
 }
 
+function neutraleNachricht(n: KlaraNachricht): KlaraNachricht {
+  return {
+    id: n.id,
+    von: n.von,
+    modus: n.von === "du" ? n.modus : "fehler",
+    text: NICHT_VERFUEGBAR,
+    objektbezug: NEUTRAL,
+    antwortId: null,
+    quellen: [],
+    quellenAngaben: [],
+    wissensklasse: null,
+    grund: n.von === "du" ? null : "inhalt_nicht_verfuegbar",
+    angelegtAm: n.angelegtAm,
+  };
+}
+
 /**
  * AW04/PV-05-03: Gesprächsausgabe und die davon abgeleiteten Kopien prüfen denselben eigenen
  * Antwortbeleg. Rohbestand und CAS bleiben unverändert. Clientdarstellungen können die
@@ -70,8 +86,7 @@ export class KlaraGespraechAusgabe {
     if (
       !snapshot ||
       snapshot.answerId !== antwortId ||
-      snapshot.integrityHash !== hashAnswerSnapshot(snapshot) ||
-      snapshot.evidence.length === 0
+      snapshot.integrityHash !== hashAnswerSnapshot(snapshot)
     ) {
       return null;
     }
@@ -94,8 +109,8 @@ export class KlaraGespraechAusgabe {
     return snapshot;
   }
 
-  /** Derselbe eigene, unveränderte Beleg für Gespräch, Notiz und Gedächtnis. */
-  async antwortQuellen(
+  /** [] ist ein gültiger, quellloser Lauf. null bezeichnet fehlende oder unvereinbare Belege. */
+  private async gebundeneQuellen(
     kontoId: string,
     antwortId: string | null,
     hinweise?: Pick<KlaraNachricht, "quellen" | "quellenAngaben">,
@@ -110,12 +125,29 @@ export class KlaraGespraechAusgabe {
         ? snapshot
         : await this.eigenerAntwortbeleg(kontoId, antwortId, undefined, true);
     if (!original || original.snapshotRevision !== 1) return null;
+    if (original.evidence.length === 0 || snapshot.evidence.length === 0) {
+      return [original, snapshot].every(
+        (s) => s.evidence.length === 0 && s.status === "PENDING_EVIDENCE" && !s.modelAnswer,
+      )
+        ? []
+        : null;
+    }
     const evidence =
       original === snapshot ? snapshot.evidence : [...original.evidence, ...snapshot.evidence];
     return evidence.map((q) => ({
       id: q.knowledgeObjectId,
       fassung: Number(q.knowledgeObjectVersion),
     }));
+  }
+
+  /** Eine quelllose Statusmeldung darf keinen frei übermittelten Wortlaut einer Kopie beglaubigen. */
+  async antwortQuellen(
+    kontoId: string,
+    antwortId: string | null,
+    hinweise?: Pick<KlaraNachricht, "quellen" | "quellenAngaben">,
+  ): Promise<Quelle[] | null> {
+    const quellen = await this.gebundeneQuellen(kontoId, antwortId, hinweise);
+    return quellen?.length ? quellen : null;
   }
 
   /** Ausschließlich die unveränderte Kopie einer tatsächlich vom Modell erzeugten eigenen Antwort. */
@@ -131,6 +163,7 @@ export class KlaraGespraechAusgabe {
     const snapshot = await this.eigenerAntwortbeleg(n.kontoId, n.antwortId, undefined, true);
     if (
       !snapshot?.modelAnswer ||
+      !snapshot.evidence.length ||
       !snapshot.modelRunId ||
       snapshot.snapshotRevision !== 1 ||
       snapshot.generationMode !== "model" ||
@@ -240,32 +273,39 @@ export class KlaraGespraechAusgabe {
     const nachrichten: { n: KlaraNachricht; herkunft: boolean; quellen: string[] }[] = [];
     // Zuerst alle Ablage-/Herkunftslesungen. Heutige Rechte folgen danach, auch beim Schreib-Echo.
     for (const n of g.nachrichten) {
-      const qs = await this.nachrichtQuellen(g.kontoId, n);
-      nachrichten.push({ n, herkunft: qs !== null, quellen: (qs ?? []).map(merke) });
+      const ids = bezug(n.objektbezug);
+      if (n.modus !== "ki" && n.modus !== "ohne_ki") {
+        nachrichten.push({ n, herkunft: true, quellen: ids });
+        continue;
+      }
+      const qs = await this.gebundeneQuellen(g.kontoId, n.antwortId, n);
+      if (qs?.length === 0 && n.von === "klara" && n.modus === "ohne_ki") {
+        // Nur den Serverstatus ausgeben. Ein leerer Snapshot trägt weder Clienttext noch Metadaten.
+        const hinweis: KlaraNachricht = {
+          ...neutraleNachricht(n),
+          modus: "ohne_ki",
+          grund: "keine_belegte_antwort",
+          text: "Klarwerk hat für diese Frage keine belegte Antwort gefunden.",
+        };
+        nachrichten.push({ n: hinweis, herkunft: true, quellen: ids });
+      } else {
+        nachrichten.push({
+          n,
+          herkunft: !!qs?.length,
+          quellen: [...ids, ...(qs ?? []).map(merke)],
+        });
+      }
     }
     // Kein Cache über Anfragen hinweg; aktuelle Kontosperre, Rollen, Spaces und Quellleser über
     // den bestehenden autoritativen Leser. Keine gespeicherte Rolle/alte Quellfreigabe öffnet.
     const lesbar = await this.leserechte(g.kontoId, quellen);
     // Nach dieser letzten Rechteprüfung kein weiterer Speicher-/Herkunftsabruf vor der Ausgabe.
     // Ein Entzug nach ihr wirkt auf den nächsten Abruf; bereits gesendete Kopien bleiben separat.
-    const neutral = (n: KlaraNachricht): KlaraNachricht => ({
-      id: n.id,
-      von: n.von,
-      modus: n.von === "du" ? n.modus : "fehler",
-      text: NICHT_VERFUEGBAR,
-      objektbezug: NEUTRAL,
-      antwortId: null,
-      quellen: [],
-      quellenAngaben: [],
-      wissensklasse: null,
-      grund: n.von === "du" ? null : "inhalt_nicht_verfuegbar",
-      angelegtAm: n.angelegtAm,
-    });
     return {
       id: g.id,
       objektbezug: lesbar(grundbezug) ? g.objektbezug : NEUTRAL,
       nachrichten: nachrichten.map(({ n, herkunft, quellen: ids }) =>
-        herkunft && lesbar(ids) ? n : neutral(n),
+        herkunft && lesbar(ids) ? n : neutraleNachricht(n),
       ),
       letzterSchritt:
         g.letzterSchritt &&

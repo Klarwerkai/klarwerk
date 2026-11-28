@@ -430,7 +430,7 @@ describe("R-0639 · R4 — am Draht: was den Modellclient WIRKLICH erreicht", ()
     const prompt = w.prompts.join("\n");
     expect(prompt).toContain(MARKER);
     // Benannt und VOR den Quellen, ohne Quellennummer — Kontext, keine zitierbare Quelle.
-    expect(prompt).toContain("Markierte Passage im Dokument (Kontext der Frage, keine Quelle):");
+    expect(prompt).toContain("Passage zur Prüfung (Kontext der Frage, keine Quelle):");
     expect(prompt.indexOf(MARKER)).toBeLessThan(prompt.indexOf("Quellen:"));
     expect(prompt).not.toMatch(/\[\d+\][^\n]*Drehmoment 38 Nm/);
     expect(w.entscheidungen()).toEqual([{ entscheidung: "freigegeben" }]);

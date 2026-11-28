@@ -283,6 +283,66 @@ it("PV-05-03: eine eigene Antwortkennung ohne Herkunftsbeleg öffnet keinen vert
   expect(r.body).toContain(EIGEN);
 });
 
+it("zeigt die Wissenslücke eines echten freien Fragelaufs beim Speichern und Wiederlesen als Serverhinweis", async () => {
+  const angelegt = await auf(anna, "POST", BASIS, { objektbezug: FREI });
+  expect(angelegt.statusCode, angelegt.body).toBe(201);
+  const id = angelegt.json<{ gespraech: KlaraGespraech }>().gespraech.id;
+  expect(
+    (await auf(anna, "PUT", `${BASIS}/${id}/einwilligung`, { erteilt: true })).statusCode,
+  ).toBe(200);
+  const frage = await auf(anna, "POST", "/api/ask", {
+    question: "Welche freigegebene Farbe hat das Prüfblatt?",
+  });
+  expect(frage.statusCode, frage.body).toBe(200);
+  const { answerId, result } = frage.json();
+  expect(result).toMatchObject({ answered: false, citedSources: [] });
+  expect(typeof answerId).toBe("string");
+
+  const eingabe = {
+    von: "klara",
+    modus: "ohne_ki",
+    text: "Ein unbelegter Clienttext ist kein Prüfergebnis.",
+    objektbezug: FREI,
+    antwortId: answerId,
+    quellen: [],
+    wissensklasse: result.knowledgeClass,
+  };
+  const url = `${BASIS}/${id}/nachrichten`;
+  const echo = await auf(anna, "POST", url, eingabe);
+  expect(echo.statusCode, echo.body).toBe(201);
+  const hinweis = echo.json().nachricht;
+  expect(hinweis).toMatchObject({
+    modus: "ohne_ki",
+    grund: "keine_belegte_antwort",
+    antwortId: null,
+    quellen: [],
+    quellenAngaben: [],
+  });
+  expect(hinweis.text).toContain("keine belegte Antwort");
+  const gelesen = await auf(anna, "GET", `${BASIS}/${id}`);
+  expect(gelesen.statusCode, gelesen.body).toBe(200);
+  expect(gelesen.json().gespraech.nachrichten.at(-1)).toEqual(hinweis);
+  expect(gelesen.body).not.toContain(eingabe.text);
+
+  const kopie = await auf(anna, "POST", "/api/me/klara/notizen", {
+    vorgang: "notiz-quellloser-lauf",
+    weg: "gespraech",
+    quelle: { gespraechId: id, nachrichtId: hinweis.id },
+  });
+  expect(kopie.statusCode, kopie.body).toBe(409);
+  expect(kopie.body).not.toContain(eingabe.text);
+
+  for (const abweichung of [{ modus: "ki" }, { quellen: ["behauptete-quelle"] }]) {
+    const abgewiesen = await auf(anna, "POST", url, { ...eingabe, ...abweichung });
+    expect(abgewiesen.statusCode, abgewiesen.body).toBe(201);
+    expect(abgewiesen.json().nachricht).toMatchObject({
+      modus: "fehler",
+      grund: "inhalt_nicht_verfuegbar",
+    });
+    expect(abgewiesen.body).not.toContain(eingabe.text);
+  }
+});
+
 it("PV-05-03: Entzug während der Antwortbeleglesung gilt noch vor der HTTP-Ausgabe", async () => {
   const b = await bestand();
   const original = services.answerSnapshots.latestSnapshot.bind(services.answerSnapshots);

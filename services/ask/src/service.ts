@@ -104,6 +104,7 @@ import {
   zurueckweisungMeldungId,
 } from "./gap-vorgang";
 import { gegenpositionOhneModell } from "./gegenposition-ohne-modell";
+import { getippteAussage } from "./getippte-aussage";
 import { aussageFingerabdruck, signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
 import { type AnswerSnapshotRepo, type GapRepo, gleicherLueckenstand } from "./repo";
 import {
@@ -1230,6 +1231,8 @@ export class AskService {
        * `Reasoner.answer`. Kein Rumpffeld: gesetzt wird es ausschliesslich von der Route.
        */
       dokumenttextFreigegeben?: boolean;
+      /** Klara ohne Dokument: prüft nur die Aussage, die in der Frage selbst steht. */
+      getippteAussagePruefen?: boolean;
       /**
        * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der hinausgehende Dokumenttext (Markierung
        * oder Frage) ist als VERTRAULICH markiert und nur durch die zweite zentrale Adminfreigabe
@@ -1339,22 +1342,29 @@ export class AskService {
         : undefined;
     // Bei Dokumentfragen ist die Passage das Thema, die getippte Frage der Arbeitsauftrag.
     // Ihr Sachbezug bleibt auch bei einer langen Frage im begrenzten Suchfenster erhalten.
-    const eingabeterme = dokumenttext
-      ? erweiterteSuchterme(queryTokens(dokumenttext), question)
+    const getippt =
+      opts?.getippteAussagePruefen === true &&
+      opts.validatedOnly === true &&
+      opts.retrievalOnly !== true &&
+      dokumenttext === undefined
+        ? getippteAussage(question)
+        : undefined;
+    const prueftext = dokumenttext ?? getippt?.aussage;
+    const eingabeterme = prueftext
+      ? erweiterteSuchterme(queryTokens(prueftext), getippt?.auftrag ?? question)
       : erweiterteSuchterme(frageterme, opts?.selection);
     const relevanz = zugeordneteSuchterme(eingabeterme);
     const vorFaden = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
     // R-0348: der Gesprächsfaden — Begründung und Grenzen an `fadenfragen`.
-    const faden = fadenfragen(opts?.gespraechsfaden);
+    const faden = getippt ? [] : fadenfragen(opts?.gespraechsfaden);
     // Klara 03: der Seitenkontext steht im Zusammenhang direkt vor der Frage — wie eine Fadenfrage,
     // aber nie Themenanker (gebunden bleibt allein `faden[0]`). Ohne ihn ist alles wie bisher.
     const kontextSatz = opts?.seitenkontext?.kontext.trim() ?? "";
     const zusammenhang = kontextSatz ? [...faden, kontextSatz] : faden;
     const frageImZusammenhang =
       zusammenhang.length > 0 ? [...zusammenhang, question].join(FADEN_TRENNER) : question;
-    const auswahlfrage = dokumenttext
-      ? `${frageImZusammenhang}\n${dokumenttext}`
-      : frageImZusammenhang;
+    const arbeitsauftrag = getippt?.auftrag ?? frageImZusammenhang;
+    const auswahlfrage = prueftext ? `${arbeitsauftrag}\n${prueftext}` : arbeitsauftrag;
     const suchterme =
       zusammenhang.length > 0 ? erweiterteSuchterme(vorFaden, zusammenhang.join(" ")) : vorFaden;
     // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
@@ -1488,10 +1498,10 @@ export class AskService {
         ...(ordnung.get(ref.id) ?? []),
       ].join(" ");
       return (
-        // Mit freigegebenem Dokumentkontext deutet das Modell den Arbeitsauftrag; Wörter
-        // wie „correct“ müssen nicht in der Quelle stehen. Relevanz, Anker und Quellenrechte
-        // bleiben geprüft. Ohne diese Freigabe gilt die bisherige vollständige Wortbindung.
-        (dokumenttext !== undefined || decktAlleFragebegriffe(question, durchsuchbar, relevanz)) &&
+        // Bei einer Prüfpassage gehören auch gegenteilige Wörter zur Fragestellung.
+        // Ihr Urteil erfordert wörtliche Belege auf dem Modellweg. Für allgemeine Fragen
+        // und ihren Fadenanker gilt weiterhin die vollständige Wortbindung.
+        (prueftext !== undefined || decktAlleFragebegriffe(question, durchsuchbar, relevanz)) &&
         (anker === undefined || decktAlleFragebegriffe(anker, durchsuchbar, relevanz))
       );
     });
@@ -1548,7 +1558,7 @@ export class AskService {
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
           this.reasoner.answerRetrievalOnly(frageImZusammenhang, candidates, locale, relevanz)
         : antworte(
-            frageImZusammenhang,
+            arbeitsauftrag,
             candidates,
             locale,
             kontextVertraulich,
@@ -1561,7 +1571,7 @@ export class AskService {
             // JOB 3049: TOR 2, üblicher Weg. Der Relevanztext geht an die Kandidatenauswahl des
             // Providers — NICHT in den Modellprompt; der baut unverändert auf `question` auf.
             relevanz,
-            dokumenttext,
+            prueftext,
           ),
     );
     // REF-02: wer GENAU DIESE Antwort geschrieben hat. Der wörtliche Weg des Add-ins ist der
@@ -1584,7 +1594,21 @@ export class AskService {
       opts?.retrievalOnly === true
         ? null
         : gegenpositionOhneModell(antwortwegErgebnis, candidates, locale);
-    const rawResult = gegenposition ?? antwortwegErgebnis;
+    // Ein wörtlicher Rückfall beantwortet eine normale Sachfrage, entscheidet aber keine
+    // Behauptung. Der freie Vergleich braucht ein Urteil und dessen tatsächlich zitierte Quelle.
+    const rawResult: AnswerResult =
+      getippt && (!antwortwegErgebnis.dokumentUrteil || !antwortwegErgebnis.citedSources.length)
+        ? {
+            answered: false,
+            answer: null,
+            sources: [],
+            citedSources: [],
+            steps: [],
+            knowledgeClass: "unbekannt",
+            trust: 0,
+            demo: antwortwegErgebnis.demo,
+          }
+        : (gegenposition ?? antwortwegErgebnis);
     // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung
     // geschrieben bzw. gelesen. Ist inzwischen abgeschaltet, wird nichts davon mehr ausgeliefert.
     this.pruefeKiSperre("ergebnis", kiBeginn);

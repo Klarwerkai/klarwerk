@@ -162,7 +162,7 @@ export interface KlaraNachricht {
   readonly quellenAngaben?: readonly KlaraQuellenAngabe[];
   /** Nur bei `ki`/`ohne_ki`: die Einstufung der Antwort (`knowledgeClass`). */
   readonly wissensklasse: string | null;
-  /** Nur bei `fehler`: ein kurzer Grundschlüssel (`ki_abgeschaltet`, `anmeldung`, …). */
+  /** Fehlergrund oder in der Serverausgabe `keine_belegte_antwort` für einen quelllosen Fragelauf. */
   readonly grund: string | null;
   readonly angelegtAm: string;
 }

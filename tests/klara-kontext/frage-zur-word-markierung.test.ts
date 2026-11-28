@@ -300,7 +300,7 @@ describe("Klara: natürliche Frage zur freigegebenen Word-Markierung", () => {
         feld.value = sicht.answer;
         panel.wechseln("en");
         expect(feld.value).toBe(
-          `AI comparison: the selected statement ${heading} the company sources consulted.\n\n${REGEL}`,
+          `AI comparison: the statement ${heading} the company sources consulted.\n\n${REGEL}`,
         );
         expect(sicht.absaetze.map((a: { quellen: string[] }) => a.quellen)).toEqual([
           [w.quelle.id],

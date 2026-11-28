@@ -110,6 +110,7 @@ const askBodySchema = {
     // liegen, und Klaras eigener Zugang (R-0700) kennt das Feld gar nicht — ihre Egress-Verträge
     // kennen keinen zweiten Empfänger und bekommen keinen.
     zweitmeinung: { type: "boolean" },
+    getippteAussagePruefen: { type: "boolean" },
     // Klara 03 (produkt:20261007:klara-kontext-tutorial) — DER GEWÄHLTE SEITENKONTEXT. Wirkt wie
     // Faden und Fragekontext NUR im Konsolenzweig. Ein Wissensobjekt (`koId`) löst die Route unter
     // den Rechten des Fragenden auf (`seitenbezugAufloesen`); `kontext` ist der Titel des eigenen
@@ -1416,6 +1417,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         mode?: string;
         thread?: string[];
         zweitmeinung?: boolean;
+        getippteAussagePruefen?: boolean;
         fragekontext?: unknown;
       } & Record<string, unknown>;
     }>(
@@ -1624,6 +1626,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           ...(faden.length > 0 ? { gespraechsfaden: faden } : {}),
           ...(fragekontext ? { fragekontext } : {}),
           ...(request.body.zweitmeinung === true ? { zweitmeinung: true } : {}),
+          ...(request.body.getippteAussagePruefen === true ? { getippteAussagePruefen: true } : {}),
           ...(aufgeloest ? { seitenkontext: aufgeloest.zusatz } : {}),
         };
         await answer(
