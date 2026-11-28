@@ -40,7 +40,7 @@ async function instanz() {
 /**
  * Die Quelle: ein Objekt, dessen `author` (der Reviewer, der es angelegt hat) NICHT seine
  * Urheberin ist — genau die Lage nach einem ersten Import oder einer Erfassung im Auftrag.
- * Validiert, weil der Export nur Validiertes herausgibt (SCRUM-506).
+ * Für den regulären Export ist das Objekt als intern eingestuft und validiert.
  */
 async function exportDatei(felder: { author: string; originalAuthor?: string }): Promise<string> {
   const quelle = await instanz();
@@ -50,6 +50,7 @@ async function exportDatei(felder: { author: string; originalAuthor?: string }):
     type: "best_practice",
     category: "Austausch",
     tags: ["herkunft"],
+    confidentiality: "intern",
     ...felder,
   });
   await quelle.koService.setValidationState(ko.id, { trust: 80, status: "validiert" });
