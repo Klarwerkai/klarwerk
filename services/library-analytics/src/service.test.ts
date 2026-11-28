@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
-import { InMemoryCandidateRepo, InMemoryImportRunRepo } from "./repo";
+import { InMemoryCandidateRepo, InMemoryExternalSourceRepo, InMemoryImportRunRepo } from "./repo";
 import { PgCandidateRepo } from "./repo-pg";
 import { LibraryService, sanitizeImportConfidentiality } from "./service";
 import {
@@ -60,6 +60,7 @@ async function setup() {
   // In der echten App tut das die Startorchestrierung in build-app.ts.
   await koService.activateSearchProjectionV2();
   await koService.create({
+    confidentiality: "intern",
     title: "Ventil schließen",
     statement: "Bei Überdruck Ventil X schließen.",
     type: "best_practice",
@@ -68,6 +69,7 @@ async function setup() {
     tags: ["druck", "ventil"],
   });
   await koService.create({
+    confidentiality: "intern",
     title: "Pumpe schmieren",
     statement: "Pumpe alle 200h schmieren.",
     type: "technik",
@@ -77,7 +79,14 @@ async function setup() {
   });
   // Der Confluence-Import-Strang (pageId-Dedup/-Upsert) wird für diese Suite aktiviert — sie testet
   // genau dieses Verhalten. Der Flag-AUS-Fall (Bestandsverhalten) hat einen eigenen Test unten.
-  return { koService, library: new LibraryService({ koService, externalUpsert: true }) };
+  return {
+    koService,
+    library: new LibraryService({
+      koService,
+      externalUpsert: true,
+      externalSources: new InMemoryExternalSourceRepo(),
+    }),
+  };
 }
 
 // SCRUM-506: der Export ist Validiert-only — Test-KOs vor Export-Assertions auf „validiert" heben.
@@ -369,17 +378,25 @@ describe("LibraryService", () => {
     expect(ko.sources.find((s) => s.externalId === "P5")?.sourceVersion).toBe(2);
   });
 
-  it("SCRUM-470: Re-Sync mit gleicher/niedrigerer Version → No-op (idempotent)", async () => {
+  it("SCRUM-470: Re-Sync mit derselben Quellfassung ist idempotent, anderer Inhalt wird abgewiesen", async () => {
     const [c1] = await ctx.library.createImportCandidates([
       confItem({ externalId: "P7", sourceVersion: 3, statement: "Stand V3." }),
     ]);
     const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
     const [c2] = await ctx.library.createImportCandidates([
-      confItem({ externalId: "P7", sourceVersion: 3, statement: "nochmal V3." }),
+      confItem({ externalId: "P7", sourceVersion: 3, statement: "Stand V3." }),
     ]);
     const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
 
     expect(r2.koId).toBe(r1.koId);
+    const [abweichend] = await ctx.library.createImportCandidates([
+      confItem({ externalId: "P7", sourceVersion: 3, statement: "Anderer Inhalt." }),
+    ]);
+    await expect(ctx.library.reviewImportCandidate(abweichend!.id, "accept")).rejects.toMatchObject(
+      {
+        code: "CONFLICT",
+      },
+    );
     const ko = (await ctx.koService.list()).find((k) => k.id === r1.koId)!;
     expect(ko.version).toBe(1); // NICHT revidiert
     expect(ko.statement).toBe("Stand V3."); // unverändert
@@ -401,7 +418,7 @@ describe("LibraryService", () => {
     // Zweiter Accept derselben pageId, wieder OHNE Version → selbes KO, KEINE Revision (No-op).
     const { sourceVersion: _v2, ...noVer2 } = confItem({
       externalId: "PNV",
-      statement: "nochmal.",
+      statement: "Erststand.",
     });
     const [c2] = await ctx.library.createImportCandidates([noVer2]);
     const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
@@ -412,7 +429,7 @@ describe("LibraryService", () => {
     expect(withAnchor).toHaveLength(1); // kein Dublett
     const ko2 = withAnchor[0]!;
     expect(ko2.version).toBe(1); // NICHT revidiert → idempotent
-    expect(ko2.statement).toBe("Erststand."); // kein Downgrade auf „nochmal."
+    expect(ko2.statement).toBe("Erststand."); // Wiederholung derselben belegten Fassung
     expect(ko2.sources.find((s) => s.externalId === "PNV")?.sourceVersion).toBe(1); // kein Bump
   });
 

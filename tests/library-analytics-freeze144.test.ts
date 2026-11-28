@@ -177,6 +177,12 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // main 1147c026, und es gelten dessen Einträge.
   "FREEZE-144/GIA-R2-20260930/index",
   "FREEZE-144/GIA-R2-20260930/types",
+  // PR 32: Einzelprüfung am Hauptstand und Freigabe von Peter am 28.11.2026.
+  "FREEZE-144/MAIN-c2aed83d-20261004/index",
+  "FREEZE-144/GIA2-R3-20261001/repo",
+  "FREEZE-144/GIA2-R3-20261001/repo-pg",
+  "FREEZE-144/D5-20260817/repo-pg-integration",
+  "FREEZE-144/N11-20261003/service-test",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -214,10 +220,11 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // Merge rot. Sollhash und Freigabe sind hier in EINEM Änderungssatz nachgezogen, der Hash ist
     // der in der Cloud-Prüfung des Kandidaten e60b19d9 gemessene (nacharbeit-11/gezielt.log). Wer
     // die Freigabe zeichnet, bleibt die offene Ownerfrage aus § GRENZE — BEN prüft Diff und Hash.
-    hash: "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
+    // Modulausgang f75cea7e0: Revisionsabdruck herausgeführt, zwei ungenutzte Such-Exporte entfernt.
+    hash: "67c774e69939c77998e4be606c4bda7ee892d2b5af6ccbfa3bdae3e1a594c63d",
     freigabe: {
-      id: "FREEZE-144/MAIN-c2aed83d-20261004/index",
-      autorisiertHash: "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
+      id: "FREEZE-144/PR32-20261128/index",
+      autorisiertHash: "67c774e69939c77998e4be606c4bda7ee892d2b5af6ccbfa3bdae3e1a594c63d",
     },
   },
   // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
@@ -355,10 +362,11 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // `annahmeSperre` bekommt `sperreGilt` (vor jeder Mutation zu fragen; InMemory: immer gültig),
     // dazu `annahmeSperreVerloren()` → CONFLICT. Sonst unverändert. Sollhash UND Freigabe in EINEM
     // Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
-    hash: "549edfb36cf1db21f2bacd43c812837ffe75087e68967539e91f91ef560c8c04",
+    // R-1349/R-1653: gemeinsame Liste offener Zustände, exakt darstellbare Quellversionen bis 15 Stellen.
+    hash: "6f583c4a37ec8c62aa6bc45b67dc66b1e9a1420f6168d50917ffef255e11c0b8",
     freigabe: {
-      id: "FREEZE-144/GIA2-R3-20261001/repo",
-      autorisiertHash: "549edfb36cf1db21f2bacd43c812837ffe75087e68967539e91f91ef560c8c04",
+      id: "FREEZE-144/PR32-20261128/repo",
+      autorisiertHash: "6f583c4a37ec8c62aa6bc45b67dc66b1e9a1420f6168d50917ffef255e11c0b8",
     },
   },
   {
@@ -398,10 +406,11 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // festgehalten, `sperreGilt` prüft ihn (und `SELECT 1` über dieselbe Sitzung) vor jeder Mutation
     // und wirft dann CONFLICT; die verlorene Verbindung wird verworfen. KEINE DDL-Änderung. Sollhash
     // UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
-    hash: "7ebdbd023059b12d2f864b9464a143d53094b0514f2dc8485df5cd3245ecc3c6",
+    // R-1653: wiederholbare bigint-Migration und 15-stellige Versionsgrenze passend zum Speicher-Repository.
+    hash: "f3e1172f55f8b4e5593854b5cc9f2de7ff749033372bf653194ff040d8ce0a44",
     freigabe: {
-      id: "FREEZE-144/GIA2-R3-20261001/repo-pg",
-      autorisiertHash: "7ebdbd023059b12d2f864b9464a143d53094b0514f2dc8485df5cd3245ecc3c6",
+      id: "FREEZE-144/PR32-20261128/repo-pg",
+      autorisiertHash: "f3e1172f55f8b4e5593854b5cc9f2de7ff749033372bf653194ff040d8ce0a44",
     },
   },
   {
@@ -437,18 +446,20 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // Kandidat 9612aa9c gemessen („gemessen:" dieses Wächters) und unverändert übernommen; main hat
     // die Datei seither nicht berührt (Integration 38508a1e). Sollhash UND Freigabe sind in EINEM
     // Änderungssatz neu gesetzt, JOB3050 steht deshalb in WIDERRUFENE_FREIGABEN.
-    hash: "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
+    // Export mit ausdrücklich internen Beispielen; Re-Sync prüft gleichen und abweichenden Inhalt am gespeicherten Revisionsnachweis.
+    hash: "b7ea75b768e481409faecd78bfe125b7bae8970b33da76b126c18bb04ca30afc",
     freigabe: {
-      id: "FREEZE-144/N11-20261003/service-test",
-      autorisiertHash: "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
+      id: "FREEZE-144/PR32-20261128/service-test",
+      autorisiertHash: "b7ea75b768e481409faecd78bfe125b7bae8970b33da76b126c18bb04ca30afc",
     },
   },
   {
     pfad: "services/library-analytics/src/repo-pg.integration.test.ts",
-    hash: "d415952ea7cffc493e33adec0d5e736374a524c0883a0ef2191cebd29bb2e5e4",
+    // Bestehende Freigabe SPH-INT-d81091cf: PostgreSQL liefert bigint als Text, die Vergleichswerte prüfen die Version numerisch.
+    hash: "841f7e68b73bfdfb35dbc7354266f1a41980a15a8578919676c3e0ed7c5f12fb",
     freigabe: {
-      id: "FREEZE-144/D5-20260817/repo-pg-integration",
-      autorisiertHash: "d415952ea7cffc493e33adec0d5e736374a524c0883a0ef2191cebd29bb2e5e4",
+      id: "FREEZE-144/SPH-INT-d81091cf-20261011/repo-pg-integration",
+      autorisiertHash: "841f7e68b73bfdfb35dbc7354266f1a41980a15a8578919676c3e0ed7c5f12fb",
     },
   },
 ];

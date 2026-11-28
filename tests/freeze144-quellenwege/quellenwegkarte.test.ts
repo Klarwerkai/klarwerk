@@ -340,9 +340,12 @@ describe("Freeze-144 · Quellenwegkarte · Gegenproben", () => {
 
   it("S1 · ein im Freeze-Waechter neu gesetzter Sollhash ohne Kartenzeile wird gemeldet", () => {
     const freeze = echterLeser(FREEZE_WAECHTER) ?? "";
-    const alt = "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f";
-    const neu = `${alt.slice(0, 63)}0`;
-    const leser = mitErsatz({ [FREEZE_WAECHTER]: freeze.replaceAll(alt, neu) });
+    const alt = sollwerteImFreeze(echterLeser).get(INDEX)?.hash;
+    if (!alt) throw new Error(`Sollhash für ${INDEX} fehlt`);
+    const neu = `${alt.slice(0, 63)}${alt.endsWith("0") ? "1" : "0"}`;
+    const leser = mitErsatz({
+      [FREEZE_WAECHTER]: freeze.replace(`hash: "${alt}"`, `hash: "${neu}"`),
+    });
     const text = vergleiche(liesKarte(), leser).join("\n");
     expect(text).toContain(`SOLLWERT  ${INDEX}: Karte ${alt}`);
   });
