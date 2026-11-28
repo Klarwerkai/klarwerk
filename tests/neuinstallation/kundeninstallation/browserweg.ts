@@ -300,14 +300,17 @@ export async function anhangHochladen(
 ): Promise<void> {
   await oeffneObjekt(seite, basis, kennung);
   await oeffneMehrAbschnitt(seite, "anhaenge", "Anhänge");
-  const gebunden = seite.waitForResponse(
-    (r) => r.url().includes(`/api/kos/${kennung}`) && r.request().method() === "PUT",
-    { timeout: 60_000 },
-  );
-  await seite
-    .locator('[data-bib-abschnitt="anhaenge"] input[type=file]')
-    .setInputFiles({ name: datei.name, mimeType: datei.mime, buffer: datei.bytes });
-  const antwort = await gebunden;
+  const foto = seite
+    .locator('[data-bib-abschnitt="anhaenge"]')
+    .getByRole("button", { name: "Foto anhängen", exact: true });
+  const [auswahl] = await Promise.all([seite.waitForEvent("filechooser"), foto.click()]);
+  const [antwort] = await Promise.all([
+    seite.waitForResponse(
+      (r) => r.url().includes(`/api/kos/${kennung}`) && r.request().method() === "PUT",
+      { timeout: 60_000 },
+    ),
+    auswahl.setFiles({ name: datei.name, mimeType: datei.mime, buffer: datei.bytes }),
+  ]);
   if (antwort.status() !== 200) {
     throw new Error(`Anhang binden: HTTP ${antwort.status()} ${await antwort.text()}`);
   }
