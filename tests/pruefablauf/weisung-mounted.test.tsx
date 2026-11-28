@@ -101,7 +101,7 @@ import { act, createElement, useRef } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
-import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { AuthProvider, useSession } from "../../apps/web/src/app/AuthContext";
 import { ModalBoundaryProvider } from "../../apps/web/src/app/ModalBoundaryContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
@@ -169,14 +169,29 @@ const flush = async (): Promise<void> => {
   }
 };
 
+async function warteAuf(anzeige: string, bereit: () => boolean): Promise<void> {
+  const frist = Date.now() + 5000;
+  do {
+    await act(flush);
+    if (bereit()) return;
+  } while (Date.now() < frist);
+  throw new Error(`Die Lesefläche zeigt ${anzeige} nach fünf Sekunden noch nicht`);
+}
+
 function Huelle({ children }: { children: React.ReactNode }): JSX.Element {
   const mainRef = useRef<HTMLElement | null>(null);
+  const { user } = useSession();
   return createElement(ModalBoundaryProvider, {
     hostRef: mainRef,
     children: [
       createElement(
         "main",
-        { key: "main", ref: mainRef, className: "flex-1 overflow-y-auto px-9 py-7" },
+        {
+          key: "main",
+          ref: mainRef,
+          "data-angemeldet": user?.id,
+          className: "flex-1 overflow-y-auto px-9 py-7",
+        },
         children,
       ),
       createElement(ToastViewport, { key: "toasts" }),
@@ -227,10 +242,15 @@ async function mount(): Promise<void> {
         ),
       ),
     );
-    await flush();
   });
-  await act(flush);
-  await act(flush);
+  // Konto und Objekt werden unabhängig geladen. Auch die Negativfälle müssen erst
+  // die angemeldete Person und die gerenderte Fassung erreicht haben.
+  await warteAuf(
+    "Konto und Fassung 2",
+    () =>
+      container.querySelector("main")?.dataset.angemeldet === box.ichId &&
+      da("bib-fassungsstand")?.textContent?.includes("v2") === true,
+  );
 }
 
 function da(testId: string): HTMLElement | null {
@@ -311,6 +331,12 @@ describe("R-1863 · Antworten 18/19 — die Weisung in der Lesefläche", () => {
   it("M2 · Befugnis für den Bereich: Person und Frist reisen mit dem Aufruf", async () => {
     box.befugnis = BEFUGNIS(["Anlage 1"]);
     await mount();
+    await warteAuf(
+      "die für die Weisung verfügbare Person",
+      () =>
+        da("bib-weisung-verantwortlich")?.querySelector('option[value="u-ctrl"]') instanceof
+        HTMLOptionElement,
+    );
     muss("bib-weisung-einstellen");
     expect(muss("bib-weisung-knopf").hasAttribute("disabled")).toBe(true);
     const wahl = muss("bib-weisung-verantwortlich") as HTMLSelectElement;
