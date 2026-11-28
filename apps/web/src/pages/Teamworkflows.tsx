@@ -156,6 +156,7 @@ function Arbeitsort({ kontext }: { kontext: string }) {
                   <li key={x.id}>
                     <button
                       type="button"
+                      data-testid="teamworkflow-eintrag"
                       className="flex w-full items-center justify-between gap-3 py-3 text-left"
                       onClick={() => navigate(manage ? { bearbeiten: x.id } : { workflow: x.id })}
                     >

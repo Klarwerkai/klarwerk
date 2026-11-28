@@ -30,6 +30,20 @@ export const ARBEITEN: readonly SeitenEintrag[] = [
     ],
   },
   {
+    id: "teamassistenten",
+    pfade: ["/teamassistenten"],
+    titelKey: "teamassistenten.titel",
+    ziel: '[data-testid="teamassistent-auswahl"], [data-testid="teamassistent-neu"], [data-testid="page-teamassistenten"] h1',
+    hilfeKeys: ["help.teamassistenten.body"],
+  },
+  {
+    id: "teamworkflows",
+    pfade: ["/teamworkflows"],
+    titelKey: "workflows.titel",
+    ziel: '[data-testid="teamworkflow-eintrag"], [data-testid="page-teamworkflows"] h1',
+    hilfeKeys: ["help.teamworkflows.body"],
+  },
+  {
     id: "pruefen",
     pfade: ["/validierung"],
     titelKey: "kopfband.pruefen",

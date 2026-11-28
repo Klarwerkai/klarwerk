@@ -209,7 +209,9 @@ describe("K10 · die Wahl folgt der Anmeldung, `<html lang>` bleibt bei JOB 536"
       expect(lies(datei), datei).not.toMatch(/\[\s*"de",\s*"en",\s*"nl"\s*\]/);
     }
     const i18n = lies("i18n.ts");
-    expect(i18n).toContain("pruefeTextmodule(textmodule, basis, OBERFLAECHEN_SPRACHEN)");
+    expect(i18n).toMatch(
+      /\bpruefeTextmodule\(\s*textmodule\s*,\s*basis\s*,\s*OBERFLAECHEN_SPRACHEN\s*,\s*TEXTMODULE_NACHGELADEN\s*,?\s*\)/u,
+    );
     expect(i18n).toContain("fuehreTextmoduleZusammen(textmodule, OBERFLAECHEN_SPRACHEN)");
     expect(i18n).toContain("return ladeWeitereSprache(sprache, modulTexte[sprache]);");
   });
