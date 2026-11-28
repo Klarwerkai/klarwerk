@@ -134,7 +134,11 @@ describe("JOB 3063 · die Reife-Erklärbox ist abgelöst — die Reife selbst ni
     mount();
     const text = container.textContent ?? "";
     expect(text).not.toContain(res("kg.library.title"));
-    expect(text).not.toContain(res("kg.secured.label"));
+    expect(text).not.toContain(res("kg.library.body"));
+    expect(text).not.toContain(res("kg.review.body"));
+    expect(container.querySelector('[data-testid="bib-segment-validiert"]')?.textContent).toBe(
+      res("kg.secured.label"),
+    );
     expect(text).not.toContain(res("kg.secured.body"));
   });
 
