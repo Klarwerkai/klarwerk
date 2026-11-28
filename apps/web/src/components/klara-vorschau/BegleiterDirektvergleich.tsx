@@ -15,13 +15,7 @@ const URTEIL = {
 } as const;
 
 function markierterText(text: string, marke: BegleiterVergleich["dokumentMarke"]): string | null {
-  if (
-    !marke ||
-    marke.nurKontext ||
-    marke.start < 0 ||
-    marke.end > text.length ||
-    marke.end <= marke.start
-  ) {
+  if (!marke || marke.start < 0 || marke.end > text.length || marke.end <= marke.start) {
     return null;
   }
   return text.slice(marke.start, marke.end);
@@ -37,7 +31,7 @@ function Wortlaut({
   farbe: string;
 }): JSX.Element {
   const ausschnitt = markierterText(text, marke);
-  if (!marke || !ausschnitt) {
+  if (!marke || marke.nurKontext || !ausschnitt) {
     return <>{text}</>;
   }
   return (
@@ -96,6 +90,9 @@ export function BegleiterDirektvergleich({
     widerspruch && vergleich.belege.length === 1 && beleg?.woertlich
       ? markierterText(beleg.text, vergleich.belegMarke)
       : null;
+  const nurDokumentkontext = vergleich.dokumentMarke?.nurKontext === true;
+  const nurQuellkontext = vergleich.belegMarke?.nurKontext === true;
+  const wortpaar = dokumentwort && quellwort && !(nurDokumentkontext && nurQuellkontext);
   const wortgleich =
     aktuellePassage &&
     vergleich.art === "bestaetigt" &&
@@ -123,12 +120,16 @@ export function BegleiterDirektvergleich({
           ? t("begleiter.vergleich.wortgleich")
           : t(`begleiter.vergleich.${vergleich.art}`)}
       </h3>
-      {dokumentwort && quellwort && (
+      {wortpaar && (
         <p
           data-testid="begleiter-wortpaar"
           className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-hairline px-3 py-1.5 text-sm font-semibold [overflow-wrap:anywhere]"
         >
-          <span className="min-w-0 text-trust-crit-text">
+          <span
+            className={
+              nurDokumentkontext ? "min-w-0 font-normal text-muted" : "min-w-0 text-trust-crit-text"
+            }
+          >
             <span className="sr-only">
               {t(
                 anderePassage
@@ -137,14 +138,18 @@ export function BegleiterDirektvergleich({
               )}
               :{" "}
             </span>
-            {dokumentwort}
+            {nurDokumentkontext ? t("begleiter.vergleich.fehltImSatz") : dokumentwort}
           </span>
           <span aria-hidden="true" className="text-muted">
             →
           </span>
-          <span className="min-w-0 text-trust-pos-text">
+          <span
+            className={
+              nurQuellkontext ? "min-w-0 font-normal text-muted" : "min-w-0 text-trust-pos-text"
+            }
+          >
             <span className="sr-only">{t("begleiter.vergleich.quelle")}: </span>
-            {quellwort}
+            {nurQuellkontext ? t("begleiter.vergleich.entfaellt") : quellwort}
           </span>
         </p>
       )}

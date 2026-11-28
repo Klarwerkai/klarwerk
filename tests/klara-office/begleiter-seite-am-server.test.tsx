@@ -596,62 +596,84 @@ describe("Direktvergleich in der Klara-App", () => {
     }
   });
 
-  it("zeigt beim aktuellen Widerspruch das Urteil und das belegte Wortpaar vor den Aktionen", async () => {
-    await vorrichtung();
-    if (!aufbau) throw new Error("Vorrichtung fehlt");
-    const regel = MARKIERUNG.replace("dritten", "zweiten");
-    const quelle = await eintragMitOriginal(aufbau.app, aufbau.admin, {
-      titel: "Lieferfrist",
-      kernaussage: regel,
-    });
-    await fensterMitMarkierung(FENSTER, DOKUMENT);
-    const id = await auftragAn(FENSTER, "Stimmt das?");
-    const eingang = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
-      seq: 2,
-      auswahl: MIT_MARKIERUNG,
-      passage: { text: MARKIERUNG, stand: 1 },
-    });
-    expect(eingang.json().aktionen[0].id).toBe(id);
-    const start = MARKIERUNG.indexOf("dritten");
-    const ergebnis = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
-      seq: 3,
-      auswahl: MIT_MARKIERUNG,
-      passage: { text: MARKIERUNG, stand: 1 },
-      erledigt: [
-        {
-          id,
-          stand: "erledigt",
-          ergebnis: "Antwort",
-          vergleich: {
-            art: "widersprochen",
-            dokument: MARKIERUNG,
-            dokumentMarke: { start, end: start + 7 },
-            belege: [{ text: regel, quellen: [quelle.koId], woertlich: true }],
-            belegMarke: { start, end: start + 7 },
-            zeigbar: false,
+  it.each([
+    {
+      fall: "ersetzt",
+      regel: MARKIERUNG.replace("dritten", "zweiten"),
+      wort: "zweiten",
+      quellmarke: { start: MARKIERUNG.indexOf("dritten"), end: MARKIERUNG.indexOf("dritten") + 7 },
+    },
+    {
+      fall: "entfällt",
+      regel: MARKIERUNG.replace("dritten ", ""),
+      wort: "Entfällt",
+      quellmarke: {
+        start: MARKIERUNG.indexOf("am dritten"),
+        end: MARKIERUNG.indexOf("am dritten") + "am Werktag".length,
+        nurKontext: true,
+      },
+    },
+  ])(
+    "zeigt beim aktuellen Widerspruch ($fall) das Urteil und die Änderung vor den Aktionen",
+    async ({ regel, wort, quellmarke }) => {
+      await vorrichtung();
+      if (!aufbau) throw new Error("Vorrichtung fehlt");
+      const quelle = await eintragMitOriginal(aufbau.app, aufbau.admin, {
+        titel: "Lieferfrist",
+        kernaussage: regel,
+      });
+      await fensterMitMarkierung(FENSTER, DOKUMENT);
+      const id = await auftragAn(FENSTER, "Stimmt das?");
+      const eingang = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+        seq: 2,
+        auswahl: MIT_MARKIERUNG,
+        passage: { text: MARKIERUNG, stand: 1 },
+      });
+      expect(eingang.json().aktionen[0].id).toBe(id);
+      const start = MARKIERUNG.indexOf("dritten");
+      const ergebnis = await wordFenster("PUT", `${BASIS}/adapter/${FENSTER}`, {
+        seq: 3,
+        auswahl: MIT_MARKIERUNG,
+        passage: { text: MARKIERUNG, stand: 1 },
+        erledigt: [
+          {
+            id,
+            stand: "erledigt",
+            ergebnis: "Antwort",
+            vergleich: {
+              art: "widersprochen",
+              dokument: MARKIERUNG,
+              dokumentMarke: { start, end: start + 7 },
+              belege: [{ text: regel, quellen: [quelle.koId], woertlich: true }],
+              belegMarke: quellmarke,
+              zeigbar: false,
+            },
           },
-        },
-      ],
-    });
-    expect(ergebnis.statusCode, ergebnis.body).toBe(200);
-    await montiere();
-    const flaeche = await gespraechOffen();
-    await bis(() => Boolean(q(flaeche, "begleiter-wortpaar")), 160);
-    const karte = q(flaeche, "begleiter-direktvergleich") as HTMLElement;
-    const paar = q(karte, "begleiter-wortpaar") as HTMLElement;
-    expect(karte.firstElementChild?.tagName).toBe("H3");
-    expect(karte.firstElementChild?.nextElementSibling).toBe(paar);
-    expect(paar.firstElementChild?.lastChild?.textContent).toBe("dritten");
-    expect(paar.lastElementChild?.lastChild?.textContent).toBe("zweiten");
-    expect(
-      karte.compareDocumentPosition(q(flaeche, "begleiter-auswahl") as HTMLElement) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(q(flaeche, "begleiter-passage-pruefen")?.closest("details")?.open).toBe(false);
-    expect(
-      q(flaeche, "begleiter-eingabe-form")?.contains(q(flaeche, "begleiter-passage-pruefen")),
-    ).toBe(false);
-  });
+        ],
+      });
+      expect(ergebnis.statusCode, ergebnis.body).toBe(200);
+      await montiere();
+      const flaeche = await gespraechOffen();
+      await bis(() => Boolean(q(flaeche, "begleiter-wortpaar")), 160);
+      const karte = q(flaeche, "begleiter-direktvergleich") as HTMLElement;
+      const paar = q(karte, "begleiter-wortpaar") as HTMLElement;
+      expect(karte.firstElementChild?.tagName).toBe("H3");
+      expect(karte.firstElementChild?.nextElementSibling).toBe(paar);
+      expect(paar.firstElementChild?.lastChild?.textContent).toBe("dritten");
+      expect(paar.lastElementChild?.lastChild?.textContent).toBe(wort);
+      expect(Array.from(karte.querySelectorAll("mark"), (el) => el.textContent)).toEqual(
+        "nurKontext" in quellmarke ? ["dritten"] : ["dritten", "zweiten"],
+      );
+      expect(
+        karte.compareDocumentPosition(q(flaeche, "begleiter-auswahl") as HTMLElement) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(q(flaeche, "begleiter-passage-pruefen")?.closest("details")?.open).toBe(false);
+      expect(
+        q(flaeche, "begleiter-eingabe-form")?.contains(q(flaeche, "begleiter-passage-pruefen")),
+      ).toBe(false);
+    },
+  );
 
   it("projiziert nur das jüngste Prüfergebnis und stellt über Verlauf die ungekürzte Unterhaltung wieder her", async () => {
     await vorrichtung();
@@ -910,7 +932,10 @@ describe("Direktvergleich in der Klara-App", () => {
     expect(q(widerspruch, "ai-generated-notice")?.textContent).toBe(i18n.t("ai.generatedNotice"));
     expect(q(document, "begleiter-verfuegbarkeit")).toBeNull();
     expect(widerspruch.querySelector("h3")?.textContent).toContain("Contradicts the source");
-    expect(q(widerspruch, "begleiter-wortpaar")).toBeNull();
+    const wortpaar = q(widerspruch, "begleiter-wortpaar") as HTMLElement;
+    expect(wortpaar.firstElementChild?.lastChild?.textContent).toBe("Missing from sentence");
+    expect(wortpaar.lastElementChild?.lastChild?.textContent).toBe("not");
+    expect(wortpaar.textContent).not.toContain("must provide");
     const g = q(document, "begleiter-gespraech") as HTMLElement;
     const schalter = q<HTMLInputElement>(g, "begleiter-vorfuehransicht") as HTMLInputElement;
     expect(schalter.labels?.[0]?.textContent).toContain("Presentation view");

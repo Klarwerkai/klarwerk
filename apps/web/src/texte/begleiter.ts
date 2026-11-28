@@ -60,6 +60,8 @@ export default {
     "begleiter.vergleich.widersprochen": "Widerspricht der Quelle",
     "begleiter.vergleich.offen": "Nicht ausreichend belegt",
     "begleiter.vergleich.dokument": "Dein Satz",
+    "begleiter.vergleich.fehltImSatz": "Fehlt im Satz",
+    "begleiter.vergleich.entfaellt": "Entfällt",
     "begleiter.vergleich.quelle": "Freigegebener Wortlaut",
     "begleiter.vergleich.beleg": "Quellengestützte Antwort",
     "begleiter.vergleich.fehlt":
@@ -246,6 +248,8 @@ export default {
     "begleiter.vergleich.widersprochen": "Contradicts the source",
     "begleiter.vergleich.offen": "Insufficient evidence",
     "begleiter.vergleich.dokument": "Your sentence",
+    "begleiter.vergleich.fehltImSatz": "Missing from sentence",
+    "begleiter.vergleich.entfaellt": "Omit",
     "begleiter.vergleich.quelle": "Approved wording",
     "begleiter.vergleich.beleg": "Source-based answer",
     "begleiter.vergleich.fehlt":
@@ -418,6 +422,8 @@ export default {
     "begleiter.vergleich.widersprochen": "In strijd met de bron",
     "begleiter.vergleich.offen": "Onvoldoende bewijs",
     "begleiter.vergleich.dokument": "Jouw zin",
+    "begleiter.vergleich.fehltImSatz": "Ontbreekt in de zin",
+    "begleiter.vergleich.entfaellt": "Vervalt",
     "begleiter.vergleich.quelle": "Goedgekeurde tekst",
     "begleiter.vergleich.beleg": "Antwoord op basis van de bron",
     "begleiter.vergleich.fehlt":

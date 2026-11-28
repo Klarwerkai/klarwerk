@@ -267,6 +267,7 @@ function BegleiterInhalt(): JSX.Element {
   });
   const [vergleichVorFreierFrage, setVergleichVorFreierFrage] = useState<string | null>(null);
   const aktuellerVergleichRef = useRef<HTMLLIElement>(null);
+  const gespraechsbereichRef = useRef<HTMLDivElement>(null);
   const setzeVorfuehrung = (an: boolean): void => {
     setVorfuehrung(an);
     setVergleichVorFreierFrage(null);
@@ -715,9 +716,23 @@ function BegleiterInhalt(): JSX.Element {
     letzteWordFrage?.stand === "erledigt" &&
     letzteWordFrage.vergleich?.dokument.trim() === passage.text.trim();
   useEffect(() => {
-    if ((vorfuehrung || passageSchonGezeigt) && offen && !menueSeite && vergleichId) {
-      aktuellerVergleichRef.current?.scrollIntoView?.({ block: "start" });
-    }
+    const verlauf = gespraechsbereichRef.current;
+    const ergebnis = aktuellerVergleichRef.current;
+    if (
+      !(vorfuehrung || passageSchonGezeigt) ||
+      !offen ||
+      menueSeite ||
+      !vergleichId ||
+      !verlauf ||
+      !ergebnis
+    )
+      return;
+    // Nur den Gesprächsverlauf bewegen. Kopf, Navigation und Eingabe teilen sich das feste App-Fenster.
+    const innenOben =
+      verlauf.getBoundingClientRect().top +
+      verlauf.clientTop +
+      Number.parseFloat(getComputedStyle(verlauf).paddingTop || "0");
+    verlauf.scrollTop += ergebnis.getBoundingClientRect().top - innenOben;
   }, [vorfuehrung, passageSchonGezeigt, offen, menueSeite, vergleichId]);
   const adapterRef = useRef(adapter);
   adapterRef.current = adapter;
@@ -2060,6 +2075,7 @@ function BegleiterInhalt(): JSX.Element {
 
           {/* 3 · Gespräch */}
           <div
+            ref={gespraechsbereichRef}
             data-testid="begleiter-gespraechsbereich"
             data-ansicht={vorfuehrErgebnis ? "pruefergebnis" : "gespraech"}
             className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-2.5"
