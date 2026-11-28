@@ -480,7 +480,7 @@ export async function fahreDieStandkette(a: Standaufbau): Promise<Standkette> {
   let lesungenErfolgreich = 0;
   (seite as SeiteMitEreignissen).on("response", (antwort) => {
     if (
-      antwort.url().includes("/api/library/import/candidates") &&
+      new URL(antwort.url()).pathname === "/api/library/import/candidates" &&
       antwort.request().method() === "GET" &&
       antwort.status() === 200
     ) {
