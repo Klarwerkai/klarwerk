@@ -33,6 +33,7 @@ export function endpunktMock(): { endpoints: Record<string, unknown> } {
       },
       ko: {
         act: vi.fn(async () => ({})),
+        assign: vi.fn(async () => undefined),
         aiCheckRetry: vi.fn(async () => ({})),
         remove: vi.fn(async () => ({})),
       },

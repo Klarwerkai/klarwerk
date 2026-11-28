@@ -303,13 +303,14 @@ describe("JOB 1119 · D · eine Sache, ein Wort", () => {
     expect(wert("en", "lib.match.tag")).toBe("Tag");
   });
 
-  it("das Abzeichen erscheint mit diesem Wortlaut an einem echten Schlagworttreffer", () => {
+  it("das Abzeichen erscheint mit diesem Wortlaut an einem echten Schlagworttreffer", async () => {
     // JOB 3063 (H4): der Treffergrund steht auf der LESEFLÄCHE unter der Meta-Zeile
     // (`components/bibliothek/BibliothekLesen.tsx:526-534`), nicht mehr an der Trefferzeile — und
     // er trägt eine eigene Marke, statt über eine CSS-Klassenkette gesucht zu werden.
     lage.treffer = [KO_SCHLAGWORT];
     lage.leseKo = KO_SCHLAGWORT;
     mount("/bibliothek?q=zeitplanung");
+    await act(() => vi.dynamicImportSettled());
     const grund = container.querySelector('[data-testid="bib-treffergrund"]');
     expect(grund, "der Treffergrund fehlt auf der Lesefläche").toBeTruthy();
     expect((grund?.textContent ?? "").trim()).toBe(
@@ -317,12 +318,13 @@ describe("JOB 1119 · D · eine Sache, ein Wort", () => {
     );
   });
 
-  it("KALIBRIERUNG: ohne Suchtext steht kein Treffergrund da", () => {
+  it("KALIBRIERUNG: ohne Suchtext steht kein Treffergrund da", async () => {
     // Ohne diesen Fall wäre der Fall oben auch dann grün, wenn der Grund immer dastünde — dann
     // behauptete die Fläche einen Treffergrund, wo gar nicht gesucht wurde.
     lage.treffer = [KO_SCHLAGWORT];
     lage.leseKo = KO_SCHLAGWORT;
     mount("/bibliothek");
+    await act(() => vi.dynamicImportSettled());
     expect(container.querySelector('[data-testid="bib-treffergrund"]')).toBeNull();
   });
 });

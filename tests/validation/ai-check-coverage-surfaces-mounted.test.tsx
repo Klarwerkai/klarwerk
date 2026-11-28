@@ -157,6 +157,7 @@ async function mount(
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   // Zwei weitere Runden: react-query löst die Abfragen erst nach der ersten Runde auf, und das
   // Nachrendern mit den Daten braucht eine eigene act-Runde (sonst liest der Test den Ladezustand).
   await act(flush);

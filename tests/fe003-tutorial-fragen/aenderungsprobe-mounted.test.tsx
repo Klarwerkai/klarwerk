@@ -226,7 +226,8 @@ describe("E4 · keine Bildschirmfotos, keine Videos, keine nachgezeichnete zweit
   });
 
   it("die Demo zeichnet kein eigenes Formular nach — Eingabe und Senden kommen aus `FrageFeld`", () => {
-    for (const { pfad, text } of quellen) {
+    for (const pfad of dateien(join(TUTORIAL, "fragen"))) {
+      const text = readFileSync(pfad, "utf8");
       expect(text, pfad).not.toMatch(/<(form|input|textarea)\b/);
     }
     // Was Seite UND Demo direkt einbinden — der Quellenweg eingeschlossen: Chip, Menü „…“, Blatt

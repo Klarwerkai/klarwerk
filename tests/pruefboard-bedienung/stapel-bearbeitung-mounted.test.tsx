@@ -218,11 +218,9 @@ describe("S3 · die Serverantwort je Objekt ist sein Ergebnis", () => {
 
 describe("S4 · gesammelt zuweisen", () => {
   it("weist über `assign` zu, überspringt schon Zugewiesene und meldet Fehlschläge je Objekt", async () => {
-    antworten((id) => {
-      if (id === "kC") {
-        throw new ApiError(500, "server_error", "kaputt");
-      }
-    });
+    vi.mocked(endpoints.ko.assign)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new ApiError(500, "server_error", "kaputt"));
     brett = await mounteBrett({
       zeilen: [
         zeile({ id: "kA", title: "A frei", ...EINGESTUFT }),
@@ -235,9 +233,9 @@ describe("S4 · gesammelt zuweisen", () => {
     await waehlen(zuweisenFeld(), "u1");
     await flush();
 
-    expect(aufrufe()).toEqual([
-      ["kA", { action: "assign", userIds: ["u1"] }],
-      ["kC", { action: "assign", userIds: ["u1"] }],
+    expect(vi.mocked(endpoints.ko.assign).mock.calls).toEqual([
+      ["kA", ["u1"]],
+      ["kC", ["u1"]],
     ]);
     expect(ergebnis()).toEqual({
       "A frei": "zugewiesen",
@@ -254,7 +252,7 @@ describe("S4 · gesammelt zuweisen", () => {
     await waehlen(zuweisenFeld(), "u1");
     await flush();
 
-    expect(aufrufe()).toEqual([]);
+    expect(endpoints.ko.assign).not.toHaveBeenCalled();
     expect(ergebnis()).toEqual({ "C läuft": "gesperrt" });
   });
 });
