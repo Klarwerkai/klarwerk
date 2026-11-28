@@ -773,7 +773,7 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
       <SpaceZugriff space={s} />
       {/* ADMIN-09: wer hier prüfen darf, was bis zur Freigabe fehlt, und die Regel selbst. */}
       <SpaceFreigaberegel space={s} />
-      <SpaceArchiv key={s.id} space={s} />
+      <SpaceArchiv key={`archiv-${s.id}`} space={s} />
       {/* produkt:20261013:lagebild-reale-werte-eingabe: die realen Lagebild-Werte dieses
           Arbeitsbereichs — für Mitglieder mit Schreibrecht pflegbar, erst beim Aufklappen geladen. */}
       {s.darfInhalteLesen ? <LagebildWerteKarte key={s.id} bereich={s.id} faltbar /> : null}

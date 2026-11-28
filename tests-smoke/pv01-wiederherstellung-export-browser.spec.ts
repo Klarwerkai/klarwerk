@@ -9,7 +9,7 @@
 //   B1  Verwaltung → System → Sicherung zeigt „Sicherungsumfang je Bereich" auf Desktop und Telefon,
 //       ohne über den Rand zu laufen. Der Smoke-Server hat kein Sicherungsverzeichnis und kein
 //       Drillprotokoll — die Assistenzbereiche stehen deshalb ehrlich auf „nicht gemessen", die nicht
-//       gebauten (eigene Avatare, Aufgaben) auf „nicht vorhanden".
+//       gebauten eigenen Avatare auf „nicht vorhanden".
 //   B2  Bibliothek → … → Export → „Wissenspaket": der Klick lädt ein ZIP herunter, das sich außerhalb
 //       der Anwendung öffnen lässt (LIESMICH, MANIFEST, Zuordnungstabelle) und keine Adresse trägt.
 import { readFile } from "node:fs/promises";
@@ -35,19 +35,18 @@ for (const fenster of SICHTFENSTER) {
     await expect(umfang).toBeVisible({ timeout: 15_000 });
     await expect(umfang.getByTestId("umfang-fassung")).toBeVisible();
 
-    for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen"]) {
+    for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen", "aufgaben"]) {
       const bereich = umfang.locator(`[data-bereich="${id}"]`);
       await expect(bereich, `${id} fehlt`).toBeVisible();
       await expect(bereich).toHaveAttribute("data-umfang", "im_dump");
       // Ohne Drillprotokoll gibt es keinen Beleg — auch keinen rückwirkenden.
       await expect(bereich).toHaveAttribute("data-beleg", "nicht_gemessen");
     }
-    for (const id of ["eigeneavatare", "aufgaben"]) {
-      await expect(umfang.locator(`[data-bereich="${id}"]`)).toHaveAttribute(
-        "data-umfang",
-        "nicht_vorhanden",
-      );
-    }
+    await expect(umfang.locator('[data-bereich="aufgaben"]')).toContainText("klara_aufgaben");
+    await expect(umfang.locator('[data-bereich="eigeneavatare"]')).toHaveAttribute(
+      "data-umfang",
+      "nicht_vorhanden",
+    );
     for (const id of ["avatarmotive", "endgeraet"]) {
       await expect(umfang.locator(`[data-bereich="${id}"]`)).toHaveAttribute(
         "data-umfang",

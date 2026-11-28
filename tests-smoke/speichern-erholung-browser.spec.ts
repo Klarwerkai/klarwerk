@@ -251,7 +251,7 @@ test("K5: Nulltreffer zeigt die aktiven Filter und setzt sie direkt zurück — 
   const filter = page.getByTestId("bib-leer-filter");
   await expect(filter).toBeVisible();
   await expect(filter).toContainText("Aktive Filter:");
-  await expect(filter).toContainText("Zustand: Validiert");
+  await expect(filter).toContainText("Zustand: Fachlich bestätigt");
   await expect(filter).toContainText("Zuletzt geändert: 2020-01-01");
   await beleg(page, "k5-nulltreffer-filter");
 
