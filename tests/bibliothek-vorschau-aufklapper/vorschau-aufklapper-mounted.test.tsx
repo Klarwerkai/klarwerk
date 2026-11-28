@@ -98,7 +98,10 @@ const VARIANTE_K1: Lesevariante = {
   uebersetzungSha256: "b".repeat(64),
 } as Lesevariante;
 
-const stand = vi.hoisted(() => ({ mitUebersetzung: false }));
+const stand = vi.hoisted(() => ({
+  mitUebersetzung: false,
+  bestand: null as KnowledgeObject[] | null,
+}));
 
 vi.mock("../../apps/web/src/api/hooks", () => {
   const ok = <T,>(data: T) => ({
@@ -114,8 +117,8 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     refetch: () => Promise.resolve({}),
   });
   return {
-    useKos: () => ok(KOS),
-    useLibrarySearch: () => ok(KOS),
+    useKos: () => ok(stand.bestand ?? KOS),
+    useLibrarySearch: () => ok(stand.bestand ?? KOS),
     useDirectory: () => ok([{ id: "u9", name: "Eva" }]),
     useConflicts: () => ok([]),
     useEigeneBefunde: () => ok([]),
@@ -266,6 +269,7 @@ async function flaeche(adresse = "/bibliothek"): Promise<void> {
 beforeEach(async () => {
   setzeBreite(1280);
   stand.mitUebersetzung = false;
+  stand.bestand = null;
   gewaehltRufe = [];
   window.localStorage.clear();
   lesevariantenVerwerfen();
@@ -453,6 +457,35 @@ describe("F · der Aufklapper je Treffer", () => {
     expect(container.querySelectorAll("button button")).toHaveLength(0);
     // Fail-closed: die Abfrage muss überhaupt an Knöpfen vorbeikommen, sonst wäre sie immer grün.
     expect(container.querySelectorAll("button").length).toBeGreaterThan(5);
+  });
+
+  it("eine volle Trefferseite meldet gleich viele Sprachhörer an wie ein einzelner Treffer", async () => {
+    setzeBreite(390);
+    const anmeldung = vi.spyOn(i18n, "on");
+    const sprachhoerer = () =>
+      anmeldung.mock.calls.filter(([art]) => art === "languageChanged").length;
+    try {
+      stand.bestand = [ko({ id: "erstes", title: "Erstes", statement: "Aussage" })];
+      await flaeche();
+      expect(zeilen()).toHaveLength(1);
+      const beiEinem = sprachhoerer();
+      expect(beiEinem).toBeGreaterThan(0);
+      await act(async () => root?.unmount());
+      container.remove();
+      lesevariantenVerwerfen();
+      anmeldung.mockClear();
+
+      stand.bestand = Array.from({ length: 200 }, (_, i) =>
+        ko({ id: `k-${i}`, title: `Treffer ${i}`, statement: `Aussage ${i}` }),
+      );
+      await flaeche();
+      expect(zeilen()).toHaveLength(200);
+      expect(sprachhoerer()).toBe(beiEinem);
+      klicke(mussUmschalter("k-199"));
+      expect(vorschau("k-199")).toBe("Aussage 199");
+    } finally {
+      anmeldung.mockRestore();
+    }
   });
 
   it("F7 · liegt eine Leseübersetzung vor, steht SIE im Aufklapper — gekennzeichnet", async () => {

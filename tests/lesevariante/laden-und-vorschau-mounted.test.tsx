@@ -62,6 +62,11 @@ import { ExamplePackages } from "../../apps/web/src/components/ExamplePackages";
 import { KoSummaryDisclosure } from "../../apps/web/src/components/KoSummaryDisclosure";
 import i18n from "../../apps/web/src/i18n";
 import { lesevariantenVerwerfen } from "../../apps/web/src/lib/lesevariante";
+import {
+  anfrageEpoche,
+  rechtekontextGesehen,
+  rechtekontextZuruecksetzen,
+} from "../../apps/web/src/lib/rechtekontext";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -340,6 +345,41 @@ describe("JOB 3326 R3 · der Vorrat gehört der letzten Anfrage", () => {
       "ALTER Stand aus Anfrage A.",
     );
     expect(text()).toContain("NEUER Stand aus Anfrage B.");
+  });
+
+  it("dieselbe Sprache nach Kontowechsel zeigt nur die Übersicht des aktuellen Rechtekontexts", async () => {
+    rechtekontextZuruecksetzen();
+    rechtekontextGesehen("konto-a", anfrageEpoche());
+    const offen = anhalten();
+    await mount(
+      createElement(KoSummaryDisclosure, {
+        source: { id: "ko-1", statement: "Original statement." },
+        defaultOpen: true,
+      }),
+    );
+    await act(async () => {
+      offen[0]?.aufloesen([variante("Lesart für A")]);
+      await flush();
+    });
+    expect(text()).toContain("Lesart für A");
+    await act(async () => {
+      rechtekontextGesehen("konto-b", anfrageEpoche());
+      await flush();
+    });
+    expect(text()).not.toContain("Lesart für A");
+    expect(text()).toContain("Original statement.");
+    await act(async () => {
+      rechtekontextGesehen("konto-c", anfrageEpoche());
+      await flush();
+    });
+    expect(offen.map((anfrage) => anfrage.lang)).toEqual(["de", "de", "de"]);
+    await act(async () => {
+      offen[2]?.aufloesen([variante("Lesart für C")]);
+      offen[1]?.aufloesen([variante("Verspätete Lesart für B")]);
+      await flush();
+    });
+    expect(text()).toContain("Lesart für C");
+    expect(text()).not.toContain("Lesart für B");
   });
 
   it("G2 · KALIBRIERUNG: löst NUR A auf, zeigt die Fläche auch nichts Falsches (A bleibt überholt)", async () => {

@@ -17,10 +17,10 @@
 // WAS ER NICHT TUT: Er übersetzt nichts. Er ruft kein Modell. Er hält nur, was der Server aus der
 // lokalen Lieferung kennt.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { KandidatenLesevariante, Lesevariante, LesevarianteKurz } from "../api/types";
+import { anfrageEpoche, aufRechtekontextwechsel } from "./rechtekontext";
 
 // ================================================================================================
 // DIE TEXTE DIESER FUNKTION — und WARUM sie hier stehen und nicht in `i18n.ts` (JOB 3326 R4).
@@ -207,6 +207,7 @@ export const lesevarianteTexteNl: typeof lesevarianteTexteDe = {
  * ihn nur noch diese Datei — die Leseansicht entscheidet aus ihrem eigenen frischen Abruf.
  */
 interface LesevariantenStand {
+  rechteEpoche: number;
   /** Die Sprache, für die dieser Stand gilt — `null`, solange nichts geholt wurde. */
   lang: string | null;
   laeuft: boolean;
@@ -222,6 +223,7 @@ interface LesevariantenStand {
 const LEER: ReadonlyMap<string, LesevarianteKurz> = new Map();
 
 let stand: LesevariantenStand = {
+  rechteEpoche: anfrageEpoche(),
   lang: null,
   laeuft: false,
   geladen: false,
@@ -243,10 +245,6 @@ function abonniere(melde: () => void): () => void {
   return () => {
     zuhoerer.delete(melde);
   };
-}
-
-function lies(): LesevariantenStand {
-  return stand;
 }
 
 /**
@@ -278,37 +276,43 @@ let anfrage = 0;
  * festgehalten (`fehler: true`) und von der Fläche BENANNT, statt die Seite zu beenden.
  */
 export function lesevariantenSicherstellen(lang: string): void {
-  if (stand.lang === lang && (stand.laeuft || stand.geladen)) {
+  const rechteEpoche = anfrageEpoche();
+  if (
+    stand.lang === lang &&
+    stand.rechteEpoche === rechteEpoche &&
+    (stand.laeuft || stand.geladen)
+  ) {
     return;
   }
   const meine = ++anfrage;
-  setze({ lang, laeuft: true, geladen: false, fehler: false, jeKo: LEER });
+  setze({ rechteEpoche, lang, laeuft: true, geladen: false, fehler: false, jeKo: LEER });
   let angefragt: Promise<{ eintraege: LesevarianteKurz[] }>;
   try {
     angefragt = endpoints.lesevarianten.uebersicht(lang);
   } catch (fehler) {
-    setze({ lang, laeuft: false, geladen: true, fehler: true, jeKo: LEER });
+    setze({ rechteEpoche, lang, laeuft: false, geladen: true, fehler: true, jeKo: LEER });
     return;
   }
   void angefragt
     .then((antwort) => {
       // NUR die jeweils letzte Anfrage schreibt. Die Sprache allein genügt nicht (s. oben).
-      if (meine !== anfrage) {
+      if (meine !== anfrage || rechteEpoche !== anfrageEpoche()) {
         return;
       }
       setze({
+        rechteEpoche,
         lang,
         laeuft: false,
         geladen: true,
         fehler: false,
-        jeKo: new Map(antwort.eintraege.map((e) => [e.koId, e])),
+        jeKo: antwort.eintraege.length ? new Map(antwort.eintraege.map((e) => [e.koId, e])) : LEER,
       });
     })
     .catch(() => {
-      if (meine !== anfrage) {
+      if (meine !== anfrage || rechteEpoche !== anfrageEpoche()) {
         return;
       }
-      setze({ lang, laeuft: false, geladen: true, fehler: true, jeKo: LEER });
+      setze({ rechteEpoche, lang, laeuft: false, geladen: true, fehler: true, jeKo: LEER });
     });
 }
 
@@ -323,7 +327,14 @@ export function lesevariantenVerwerfen(): void {
   // Auch laufende Antworten verlieren hier ihr Schreibrecht: sie gehören zu einem Vorrat, den es
   // nicht mehr gibt.
   anfrage += 1;
-  setze({ lang: null, laeuft: false, geladen: false, fehler: false, jeKo: LEER });
+  setze({
+    rechteEpoche: anfrageEpoche(),
+    lang: null,
+    laeuft: false,
+    geladen: false,
+    fehler: false,
+    jeKo: LEER,
+  });
 }
 
 /**
@@ -346,21 +357,18 @@ export function sprachcode(sprache: string | undefined): string {
   return (sprache ?? "de").split("-")[0] ?? "de";
 }
 
-/**
- * Die Kurzvariante eines Objekts in der aktuellen Oberflächensprache — oder `undefined`, wenn es
- * keine gibt, die Sprache die Originalsprache ist oder der Abruf scheiterte.
- */
-export function useLesevariante(koId: string | undefined): LesevarianteKurz | undefined {
-  const { i18n } = useTranslation();
-  const lang = sprachcode(i18n.language);
-  const aktuell = useSyncExternalStore(abonniere, lies, lies);
+/** Listentitel und Vorschauen teilen den Vorrat derselben Sprache und desselben Rechtekontexts. */
+export function useListenLesevarianten(sprache: string | undefined, aktiv: boolean) {
+  const lang = sprachcode(sprache);
+  const rechteEpoche = useSyncExternalStore(aufRechtekontextwechsel, anfrageEpoche, anfrageEpoche);
+  const liesVarianten = () =>
+    aktiv && stand.lang === lang && stand.rechteEpoche === rechteEpoche ? stand.jeKo : LEER;
+  const jeKo = useSyncExternalStore(abonniere, liesVarianten, liesVarianten);
   useEffect(() => {
-    lesevariantenSicherstellen(lang);
-  }, [lang]);
-  if (!koId || aktuell.lang !== lang) {
-    return undefined;
-  }
-  return anzuzeigendeVariante(aktuell.jeKo.get(koId), lang);
+    if (aktiv && anfrageEpoche() === rechteEpoche) lesevariantenSicherstellen(lang);
+  }, [aktiv, lang, rechteEpoche]);
+  return (koId: string | undefined) =>
+    koId ? anzuzeigendeVariante(jeKo.get(koId), lang) : undefined;
 }
 
 // ================================================================================================
