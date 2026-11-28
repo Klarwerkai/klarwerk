@@ -90,6 +90,9 @@ describe("Block E-3/mega11-A: der Grund nennt die eigene Stufe — und verrät k
   it("unbekannte Stufe → ebenfalls der neutrale Grund (nichts über die Einstufung behaupten)", () => {
     expect(aiCheckFailureReasonKey("confidential", undefined)).toBe(NEUTRAL_KEY);
     expect(aiCheckFailureReasonKey("confidential", null)).toBe(NEUTRAL_KEY);
+    expect(aiCheckFailureReasonKey("confidential", "unbekannt" as Confidentiality)).toBe(
+      NEUTRAL_KEY,
+    );
   });
 
   it("die Bestätigungs-Karte reicht die Stufe durch", () => {

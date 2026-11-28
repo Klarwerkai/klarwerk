@@ -7,7 +7,7 @@
 import type { AiCheckCoverage, Confidentiality, KnowledgeObject } from "../api/types";
 // AUFTRAG-mega9 Block E-3 (KW-E2E-007): dieselbe Stufen-Prüfung, die auch Chip und Egress benutzen —
 // keine zweite Auslegung von „vertraulich".
-import { isConfidential } from "./confidentiality";
+import { isConfidential, vertraulichkeitsAuskunft } from "./confidentiality";
 
 // Ursache → i18n-Key (ehrlich benannt): ohne aktives Modell wurde nichts geprueft (no-model);
 // WP-SHIP8-FINAL (bens Bedingung 2): timeout (Job-Frist ueberschritten) und queue-overflow
@@ -73,7 +73,8 @@ export function aiCheckFailureReasonKey(
   // geprüft), ohne über Existenz oder Relevanz geschützten Bestands zu reden.
   if (fallbackReason === "confidential") {
     // Nur die EIGENE, dem Leser ohnehin sichtbare Stufe darf benannt werden.
-    return isConfidential(subjectConfidentiality)
+    const { level } = vertraulichkeitsAuskunft({ confidentiality: subjectConfidentiality ?? null });
+    return level !== null && isConfidential(level)
       ? "val.aiCheck.reason.confidential"
       : "val.aiCheck.reason.privacy-no-cloud";
   }
