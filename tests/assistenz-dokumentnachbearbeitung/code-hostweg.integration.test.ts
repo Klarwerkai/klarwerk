@@ -322,8 +322,12 @@ describe("BPA-17 · Hostweg Collabora CODE", { timeout: 900_000 }, () => {
 
   afterAll(async () => {
     await browser?.close();
-    await app?.close();
-    await code?.stop();
+    // CODE kann beim Schließen noch WOPI-Rückrufe an die Anwendung senden.
+    try {
+      await code?.stop();
+    } finally {
+      await app?.close();
+    }
   });
 
   it("H1 (K1 K4 K10): Nachbearbeitung → Editor öffnen → speichern → wiederöffnen → Quellen", async () => {
