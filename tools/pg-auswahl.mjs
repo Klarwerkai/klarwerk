@@ -23,12 +23,27 @@ const kandidatPfad = join(
 const { FE003_DATEIEN, oberflaechenBindung, pruefeBauvorbereitung, saubererBaustand } =
   await import(pathToFileURL(kandidatPfad).href);
 
-// Der Inselvertrag verwendet ausschließlich den Journalspeicher. Der macOS-Job misst ihn
-// vollständig mit Eigenstart und launchd am selben Checkout wie die PG-Auswahl.
-const INSEL_JOURNALTEST = "tests/insel-auslieferung/release-update-rueckfall.integration.test.ts";
+// Die Inselstrecke braucht launchd, die vollständige Kundeninstallation ihren eigenen
+// Compose-Stack. Beide haben einen obligatorischen Job mit demselben Git-Checkout.
+const FACHLAEUFE = [
+  {
+    key: "insel",
+    file: "tests/insel-auslieferung/release-update-rueckfall.integration.test.ts",
+    job: "integration-insel-macos",
+    env: "KLARWERK_CI_INSEL",
+  },
+  {
+    key: "kundeninstallation",
+    file: "tests/neuinstallation/kundeninstallation-strecke.integration.test.ts",
+    job: "integration-kundeninstallation",
+    env: "KLARWERK_CI_KUNDENINSTALLATION",
+  },
+];
 
 export function pgSelection(paths) {
-  return integrationSelection(paths).filter((path) => path !== INSEL_JOURNALTEST);
+  return integrationSelection(paths).filter(
+    (path) => !FACHLAEUFE.some(({ file }) => file === path),
+  );
 }
 function assertFehlgeschlageneTests(report, tests, root) {
   assert(report && typeof report === "object" && report.success === false);
@@ -192,22 +207,25 @@ export function runPgSelection(root, base, output) {
     .split("\n")
     .filter(Boolean);
   const files = pgSelection(changedPaths);
-  const insel = changedPaths.includes(INSEL_JOURNALTEST)
-    ? {
-        file: INSEL_JOURNALTEST,
-        job: "integration-insel-macos",
-        commit: process.env.KLARWERK_CI_INSEL_COMMIT ?? null,
-        status: process.env.KLARWERK_CI_INSEL_ERGEBNIS ?? null,
-      }
-    : undefined;
+  const fachnachweise = Object.fromEntries(
+    FACHLAEUFE.filter(({ file }) => changedPaths.includes(file)).map(({ key, file, job, env }) => [
+      key,
+      {
+        file,
+        job,
+        commit: process.env[`${env}_COMMIT`] ?? null,
+        status: process.env[`${env}_ERGEBNIS`] ?? null,
+      },
+    ]),
+  );
   mkdirSync(output, { recursive: true });
   const result = {
     commit,
     tree,
     base,
     files,
-    ...(insel ? { insel } : {}),
-    applicable: files.length > 0 || Boolean(insel),
+    ...fachnachweise,
+    applicable: files.length > 0 || Object.keys(fachnachweise).length > 0,
     success: false,
     startedAt: new Date().toISOString(),
     runs: [],
@@ -359,17 +377,13 @@ export function runPgSelection(root, base, output) {
           .join(", ")}`;
       }
     }
-    if (insel) {
-      assert.equal(insel.commit, commit, "Der Inselnachweis gehört nicht zum geprüften Commit");
-      assert.equal(
-        insel.status,
-        "success",
-        "Die obligatorische Inselprüfung war nicht erfolgreich",
-      );
-      if (files.length === 0) {
-        result.success = true;
-        result.exit = 0;
-      }
+    for (const nachweis of Object.values(fachnachweise)) {
+      assert.equal(nachweis.commit, commit, `${nachweis.job}: anderer oder fehlender Checkout`);
+      assert.equal(nachweis.status, "success", `${nachweis.job}: kein erfolgreicher Lauf`);
+    }
+    if (result.applicable && files.length === 0) {
+      result.success = true;
+      result.exit = 0;
     }
   } catch (error) {
     result.error = [result.error, error.message].filter(Boolean).join("\n");

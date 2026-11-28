@@ -278,13 +278,25 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
       "run: npm run test:integration -- tests/insel-auslieferung/release-update-rueckfall.integration.test.ts",
     );
     const pg = jobBlock("integration");
-    expect(pg).toContain("needs: integration-insel-macos");
+    expect(pg).toContain("needs: [integration-insel-macos, integration-kundeninstallation]");
     expect(pg).toContain("if: ${{ !cancelled() }}");
     expect(pg).toContain(
       "KLARWERK_CI_INSEL_COMMIT: ${{ needs.integration-insel-macos.outputs.commit }}",
     );
     expect(pg).toContain("KLARWERK_CI_INSEL_ERGEBNIS: ${{ needs.integration-insel-macos.result }}");
-    expect(jobBlock("integration-kundeninstallation")).toContain("runs-on: ubuntu-24.04");
+    const installation = jobBlock("integration-kundeninstallation");
+    expect(installation).toContain("runs-on: ubuntu-24.04");
+    expect(installation).toContain("id: installation_checkout");
+    expect(installation).toContain("commit: ${{ steps.installation_checkout.outputs.commit }}");
+    expect(installation).toContain(
+      "run: npm run test:integration -- tests/neuinstallation/kundeninstallation-strecke.integration.test.ts",
+    );
+    expect(pg).toContain(
+      "KLARWERK_CI_KUNDENINSTALLATION_COMMIT: ${{ needs.integration-kundeninstallation.outputs.commit }}",
+    );
+    expect(pg).toContain(
+      "KLARWERK_CI_KUNDENINSTALLATION_ERGEBNIS: ${{ needs.integration-kundeninstallation.result }}",
+    );
   });
 
   it("genau EIN Schritt ist das Tor — und er steht im `check`-Job", () => {

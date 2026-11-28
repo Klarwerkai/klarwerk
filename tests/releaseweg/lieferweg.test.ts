@@ -114,9 +114,12 @@ assert.deepEqual(m.pgSelection(['services/a.integration.test.ts','tests/unit.tes
 assert.deepEqual(m.pgSelection(['tests/unit.test.ts']),[]);
 const journal='tests/insel-auslieferung/release-update-rueckfall.integration.test.ts';
 const pg='tests/insel-auslieferung/mit-postgres.integration.test.ts';
+const installation='tests/neuinstallation/kundeninstallation-strecke.integration.test.ts';
+const installationPg='tests/neuinstallation/datenbank.integration.test.ts';
+const alle=[journal,pg,installation,installationPg];
 const {integrationSelection}=await import(new URL('./release.mjs',process.argv[1]));
-assert.deepEqual(integrationSelection([journal,pg]),[pg,journal]);
-assert.deepEqual(m.pgSelection([journal,pg]),[pg]);
+assert.deepEqual(integrationSelection(alle),[...alle].sort());
+assert.deepEqual(m.pgSelection(alle),[pg,installationPg]);
 `);
     expect(run.status, run.stderr).toBe(0);
   });
@@ -366,6 +369,39 @@ assert.equal(result.applicable,true);
 assert.equal(result.success,${ok});
 assert.deepEqual(result.files,[${JSON.stringify(pg)}]);
 assert.deepEqual(result.insel,{file:${JSON.stringify(insel)},job:'integration-insel-macos',commit:${JSON.stringify(sha.repeat(40))},status:${JSON.stringify(status)}});
+assert.deepEqual(events.map(e=>[e.event,e.file]),[['start',${JSON.stringify(pg)}],['end',${JSON.stringify(pg)}]]);
+`,
+        pgUrl,
+        [work],
+      );
+      expect(run.status, run.stderr).toBe(0);
+    },
+  );
+
+  it.each([
+    ["beide-passend", "a", "success", true, true],
+    ["anderer-installationscommit", "b", "success", true, false],
+    ["installation-fehlgeschlagen", "a", "failure", true, false],
+    ["installation-ohne-job", "", "", true, false],
+    ["pg-bleibt-rot", "a", "success", false, false],
+  ] as const)(
+    "bestätigt die Installation nur nach dem eigenen Lauf am Prüfcommit (%s)",
+    (name, sha, status, pgErfolgreich, ok) => {
+      const installation = "tests/neuinstallation/kundeninstallation-strecke.integration.test.ts";
+      const insel = "tests/insel-auslieferung/release-update-rueckfall.integration.test.ts";
+      const pg = "tests/neuinstallation/mit-postgres.integration.test.ts";
+      const work = vorrichtung(name, [installation, insel, pg], "", pgErfolgreich ? [] : [pg]);
+      const run = node(
+        `process.env.KLARWERK_CI_INSEL_COMMIT='a'.repeat(40);
+process.env.KLARWERK_CI_INSEL_ERGEBNIS='success';
+process.env.KLARWERK_CI_KUNDENINSTALLATION_COMMIT=${JSON.stringify(sha.repeat(40))};
+process.env.KLARWERK_CI_KUNDENINSTALLATION_ERGEBNIS=${JSON.stringify(status)};
+${programm}
+assert.equal(result.applicable,true);
+assert.equal(result.success,${ok});
+assert.equal(result.insel.status,'success');
+assert.deepEqual(result.files,[${JSON.stringify(pg)}]);
+assert.deepEqual(result.kundeninstallation,{file:${JSON.stringify(installation)},job:'integration-kundeninstallation',commit:${JSON.stringify(sha.repeat(40))},status:${JSON.stringify(status)}});
 assert.deepEqual(events.map(e=>[e.event,e.file]),[['start',${JSON.stringify(pg)}],['end',${JSON.stringify(pg)}]]);
 `,
         pgUrl,

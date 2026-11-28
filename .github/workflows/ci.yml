@@ -201,7 +201,7 @@ jobs:
   # Der Integrationsjob bleibt getrennt. Beide Jobs benötigen Root- und Web-Abhängigkeiten:
   # Integrationstests importieren auch Webmodule und führen den gemeinsamen Typecheck aus.
   integration:
-    needs: integration-insel-macos
+    needs: [integration-insel-macos, integration-kundeninstallation]
     if: ${{ !cancelled() }}
     env:
       KLARWERK_PG_PFLICHT: "1"
@@ -235,6 +235,8 @@ jobs:
         env:
           KLARWERK_CI_INSEL_COMMIT: ${{ needs.integration-insel-macos.outputs.commit }}
           KLARWERK_CI_INSEL_ERGEBNIS: ${{ needs.integration-insel-macos.result }}
+          KLARWERK_CI_KUNDENINSTALLATION_COMMIT: ${{ needs.integration-kundeninstallation.outputs.commit }}
+          KLARWERK_CI_KUNDENINSTALLATION_ERGEBNIS: ${{ needs.integration-kundeninstallation.result }}
           RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           KLARWERK_PG_TEST_URL: "postgresql://klarwerk_ci:fiktiv-ci-postgres@localhost:5432/klarwerk_ci_test"
         run: node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt
@@ -272,8 +274,11 @@ jobs:
 
   integration-kundeninstallation:
     runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.installation_checkout.outputs.commit }}
     steps:
       - uses: actions/checkout@v4
+        id: installation_checkout
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
