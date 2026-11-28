@@ -407,8 +407,8 @@ describe("G27 Welle 1 · AK3 · classification_snapshot", () => {
     expect(p.classificationSnapshot.value).toBe("none");
     expect(p.classificationSnapshot.value).not.toBe("intern");
     expect(p.classificationSnapshot.value).not.toBe("public");
-    // `none` ist keine Zugriffsfreigabe: die Live-Prüfung kennt den Wert überhaupt nicht.
-    expect(isConfidential(undefined)).toBe(false);
+    // Ein Altobjekt ohne Einstufung wird im Live-Zugriff wie vertraulich behandelt.
+    expect(isConfidential(undefined)).toBe(true);
   });
 
   it("ein vorhandener Wert wird übernommen — kein `none`, wenn es etwas zu sagen gibt", () => {

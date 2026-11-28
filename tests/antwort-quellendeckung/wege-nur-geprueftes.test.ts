@@ -328,6 +328,7 @@ describe("R-0278 · alle Wege nebeneinander: Ungeprüftes wird nie Grundlage", (
     const anlegen = async (title: string, statement: string) =>
       (
         await koService.create({
+          confidentiality: "intern",
           title,
           statement,
           type: "best_practice",

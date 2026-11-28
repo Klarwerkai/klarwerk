@@ -46,6 +46,7 @@ export async function bestand(eintraege: BestandsEintrag[]): Promise<KoService> 
   await dienst.activateSearchProjectionV2();
   for (const eintrag of eintraege) {
     const ko = await dienst.create({
+      confidentiality: "intern",
       title: eintrag.title,
       statement: eintrag.statement,
       type: "best_practice",

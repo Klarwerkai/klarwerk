@@ -86,6 +86,13 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     );
   });
 
+  it("bindet bei der Frage nach dem Fälligkeitszeitpunkt das Objekt und seine Kennung", () => {
+    const quelle = "Die Wartung am Ventil F3 erfolgt jährlich.";
+    expect(decktAlleFragebegriffe("Wann ist die Wartung am Ventil F3 fällig?", quelle)).toBe(true);
+    expect(decktAlleFragebegriffe("Wann ist die Wartung am Ventil F4 fällig?", quelle)).toBe(false);
+    expect(decktAlleFragebegriffe("Welche Wartung ist fällig?", quelle)).toBe(false);
+  });
+
   it("R-0278-Nacharbeit: „dient“, „hoch“, „many“ sind Fragegerüst — die Sachbegriffe bleiben gebunden", () => {
     const faelle: Array<[string, string, string[]]> = [
       ["Wozu dient der Schnellstartknopf NOTSTART-4?", "dient", ["Schnellstartknopf"]],
