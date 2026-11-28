@@ -4,15 +4,13 @@
 import { randomBytes } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
 import JSZip from "jszip";
-// JOB 3400: nur zum PRÜFEN — die Ableitung wird dekodiert, um sie Pixel gegen Pixel mit dem
-// Quellbild zu vergleichen (B2). Der Test erzeugt damit nichts, er liest nach.
-import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { wholeDocumentDraftPayload } from "../../apps/web/src/lib/captureFromFile";
 import { MAX_INLINE_BODY_HTML_BYTES, extractDocxRich } from "../../apps/web/src/lib/docx";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { CaptureRoutesDeps } from "../../services/app/src/routes/capture-routes";
 import { imageCaptionEntries } from "../../services/structure/src/captions";
+import { pruefeBildpixel } from "../m5-docx-bildunterschriften/bildpixel";
 import {
   type Absatz,
   PNG_BLAU,
@@ -35,25 +33,11 @@ function fussnoten(html: string): string[] {
   return [...html.matchAll(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/g)].map((m) => m[1] ?? "");
 }
 
-async function pruefePixel(url: string, png: string) {
-  expect(url).toMatch(/^data:image\/webp;base64,/);
-  const dekodiere = (daten: string) =>
-    sharp(Buffer.from(daten, "base64")).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const [quelle, ziel] = await Promise.all([dekodiere(png), dekodiere(url.split(",")[1] ?? "")]);
-  expect(ziel.info.width).toBe(quelle.info.width);
-  expect(ziel.info.height).toBe(quelle.info.height);
-  expect(ziel.data.length).toBe(quelle.data.length);
-  for (const [index, kanal] of quelle.data.entries()) {
-    const abstand = Math.abs(kanal - (ziel.data[index] ?? -1000));
-    expect(abstand, `Pixelkanal ${index}`).toBeLessThanOrEqual(index % 4 === 3 ? 0 : 8);
-  }
-}
-
 async function pruefeBild(html: string, position: number, png: string, beschriftung: string) {
   const figure = [...html.matchAll(/<figure\b[^>]*>[\s\S]*?<\/figure>/g)][position]?.[0] ?? "";
   const bilder = bildquellen(figure);
   expect(bilder, "Die figure enthält genau das erwartete Bild").toHaveLength(1);
-  await pruefePixel(bilder[0] ?? "", png);
+  await pruefeBildpixel(bilder[0] ?? "", png);
   const id = /<img\b[^>]*data-image-id="([^"]+)"/.exec(figure ?? "")?.[1];
   expect(id).toMatch(/^kw-img-[a-z0-9]+-\d+$/);
   expect(figure).toContain(`<figcaption data-image-id="${id}">${beschriftung}</figcaption>`);
@@ -225,8 +209,8 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
     ]);
     const bilder = bildquellen(payload.bodyHtml);
     expect(bilder).toHaveLength(2);
-    await pruefePixel(bilder[0] ?? "", PNG_ROT);
-    await pruefePixel(bilder[1] ?? "", PNG_BLAU);
+    await pruefeBildpixel(bilder[0] ?? "", PNG_ROT);
+    await pruefeBildpixel(bilder[1] ?? "", PNG_BLAU);
     expect(antwort).toMatchObject({ imagesEmbedded: 2, imagesTotal: 2, imagesDropped: 0 });
     expect(payload.sourceImageCount).toBe(2);
     expect(payload.origin).toBe("word_addin");
@@ -278,7 +262,7 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
 
     // 2. Es zeigt DASSELBE BILD. Quelle und Ableitung werden dekodiert und verglichen — Format und
     //    Bytezahl dürfen sich unterscheiden, der Bildinhalt nicht.
-    await pruefePixel(quellen[0] ?? "", PNG_ROT);
+    await pruefeBildpixel(quellen[0] ?? "", PNG_ROT);
 
     // 3. Die Fussnote hängt weiter an genau diesem Bild.
     const kennung = /<img\b[^>]*data-image-id="([^"]+)"/.exec(payload.bodyHtml)?.[1];
