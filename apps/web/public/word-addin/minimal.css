@@ -515,6 +515,23 @@
   gap: 6px;
   margin: 6px 0;
 }
+/* Im schmalen Panel ordnen sich beide Aktionen untereinander an. Der aktive
+   Schreibschritt bleibt durch seine Primärfarbe vom Kopieren unterscheidbar. */
+.kw-minimal #ask-insert-btn.primary {
+  background: var(--brand-deep);
+  color: #fff;
+  font-weight: 600;
+}
+.kw-minimal .schalter {
+  border-radius: 16px;
+}
+.kw-minimal .schalter:not(.an) {
+  background: var(--muted);
+}
+.kw-minimal .schalter .knopf {
+  top: 50%;
+  transform: translateY(-50%);
+}
 .kw-minimal #kw-kopf {
   position: static;
   padding: 0;
