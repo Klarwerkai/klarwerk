@@ -185,9 +185,10 @@ describe("JOB 3064 · H5 · der Textmesser — kein Erklärtext im Sichtfeld von
           "Offene, ablaufende Profile sind zu bevorzugen; vollverschweisste Hohlprofile sind in Spritzzonen zu vermeiden.",
         type: "best_practice",
         category: "Konstruktion",
+        confidentiality: "intern",
         author: autorId,
         tags: ["Profile", "Spritzzone", "Hohlprofile"],
-      } as never);
+      });
       await services.ko.setValidationState((ko as { id: string }).id, {
         trust: 92,
         status: "validiert",
@@ -372,6 +373,23 @@ describe("JOB 3064 · H5 · der Textmesser — kein Erklärtext im Sichtfeld von
     '[data-testid="ai-generated-notice"]',
     '[data-testid="ai-surface-notice"]',
     '[data-testid="ask-warnungen"]',
+
+    // Der weitere Gesprächsfaden und der Name der optionalen Formulargruppe führen die Bedienung.
+    '[data-testid="ask-gespraechsfaden"] > div > p:first-child',
+    '[data-testid="ask-optionale-angaben"] > legend',
+    // Die fachlichen Inhalte, die der Server mit dieser Antwort liefert: Einstufung,
+    // Quellenbilanz mit Argumentation und die unabhängige Prüfung einzelner Aussagen.
+    '[data-testid="ergebnis-stufe"]',
+    '[data-testid="quellenstatus-marke"]',
+    '[data-testid="ask-belastbarkeit"]',
+    '[data-testid="referenzpruefung"]',
+    // Vergleich und Weiterarbeit stehen als eigene Funktionen nach der Antwort.
+    // Eingabebeschriftung und zugehörige Hinweise sind Teil ihres Bedienwegs.
+    "#ask-vergleich-titel",
+    "#ask-vergleich-titel + p",
+    '[data-testid="ask-vergleich"] label:has([data-testid="ask-vergleich-stichtag"])',
+    '[data-testid="ask-dokumentfragen-einstieg"]',
+    '[data-testid="ask-besprechungen-einstieg"]',
   ];
 
   it("T3 · /fragen nach einer Antwort: der Rest neben Frage, Antwort, Chips und Knöpfen ist ≤ 40 Zeichen", async () => {

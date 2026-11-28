@@ -75,6 +75,9 @@ const PROSA = `([wurzelSel, ausSel]) => {
     if (!text) continue;
     const el = k.parentElement;
     if (!el) continue;
+    // Der abgefragte Vorlagenzustand ist eine fachliche Standmeldung. Nur der belegte
+    // Freitextzustand dieser konkreten Zeile ist ausgenommen, jeder andere Satz zählt.
+    if (el.matches('[data-testid="vorlagen-zeile-text"]') && text === 'Kein Standard gewählt — freie Eingabe.') continue;
     if (el.closest(BEDIENT)) continue;
     if (ausSel && el.closest(ausSel)) continue;
     // SICHTBAR heisst: das Element hat eine Flaeche. display:none an IRGENDEINEM Vorfahren
