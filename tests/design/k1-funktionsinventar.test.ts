@@ -36,7 +36,15 @@ import {
   starteFlaeche,
 } from "./k1-messung";
 
-type Weg = "ruhe" | "antwort" | "mehr" | "zahnrad" | "sprache" | "hilfe" | "erfassen";
+type Weg =
+  | "funktionen"
+  | "ruhe"
+  | "antwort"
+  | "mehr"
+  | "zahnrad"
+  | "sprache"
+  | "hilfe"
+  | "erfassen";
 type Flaechenart = "browser" | "word";
 type Zeile = {
   heute: string;
@@ -86,10 +94,10 @@ const INVENTAR: readonly Zeile[] = [
   },
   {
     heute: "#tab-ask / #tab-capture (Reiterleiste)",
-    neu: "#kw-segment #tab-ask, #kw-segment #tab-capture",
-    weg: "ruhe",
+    neu: "#mini-page-functions [data-mini-tool=capture], .mini-back",
+    weg: "funktionen",
     sichtbar: true,
-    funktion: "Umschalter Fragen | Erfassen im Kopf",
+    funktion: "Erfassen in den Funktionen öffnen, über Zurück wieder fragen",
   },
   {
     heute: "— (neu)",
@@ -328,7 +336,7 @@ const INVENTAR: readonly Zeile[] = [
   },
   {
     heute: "#ka1-block (Begriffsbild)",
-    neu: "#ask-ruhe #ka1-block, #ka1-terms li",
+    neu: "#mini-page-tool-knowledge #ka1-block, #ka1-terms li",
     weg: "ruhe",
     sichtbar: "lage",
     flaeche: "word",
@@ -352,10 +360,10 @@ const INVENTAR: readonly Zeile[] = [
   },
   {
     heute: "#ask-neue-frage-btn „Neue Frage“",
-    neu: "#kw-zurueck",
+    neu: ".mini-head [data-mini-text=clear]",
     weg: "antwort",
     sichtbar: true,
-    funktion: "Zurueck-Chevron = neue Frage (und das Feld unten)",
+    funktion: "Leeren macht Platz für eine neue Frage im selben Dokument",
   },
   {
     heute: "#antwortkarte / #ask-answer-edit",
@@ -572,6 +580,7 @@ function aufloesung(): Record<string, unknown> {
     effectiveMode: "external",
     deviation: false,
     deviationReason: null,
+    externeKiStandardAn: false,
     externalConsentRequired: true,
     externalConsentGranted: sitzung.zugestimmt,
     // ============================================================================================
@@ -725,6 +734,7 @@ function antwortMit(over: Record<string, unknown>): RouteHandler {
 async function zurRuhe(art: Flaechenart): Promise<void> {
   const s = f(art).seite;
   const l = lesen(art);
+  if (await l.sichtbar("#mini-page-functions")) await zurueckVonFunktion(art);
   let ansicht = await l.eval<string>(
     "() => document.getElementById('kw-einstellungen').className.indexOf('hidden') === -1 ? 'einstellungen' : document.getElementById('kw-hilfe').className.indexOf('hidden') === -1 ? 'hilfe' : document.getElementById('section-capture').className.indexOf('hidden') === -1 ? 'erfassen' : 'fragen'",
   );
@@ -785,24 +795,35 @@ async function zurRuhe(art: Flaechenart): Promise<void> {
   await s.fill("#ask-input", "");
 }
 
+async function funktionenOeffnen(art: Flaechenart): Promise<void> {
+  const s = f(art).seite;
+  if (!(await lesen(art).sichtbar("#mini-menu-functions"))) await s.click(".mini-menu-button");
+  await s.click("#mini-menu-functions");
+  await warteSichtbar(art, "#mini-page-functions");
+}
+async function funktionOeffnen(
+  art: Flaechenart,
+  name: "capture" | "knowledge" | "writing",
+): Promise<void> {
+  await funktionenOeffnen(art);
+  await f(art).seite.click(`[data-mini-tool="${name}"]`);
+  await warteSichtbar(art, `#mini-page-tool-${name}`);
+}
+async function zurueckVonFunktion(art: Flaechenart): Promise<void> {
+  await f(art).seite.click(".mini-back");
+  await warteSichtbar(art, ".mini-home");
+}
 async function weg(art: Flaechenart, w: Weg): Promise<void> {
   const s = f(art).seite;
   await zurRuhe(art);
   if (w === "ruhe") return;
+  if (w === "funktionen") {
+    await funktionenOeffnen(art);
+    return;
+  }
   if (w === "erfassen") {
-    if (await lesen(art).eval<boolean>("() => document.body.classList.contains('kw-minimal')")) {
-      const menueOffen = await lesen(art).eval<string | null>(
-        "() => document.querySelector('.mini-menu-button')?.getAttribute('aria-expanded') ?? null",
-      );
-      if (menueOffen !== "true") await s.click(".mini-menu-button");
-      await warteSichtbar(art, "#mini-menu-functions");
-      await s.click("#mini-menu-functions");
-      await warteSichtbar(art, '[data-mini-tool="capture"]');
-      await s.click('[data-mini-tool="capture"]');
-      await warteSichtbar(art, "#section-capture");
-    } else {
-      await s.click("#tab-capture");
-    }
+    await funktionOeffnen(art, "capture");
+    await warteSichtbar(art, "#section-capture");
     return;
   }
   if (w === "antwort" || w === "mehr") {
@@ -828,10 +849,16 @@ let askTor: (() => void) | null = null;
 let askHandler: RouteHandler | null = null;
 async function askRoute(art: Flaechenart, handler: RouteHandler): Promise<void> {
   askHandler = handler;
-  await f(art).seite.route(ASK_URL, handler);
+  for (const pfad of [ASK_URL, `${ORIGIN}/api/klara/sessions/*/execute`]) {
+    await f(art).seite.route(pfad, handler);
+  }
 }
 async function askRouteWeg(art: Flaechenart): Promise<void> {
-  if (askHandler) await f(art).seite.unroute(ASK_URL, askHandler);
+  if (askHandler) {
+    for (const pfad of [ASK_URL, `${ORIGIN}/api/klara/sessions/*/execute`]) {
+      await f(art).seite.unroute(pfad, askHandler);
+    }
+  }
   askHandler = null;
 }
 const AUTH_URL = `${ORIGIN}/api/auth/me`;
@@ -934,7 +961,6 @@ const LAGEN: Record<LageName, Lage> = {
       const s = f("word").seite;
       await unterseiteOeffnen("word", "einstellungen");
       // Der Schalter IST der Zustimmen-Knopf: POST …/consent, der Server antwortet „granted".
-      sitzung.zugestimmt = true;
       await s.click("#klara-consent-grant");
       await warteSichtbar("word", "#klara-consent-revoke");
     },
@@ -1047,10 +1073,11 @@ const LAGEN: Record<LageName, Lage> = {
     flaeche: "word",
     async stellen() {
       await zurRuhe("word");
+      await funktionOeffnen("word", "knowledge");
       await warteSichtbar("word", "#ka1-block");
     },
     async abraeumen() {
-      /* das Dokument bleibt offen */
+      await zurueckVonFunktion("word");
     },
   },
   feldFokus: {
@@ -1162,6 +1189,7 @@ const LAGEN: Record<LageName, Lage> = {
       // Die Karte kommt NICHT sofort: KA3 wartet die Tastenruhe ab (ka3Planen, KA3_TASTENRUHE_MS,
       // heute 30 s — gelesen aus der gebauten Seite, nicht angenommen) und fragt erst dann ueber
       // KA2 → POST /api/ask den echten Bestand. Gewartet wird Tastenruhe plus Abruf.
+      await funktionOeffnen("word", "knowledge");
       const ruheMs = await lesen("word").eval<number>("() => KA3_TASTENRUHE_MS");
       expect(ruheMs, "KA3_TASTENRUHE_MS in der gebauten Seite").toBeGreaterThan(0);
       await f("word").seite.evaluate(
@@ -1172,17 +1200,27 @@ const LAGEN: Record<LageName, Lage> = {
       await warteSichtbar("word", "#ka3-karten", true, ruheMs + 15_000);
     },
     async abraeumen() {
-      /* die Karte bleibt — sie gehoert zum Dokument */
+      await zurueckVonFunktion("word");
     },
   },
   zuruf: {
     flaeche: "word",
     async stellen() {
       await zurRuhe("word");
+      // Dieser Fall braucht einen erlaubten Zuruf, auch im isolierten Einzellauf.
+      // Die Test-Sitzung ändert sich erst mit dem tatsächlichen Zustimmungsaufruf.
+      if (!sitzung.zugestimmt) {
+        await unterseiteOeffnen("word", "einstellungen");
+        await f("word").seite.click("#klara-consent-grant");
+        await warteSichtbar("word", "#klara-consent-revoke");
+        await zurRuhe("word");
+      }
       await tippen("word", "Bitte formulieren");
+      await funktionOeffnen("word", "writing");
       await warteSichtbar("word", "#ka6-block");
     },
     async abraeumen() {
+      await zurueckVonFunktion("word");
       await zurRuhe("word");
     },
   },
@@ -1251,7 +1289,18 @@ describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion 
       flaechen.word = await starteFlaeche({
         mitWissen: true,
         word: { markierung: FRAGE, dokument: DOKUMENT },
-        klara: { sicht, aufloesung },
+        klara: {
+          sicht,
+          aufloesung,
+          zustimmen: () => {
+            sitzung.zugestimmt = true;
+            return sicht();
+          },
+          widerrufen: () => {
+            sitzung.zugestimmt = false;
+            return sicht();
+          },
+        },
         // Mit gestellter Sitzung sperrt der Zustimmungsbedarf das Fragen — „steht" heisst hier:
         // die Sitzung ist aufgeloest (KI-Zeile traegt einen Wert) und die Anmeldung belegt.
         bereitWenn:
