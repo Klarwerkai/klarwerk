@@ -36,7 +36,13 @@ type Rule = {
   valid: boolean;
   unvalidated: boolean;
 };
-type Observation = { role: Role; validated: boolean; confidential: string; exported: boolean };
+type Observation = {
+  role: Role;
+  validated: boolean;
+  confidential: string;
+  readable: boolean;
+  exported: boolean;
+};
 const observations: Observation[] = [];
 
 function collect(entries: readonly FaqItem[]): FaqItem[] {
@@ -153,10 +159,16 @@ function judge(answer: string, measured: readonly Observation[]): string[] {
         : "Keine belegte Exporterlaubnis",
     ];
   }
+  const needsReadAccess = answer
+    .split(/[.;]/)
+    .some((s) => s.trim() === "Auch dafür brauchst du Leserechte für den jeweiligen Eintrag");
   return measured.flatMap((row) => {
     const predictions = exports
       .filter((rule) => rule.roles.includes(row.role))
-      .map((rule) => (row.validated ? rule.valid : rule.unvalidated));
+      .map(
+        (rule) =>
+          (!needsReadAccess || row.readable) && (row.validated ? rule.valid : rule.unvalidated),
+      );
     return predictions.length > 0 && predictions.every((prediction) => prediction === row.exported)
       ? []
       : [
@@ -215,32 +227,51 @@ beforeAll(async () => {
         payload: { name: role, email, password: "secret123", role },
       });
       expect(created.statusCode).toBe(201);
-      const response = await app.inject({
-        method: "GET",
-        url: "/api/library/export",
-        headers: await login(email),
-      });
-      expect(response.statusCode, role).toBe(can(role, "ko.read") ? 200 : 403);
-      const ids = can(role, "ko.read")
-        ? (response.json() as { id: string }[]).map((item) => item.id)
-        : [];
-      for (const fixture of fixtures) {
-        const exported = ids.includes(fixture.id);
-        expect(
-          exported,
-          `${role}/${fixture.confidential}/${fixture.validated}: Bindung an ko.validate`,
-        ).toBe(
-          can(role, "ko.read") &&
-            fixture.validated &&
-            (fixture.confidential === "intern" || can(role, "ko.validate")),
-        );
-        if (fixture.confidential !== "intern")
-          observations.push({
-            role,
-            validated: fixture.validated,
-            confidential: fixture.confidential,
-            exported,
+      for (const highClearance of [false, true]) {
+        if (highClearance) {
+          const update = await app.inject({
+            method: "PUT",
+            url: `/api/users/${created.json().id}`,
+            headers: adminHeaders,
+            payload: { freigabe: "streng_vertraulich" },
           });
+          expect(update.statusCode).toBe(200);
+          expect(update.json().freigabe).toBe("streng_vertraulich");
+        }
+        const headers = await login(email);
+        const response = await app.inject({ method: "GET", url: "/api/library/export", headers });
+        expect(response.statusCode).toBe(200);
+        const ids = (response.json() as { id: string }[]).map((item) => item.id);
+        for (const fixture of fixtures) {
+          const visible = await app.inject({
+            method: "GET",
+            url: `/api/kos/${fixture.id}`,
+            headers,
+          });
+          const readable = visible.statusCode === 200;
+          const shouldSee =
+            fixture.confidential === "intern" ||
+            highClearance ||
+            (can(role, "ko.validate") && fixture.confidential === "vertraulich");
+          expect(
+            visible.statusCode,
+            `${role}/${fixture.confidential}, hohe Freigabe=${highClearance}`,
+          ).toBe(shouldSee ? 200 : 404);
+          const exported = ids.includes(fixture.id);
+          expect(exported, `${role}/${fixture.confidential}/${fixture.validated}`).toBe(
+            readable &&
+              fixture.validated &&
+              (fixture.confidential === "intern" || can(role, "ko.validate")),
+          );
+          if (fixture.confidential !== "intern")
+            observations.push({
+              role,
+              validated: fixture.validated,
+              confidential: fixture.confidential,
+              readable,
+              exported,
+            });
+        }
       }
     }
   } finally {
@@ -258,7 +289,7 @@ const cases = [
   {
     name: "b: Exporterlaubnis mit Grenze",
     answer:
-      "Administratoren und Controller dürfen vertrauliche Objekte exportieren, und nur validierte; für alle anderen Rollen bleiben sie aus dem Export.",
+      "Administratoren und Controller dürfen vertrauliche Objekte exportieren, und nur validierte; für alle anderen Rollen bleiben sie aus dem Export. Auch dafür brauchst du Leserechte für den jeweiligen Eintrag.",
     ok: true,
   },
   {
@@ -282,7 +313,7 @@ const cases = [
   {
     name: "positive Gegenfassung zur Relativsatz-Ausnahme aus BEN R5",
     answer:
-      "Als vertraulich markierte Objekte bleiben aus dem regulären Export draußen — ausgenommen sind Administratoren und Controller, die ausschließlich validierte Objekte exportieren dürfen.",
+      "Als vertraulich markierte Objekte bleiben aus dem regulären Export draußen — ausgenommen sind Administratoren und Controller, die ausschließlich validierte Objekte exportieren dürfen. Auch dafür brauchst du Leserechte für den jeweiligen Eintrag.",
     ok: true,
   },
   {
@@ -294,8 +325,14 @@ const cases = [
   {
     name: "umformulierte externe Weitergabe",
     answer:
-      "Controller und Admins können nur validierte vertrauliche Objekte extern weitergeben; für alle anderen Rollen bleiben sie aus dem Export.",
+      "Controller und Admins können nur validierte vertrauliche Objekte extern weitergeben; für alle anderen Rollen bleiben sie aus dem Export. Auch dafür brauchst du Leserechte für den jeweiligen Eintrag.",
     ok: true,
+  },
+  {
+    name: "Leserecht fehlt bei gültiger Rolle und validiertem Eintrag",
+    answer:
+      "Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export.",
+    ok: false,
   },
   {
     name: "Validierungsgrenze fehlt",
