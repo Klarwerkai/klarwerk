@@ -1193,7 +1193,8 @@ async function render(inhalt: unknown): Promise<void> {
     );
     await flush();
   });
-  await act(flush);
+  // Die Hilfe erscheint erst, wenn React das nachgeladene Modul in die echte Shell einhängt.
+  await act(() => vi.dynamicImportSettled());
 }
 
 async function klick(el: HTMLElement): Promise<void> {
