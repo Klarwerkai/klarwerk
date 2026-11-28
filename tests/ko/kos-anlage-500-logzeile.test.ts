@@ -9,7 +9,7 @@
 //
 // GEMESSEN AN DER ECHTEN ROUTE: `POST /api/kos` über `buildApp` mit dem Haus-Logger (Serializer,
 // Feld- und Meldungspositivliste — genau die Kette, die im Betrieb schreibt). Der Fehler entsteht im
-// Dienst (`ko.create`), so wie ein Datenbankfehler dort ankäme: als `Error` mit SQLSTATE in `code`
+// Dienst (`ko.createWithResult`), so wie ein Datenbankfehler dort ankäme: als `Error` mit SQLSTATE in `code`
 // und einer rohen Datenbankmeldung.
 //
 // RÜCKNAHME: mit dem alten Auffangzweig (ohne `reply.log.error`) gibt es keine Zeile mit der
@@ -97,7 +97,7 @@ describe("arbeit:kos-anlage-500-pg · K1 · unerwarteter Fehler an POST /api/kos
     it(`SQLSTATE ${sqlstate}: genau eine Logzeile mit Request-ID, Code und Stapel — Antwort bytegleich generisch`, async () => {
       const puffer = logPuffer();
       const { services, app, headers } = await aufbau(puffer);
-      vi.spyOn(services.ko, "create").mockRejectedValueOnce(dbFehler(sqlstate));
+      vi.spyOn(services.ko, "createWithResult").mockRejectedValueOnce(dbFehler(sqlstate));
       const vorher = puffer.zeilen().length;
 
       const res = await app.inject({ method: "POST", url: "/api/kos", headers, payload: KO });
@@ -144,7 +144,7 @@ describe("arbeit:kos-anlage-500-pg · K1 · unerwarteter Fehler an POST /api/kos
   it("formloser Fehler ohne Code: dieselbe eine Zeile, Code OHNE_CODE", async () => {
     const puffer = logPuffer();
     const { services, app, headers } = await aufbau(puffer);
-    vi.spyOn(services.ko, "create").mockRejectedValueOnce(new Error(ROHE_DB_MELDUNG));
+    vi.spyOn(services.ko, "createWithResult").mockRejectedValueOnce(new Error(ROHE_DB_MELDUNG));
     const vorher = puffer.zeilen().length;
     const res = await app.inject({ method: "POST", url: "/api/kos", headers, payload: KO });
     expect(res.statusCode).toBe(500);
@@ -164,7 +164,7 @@ describe("arbeit:kos-anlage-500-pg · K1 · unerwarteter Fehler an POST /api/kos
     const puffer = logPuffer();
     const { services, app, headers } = await aufbau(puffer);
     // Ziffern drin, also kein Domänencode — aber auch kein SQLSTATE: freier Wert.
-    vi.spyOn(services.ko, "create").mockRejectedValueOnce(dbFehler("Meier-1975"));
+    vi.spyOn(services.ko, "createWithResult").mockRejectedValueOnce(dbFehler("Meier-1975"));
     const vorher = puffer.zeilen().length;
     const res = await app.inject({ method: "POST", url: "/api/kos", headers, payload: KO });
     expect(res.statusCode).toBe(500);

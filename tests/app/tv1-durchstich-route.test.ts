@@ -38,10 +38,9 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
-// Ein gültiges Mini-PNG: die Magic Bytes müssen echt sein, sonst weist die frühe Bildprüfung
-// (bens P3) den Request mit 400 ab, bevor irgendein Titel entstehen könnte.
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const PNG_URL = `data:image/png;base64,${Buffer.concat([PNG_MAGIC, Buffer.alloc(8)]).toString("base64")}`;
+import { grossesPng } from "../m5c-b-bildbudget/bilder";
+
+const PNG_URL = `data:image/png;base64,${grossesPng(1, 1).toString("base64")}`;
 
 /** Ein Vision-Provider, der genau den übergebenen Text liefert. Kein Netz, kein Schlüssel. */
 function visionMit(text: string): ModelProvider {

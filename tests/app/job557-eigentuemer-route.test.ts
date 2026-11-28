@@ -219,17 +219,28 @@ describe("JOB 557 D7 · autorisierte Eigentumsvergabe über die KO-Route", () =>
     const { app, experte, controller } = await setup();
     const id = await legeKoAn(app, experte);
 
+    const ich = await app.inject({ method: "GET", url: "/api/auth/me", headers: controller });
+    expect(ich.statusCode).toBe(200);
+    const prueferin = ich.json().id as string;
+    const unbekannt = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: controller,
+      payload: { action: "assign", userIds: ["unbekannte-prueferin"] },
+    });
+    expect(unbekannt.statusCode).toBe(400);
+
     const zugewiesen = await app.inject({
       method: "PUT",
       url: `/api/kos/${id}`,
       headers: controller,
-      payload: { action: "assign", userIds: ["paula-prueferin"] },
+      payload: { action: "assign", userIds: [prueferin] },
     });
     expect(zugewiesen.statusCode).toBe(204);
 
     const nachher = await lies(app, controller, id);
     expect(nachher.ownership).toEqual({
-      reviewers: ["paula-prueferin"],
+      reviewers: [prueferin],
       validators: [],
     });
     // Und aus der Zuweisung ist KEIN Eigentum entstanden.
