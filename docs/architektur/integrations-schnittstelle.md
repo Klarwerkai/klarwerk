@@ -1,6 +1,7 @@
-# KLARWERK — Integrationsschnittstelle mit Dienst-Schlüsseln (Vertrag 1.2.0)
+# KLARWERK — Integrationsschnittstelle mit Dienst-Schlüsseln (Vertrag 1.3.0)
 
 > Aufnahme `gesamt-integrations-api` (R-0677, R-0688, R-0696, R-0698, R-0704, R-0712, R-0842);
+> Fassung 1.3.0 ergänzt den Eingang für Organisations-E-Mails.
 > Fassung 1.2.0: Aufnahme `gesamt-mcp` (R-0713) — MCP-Zugang `/mcp`, §6.
 > Quelle der Wahrheit ist der Code: `services/app/src/integrations-vertrag.ts` (Tabelle),
 > `services/app/src/dienst-schluessel.ts` (Schlüssel, Rechte, Routen). Die maschinenlesbare
@@ -42,6 +43,7 @@ Die Konfiguration steht in der Umgebungsvariable `KLARWERK_SERVICE_KEYS` als JSO
 
   | Recht | Route | Wirkung |
   | --- | --- | --- |
+  | `mail.entwurf` | `POST /api/eingang/email` | Der für diese Instanz konfigurierte Mailadapter legt einen privaten Entwurf mit Originalbeleg an. |
   | `ask.validated` | `POST /api/ask` | Fragen; Antwort nur aus validiertem, nicht vertraulichem Wissen, ohne Modell |
   | `checktext.validated` | `POST /api/check-text` | Texte prüfen gegen validiertes Wissen, ohne Modell, nichts gespeichert |
   | `export.validated` | `GET /api/library/export` | Wissen ausleiten (nur validiert, nicht vertraulich) |
@@ -65,9 +67,11 @@ Diese Paare aus HTTP-Status und `error`-Feld darf die Schnittstelle liefern — 
 Fehlerzustand nennt genau seine Kennung; Erfolgsantworten tragen kein `error`. Die Felder der
 Anfragen und Antworten (Pflichtfelder, Wertemengen wie Wissensart und Vertraulichkeit,
 Antwortvarianten „beantwortet"/„Wissenslücke") stehen in `docs/generated/integrations-openapi.json`. Fehler
-haben immer die Form `{ "error": "<Kennung>", "message": "<Satz>" }`; bei `429` des Schlüssels
+haben außerhalb des Mail-Eingangs die Form `{ "error": "<Kennung>", "message": "<Satz>" }`; bei `429` des Schlüssels
 zusätzlich `wartenSek`. Für die Standardfehler des HTTP-Rahmens steht in `error` die HTTP-
 Kurzbezeichnung und in `code` die Rahmenkennung.
+
+Am Mail-Eingang ist nur `error` bei jeder Fehlerantwort garantiert.
 
 **Für jede Route:**
 
@@ -82,6 +86,13 @@ Kurzbezeichnung und in `code` die Rahmenkennung.
 
 | Route | Status | `error` | Bedeutung |
 | --- | --- | --- | --- |
+| `POST /api/eingang/email` | 201 / 200 | — | Erstannahme oder wiederholte Zustellung, mit `entwurfId` und `neu`. |
+| | 400 | `EMAIL_FORM`, `EMAIL_ADRESSE`, `Bad Request` | Nachricht oder Empfänger ungültig. |
+| | 400 / 404 | `DRAFT_STALE` / `NOT_FOUND` | Entwurf bei der Originalbindung geändert oder entfernt. |
+| | 409 | `IDEMPOTENCY_PAYLOAD_MISMATCH`, `CONFLICT` | Gleiche Nachrichtenkennung mit anderem Inhalt oder geänderte Entwurfsherkunft. |
+| | 413 / 415 | `Payload Too Large` / `Unsupported Media Type` | Über 1 MiB oder ungeeigneter Inhaltstyp. |
+| | 422 | `EMAIL_ANHAENGE` | Der Eingang akzeptiert Klartext ohne Anhänge. |
+| | 503 | `EMAIL_NICHT_KONFIGURIERT`, `EMAIL_ZUSTAENDIGKEIT_FEHLT` | Eingang oder zuständiges Konto nicht verfügbar. |
 | `POST /api/ask` | 200 | — | Beantwortet (`result.answered = true`, mit Quellen) **oder** Wissenslücke (`result.answered = false`). Beides ist Erfolg. |
 | | 400 | `Bad Request` | Rumpf verletzt das Schema oder ist kein JSON. |
 | | 413 | `Payload Too Large` | Rumpf größer als 128 KiB. |

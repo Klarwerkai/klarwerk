@@ -66,6 +66,9 @@ function mkKo(id: string, statement: string): KnowledgeObject {
     tags: [],
     category: "Wartung",
     asset: null,
+    // aufnahme:20260922:gesamt-leserechte (Entscheidung 16): „intern" ausdrücklich — ohne Stufe ist
+    // der Eintrag ungeklärt und für den Fragenden (ohne Niveau) verborgen; geprüft würde gegen 0.
+    confidentiality: "intern",
   } as unknown as KnowledgeObject;
 }
 

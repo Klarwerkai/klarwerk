@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { buildDevPersistServices } from "../../services/app/src/dev-persist";
 import { ladeEmailEingang } from "../../services/app/src/email-eingang";
+import { zustandErlaubt } from "../../services/app/src/integrations-vertrag";
 import { EMAIL_ANGENOMMEN } from "../../services/app/src/routes/email-eingang-routes";
 
 // Ausschließlich fiktive Adressen und eigens gesetzte Testschlüssel, kein Mailversand/Netz.
@@ -78,13 +79,19 @@ async function fixture(file?: string) {
   return { services, app, owner, userHeaders: { authorization: `Bearer ${session.token}` } };
 }
 
-const post = (app: App, payload: unknown = message, h = headers) =>
-  app.inject({
+const post = async (app: App, payload: unknown = message, h = headers) => {
+  const antwort = await app.inject({
     method: "POST",
     url: "/api/eingang/email",
     headers: h,
     payload: payload as Record<string, unknown>,
   });
+  expect(
+    zustandErlaubt("POST", "/api/eingang/email", antwort.statusCode, antwort.json().error),
+    `Mail-Eingang: ${antwort.statusCode} ${antwort.body}`,
+  ).toBe(true);
+  return antwort;
+};
 
 describe("Organisations-E-Mail → vorhandener privater Wissensentwurf", () => {
   it("nimmt Text mit Herkunft an; gewöhnliches Wiederöffnen und Einreichen behalten die ungeprüfte Quelle", async () => {

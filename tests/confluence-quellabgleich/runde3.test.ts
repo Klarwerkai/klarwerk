@@ -17,10 +17,7 @@ import {
   warteAufOffeneImportLaeufe,
 } from "../../services/app/src/routes/confluence-import-routes";
 import { importRunRoutes } from "../../services/app/src/routes/import-run-routes";
-import {
-  type ConfluencePage,
-  ConfluenceUnusableResponseError,
-} from "../../services/confluence/src/rest-client";
+import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { LibraryService } from "../../services/library-analytics";
 import { adapterFromConfig } from "../support/confluence-adapter";
@@ -116,9 +113,12 @@ describe("N1 · eine Erfolgsantwort ohne Seite ist kein Löschbeleg", () => {
 
     q.bereich.delete("P-1");
     q.einzel.set("P-1", "ohne-id");
-    await expect(q.adapter.fetchItem("P-1")).rejects.toBeInstanceOf(
-      ConfluenceUnusableResponseError,
-    );
+    // Gesamtcheck R-1329 (Nacharbeit 66): die Einzelnachfrage des Abgleichs ist seit der
+    // Zusammenführung mit R-0162 `isGoneAtSource` über `getPageStateById` — sie WIRFT bei einer
+    // Erfolgsantwort ohne gültige Seite (`ConfluenceAntwortUngueltig`). `fetchItem` wertet dieselbe
+    // Antwort seit main als „nicht vorhanden" und ist nicht mehr der Weg des Abgleichs
+    // (`confluence-import.ts`, `quellAbgleich`); die Kalibrierung misst deshalb den echten Weg.
+    await expect(q.adapter.isGoneAtSource("P-1")).rejects.toThrow("ohne gültige Seite");
     const lauf = await laufUndAnnehmen(q, d);
     expect(lauf.sourceSync?.unchecked).toEqual(["P-1"]);
     expect(lauf.sourceSync?.removed).toEqual([]);
