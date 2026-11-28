@@ -188,6 +188,7 @@ async function artikelMitAnhang(w: Welt, endung: string, inhalt: Buffer, autor =
     statement: "Die fiktive Pumpe P1 wird monatlich geprüft.",
     type: "best_practice",
     category: "Testanlage",
+    confidentiality: "intern",
     author: autor,
   });
   const mitAnhang = await w.ko.addAttachment(ko.id, autor, {

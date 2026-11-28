@@ -39,7 +39,7 @@ function werk() {
   const ort = mkdtempSync(join(werkbank, "werk-"));
   mkdirSync(join(ort, "tools"));
   mkdirSync(join(ort, "node_modules/.bin"), { recursive: true });
-  for (const name of ["test", "browserdeckel.sh"]) {
+  for (const name of ["test", "browserdeckel.sh", "test-zahl.mjs"]) {
     if (existsSync(join(WURZEL, "tools", name))) {
       copyFileSync(join(WURZEL, "tools", name), join(ort, "tools", name));
     }
@@ -50,17 +50,30 @@ function werk() {
     sonde,
     `
 const fs = require('node:fs');
+const { pathToFileURL } = require('node:url');
 const art = process.env.KLARWERK_TESTGRUPPE || 'smoke';
-const von = Date.now();
-fs.writeFileSync(process.env.SONDENPFAD + '/' + art + '.start', String(von));
-setTimeout(() => {
+async function messen() {
+  const reporterArg = process.argv.slice(2).find((arg) =>
+    arg.startsWith('--reporter=') && arg.endsWith('/tools/test-zahl.mjs'));
+  let reporter;
+  if (reporterArg) {
+    const url = pathToFileURL(reporterArg.slice('--reporter='.length));
+    const { default: TestZahl } = await import(url.href);
+    reporter = new TestZahl();
+  }
+  reporter?.onInit();
+  const von = Date.now();
+  fs.writeFileSync(process.env.SONDENPFAD + '/' + art + '.start', String(von));
+  await new Promise((r) => setTimeout(r, art === 'rest' ? Number(process.env.REST_MS || 0) : 800));
   fs.writeFileSync(process.env.SONDENPFAD + '/' + art + '.json',
     JSON.stringify({datei: art, von, bis: Date.now()}));
-}, art === 'rest' ? Number(process.env.REST_MS || 0) : 800);
+  reporter?.onFinished([{ tasks: [{ result: { state: 'pass' } }] }]);
+}
+messen().catch((error) => { console.error(error); process.exitCode = 1; });
 `,
   );
   for (const name of ["npx", "playwright"]) {
-    writeFileSync(join(ort, "node_modules/.bin", name), '#!/bin/sh\nexec node "$SONDE"\n', {
+    writeFileSync(join(ort, "node_modules/.bin", name), '#!/bin/sh\nexec node "$SONDE" "$@"\n', {
       mode: 0o755,
     });
   }

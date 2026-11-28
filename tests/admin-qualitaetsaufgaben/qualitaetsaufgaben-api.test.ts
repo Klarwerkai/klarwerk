@@ -420,8 +420,11 @@ describe("ADMIN-10 · Z3/Z4 · Rückmeldung als Aufgabe, Abschluss am Ursprung",
     expect(eintrag(mitte, `rueckmeldung:${m2}`)).toBeUndefined();
     expect(eintrag(mitte, `revalidierung:${andere}`)?.zustand).toBe("offen");
 
-    // Abschluss im bestehenden Arbeitsweg: „stimmt noch" am Objekt, durch die Autorin.
-    const abschluss = await gebundenBestaetigen(a.app, a.autorin, ko);
+    // Bei einer freigegebenen Fassung darf die Autorin den Inhalt nicht selbst fortschreiben.
+    const alsAutorin = await gebundenBestaetigen(a.app, a.autorin, ko);
+    expect(alsAutorin.statusCode).toBe(403);
+    expect(alsAutorin.json().error).toBe("PROPOSAL_REQUIRED");
+    const abschluss = await gebundenBestaetigen(a.app, a.admin, ko);
     expect(abschluss.statusCode, abschluss.body).toBe(200);
 
     const nachher = await uebersicht(a);
@@ -431,7 +434,7 @@ describe("ADMIN-10 · Z3/Z4 · Rückmeldung als Aufgabe, Abschluss am Ursprung",
       expect(e?.zustand, `Meldung ${m}`).toBe("erledigt");
       expect(e?.ergebnis).toMatchObject({
         art: "bestaetigt",
-        durch: { id: a.autorin.id, name: "Alex Autorin" },
+        durch: { id: a.admin.id, name: "Ada Verwaltung" },
       });
       expect(e?.uebernahme).toMatchObject({
         vorgang: `revalidierung:${ko}`,

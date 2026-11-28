@@ -69,8 +69,8 @@ import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-fre
 type Dienste = ReturnType<typeof buildServices>;
 type App = ReturnType<typeof buildApp>;
 
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const PNG_URL = `data:image/png;base64,${Buffer.concat([PNG_MAGIC, Buffer.alloc(8)]).toString("base64")}`;
+const PNG_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const INSTANZ = "instanz-2666";
 const nurWennFreigegeben = KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip;
 
@@ -567,23 +567,24 @@ describe("JOB 2666 D2 · A — der Backstop lässt sich nicht durch Weglassen um
       statement: "Mischverhältnis 3:1.",
       type: "best_practice",
       category: "Produktion",
+      confidentiality: "intern",
       author: userId,
-    } as never);
+    });
     await structure(app, auth, {
       source: "draft",
       confidentiality: "intern",
-      koId: (ko as { id: string }).id,
+      koId: ko.id,
     });
     expect(bit(s.structure, 2)).toBe(false);
     await app.close();
   });
 
-  it("A4 · GRENZE, unverändert: ein aufgelöster Entwurf OHNE gespeicherte Stufe hebt nichts — die Deklaration gilt (E-VERTRAULICHKEIT-OHNE-STUFE, OFFEN, nicht entschieden)", async () => {
+  it("A4 · ein aufgelöster Entwurf ohne gespeicherte Einstufung bleibt trotz deklarierter interner Stufe vertraulich", async () => {
     const { services, s, app } = appBauen();
     const auth = await anmelden(app);
     const draftId = await entwurf(services, undefined);
     await structure(app, auth, { source: "draft", confidentiality: "intern", draftId });
-    expect(bit(s.structure, 2)).toBe(false);
+    expect(bit(s.structure, 2)).toBe(true);
     await app.close();
   });
 });
@@ -626,7 +627,7 @@ describe("JOB 2666 D2 · P — Pins an der Quelle: eine Komposition, eine KA4-H�
   // Frageweg `askRoutes` bekommt das Sitzungstor nicht mehr — beides ist hier gepinnt.
   it("P1 · build-app.ts reicht DASSELBE `klaraSessions` an Klaras Zugang und reasonerRoutes — keine zweite Instanz", () => {
     const quelle = lesen("services/app/src/build-app.ts");
-    expect(quelle).toMatch(/reasonerRoutes\(\{\s*\.\.\.services,\s*ka4:\s*klaraSessions\s*\}/);
+    expect(quelle).toMatch(/reasonerRoutes\(\{\s*\.\.\.services,\s*ka4:\s*klaraSessions\s*[,}]/);
     expect(quelle).toMatch(/klaraAusfuehrungRoutes\(\s*\{[^}]*klaraSessions[^}]*\}/);
     expect(quelle).not.toMatch(/askRoutes\(\s*\{[^}]*klaraSessions[^}]*\}/);
     expect(quelle.match(/new KlaraSessionService\(/g)).toHaveLength(1);
