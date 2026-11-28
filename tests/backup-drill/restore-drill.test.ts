@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { assistenzTabellen } from "../../services/app/src/sicherungsumfang";
 import { pflichttabellenAusDrill } from "./pflichtsatz";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -618,13 +619,7 @@ describe("ADMIN-13 · Protokoll der Wiederherstellungsprobe", () => {
     const r = run();
     expect(r.code, r.output).toBe(0);
     const p = protokollAus(r);
-    expect(p.vergleich.assistenz.tabellen.map((t) => t.tabelle)).toEqual([
-      "assistenz_profile",
-      "klara_gespraeche",
-      "interaktions_gedaechtnis",
-      "klara_sessions",
-      "klara_session_consents",
-    ]);
+    expect(p.vergleich.assistenz.tabellen.map((t) => t.tabelle)).toEqual(assistenzTabellen());
     for (const t of p.vergleich.assistenz.tabellen) {
       expect(t.dump, t.tabelle).not.toBeNull();
       expect(t.datenbank, t.tabelle).toBe(t.dump);
