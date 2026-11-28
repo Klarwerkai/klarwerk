@@ -147,6 +147,7 @@ async function fragenBedienbar(page: Page, wo: string): Promise<void> {
 
 /** Öffnen und warten, bis das gespeicherte Gespräch vom Server gelesen ist. */
 async function oeffnen(page: Page): Promise<Locator> {
+  await expect(page.getByTestId("klara-figur")).toBeVisible({ timeout: 15_000 });
   const gespraech = page.getByTestId("klara-gespraech");
   if (!(await gespraech.isVisible())) {
     await page.getByTestId("klara-figur").click();
@@ -156,6 +157,38 @@ async function oeffnen(page: Page): Promise<Locator> {
     timeout: 15_000,
   });
   return gespraech;
+}
+
+async function menueSeite(
+  page: Page,
+  seite: "funktionen" | "einstellungen" | "hilfe",
+): Promise<void> {
+  await page.getByTestId("klara-menue-knopf").press("Enter");
+  await page.getByTestId(`klara-menue-${seite}`).press("Enter");
+  await expect(page.getByTestId("klara-gespraech")).toHaveAttribute("data-seite", seite);
+}
+
+async function zurFragenseite(page: Page): Promise<void> {
+  const mobilMenue = page.getByTestId("kopfband-menue");
+  if (await mobilMenue.isVisible()) {
+    await mobilMenue.press("Enter");
+    await page
+      .getByRole("dialog", { name: "Navigationsmenü" })
+      .getByRole("menuitem", { name: "Fragen", exact: true })
+      .press("Enter");
+  } else {
+    await page.getByTestId("kopfband").getByRole("link", { name: "Fragen", exact: true }).click();
+  }
+  await expect(page).toHaveURL(/\/fragen(?:[?#]|$)/);
+  await expect(page.getByTestId("page-fragen")).toBeVisible();
+}
+
+async function zeigeKontext(page: Page): Promise<void> {
+  const details = page.getByTestId("klara-kontext");
+  if ((await details.getAttribute("open")) === null) {
+    await page.getByTestId("klara-kontext-zeile").press("Enter");
+  }
+  await expect(page.getByTestId("klara-ort")).toBeVisible();
 }
 
 test("Assistenz im Produkt · Desktop: ohne Vorschau sichtbar auf Start, Fragen und Artikel, echtes Gespräch, Seitenwechsel, Minimieren, Neuladen", async ({
@@ -194,24 +227,28 @@ test("Assistenz im Produkt · Desktop: ohne Vorschau sichtbar auf Start, Fragen 
   // --- K2/K3/K4 · Öffnen, Produktbetrieb, echtes Gespräch ------------------------------------------
   const gespraech = await oeffnen(p);
   await expect(p.getByTestId("klara-panel-titel")).toHaveText(NEUTRAL);
-  await expect(p.getByTestId("klara-betrieb")).toHaveAttribute("data-betrieb", "echt");
+  await expect(p.getByTestId("klara-figur")).toHaveAttribute("data-betrieb", "echt");
   await expect(p.getByTestId("klara-betrieb-demo")).toHaveCount(0);
   await expect(p.getByTestId("klara-demo-hinweis")).toHaveCount(0);
   await expect(p.getByTestId("klara-beenden")).toHaveCount(0);
+  await expect(gespraech).toHaveAttribute("data-oberflaeche", "minimal");
+  await menueSeite(p, "funktionen");
   await expect(p.getByTestId("klara-offen")).toBeVisible();
   await expect(p.getByTestId("klara-zur-vorschau")).toBeVisible();
-  for (const id of ["klara-bezug", "klara-modi", "klara-bedienhilfe", "klara-eingabe"]) {
-    await expect(p.getByTestId(id), id).toBeVisible();
-  }
+  await menueSeite(p, "hilfe");
+  await expect(p.getByTestId("klara-modi")).toBeVisible();
+  await expect(p.getByTestId("klara-bedienhilfe")).toBeVisible();
+  await p.getByTestId("klara-unterseite-zurueck").click();
+  await expect(p.getByTestId("klara-eingabe")).toBeVisible();
 
   const frage = `Assistenz-Probe ${marke()}: Wie wird die Anlage gesichert?`;
-  await p.getByTestId("klara-einwilligung-erteilen").click();
-  await expect(p.getByTestId("klara-einwilligung-erteilt")).toBeVisible();
   const frageweg = p.waitForResponse(
     (r) => new URL(r.url()).pathname === "/api/ask" && r.request().method() === "POST",
   );
   await p.getByTestId("klara-eingabe").fill(frage);
   await p.getByTestId("klara-eingabe").press("Enter");
+  await expect(p.getByTestId("klara-einwilligung")).toBeVisible();
+  await p.getByTestId("klara-einwilligung-erteilen").click();
   const antwort = await frageweg;
   expect(antwort.status(), await antwort.text()).toBe(200);
   await expect(letzteKlara(p)).toHaveAttribute("data-gespeichert", "ja", { timeout: 15_000 });
@@ -220,18 +257,20 @@ test("Assistenz im Produkt · Desktop: ohne Vorschau sichtbar auf Start, Fragen 
   await beleg(p, info, "2 echtes persönliches Gespräch");
 
   // Bezug wählen und eine Frage anfangen, ohne sie zu senden.
+  await zeigeKontext(p);
   await p.getByTestId("klara-bezug-frei").click();
   await expect(p.getByTestId("klara-bezug")).toHaveAttribute("data-bezug", "frei");
   await p.getByTestId("klara-eingabe").fill(ANGEFANGEN);
 
   // --- Seitenwechsel zu Fragen (in der App) ---------------------------------------------------------
-  await p.getByTestId("klara-zu-fragen").click();
-  await expect(p.getByTestId("page-fragen")).toBeVisible({ timeout: 15_000 });
+  await zurFragenseite(p);
+  await zeigeKontext(p);
   await expect(p.getByTestId("klara-ort-seite")).toHaveText("Fragen");
   await expect(nachrichten(p)).toHaveCount(2);
   await expect(p.getByTestId("klara-eingabe")).toHaveValue(ANGEFANGEN);
 
   // --- Minimieren, erneut öffnen ------------------------------------------------------------------
+  await menueSeite(p, "einstellungen");
   await p.getByTestId("klara-minimieren").click();
   await expect(gespraech).toHaveCount(0);
   await expect(p.getByTestId("klara-figur")).toHaveAttribute("data-minimiert", "true");
@@ -257,6 +296,7 @@ test("Assistenz im Produkt · Desktop: ohne Vorschau sichtbar auf Start, Fragen 
   await p.goto(`/wissen/${koId}`);
   await einstiegSichtbar(p, "Artikel");
   await oeffnen(p);
+  await zeigeKontext(p);
   await expect(p.getByTestId("klara-ort-seite")).toHaveText("Wissen");
   await expect(p.getByTestId("klara-ort-objekt")).toHaveText(`„${titel}“`, { timeout: 15_000 });
   await expect(nachrichten(p)).toHaveCount(2);
@@ -275,6 +315,7 @@ test("Assistenz im Produkt · Desktop: ohne Vorschau sichtbar auf Start, Fragen 
   await expect(hilfeFlaeche(p)).toHaveCount(0);
 
   // --- Vorschau getrennt und gekennzeichnet; zurück in den Produktbetrieb ----------------------------
+  await menueSeite(p, "funktionen");
   await p.getByTestId("klara-zur-vorschau").click();
   await expect(p).toHaveURL(/\/klara-vorschau$/);
   await expect(p.getByTestId("klara-figur")).toHaveAttribute("data-betriebsart", "vorschau");
@@ -347,19 +388,23 @@ test("Assistenz im Produkt · 390x844 mit Tastatur: Finden, Öffnen, Gespräch, 
     timeout: 15_000,
   });
   expect(Math.round((await box(gespraech)).width)).toBe(390);
+  await menueSeite(p, "einstellungen");
   for (const id of ["klara-minimieren", "klara-schliessen"]) {
-    const b = await box(p.getByTestId(id));
+    const knopf = p.getByTestId(id);
+    await knopf.focus();
+    await expect(knopf).toBeFocused();
+    const b = await box(knopf);
     expect(b.height, `${id}: Touch-Ziel zu niedrig`).toBeGreaterThanOrEqual(24);
-    await imFenster(p, p.getByTestId(id), `schmal, ${id}`);
+    await imFenster(p, knopf, `schmal, ${id}`);
   }
-  await p.getByTestId("klara-einwilligung-erteilen").focus();
-  await p.keyboard.press("Enter");
-  await expect(p.getByTestId("klara-einwilligung-erteilt")).toBeVisible();
+  await p.getByTestId("klara-unterseite-zurueck").press("Enter");
   const eingabe = p.getByTestId("klara-eingabe");
   await eingabe.focus();
   await p.keyboard.type("Was kann ich hier tun?");
   await imFenster(p, eingabe, "schmal, Eingabe");
   await p.keyboard.press("Enter");
+  await expect(p.getByTestId("klara-einwilligung")).toBeVisible();
+  await p.getByTestId("klara-einwilligung-erteilen").press("Enter");
   await expect(letzteKlara(p)).toHaveAttribute("data-gespeichert", "ja", { timeout: 15_000 });
   await expect(nachrichten(p)).toHaveCount(2);
   await beleg(p, info, "schmal 2 · Gespräch per Tastatur");
@@ -367,13 +412,13 @@ test("Assistenz im Produkt · 390x844 mit Tastatur: Finden, Öffnen, Gespräch, 
   // --- Seitenwechsel per Tastatur, angefangene Eingabe bleibt ---------------------------------------
   await eingabe.focus();
   await p.keyboard.type(ANGEFANGEN);
-  await p.getByTestId("klara-zu-fragen").focus();
-  await p.keyboard.press("Enter");
-  await expect(p.getByTestId("page-fragen")).toBeVisible({ timeout: 15_000 });
+  await zurFragenseite(p);
+  await zeigeKontext(p);
   await expect(p.getByTestId("klara-ort-seite")).toHaveText("Fragen");
   await expect(eingabe).toHaveValue(ANGEFANGEN);
 
   // --- Minimieren und erneut öffnen per Tastatur ----------------------------------------------------
+  await menueSeite(p, "einstellungen");
   await p.getByTestId("klara-minimieren").focus();
   await p.keyboard.press("Enter");
   await expect(gespraech).toHaveCount(0);
