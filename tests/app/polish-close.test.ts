@@ -24,7 +24,7 @@ function read(rel: string): string {
 // zieht seine Adresse jetzt aus `components/bibliothek/fragen.ts::fragenHref` — die Reife-Verzweigung
 // ist weg (jeder Eintrag heißt „Fragen"), die VERTRAULICHKEITS-Kante bleibt Wort für Wort dieselbe.
 // Gemessen wird deshalb hier weiter, nur an der Funktion, die den Knopf heute wirklich speist.
-// `undefined` ist die dokumentierte Kante „Feld fehlt" — sie zählt als nicht-vertraulich.
+// `undefined` ist die dokumentierte Kante „Feld fehlt" — sie erlaubt keinen automatischen Aufruf.
 const href = (level: string | undefined, frage: string): string => fragenHref("k1", frage, level);
 
 describe("WP-POLISH-CLOSE Punkt 1: Karten-Frage bei vertraulichem KO ohne Auto-Send", () => {
@@ -49,14 +49,14 @@ describe("WP-POLISH-CLOSE Punkt 1: Karten-Frage bei vertraulichem KO ohne Auto-S
     expect(ziel).toContain("vertraulich=1");
   });
 
-  it("nicht-vertraulich (fehlend = dokumentiert intern / explizit intern) → Auto-Send bleibt", () => {
-    expect(href(undefined, "Frage?")).toContain("&ask=1");
+  it("nur explizit intern erlaubt Auto-Send", () => {
+    expect(href(undefined, "Frage?")).not.toContain("ask=1");
     expect(href("intern", "Frage?")).toContain("&ask=1");
   });
 
-  it("isKnownNonConfidential: nur intern/fehlend sind eindeutig nicht-vertraulich (fail-safe)", () => {
-    expect(isKnownNonConfidential(undefined)).toBe(true);
-    expect(isKnownNonConfidential(null)).toBe(true);
+  it("isKnownNonConfidential: nur explizit intern ist eindeutig nicht-vertraulich (fail-safe)", () => {
+    expect(isKnownNonConfidential(undefined)).toBe(false);
+    expect(isKnownNonConfidential(null)).toBe(false);
     expect(isKnownNonConfidential("intern")).toBe(true);
     expect(isKnownNonConfidential("vertraulich")).toBe(false);
     expect(isKnownNonConfidential("streng_vertraulich")).toBe(false);

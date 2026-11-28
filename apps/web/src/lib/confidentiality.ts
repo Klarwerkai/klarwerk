@@ -23,26 +23,14 @@ export function confidentialityOf(level: Confidentiality | undefined | null): Co
   return level === "vertraulich" || level === "streng_vertraulich" ? level : "intern";
 }
 
-export function isConfidential(level: Confidentiality | undefined | null): boolean {
-  return level === "vertraulich" || level === "streng_vertraulich";
+// Gleiche Ausleitungsgrenze wie im Server. Automatische Fragen und Exporte
+// dürfen ausschließlich ausdrücklich als intern eingestufte Objekte einbeziehen.
+export function isKnownNonConfidential(level: unknown): boolean {
+  return level === "intern";
 }
 
-// WP-POLISH-CLOSE (bens Punkt 1): fail-safe-Prüfung für AUTOMATISCHE Frage-/Chip-Flächen (Beispiel-
-// Chips, Auto-Send des Bibliotheks-Fragen-Knopfs). true NUR bei eindeutig nicht-vertraulicher
-// Stufe: explizit „intern" oder das FEHLENDE Feld — der Server materialisiert vertrauliche Stufen
-// IMMER und „intern" bewusst nie, ein fehlendes Feld ist damit die dokumentierte intern-Codierung
-// (kein unklarer Fall). JEDER andere/unbekannte Wert gilt fail-safe als vertraulich (anders als
-// confidentialityOf, das Unbekanntes zu „intern" glättet — für Automatik-Flächen zu lasch).
-//
-// JOB 3034 — WARUM ANZEIGE UND AUTOMATIK HIER VERSCHIEDEN ENTSCHEIDEN DÜRFEN, und zwar richtig:
-// dieser Riegel entscheidet, WAS HINAUSGEHEN DARF (Titel in Beispiel-Chips, Auto-Ask, Egress). Die
-// Auskunft darunter entscheidet, WAS DER MENSCH LIEST. Ein Eintrag ohne Stufe ist für den Riegel
-// bewusst nicht-vertraulich (sonst wäre der halbe Altbestand aus der Automatik verbannt) und für
-// die Anzeige bewusst „nicht eingestuft" (sonst behauptete die Fläche eine Einstufung). Beides ist
-// dieselbe Tatsache in zwei Rollen, keine zweite Wahrheit — und dieser Riegel bleibt unverändert:
-// JOB 3034 ändert nichts daran, wer was sehen oder was hinausgehen darf.
-export function isKnownNonConfidential(level: unknown): boolean {
-  return level === undefined || level === null || level === "intern";
+export function isConfidential(level: Confidentiality | undefined | null): boolean {
+  return !isKnownNonConfidential(level);
 }
 
 // ================================================================================================

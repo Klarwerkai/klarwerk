@@ -550,8 +550,8 @@ describe("JOB 3034 · benannte Grenzen — Filterfacette und fail-safe-Riegel bl
   });
 
   it("isKnownNonConfidential bleibt der Riegel für die AUTOMATIK — unverändert", () => {
-    expect(isKnownNonConfidential(undefined)).toBe(true);
-    expect(isKnownNonConfidential(null)).toBe(true);
+    expect(isKnownNonConfidential(undefined)).toBe(false);
+    expect(isKnownNonConfidential(null)).toBe(false);
     expect(isKnownNonConfidential("intern")).toBe(true);
     expect(isKnownNonConfidential("vertraulich")).toBe(false);
     expect(isKnownNonConfidential("streng_vertraulich")).toBe(false);

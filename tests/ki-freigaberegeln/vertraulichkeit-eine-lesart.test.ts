@@ -61,12 +61,12 @@ describe("R-0628 · eine Lesart der Vertraulichkeit", () => {
     }
   });
 
-  it("E3 · „keine Stufe“: Zugriff liest intern, Ausleitung von aussen liest vertraulich", () => {
-    // Zugriff und Anzeige-Filter (Server und Abschrift): fehlend = intern (SCRUM-415).
-    expect(isConfidential(undefined)).toBe(false);
-    expect(web.isConfidential(undefined)).toBe(false);
-    // Automatik-Flächen im Browser: fehlend gilt als bekannt-intern, Unbekanntes als vertraulich.
-    expect(web.isKnownNonConfidential(undefined)).toBe(true);
+  it("E3 · fehlende Einstufung schützt gespeicherte Objekte im Browser und am Server", () => {
+    // Nur eine ausdrückliche Einstufung als intern gibt gespeicherte Objekte frei.
+    expect(isConfidential(undefined)).toBe(true);
+    expect(web.isConfidential(undefined)).toBe(true);
+    // Für Beispiel-Chips und automatische Fragen gilt dieselbe Regel.
+    expect(web.isKnownNonConfidential(undefined)).toBe(false);
     expect(web.isKnownNonConfidential("geheim")).toBe(false);
     // Word-Markierung: nur fehlend oder `intern` ist nicht vertraulich, jeder andere Wert sperrt.
     expect(markierungVertraulich(undefined)).toBe(false);

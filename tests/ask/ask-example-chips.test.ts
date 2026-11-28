@@ -36,7 +36,7 @@ function ko(
 describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
   it("leitet Antwort-Chips NUR aus validierten KOs ab und hängt genau eine Lücken-Frage an", () => {
     const chips = buildAskExampleChips(
-      [ko("Ventil entlasten", "validiert"), ko("Offener Beitrag", "offen")],
+      [ko("Ventil entlasten", "validiert", "intern"), ko("Offener Beitrag", "offen", "intern")],
       () => 0,
     );
     expect(chips).toEqual([
@@ -52,7 +52,7 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
       [
         ko("Geheimrezeptur X", "validiert", "vertraulich"),
         ko("Kundenliste Y", "validiert", "streng_vertraulich"),
-        ko("Ventil entlasten", "validiert"),
+        ko("Ventil entlasten", "validiert", "intern"),
       ],
       () => 0,
     );
@@ -68,14 +68,14 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
     expect(chips.every((chip) => chip.kind === "example")).toBe(true);
   });
 
-  it("das FEHLENDE Feld ist die dokumentierte intern-Codierung des Servers (Chip-tauglich) — nur explizit „intern“ und fehlend gelten als eindeutig nicht-vertraulich", () => {
-    // Der Server materialisiert vertrauliche Stufen IMMER und „intern“ bewusst nie — fehlend ist
-    // damit KEINE unklare Stufe, sondern der dokumentierte intern-Fall (s. confidentialityOf).
+  it("nur explizit intern eingestufte Titel dürfen als Frage vorgeschlagen werden", () => {
     const chips = buildAskExampleChips(
       [ko("Ventil ohne Feld", "validiert"), ko("Pumpe explizit intern", "validiert", "intern")],
       () => 0,
     );
-    expect(chips.filter((chip) => chip.kind === "ko").length).toBe(2);
+    expect(chips.filter((chip) => chip.kind === "ko")).toEqual([
+      { kind: "ko", title: "Pumpe explizit intern" },
+    ]);
   });
 
   it("wählt höchstens ASK_CHIP_MAX_KOS validierte KOs (ohne Duplikate)", () => {
@@ -87,7 +87,7 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
       "Filter C wechseln",
       "Motor D warten",
       "Leitung E spuelen",
-    ].map((t) => ko(t, "validiert"));
+    ].map((t) => ko(t, "validiert", "intern"));
     const chips = buildAskExampleChips(many, () => 0);
     const koChips = chips.filter((c) => c.kind === "ko");
     expect(koChips.length).toBe(ASK_CHIP_MAX_KOS);
@@ -102,7 +102,7 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
   });
 
   it("ohne validierten Bestand: statische Beispiele NEUTRAL (keine Ergebnis-Behauptung)", () => {
-    const chips = buildAskExampleChips([ko("Nur ein offener Beitrag", "offen")], () => 0);
+    const chips = buildAskExampleChips([ko("Nur ein offener Beitrag", "offen", "intern")], () => 0);
     expect(chips.length).toBe(ASK_EXAMPLES.length);
     for (const chip of chips) {
       expect(chip.kind).toBe("example");
@@ -115,7 +115,13 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
   // AUFTRAG-mega38 BLOCK J3: der rohe Importtitel darf nie mehr der erste Vorschlag sein.
   it("ein roher Importtitel wird NIE zur Beispielfrage — auch nicht als einziger validierter", () => {
     const chips = buildAskExampleChips(
-      [ko("2 General requirements Based on HD Handbuch Vers Q1-2025 (partly)", "validiert")],
+      [
+        ko(
+          "2 General requirements Based on HD Handbuch Vers Q1-2025 (partly)",
+          "validiert",
+          "intern",
+        ),
+      ],
       () => 0,
     );
     // Kein satzfoermiger Titel uebrig → die festen, neutralen Beispiele.
@@ -128,7 +134,7 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
       "Pumpe B pruefen",
       "Filter C wechseln",
       "Motor D warten",
-    ].map((t) => ko(t, "validiert"));
+    ].map((t) => ko(t, "validiert", "intern"));
     const low = buildAskExampleChips(many, () => 0);
     const high = buildAskExampleChips(many, () => 0.99);
     expect(low[0]).not.toEqual(high[0]);

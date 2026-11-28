@@ -65,11 +65,8 @@ export function buildAskExampleChips(
   kos: readonly KnowledgeObject[],
   pick: () => number = Math.random,
 ): AskExampleChip[] {
-  // WP-POLISH-CLOSE (bens Punkt 1, Sichtbarkeits-/Egress-Kante): vertrauliche UND streng
-  // vertrauliche KOs erscheinen NIE als Chip — ihr Titel würde sichtbar UND per Chip-Klick als
-  // Frage in den Ask-/Modellpfad wandern. Fail-safe über isKnownNonConfidential: nur die
-  // eindeutig nicht-vertrauliche Stufe (explizit „intern" oder das fehlende Feld = dokumentierte
-  // intern-Codierung des Servers) ist Chip-tauglich; jeder unbekannte Wert ist ausgeschlossen.
+  // Der Chip übergibt den Titel als Frage an den Modellpfad. Dafür muss der Eintrag
+  // ausdrücklich als intern eingestuft sein.
   const validated = kos.filter(
     (k) =>
       k.status === "validiert" &&
