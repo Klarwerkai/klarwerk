@@ -25,6 +25,23 @@ jobs:
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
         run: node tools/pflicht-pr.mjs plan "$RELEASE_BASE" .local/run/ci-pflicht-plan
+      - if: steps.plan.outputs.verteilt == 'true'
+        run: npm ci --prefix apps/web
+      - name: Web-Bündel für die Testteile wie in tools/build erzeugen
+        if: steps.plan.outputs.verteilt == 'true'
+        working-directory: apps/web
+        timeout-minutes: 4
+        env:
+          NODE_ENV: production
+        run: npx vite build
+      - uses: actions/upload-artifact@v4
+        if: steps.plan.outputs.verteilt == 'true'
+        with:
+          name: pflicht-web-dist-${{ github.sha }}
+          path: apps/web/dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          overwrite: true
       - uses: actions/upload-artifact@v4
         with:
           name: pflicht-auswahl-${{ github.sha }}
@@ -51,6 +68,11 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm ci --prefix apps/web
+      - uses: actions/download-artifact@v4
+        if: matrix.teil != 'vorstufen'
+        with:
+          name: pflicht-web-dist-${{ github.sha }}
+          path: apps/web/dist/
       - name: Pflichtteil mit denselben Stufen- und Prozessgrenzen
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha }}

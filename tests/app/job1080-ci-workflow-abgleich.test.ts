@@ -83,6 +83,8 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
     befehl: 'node tools/pflicht-pr.mjs plan "$RELEASE_BASE" .local/run/ci-pflicht-plan',
     lage: "AUSSERHALB",
   },
+  { job: "pflicht-plan", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  { job: "pflicht-plan", befehl: "npx vite build", lage: "AUSSERHALB" },
   { job: "pflicht-teil", befehl: "npm ci", lage: "AUSSERHALB" },
   { job: "pflicht-teil", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
   {
@@ -216,6 +218,23 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
       "if: success() && (github.event_name != 'pull_request' || needs.pflicht-plan.outputs.verteilt == 'false')",
     );
     expect(ende).toContain("name: pflicht-${{ github.sha }}");
+  });
+
+  it("übergibt das Produktionsbündel desselben Commits vor dem Vitest-Aufruf an jeden Testteil", () => {
+    const plan = jobBlock("pflicht-plan");
+    const teile = jobBlock("pflicht-teil");
+    const name = "pflicht-web-dist-${{ github.sha }}";
+    expect(plan).toMatch(
+      /if: steps\.plan\.outputs\.verteilt == 'true'\s+working-directory: apps\/web\s+timeout-minutes: 4\s+env:\s+NODE_ENV: production\s+run: npx vite build/,
+    );
+    expect(plan).toContain(
+      `name: ${name}\n          path: apps/web/dist/\n          include-hidden-files: true\n          if-no-files-found: error`,
+    );
+    expect(plan.indexOf("run: npx vite build")).toBeLessThan(plan.indexOf(name));
+    expect(teile).toContain(
+      `- uses: actions/download-artifact@v4\n        if: matrix.teil != 'vorstufen'\n        with:\n          name: ${name}\n          path: apps/web/dist/`,
+    );
+    expect(teile.indexOf(name)).toBeLessThan(teile.indexOf("run: node tools/pflicht-pr.mjs teil"));
   });
 
   it("belegt den echten launchd-Weg auf macOS und die eigene Docker-Installationsstrecke", () => {
