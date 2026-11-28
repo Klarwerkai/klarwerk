@@ -206,9 +206,17 @@ const FREMDE: readonly Fremdrelation[] = [
   // (:274). Beide stehen NICHT in den Zielpfaden von JOB 3770 (§4 ist abschliessend) und beide
   // haben ihren eigenen Zweck; hier wurde eine Doppelung INNERHALB von `Capture.tsx` aufgeloest,
   // nicht eine Seite einer fremden Paarung verbogen.
+  // Gesamtcheck R-1329 (Nacharbeit 66) — DAS GANZE REGISTER IST NACHGEFUEHRT, und zwar aus der
+  // Messung des Laufs zu 637e45ec (F1, „GEMESSEN (44 Bloecke ueber 32 dritte Dateien)"), in deren
+  // Reihenfolge. Jeder geaenderte oder neue Eintrag sagt, was davon GELESEN und was nur GEMESSEN ist.
+  //
+  // Hier: 33 und eine 29 sind weg. Die verbliebene 29 (`:398`, Vertraulichkeitsstufen) teilt die
+  // Datei jetzt mit `MehrAbschnitte:2538`, nicht mehr mit `Capture` — dort sperrt die Erfassung
+  // seit R-2180 Stufen unter der Negativwissen-Mindeststufe (`Capture.tsx:5873`, gelesen). Dass
+  // auch die 33 an dieser Auswahl hing, ist aus der Messung abgeleitet, nicht gelesen.
   {
     dritt: "apps/web/src/components/BodyExtractPanel.tsx",
-    groessen: [199, 36, 33, 29, 29, 29, 28],
+    groessen: [199, 36, 29, 29, 28],
     was:
       "GELESEN: die Punkteliste nach dem Auslesen — dieselbe `<ul>` mit Auswahlkaestchen, " +
       "denselben `CAPTURE_FILE_TEXT`-Schluesseln und demselben `togglePoint`; nur der Setter " +
@@ -257,13 +265,44 @@ const FREMDE: readonly Fremdrelation[] = [
     // ihre GLEICHHEIT ueber die drei Adressen ist unveraendert der Zweck des Eintrags, und sie ist
     // jetzt sogar erzwungen: der Wert ist im Fabriktyp PFLICHT, eine Adresse kann ihn nicht mehr
     // vergessen. Am eigenen Lauf nachgemessen (42, `Capture.tsx:6306 · CaptureFrontDoor.tsx:22`).
-    groessen: [42],
+    // Gesamtcheck R-1329 (Nacharbeit 66): 42 → 48 (`Capture.tsx:9061 · CaptureFrontDoor.tsx:22`).
+    // GELESEN: die Fabrik reicht einen vierten Wert herein (`thema`) — auf allen drei Adressen,
+    // `KnowledgeIntake.tsx` waechst entsprechend (unten). Die Gleichheit bleibt der Zweck.
+    groessen: [48],
     was:
       "GELESEN: die zwei duennen Routen-Huellen, die DASSELBE Blatt rendern — `<Blatt " +
-      "arbeitsraum={({ modus, onEntwurfInsBlatt, onZurueckInsBlatt }) => <CaptureArbeitsraum … />} />`. " +
-      "Die alte, sieben Bloecke grosse Parallelitaet zweier Erfassungsflaechen " +
-      "(Vertraulichkeit/Egress, Bildbeschreibungs-Bitte) ist mit JOB 3062 aufgeloest; uebrig ist " +
-      "die absichtliche Gleichheit der beiden Adressen.",
+      "arbeitsraum={({ modus, thema, onEntwurfInsBlatt, onZurueckInsBlatt }) => " +
+      "<CaptureArbeitsraum … />} />`. Die alte, sieben Bloecke grosse Parallelitaet zweier " +
+      "Erfassungsflaechen (Vertraulichkeit/Egress, Bildbeschreibungs-Bitte) ist mit JOB 3062 " +
+      "aufgeloest; uebrig ist die absichtliche Gleichheit der beiden Adressen.",
+  },
+  {
+    // Gesamtcheck R-1329 (Nacharbeit 66): NEU, gemessen (`BibliothekLesen.tsx:3874 ·
+    // KnowledgeDetail.tsx:150`) und gelesen. Seit JOB 3063 ist `KnowledgeDetail.tsx` eine dritte
+    // Datei; beide Stellen setzen DENSELBEN Baustein mit denselben Griffen.
+    dritt: "apps/web/src/pages/KnowledgeDetail.tsx",
+    groessen: [42],
+    was:
+      "GELESEN: der Hinweis auf die Leseuebersetzung (`<LesevarianteHinweis … onWiderspruch={…} />`, " +
+      "JOB 3362) auf `/wissen/:id` und in der Lesespalte der Bibliothek — derselbe Baustein, in " +
+      "keiner zweiten Fassung; gedoppelt ist allein sein Aufruf mit Umschalter und Widerspruch.",
+  },
+  {
+    // Gesamtcheck R-1329 (Nacharbeit 66): [27, 27, 25, 25] → [37, 33, 27], gemessen und gelesen.
+    // Die Bitte ist seit Lauf 5 (R3-1) um `koerper` gewachsen — in `Capture.tsx` UND hier, nicht in
+    // der Lesefläche (die hat einen Koerper). Damit teilt das Blatt sie nur noch mit `Capture`:
+    // 33 = der Zustand (`Capture.tsx:808 · Blatt.tsx:777`), 27 = ihr Ausloeser
+    // (`Capture.tsx:817 · Blatt.tsx:3787`). Neu ist die 37: `vorlageWaehlen`, der Merker fuer den
+    // Vorlagenbezug (`Capture.tsx:842 · Blatt.tsx:510`, produkt:20261007:templates-default).
+    // Die lange Begruendung von JOB 3062 weiter unten gilt fuer die Bitte unveraendert.
+    dritt: "apps/web/src/components/erfassen/Blatt.tsx",
+    groessen: [37, 33, 27],
+    was:
+      "GELESEN: der Merker des Vorlagenbezugs (`vorlageWaehlen`, `useCallback`) sowie der Zustand " +
+      "der Bildbeschreibungs-Bitte (`captionRequest` mit `koerper`) und ihr Ausloeser aus der " +
+      "Galerie (`nonce: (prev?.nonce ?? 0) + 1`) — geteilt mit `Capture.tsx`. DREI Flaechen " +
+      "montieren denselben `RichTextEditor` und muessen ihm dieselbe Bitte reichen; der `nonce` " +
+      "ist die vereinbarte Bauart dafuer (JOB 2084 I50-3). Eine einseitige Aenderung faellt hier auf.",
   },
   {
     dritt: "apps/web/src/lib/captureFromFile.ts",
@@ -276,6 +315,163 @@ const FREMDE: readonly Fremdrelation[] = [
       "Punkteliste) mit `buildFileQueue` des Auslese-Helfers teilt — derselbe, der auch in " +
       "`BodyExtractPanel` steht.",
   },
+  // `Validation.tsx` steht seit Gesamtcheck R-1329 (Nacharbeit 66) weiter unten — ihr groesster
+  // Block ist jetzt 29 (Begruendung dort).
+  {
+    dritt: "apps/web/src/app/NavGuardContext.tsx",
+    groessen: [33],
+    was: "GEMESSEN: eine Aufzaehlung (`list-disc`) mit 33 Knoten, geteilt mit `Capture:5953`.",
+  },
+  {
+    // JOB 3282 (EDITOR-R26): NEU, und aus demselben Grund gewachsen wie `CaptureFrontDoor.tsx`
+    // weiter oben. Die DRITTE Adresse auf dasselbe Blatt (`/erfassen/neu`) reicht dieselbe Fabrik
+    // herein; mit dem dritten Wert (`onZurueckInsBlatt`) ist ihre Pfeilfunktion gross genug, dass
+    // die Messung sie sieht. Sie war vorher nicht kleiner GEDACHT, nur kleiner GESCHRIEBEN.
+    //
+    // NICHT AUFGELOEST, und das ist dieselbe Entscheidung wie dort: Die drei Adressen MUESSEN sich
+    // hier gleichen — liefe eine anders, zeigte sie eine andere Flaeche. Ein gemeinsamer Helfer
+    // waere eine vierte Stelle, die dasselbe sagt. Der Eintrag steht dafuer, dass eine EINSEITIGE
+    // Aenderung auffaellt.
+    //
+    // Gesamtcheck R-1329 (Nacharbeit 66): 26 → 32 (`Capture.tsx:9064 · KnowledgeIntake.tsx:34`),
+    // derselbe vierte Wert `thema` wie bei `CaptureFrontDoor.tsx`; deshalb jetzt hier einsortiert.
+    dritt: "apps/web/src/pages/KnowledgeIntake.tsx",
+    groessen: [32],
+    was:
+      "GEMESSEN: die Arbeitsraum-Fabrik der dritten Adresse `/erfassen/neu` (32 Knoten, geteilt " +
+      "mit `Capture.tsx:9064`) — dieselbe Pfeilfunktion, die auch `CaptureFrontDoor.tsx` fuehrt.",
+  },
+  // ==============================================================================================
+  // Gesamtcheck R-1329 (Nacharbeit 66) — DIE 29-KNOTEN-GRUPPE: EINE BAUFORM, KEIN GEPFLEGTER BLOCK.
+  // ==============================================================================================
+  //
+  // GELESEN an `MehrAbschnitte.tsx:2574` und `SpaceVerwaltung.tsx:371`: die Optionen einer
+  // Auswahlliste aus einer Liste von Datensaetzen,
+  //
+  //     {liste.map((x) => (<option key={x.id} value={x.id}>{x.name}</option>))}
+  //
+  // Der Fingerabdruck sieht keine Namen, also ist jede solche Liste derselbe Block. Gemessen sind
+  // 14 dritte Dateien gegen `MehrAbschnitte:2574` (die Auswahl der Uebergabe an eine Person) — es
+  // gibt dort nichts nachzuziehen und nichts zusammenzulegen: es ist die uebliche Schreibweise
+  // einer Optionsliste, und jede Datei fuellt sie aus ihrer eigenen Liste. Der Eintrag steht, weil
+  // die Regel dieses Waechters lautet: was dazukommt, wird benannt, bevor es lebt.
+  //
+  // Zwei Ausnahmen der Gruppe sind EIGENE Bloecke, beide gelesen:
+  //   · `Fassungsvergleich.tsx:131` teilt mit `MehrAbschnitte:2871` den `onChange` der
+  //     Fassungswahl (`setzen(e.target.value === "" ? null : Number(e.target.value))`) — dieselbe
+  //     Zwei-Fassungen-Auswahl im Editor und in der Lesespalte.
+  //   · `AblaufUebernahme.tsx` und `Validation.tsx` tragen die Wissensarten-Liste (`ktype.*`,
+  //     gegen `BibliothekLesen:3451` UND `Capture:7623`) — das Dreifach unten.
+  // ==============================================================================================
+  {
+    dritt: "apps/web/src/components/klara-vorschau/Normereignisse.tsx",
+    groessen: [30],
+    was: "Die kontrollierte Checkbox bestätigt die Kenntnisnahme. Die Bibliothek nutzt dieselbe Eingabeform.",
+  },
+  {
+    dritt: "apps/web/src/components/bibliothek/Fassungsvergleich.tsx",
+    groessen: [29],
+    was:
+      "GELESEN: der `onChange` der Fassungswahl (leer → null, sonst Zahl), geteilt mit der " +
+      "Fassungsauswahl der Lesespalte (`MehrAbschnitte:2871`).",
+  },
+  {
+    dritt: "apps/web/src/components/bibliothek/Pruefablauf.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/klara-vorschau/KlaraWissen.tsx",
+    groessen: [29, 29, 29],
+    was: "Die Wissensarten werden wie in Bibliothek und Erfassung übersetzt. Für Vorlagen kommt die Auswahlliste mit Kennung und Namen hinzu.",
+  },
+  {
+    dritt: "apps/web/src/components/SpaceFreigaberegel.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/SpaceVerwaltung.tsx",
+    groessen: [29],
+    was: "GELESEN: die Optionsliste der aktiven Spaces (`aktive.map`), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/teamassistenten/TeamassistentenEditor.tsx",
+    groessen: [29],
+    was: "Der Editor zeigt die berechtigten Teams als Optionen mit Kennung und Namen.",
+  },
+  {
+    dritt: "apps/web/src/components/teamworkflows/WorkflowEditor.tsx",
+    groessen: [29],
+    was: "Der Workfloweditor bildet die Auswahl der Teams mit Kennung und Namen ab.",
+  },
+  {
+    dritt: "apps/web/src/components/trust/ExterneFreigabeDialog.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/trust/WeisungDialog.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/UebergabeAblauf.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/VerantwortungUebergabe.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/VorlagenWahl.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/Wissenskennzahlen.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/components/Wissensuebergabe.tsx",
+    groessen: [29, 26],
+    was: "Die Übergabe teilt die Optionsliste sowie den Fehler-Toast mit der Bibliothek.",
+  },
+  {
+    dritt: "apps/web/src/pages/AblaufUebernahme.tsx",
+    groessen: [29, 29, 29],
+    was:
+      "GEMESSEN: die Wissensarten-Liste (`:597`, gegen `BibliothekLesen:3451` und `Capture:7623` — " +
+      "das Dreifach unten) und die Vertraulichkeitsstufen (`:624`, gegen `MehrAbschnitte:2538`).",
+  },
+  {
+    dritt: "apps/web/src/pages/AdminProduktbudget.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/pages/AdminTeams.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/pages/Chat.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
+  {
+    dritt: "apps/web/src/pages/EigenerKalender.tsx",
+    groessen: [29],
+    was: "Die auswählbaren Teams im Kalender stehen als Optionen mit Kennung und Namen.",
+  },
+  {
+    dritt: "apps/web/src/pages/Spaces.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
+  },
   // Die Datei ist mit dem Wegfall von `vhelp` (42 Knoten) in der Reihenfolge nach hinten gerutscht:
   // die Messung sortiert nach dem groessten Block je Datei, und der ist hier jetzt 35 — seit dem
   // Nachzug von JOB 3062 daher auch hinter `CaptureFrontDoor.tsx` (36).
@@ -285,19 +481,26 @@ const FREMDE: readonly Fremdrelation[] = [
   // Menge zusammengefuehrt: der Block und die Abbrechen-Flaeche `val.feedback.cancel` teilt sich
   // Validation.tsx zusaetzlich mit der neuen Lesefläche `BibliothekLesen.tsx` (35, 35, 29), dazu
   // die Auswahlliste `ktype.` (29) und ein `FirstStatement` (25) — am eigenen Lauf gemessen.
+  //
+  // Gesamtcheck R-1329 (Nacharbeit 66): [35, 35, 29, 29, 25] → [29, 29, 29]. GELESEN: das
+  // Abbrechen setzt auf dem Pruefboard seit der Widerspruchserfassung zusaetzlich deren Formular
+  // zurueck (`widerspruchZuruecksetzen()`, `Validation.tsx:3000`) — die Lesefläche hat diese
+  // Erfassung nicht, also ist die 35 dort kein Zwilling mehr. Neu ist die Konfliktarten-Liste
+  // dieser Erfassung (`:2147`, gegen `MehrAbschnitte:3314`, `con.type.*`). Die 25 ist gemessen
+  // weggefallen, ihre Ursache nicht gelesen.
   {
     dritt: "apps/web/src/pages/Validation.tsx",
-    groessen: [35, 35, 29, 29, 25],
+    groessen: [29, 29, 29],
     was:
-      "GEMESSEN: ein Block und die Abbrechen-Flaeche `val.feedback.cancel` (je 35 Knoten, geteilt " +
-      "mit der Lesefläche `BibliothekLesen.tsx`), zwei Auswahllisten (`ktype.`, 29 Knoten) sowie " +
-      "ein weiterer geteilter Block (25 Knoten). Der Helfer `vhelp` steht hier seit JOB 3061 H2 " +
-      "NICHT mehr — die ?-Hilfen wohnen im „?“-Menue der Flaeche.",
+      "GEMESSEN: die Wissensarten-Liste (`:1438`, gegen `BibliothekLesen:3451` und `Capture:7623`) " +
+      "und die Konfliktarten-Liste der Widerspruchserfassung (`:2147`, gegen `MehrAbschnitte:3314`). " +
+      "Der Helfer `vhelp` steht hier seit JOB 3061 H2 NICHT mehr — die ?-Hilfen wohnen im " +
+      "„?“-Menue der Flaeche.",
   },
   {
-    dritt: "apps/web/src/app/NavGuardContext.tsx",
-    groessen: [33],
-    was: "GEMESSEN: eine Aufzaehlung (`list-disc`) mit 33 Knoten, geteilt mit `Capture:5953`.",
+    dritt: "apps/web/src/pages/Vorlagen.tsx",
+    groessen: [29],
+    was: "GEMESSEN: eine Optionsliste aus Datensaetzen (Bauform oben), gegen `MehrAbschnitte:2574`.",
   },
   {
     dritt: "apps/web/src/components/KnowledgeInputStudio.tsx",
@@ -326,21 +529,11 @@ const FREMDE: readonly Fremdrelation[] = [
   // Mit dem Prüfstand-Commit der Runde 5 ist die Datei im Werk, und dieselben zwei Bloecke, die
   // vorher schon dastanden, werden gemessen. Am Blatt hat sich dafuer NICHTS geaendert: beide
   // Bloecke sind zeichengleich mit dem eingebauten Stand.
+  //
+  // Gesamtcheck R-1329 (Nacharbeit 66): der Eintrag `erfassen/Blatt.tsx` steht jetzt weiter oben
+  // ([37, 33, 27], Begruendung dort). Die Entscheidung von JOB 3062 („nicht aufloesen") gilt fuer
+  // die Bitte unveraendert: der gemeinsame Ort waere ein Zustandshaken neben dem Editor.
   // ==============================================================================================
-  {
-    dritt: "apps/web/src/components/erfassen/Blatt.tsx",
-    groessen: [27, 27, 25, 25],
-    was:
-      "GELESEN: der Zustand der Bildbeschreibungs-Bitte (`captionRequest`: imageId, src, index, " +
-      "nonce) und ihr Ausloeser aus der Galerie (`nonce: (prev?.nonce ?? 0) + 1`) — je einmal " +
-      "gegen `Capture.tsx` und einmal gegen `KnowledgeDetail.tsx`, daher jede Groesse doppelt. " +
-      "DREI Flaechen montieren denselben `RichTextEditor` und muessen ihm dieselbe Bitte reichen; " +
-      "der `nonce` ist die vereinbarte Bauart dafuer (JOB 2084 I50-3: der Effekt im Editor haengt " +
-      "an der Objektidentitaet der Bitte). Die Doppelung wird NICHT aufgeloest: der gemeinsame " +
-      "Ort waere ein Zustandshaken neben dem Editor — ein Umbau von `RichTextEditor.tsx`, und der " +
-      "liegt ausserhalb der Zielpfade von JOB 3062. Eine einseitige Aenderung faellt hier auf, und " +
-      "genau dafuer steht der Eintrag.",
-  },
   // ==============================================================================================
   // JOB 4233 (P2-FASSUNG-GESAMTANWEISUNG): EINE NEUE DRITTE DATEI MIT EINEM 27-KNOTEN-BLOCK.
   // ==============================================================================================
@@ -373,13 +566,6 @@ const FREMDE: readonly Fremdrelation[] = [
       "(`BibliothekLesen.tsx:575`). Die D44-Regeln selbst sind NICHT gedoppelt — beide Seiten " +
       "importieren sie aus `components/d44Struktur.ts`.",
   },
-  {
-    dritt: "apps/web/src/pages/ExternalKnowledge.tsx",
-    groessen: [27],
-    was:
-      "GEMESSEN: ein selbstschliessendes Element mit 27 Knoten um `ext.placeholder`, geteilt " +
-      "mit dem Abschnitt „Externes Wissen“ der Lesefläche (`MehrAbschnitte`).",
-  },
   // JOB 3065 (H6): zwei neue dritte Dateien, beide mit DEMSELBEN 26-Knoten-Block, den Mobile schon
   // trägt — der Fehler-Toast einer Mutation:
   //     const fail = (e: unknown): void =>
@@ -389,6 +575,15 @@ const FREMDE: readonly Fremdrelation[] = [
   // gemeinsamer Helfer müsste `useToast` und `useTranslation` selbst rufen und läge damit als
   // fünfter Haken quer zu den Modulgrenzen — für drei Zeilen, deren Gleichheit genau hier bewacht
   // wird. Läuft eine Seite aus (anderer Ton, anderer Rückfalltext), fällt ihre Größe aus der Liste.
+  {
+    // Gesamtcheck R-1329 (Nacharbeit 66): NEU, gemessen (`MehrAbschnitte:540 ·
+    // bibliothek/Verantwortung.tsx:59`) — derselbe Block wie die zwei Admin-Dateien darunter.
+    dritt: "apps/web/src/components/bibliothek/Verantwortung.tsx",
+    groessen: [26],
+    was:
+      "GEMESSEN: derselbe Fehler-Toast einer Mutation (26 Knoten), geteilt mit dem Helfer " +
+      "`fehlerToast` der Lesefläche (`MehrAbschnitte:540`) — wie `AdminDatenDetails` und `Mobile`.",
+  },
   {
     dritt: "apps/web/src/pages/AdminDatenDetails.tsx",
     groessen: [26],
@@ -402,22 +597,6 @@ const FREMDE: readonly Fremdrelation[] = [
     was:
       "GEMESSEN: derselbe Fehler-Toast `fail` (26 Knoten) für Freigeben, Rolle ändern, Passwort " +
       "zurücksetzen und Löschen — Wort für Wort der Block aus `AdminDatenDetails` und `Mobile`.",
-  },
-  {
-    // JOB 3282 (EDITOR-R26): NEU, und aus demselben Grund gewachsen wie `CaptureFrontDoor.tsx`
-    // weiter oben. Die DRITTE Adresse auf dasselbe Blatt (`/erfassen/neu`) reicht dieselbe Fabrik
-    // herein; mit dem dritten Wert (`onZurueckInsBlatt`) ist ihre Pfeilfunktion gross genug, dass
-    // die Messung sie sieht. Sie war vorher nicht kleiner GEDACHT, nur kleiner GESCHRIEBEN.
-    //
-    // NICHT AUFGELOEST, und das ist dieselbe Entscheidung wie dort: Die drei Adressen MUESSEN sich
-    // hier gleichen — liefe eine anders, zeigte sie eine andere Flaeche. Ein gemeinsamer Helfer
-    // waere eine vierte Stelle, die dasselbe sagt. Der Eintrag steht dafuer, dass eine EINSEITIGE
-    // Aenderung auffaellt.
-    dritt: "apps/web/src/pages/KnowledgeIntake.tsx",
-    groessen: [26],
-    was:
-      "GEMESSEN: die Arbeitsraum-Fabrik der dritten Adresse `/erfassen/neu` (26 Knoten, geteilt " +
-      "mit `Capture.tsx:6309`) — dieselbe Pfeilfunktion, die auch `CaptureFrontDoor.tsx` fuehrt.",
   },
   {
     dritt: "apps/web/src/pages/Mobile.tsx",
@@ -528,30 +707,27 @@ interface Dreifach {
 // zusammenlegen") ist damit fuer diese zwei NICHT gegenstandslos geworden; sie gilt unveraendert
 // weiter, und der Grund steht bei ihnen.
 // ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// Gesamtcheck R-1329 (Nacharbeit 66): VON FUENF AUF ZWEI. Abgeleitet aus der Messung zu 637e45ec
+// (G1 dort: fuenf Paare; F1 hier: welche dritte Datei welchen Block traegt), nicht als Lauf dieses
+// Falls gemessen — D1 brach an seiner alten Kalibrierung ab, bevor er die Liste druckte.
+//   · Vertraulichkeitsstufen, `captionRequest` und ihr Ausloeser sind KEINE Paare der bewachten
+//     Seiten mehr (Gruende im Register `PAARE`: R-2180 in der Erfassung, `koerper` aus Lauf 5).
+//     Ihre dritten Dateien tragen sie weiter — `BodyExtractPanel` gegen `MehrAbschnitte:2538`,
+//     `Blatt` gegen `Capture` —, nur nicht mehr als Dreifach.
+//   · Die Wissensarten-Liste hat eine dritte Datei MEHR: `AblaufUebernahme.tsx:597`.
+// Die Entscheidung aus JOB 2498 (nicht zusammenlegen) bleibt fuer beide Eintraege unveraendert.
+// ------------------------------------------------------------------------------------------------
 const DREIFACH: readonly Dreifach[] = [
   {
     knoten: 29,
     art: "ArrowFunction",
-    dritte: ["apps/web/src/components/BodyExtractPanel.tsx"],
-    was: "Die Auswahlliste der Vertraulichkeitsstufen (`CONFIDENTIALITY_LEVELS` -> `conf.level.*`).",
-  },
-  {
-    knoten: 29,
-    art: "ArrowFunction",
-    dritte: ["apps/web/src/pages/Validation.tsx"],
+    dritte: [
+      "apps/web/src/components/klara-vorschau/KlaraWissen.tsx",
+      "apps/web/src/pages/AblaufUebernahme.tsx",
+      "apps/web/src/pages/Validation.tsx",
+    ],
     was: "Die Auswahlliste der Wissensarten (`KNOWLEDGE_TYPES` -> `ktype.*`).",
-  },
-  {
-    knoten: 27,
-    art: "FirstStatement",
-    dritte: ["apps/web/src/components/erfassen/Blatt.tsx"],
-    was: "Der Zustand der Bildbeschreibungs-Bitte (`captionRequest`: imageId, src, index, nonce).",
-  },
-  {
-    knoten: 25,
-    art: "ArrowFunction",
-    dritte: ["apps/web/src/components/erfassen/Blatt.tsx"],
-    was: "Der Ausloeser derselben Bitte aus der Galerie (`nonce: (prev?.nonce ?? 0) + 1`).",
   },
   {
     knoten: 25,
@@ -840,10 +1016,15 @@ describe("JOB 2476 · W1 · gedoppelte Bloecke mit einer DRITTEN Datei", () => {
     const links = bewacht.slice(0, -1);
 
     // KALIBRIERUNG: ohne Paare zwischen den bewachten Seiten waere die Liste unten trivial leer.
+    // Gesamtcheck R-1329 (Nacharbeit 66): hier stand „mehr als 5". Der Lauf zu 637e45ec mass GENAU
+    // 5 — dieselben fuenf Paare, die `kd-capture-doppelungen.test.ts` (G1, Register `PAARE`) jetzt
+    // fuehrt; die drei weggefallenen sind dort einzeln begruendet. Gepinnt wird deshalb die Zahl
+    // selbst: strenger als die alte Schwelle, und ein Paar mehr oder weniger faellt hier ebenso auf.
     const paare = links.flatMap((a) => gleichPaare(a, capture).map((p) => ({ a, p })));
-    expect(paare.length, "Zwischen den bewachten Seiten wurde kein Paar gefunden").toBeGreaterThan(
-      5,
-    );
+    expect(
+      paare.length,
+      "Die Paare zwischen den bewachten Seiten sind nicht die fuenf aus PAARE",
+    ).toBe(5);
 
     const gemessen = paare
       .filter(({ a, p }) => inDritten.has(a.inh.get(p.links) as string))

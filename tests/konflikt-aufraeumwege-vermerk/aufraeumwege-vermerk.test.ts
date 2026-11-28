@@ -531,76 +531,36 @@ describe("JOB 3899 · closeOpenForKo mit gemischtem Bestand (repo.ts:104-115)", 
 });
 
 // ================================================================================================
-// DER EINZIGE WEG, AUF DEM `decidedBy: null` ÜBERHAUPT ETWAS LÖSCHT — UND EIN GEMESSENER WIDERSPRUCH
-// ================================================================================================
-//
-// `escalate` (`service.ts:167`) prüft über `require` (`:168`), NICHT über `requireOpen`. Ein bereits
-// menschlich entschiedener Wahrheitskonflikt lässt sich also erneut eskalieren. Danach trägt die
-// Akte einen Status ≠ „geloest" UND einen menschlichen Entscheider samt Entscheidungstext — der
-// einzige erreichbare Zustand, in dem `decidedBy: null` in `service.ts:221`/`:483` wirklich etwas
-// entfernt. Auf jedem anderen Weg ist diese Zuweisung ein Nullgriff, weil `decidedBy` nur zusammen
-// mit dem Terminalzustand gesetzt wird.
-//
-// KEINE REPARATUR: BEN hat „keine Korrekturpflicht" geschrieben; der Befund steht im REST-Abschnitt
-// der Rückgabe. Hier wird er nur festgenagelt.
-describe("JOB 3899 · der wieder eskalierte Befund — dort löscht `decidedBy: null` wirklich", () => {
-  async function wiederEskaliert(svc: ConflictService): Promise<Conflict> {
-    const c = await befundIm(svc, "geloest");
-    await svc.escalate(c.id, MENSCH);
-    return c;
+// KO14: Ein menschlich abgeschlossener Befund hat einen terminalen Zustand.
+describe("Wiedereskalation und Aufräumen nach einer menschlichen Entscheidung", () => {
+  async function abgeschlossen(svc: ConflictService): Promise<Conflict> {
+    const ziel = await befundIm(svc, "geloest");
+    await expect(svc.escalate(ziel.id, MENSCH)).rejects.toMatchObject({ code: "ALREADY_RESOLVED" });
+    return ziel;
   }
 
-  const NACH_WIEDERESKALATION = {
-    status: "eskaliert",
-    resolutionReason: "decided",
-    decidedBy: MENSCH,
-    decision: ENTSCHEIDUNG_TEXT,
-    secondOpinion: ZWEITMEINUNG_TEXT,
-  };
-
-  it("Weg 2 (onKoRevised) nullt den menschlichen Entscheider und dreht den Grund auf superseded", async () => {
+  it("eine spätere Revision wahrt den Beschluss", async () => {
     const { repo, svc } = aufbau(false);
-    const ziel = await wiederEskaliert(svc);
-    expect(vermerk(await repo.findById(ziel.id))).toStrictEqual(NACH_WIEDERESKALATION);
-
-    expect(await svc.onKoRevised(KO_B, 2, "system")).toBe(1);
-
-    expect(vermerk(await repo.findById(ziel.id))).toStrictEqual({
-      status: "geloest",
-      resolutionReason: "superseded", // war „decided" — der menschliche Grund ist weg
-      decidedBy: null, // war „controller-berger" — der Entscheider ist weg
-      decision: ENTSCHEIDUNG_TEXT, // der Entscheidungstext bleibt stehen
-      secondOpinion: ZWEITMEINUNG_TEXT, // die Zweitmeinung bleibt stehen
-    });
+    const ziel = await abgeschlossen(svc);
+    expect(await svc.onKoRevised(KO_B, 2, "system")).toBe(0);
+    expect(vermerk(await repo.findById(ziel.id))).toStrictEqual(AUSGANG.geloest);
   });
 
-  it("Weg 3 (onKoRemoved) tut dasselbe mit dem Grund participant_deleted", async () => {
+  it("das Entfernen eines Beteiligten wahrt den Beschluss", async () => {
     const { repo, svc } = aufbau(false);
-    const ziel = await wiederEskaliert(svc);
-    expect(vermerk(await repo.findById(ziel.id))).toStrictEqual(NACH_WIEDERESKALATION);
-
-    expect(await svc.onKoRemoved(KO_B, "system-loeschung")).toBe(1);
-
-    expect(vermerk(await repo.findById(ziel.id))).toStrictEqual({
-      status: "geloest",
-      resolutionReason: "participant_deleted",
-      decidedBy: null,
-      decision: ENTSCHEIDUNG_TEXT,
-      secondOpinion: ZWEITMEINUNG_TEXT,
-    });
+    const ziel = await abgeschlossen(svc);
+    expect(await svc.onKoRemoved(KO_B, "system-loeschung")).toBe(0);
+    expect(vermerk(await repo.findById(ziel.id))).toStrictEqual(AUSGANG.geloest);
   });
 
-  it("Weg 1 (Lese-GC) verliert auch hier das CAS und lässt alle fünf Felder stehen", async () => {
+  it("der Lese-GC überspringt den endgültig entschiedenen Befund", async () => {
     const { repo, audit, svc, versionen } = aufbau(true);
-    const ziel = await wiederEskaliert(svc);
+    const ziel = await abgeschlossen(svc);
     versionen.set(KO_B, 2);
-
     expect(await svc.unresolved()).toHaveLength(0);
     await flushGc();
-    await flushGc();
-
-    expect(repo.casRufe).toEqual([{ id: ziel.id, gewonnen: false }]);
-    expect(vermerk(await repo.findById(ziel.id))).toStrictEqual(NACH_WIEDERESKALATION);
+    expect(repo.casRufe).toEqual([]);
+    expect(vermerk(await repo.findById(ziel.id))).toStrictEqual(AUSGANG.geloest);
     expect(await audit.list({ action: "conflict.superseded" })).toEqual([]);
   });
 });
