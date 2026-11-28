@@ -23,11 +23,11 @@
 // Doppelpruefung. Die Zahl 1458 steht bewusst NIRGENDS als Erwartung: gemessen wird gegen den
 // eigenen Stand, damit neue Testdateien anderer Jobs den Test nicht faelschlich rot machen.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { WURZEL, ermittleBrowserbefund, sammleTestdateien } from "./browser-gruppe";
+import { WURZEL, ermittleBrowserbefund, sammleTestdateien, spezifizierer } from "./browser-gruppe";
 
 const arbeitsordner = mkdtempSync(join(tmpdir(), "klarwerk-tor-inventar-"));
 afterAll(() => {
@@ -246,6 +246,28 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
 });
 
 describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in der Importhuelle", () => {
+  it("erkennt direkte Browser-Laufzeitimporte auch neben reinen Typimporten", () => {
+    const quelle = join(arbeitsordner, "importarten.ts");
+    writeFileSync(
+      quelle,
+      [
+        'import type { Page } from "playwright-core";',
+        'export type { Browser } from "playwright";',
+        'import type { Reporter } from "@playwright/test/reporter";',
+        'import { chromium, type Locator } from "playwright";',
+        'import "playwright-core";',
+        'export { test } from "@playwright/test";',
+        'const { webkit } = require("playwright");',
+      ].join("\n"),
+    );
+    expect(spezifizierer(quelle)).toEqual([
+      "playwright",
+      "playwright-core",
+      "@playwright/test",
+      "playwright",
+    ]);
+  });
+
   it("B1 · der Browser-Aufruf faehrt exakt die berechneten Chromium-Tests", () => {
     expect(holeBrowser()).toEqual([...holeBefund().browserTests].sort());
   });

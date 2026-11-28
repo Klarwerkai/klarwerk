@@ -200,13 +200,12 @@ export function spezifizierer(datei: string): string[] {
       knoten.moduleSpecifier !== undefined &&
       ts.isStringLiteralLike(knoten.moduleSpecifier)
     ) {
-      // Die JSON-Berichtstypen starten keinen Browser. Ein Vitest, der nur den Bericht eines
-      // eigenen Smoke-Torlaufs liest, muss dessen Kindprozess den Browserplatz nehmen lassen.
-      const nurBerichtstypen =
-        ts.isImportDeclaration(knoten) &&
-        knoten.importClause?.isTypeOnly &&
-        knoten.moduleSpecifier.text === "@playwright/test/reporter";
-      if (!nurBerichtstypen) {
+      // TypeScript entfernt diese Deklarationen vollständig. Laufzeitimporte und die
+      // Kette zum tatsächlichen Browserstarter bleiben auch bei gemischten Importen erhalten.
+      const nurTypen = ts.isImportDeclaration(knoten)
+        ? knoten.importClause?.isTypeOnly
+        : knoten.isTypeOnly;
+      if (!(nurTypen && istBrowserPaket(knoten.moduleSpecifier.text))) {
         gefunden.push(knoten.moduleSpecifier.text);
       }
     } else if (
