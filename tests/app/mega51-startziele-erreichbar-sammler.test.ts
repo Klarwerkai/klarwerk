@@ -63,10 +63,13 @@ import {
   routePathAllows,
 } from "../../apps/web/src/app/navigation";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../../apps/web/src/lib/demoPilotPath";
+import { draftResumeHref } from "../../apps/web/src/lib/draftForm";
 import { EINSTIEGE } from "../../apps/web/src/lib/einstiege";
 import { FAEHIGKEITEN } from "../../apps/web/src/lib/faehigkeiten";
 import { KNOWLEDGE_CYCLE } from "../../apps/web/src/lib/knowledgeCycle";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
+import { pruefHref } from "../../apps/web/src/lib/objektbezug";
+import { reworkHref } from "../../apps/web/src/lib/reviewReworkContext";
 import { buildWorkOverview } from "../../apps/web/src/lib/workCenter";
 
 const WEB_SRC = join(__dirname, "../../apps/web/src");
@@ -163,6 +166,10 @@ const AUSDRUCK_HERKUNFT: { muster: RegExp; herkunft: string }[] = [
   // dem Auftrag „Gebauten Code ohne tatsächliche Verwendung erkennen" (R-1349) entfernt.
   { muster: /^step\.to$/, herkunft: "lib/knowledgeCycle.ts + lib/demoPilotPath.ts" },
   { muster: /^item\.to$/, herkunft: "lib/knowledgeGuidance.ts" },
+  {
+    muster: /^z\.to$/,
+    herkunft: "components/start/Weiterarbeiten.tsx · Entwurf, Prüfung und Nacharbeit",
+  },
   { muster: /^it\.to$/, herkunft: "lib/workCenter.ts · buildWorkOverview" },
   // R-1349: hier stand `focus.to` aus `lib/workCenter.ts · primaryWorkItem`. Die hervorgehobene
   // Einstiegszeile ist seit JOB 3064 H5 in „FÜR DICH" aufgegangen (`zeile.to` unten); der Baustein
@@ -233,6 +240,10 @@ describe("mega51 A3 · Stufe 2 — jedes Ziel der Seite hat eine benannte, produ
 
 // Die Zielmenge — aus den Modulen gelesen, plus die Literale aus dem Quelltext der Seite.
 const ZIELE: { ziel: string; herkunft: string }[] = [
+  { ziel: draftResumeHref("probe"), herkunft: "Weiterarbeiten · Entwurf" },
+  { ziel: draftResumeHref("probe", true), herkunft: "Weiterarbeiten · Ablaufentwurf" },
+  { ziel: pruefHref("probe", 1), herkunft: "Weiterarbeiten · zugewiesene Fassung" },
+  { ziel: reworkHref("probe"), herkunft: "Weiterarbeiten · Rückgabe" },
   ...KNOWLEDGE_CYCLE.map((s) => ({ ziel: s.to, herkunft: "KNOWLEDGE_CYCLE" })),
   ...DEMO_PILOT_PATH.map((s) => ({ ziel: s.to, herkunft: "DEMO_PILOT_PATH" })),
   ...knowledgeGuidance("start").items.map((i) => ({ ziel: i.to, herkunft: "knowledgeGuidance" })),
@@ -307,8 +318,8 @@ describe("mega51 A3 · Stufe 3 — die Rollenfrage wird an derselben Registry be
     // offen. Gemessen als Lage im gemounteten Fall F2 von
     // `tests/erstnutzerfuehrung/faehigkeitsuebersicht.test.tsx`.
     expect(matrix).toEqual([
-      "viewer: /aufgaben /duplikate /erfassen /erfassen?demo=stage1 /erfassen?entwuerfe=1 /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
-      "experte: /duplikate /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
+      "viewer: /aufgaben /duplikate /erfassen /erfassen/ablauf?entwurf=probe /erfassen?demo=stage1 /erfassen?draft=probe /erfassen?entwuerfe=1 /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1 /validierung?ko=probe&fassung=1",
+      "experte: /duplikate /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1 /validierung?ko=probe&fassung=1",
       "controller: ",
       "admin: ",
     ]);
