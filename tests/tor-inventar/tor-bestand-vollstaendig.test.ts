@@ -268,6 +268,22 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     ]);
   });
 
+  it("erkennt den unmittelbar genutzten Node-Modullader der Browsererweiterung", () => {
+    expect(
+      spezifizierer(join(WURZEL, "tests/klara-browser-aktionen/produktweg-chromium.test.ts")),
+    ).toContain("playwright");
+    const quelle = join(arbeitsordner, "unmittelbar.ts");
+    writeFileSync(
+      quelle,
+      [
+        'const a = modul.createRequire(import.meta.url)("playwright-core");',
+        'const b = eineAndereFabrik(import.meta.url)("playwright");',
+        "const beispiel = 'createRequire(import.meta.url)(\"playwright\")';",
+      ].join("\n"),
+    );
+    expect(spezifizierer(quelle)).toEqual(["playwright-core"]);
+  });
+
   it.each([
     ["aufsicht.ts", "const identisch = async <T>(wert: T): Promise<T> => wert;"],
     ["ansicht.tsx", "const text = <p>Browserprüfung</p>;"],

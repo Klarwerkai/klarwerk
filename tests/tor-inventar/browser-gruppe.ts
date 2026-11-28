@@ -149,6 +149,15 @@ function loeseRelativAuf(vonDatei: string, spezifizierer: string): string | unde
   return undefined;
 }
 
+function istCreateRequireAufruf(knoten: ts.Node): boolean {
+  if (!ts.isCallExpression(knoten)) return false;
+  const fabrik = knoten.expression;
+  return (
+    (ts.isIdentifier(fabrik) && fabrik.text === "createRequire") ||
+    (ts.isPropertyAccessExpression(fabrik) && fabrik.name.text === "createRequire")
+  );
+}
+
 /**
  * Die Modulspezifizierer einer Datei — aus dem Syntaxbaum, nicht aus dem Rohtext.
  *
@@ -176,15 +185,9 @@ export function spezifizierer(datei: string): string[] {
       ts.isVariableDeclaration(knoten) &&
       ts.isIdentifier(knoten.name) &&
       knoten.initializer !== undefined &&
-      ts.isCallExpression(knoten.initializer)
+      istCreateRequireAufruf(knoten.initializer)
     ) {
-      const ruf = knoten.initializer.expression;
-      const heisst =
-        (ts.isIdentifier(ruf) && ruf.text === "createRequire") ||
-        (ts.isPropertyAccessExpression(ruf) && ruf.name.text === "createRequire");
-      if (heisst) {
-        requireNamen.add(knoten.name.text);
-      }
+      requireNamen.add(knoten.name.text);
     }
     ts.forEachChild(knoten, sammleBindungen);
   };
@@ -217,7 +220,8 @@ export function spezifizierer(datei: string): string[] {
     } else if (ts.isCallExpression(knoten)) {
       const istImport = knoten.expression.kind === ts.SyntaxKind.ImportKeyword;
       const istRequire =
-        ts.isIdentifier(knoten.expression) && requireNamen.has(knoten.expression.text);
+        (ts.isIdentifier(knoten.expression) && requireNamen.has(knoten.expression.text)) ||
+        istCreateRequireAufruf(knoten.expression);
       const erstes = knoten.arguments[0];
       if ((istImport || istRequire) && erstes !== undefined && ts.isStringLiteralLike(erstes)) {
         gefunden.push(erstes.text);
