@@ -137,9 +137,10 @@ function mount(): void {
 // trägt je Eintrag Punkt, Titel und „Bereich · Zustand" (Vorlage `Bibliothek.dc.html` Z.43-49).
 // Die Sicherheit steht seither im Abschnitt „Belege" hinter der Zeile „Mehr" der Lesefläche —
 // DERSELBE Balken, DIESELBE Sonderregel aus mega51 D2. Genau das misst dieser Fall jetzt.
-function oeffneMehrFuer(k: KnowledgeObject): HTMLElement {
+async function oeffneMehrFuer(k: KnowledgeObject): Promise<HTMLElement> {
   lage.ko = k;
   mount();
+  await act(() => vi.dynamicImportSettled());
   return abschnittOeffnen(container, "belege");
 }
 
@@ -154,8 +155,8 @@ afterEach(() => {
 });
 
 describe("mega51 D · die Sicherheitsanzeige des gelesenen Eintrags", () => {
-  it("D1: der Balken trägt Rolle, Wert und eine Beschriftung, die sagt, WAS der Wert ist", () => {
-    const belege = oeffneMehrFuer(KO_KONFIDENZ_OHNE_TRUST);
+  it("D1: der Balken trägt Rolle, Wert und eine Beschriftung, die sagt, WAS der Wert ist", async () => {
+    const belege = await oeffneMehrFuer(KO_KONFIDENZ_OHNE_TRUST);
     const balken = belege.querySelector('[role="progressbar"]');
     expect(balken).not.toBeNull();
     expect(balken?.getAttribute("aria-valuemin")).toBe("0");
@@ -167,22 +168,22 @@ describe("mega51 D · die Sicherheitsanzeige des gelesenen Eintrags", () => {
     expect(balken?.getAttribute("aria-valuenow")).toBe("72");
   });
 
-  it("D2: trust > 0 UND confidence = 0 → der Hinweis erscheint, keine unerklärte Null", () => {
-    const belege = oeffneMehrFuer(KO_TRUST_OHNE_KONFIDENZ);
+  it("D2: trust > 0 UND confidence = 0 → der Hinweis erscheint, keine unerklärte Null", async () => {
+    const belege = await oeffneMehrFuer(KO_TRUST_OHNE_KONFIDENZ);
     // Der Sonderfall greift — VOR mega51 tat er das NICHT (er las trust, und trust ist 7).
     expect(belege.textContent).toContain(i18n.t("lib.confidenceNone"));
     // Und die Leiste, die sonst die 0 zeigte, steht hier nicht.
     expect(belege.querySelector('[role="progressbar"]')).toBeNull();
   });
 
-  it("D2 Gegenprobe: trust = 0 UND confidence > 0 → die Leiste zeigt ihren echten Wert", () => {
-    const belege = oeffneMehrFuer(KO_KONFIDENZ_OHNE_TRUST);
+  it("D2 Gegenprobe: trust = 0 UND confidence > 0 → die Leiste zeigt ihren echten Wert", async () => {
+    const belege = await oeffneMehrFuer(KO_KONFIDENZ_OHNE_TRUST);
     expect(belege.textContent).not.toContain(i18n.t("lib.confidenceNone"));
     expect(belege.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("72");
   });
 
-  it("Bedingung und Anzeige lesen denselben Wert — genau ein Hinweis auf der ganzen Fläche", () => {
-    oeffneMehrFuer(KO_TRUST_OHNE_KONFIDENZ);
+  it("Bedingung und Anzeige lesen denselben Wert — genau ein Hinweis auf der ganzen Fläche", async () => {
+    await oeffneMehrFuer(KO_TRUST_OHNE_KONFIDENZ);
     const mitHinweis = [...container.querySelectorAll("span")].filter(
       (e) => e.textContent === i18n.t("lib.confidenceNone"),
     );

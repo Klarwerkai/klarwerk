@@ -102,7 +102,7 @@ interface Kasten {
 interface Reitermass {
   text: string;
   tag: string;
-  typ: string;
+  href: string | null;
   /** Ein gesetztes `tabindex` wäre der Weg an der Tabreihenfolge vorbei — hier muss es fehlen. */
   tabindexAttribut: string | null;
   clientWidth: number;
@@ -226,7 +226,7 @@ const MESSEN = `(async ([stoerung]) => {
     return {
       text: norm(b.textContent),
       tag: b.tagName.toLowerCase(),
-      typ: String(b.getAttribute('type') || ''),
+      href: b.getAttribute('href'),
       tabindexAttribut: b.getAttribute('tabindex'),
       clientWidth: b.clientWidth,
       scrollWidth: b.scrollWidth,
@@ -333,6 +333,7 @@ const MESSEN_RASTER = `(async ([reiterName]) => {
 
 /** Was gerade den Fokus hat — der Beleg, dass die Tabreihenfolge wirklich dort ankommt. */
 interface Fokus {
+  href: string | null;
   name: string;
   tag: string;
   text: string;
@@ -344,12 +345,13 @@ interface Fokus {
 }
 const FOKUS = `() => {
   const a = document.activeElement;
-  if (!a) return { name: '', tag: '', text: '', reiterIndex: -1, imInhalt: false, boxShadow: '' };
+  if (!a) return { href: null, name: '', tag: '', text: '', reiterIndex: -1, imInhalt: false, boxShadow: '' };
   const reiter = [...document.querySelectorAll('[data-einst="reiter"]')];
   const spalte = document.querySelector('[data-einst="spalte"]');
   return {
     name: a.getAttribute('aria-label') || a.querySelector('[data-einst="label"]')?.textContent.trim() || (a.textContent || '').trim(),
     tag: a.tagName.toLowerCase(),
+    href: a.getAttribute('href'),
     text: (a.textContent || '').replace(/\\s+/g, ' ').trim(),
     reiterIndex: reiter.indexOf(a),
     imInhalt: spalte !== null && spalte.contains(a),
@@ -505,6 +507,17 @@ function rasterProtokoll(r: Rastermass): string {
   ].join("\n");
 }
 
+function pruefeNavigationselement(
+  index: number,
+  element: { tag: string; href: string | null },
+): void {
+  const abschnitt = ADMIN_SECTIONS[index];
+  expect(abschnitt).toBeDefined();
+  const istKatalog = abschnitt?.id === "funktionen";
+  expect(element.tag, abschnitt?.id).toBe(istKatalog ? "a" : "button");
+  expect(element.href, abschnitt?.id).toBe(istKatalog ? "/admin?bereich=funktionen" : null);
+}
+
 /** Die Zusicherungen, die S1/S3 und S4 gemeinsam haben — einmal geschrieben, zweimal gemessen. */
 function pruefeSchmaleFlaeche(m: Messung, beschriftungen: readonly string[]): void {
   // Lieferung 2 — der Inhalt bekommt die Breite (mindestens 75 % des Fensters).
@@ -535,8 +548,8 @@ function pruefeSchmaleFlaeche(m: Messung, beschriftungen: readonly string[]): vo
 
   // Lieferung 4 — jeder Reiter bleibt vollständig lesbar und treffbar.
   expect(m.reiter.map((r) => r.text)).toEqual([...beschriftungen]);
-  for (const r of m.reiter) {
-    expect(r.tag, `„${r.text}" ist kein echtes <button>`).toBe("button");
+  for (const [index, r] of m.reiter.entries()) {
+    pruefeNavigationselement(index, r);
     expect(r.tabindexAttribut, `„${r.text}" trägt ein eigenes tabindex`).toBeNull();
     expect(r.textOverflow, `„${r.text}": text-overflow kürzt`).not.toBe("ellipsis");
     expect(
@@ -618,7 +631,7 @@ function logMessung(fall: string, m: Messung): void {
   console.log(`JOB 3175 · ${fall}:\n${protokoll(m)}`);
 }
 
-/** Die erste Inhaltszeile ist das vom echten Backend angelegte Konto Pedi (starte). */
+/** Die Kontensuche und das vom Backend angelegte Konto Pedi sind per Tastatur erreichbar. */
 async function tastaturweg(sprache: Sprache): Promise<void> {
   const reiter: readonly string[] = REITER[sprache];
   const seite = seiteRoh();
@@ -641,7 +654,7 @@ async function tastaturweg(sprache: Sprache): Promise<void> {
     if (f.reiterIndex >= 0) {
       const soll = REITER[sprache][gesehen.length];
       expect(f.text, `Tab erreicht Reiter „${soll}" nicht; Fokus: „${f.text}"`).toBe(soll);
-      expect(f.tag, `„${soll}" ist kein fokussierter Knopf`).toBe("button");
+      pruefeNavigationselement(f.reiterIndex, f);
       expect(
         schattenLagen(f.boxShadow).length,
         `„${soll}" zeichnet keinen sichtbaren Fokusring`,
@@ -659,13 +672,27 @@ async function tastaturweg(sprache: Sprache): Promise<void> {
     ).toContain(name);
   }
   expect(gesehen).toEqual([...REITER[sprache]]);
-  expect(inhalt?.tag, "Tab kommt nicht auf dem Inhaltsknopf Pedi an").toBe("button");
-  expect(inhalt?.name, "Tab kommt nicht auf dem Inhaltsknopf Pedi an").toBe("Pedi");
+  expect(inhalt?.tag).toBe("input");
+  expect(inhalt?.name).toBe(i18n.getResource(sprache, "translation", "nutzerliste.sucheHilfe"));
+  const inhaltsweg: Fokus[] = [];
+  while (inhalt?.imInhalt && inhalt.name !== "Pedi" && inhaltsweg.length < 30) {
+    inhaltsweg.push(inhalt);
+    inhalt = await schritt("Tab");
+  }
+  expect(inhalt?.imInhalt).toBe(true);
+  expect(inhalt?.tag, "Tab erreicht das angelegte Konto nicht").toBe("button");
+  expect(inhalt?.name).toBe("Pedi");
+  for (const erwartet of inhaltsweg.reverse()) {
+    const zurueck = await schritt("Shift+Tab");
+    expect(zurueck.imInhalt).toBe(true);
+    expect([zurueck.tag, zurueck.name]).toEqual([erwartet.tag, erwartet.name]);
+  }
   // Jeden Rückwärtsschritt benennen und prüfen, bis wieder der erste Reiter erreicht ist.
   for (const name of [...REITER[sprache]].reverse()) {
     const f = await schritt("Shift+Tab");
     expect(f.text, `Shift+Tab erreicht Reiter „${name}" nicht; Fokus: „${f.text}"`).toBe(name);
     expect(f.reiterIndex).toBe(reiter.indexOf(name));
+    pruefeNavigationselement(f.reiterIndex, f);
     expect(
       schattenLagen(f.boxShadow).length,
       `„${name}" zeichnet rückwärts keinen Fokusring`,

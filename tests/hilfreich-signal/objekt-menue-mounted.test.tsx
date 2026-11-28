@@ -170,7 +170,7 @@ async function mount(): Promise<void> {
                 null,
                 createElement(
                   MemoryRouter,
-                  { initialEntries: ["/bibliothek"] },
+                  { initialEntries: ["/bibliothek?eintrag=ko-1"] },
                   createElement(
                     Huelle,
                     null,
@@ -192,6 +192,7 @@ async function mount(): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
 }
@@ -203,7 +204,9 @@ function suche(testId: string): HTMLElement | null {
 function knopf(testId: string): HTMLElement {
   const treffer = suche(testId);
   if (!treffer) {
-    throw new Error(`„${testId}" ist auf der Fläche nicht da`);
+    throw new Error(
+      `„${testId}" ist auf der Fläche nicht da: ${document.body.textContent?.slice(-2200)}`,
+    );
   }
   return treffer;
 }
@@ -236,7 +239,11 @@ afterEach(async () => {
 
 describe("R-0235 / R-0749 · „Hat geholfen“ am Wissensobjekt in der Bibliothek", () => {
   it("ein Klick meldet genau dieses Objekt — ohne Bewertung, danach „Danke!“ und gesperrt", async () => {
-    await klick(knopf("bib-eintrag-menue"));
+    const menue = await vi.waitFor(async () => {
+      await act(() => vi.dynamicImportSettled());
+      return knopf("bib-eintrag-menue");
+    });
+    await klick(menue);
     const punkt = knopf("bib-menue-hilfreich");
     expect(punkt.textContent?.trim()).toBe(i18n.t("ask.helpful"));
     await klick(punkt);

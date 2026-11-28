@@ -194,6 +194,7 @@ async function flaeche(sources: KoSource[], sprache = "de"): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   const mehr = container.querySelector<HTMLElement>('[data-testid="bib-mehr"]');
   if (!mehr) {

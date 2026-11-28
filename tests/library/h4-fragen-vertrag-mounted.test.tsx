@@ -144,7 +144,7 @@ afterEach(() => {
 });
 
 /** Die Zeile mit dieser Kennung anklicken — der echte Weg, einen Eintrag zu wählen. */
-function waehle(id: string): void {
+async function waehle(id: string): Promise<void> {
   const zeile = container.querySelector(`[data-testid="bib-zeile"][data-bib-id="${id}"]`);
   if (!(zeile instanceof HTMLElement)) {
     throw new Error(`Zeile „${id}" fehlt; vorhanden: ${container.textContent}`);
@@ -152,6 +152,7 @@ function waehle(id: string): void {
   act(() => {
     zeile.click();
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 interface Befund {
@@ -178,9 +179,9 @@ function fragenKnopf(): Befund {
 describe("JOB 3063 · H4 · der Fragen-Vertrag gilt für jeden Zustand", () => {
   for (const eintrag of KOS) {
     const zustand = deriveStatus(eintrag);
-    it(`„${eintrag.title}" (${zustand}): Knopf „Fragen“ → /fragen?ko=${eintrag.id} mit dem Suchtext`, () => {
+    it(`„${eintrag.title}" (${zustand}): Knopf „Fragen“ → /fragen?ko=${eintrag.id} mit dem Suchtext`, async () => {
       mount();
-      waehle(eintrag.id);
+      await waehle(eintrag.id);
       const b = fragenKnopf();
       expect(b.text).toBe("Fragen");
       expect(b.pfad).toBe("/fragen");
@@ -200,9 +201,9 @@ describe("JOB 3063 · H4 · der Fragen-Vertrag gilt für jeden Zustand", () => {
     }
   });
 
-  it("ohne Suchtext bleibt der Titel des gewählten Eintrags die Vorbelegung — kein toter Knopf", () => {
+  it("ohne Suchtext bleibt der Titel des gewählten Eintrags die Vorbelegung — kein toter Knopf", async () => {
     mount();
-    waehle(KO_OFFEN.id);
+    await waehle(KO_OFFEN.id);
     const feld = container.querySelector('[data-testid="bib-suche"]');
     if (!(feld instanceof HTMLInputElement)) {
       throw new Error("Suchfeld fehlt");

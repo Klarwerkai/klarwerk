@@ -162,7 +162,7 @@ function setzeBreite(schmal: boolean): void {
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function flaeche(adresse: string): void {
+async function flaeche(adresse: string): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -176,6 +176,7 @@ function flaeche(adresse: string): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 beforeEach(() => {
@@ -235,22 +236,25 @@ describe("R-0212 · der Konflikt aus der Schnittstelle steht auch schmal da", ()
   it.each([
     ["schmal (390 px)", true],
     ["breit (Gegenprobe)", false],
-  ] as const)("Liste %s: die Zeile trägt „Konflikt“ und den kritischen Punkt", (_n, schmal) => {
-    setzeBreite(schmal);
-    flaeche("/bibliothek");
-    expect(zeilen()).toHaveLength(2);
-    expect(zeilenWort("k1")).toBe(KONFLIKT());
-    expect(zeilenPunktKritisch("k1")).toBe(true);
-    expect(zeilenWort("k2")).not.toBe(KONFLIKT());
-    expect(zeilenPunktKritisch("k2")).toBe(false);
-  });
+  ] as const)(
+    "Liste %s: die Zeile trägt „Konflikt“ und den kritischen Punkt",
+    async (_n, schmal) => {
+      setzeBreite(schmal);
+      await flaeche("/bibliothek");
+      expect(zeilen()).toHaveLength(2);
+      expect(zeilenWort("k1")).toBe(KONFLIKT());
+      expect(zeilenPunktKritisch("k1")).toBe(true);
+      expect(zeilenWort("k2")).not.toBe(KONFLIKT());
+      expect(zeilenPunktKritisch("k2")).toBe(false);
+    },
+  );
 
   it.each([
     ["schmal (390 px)", true],
     ["breit (Gegenprobe)", false],
-  ] as const)("Bericht %s: die Pille sagt „Konflikt“ — mit Herkunft Server", (_n, schmal) => {
+  ] as const)("Bericht %s: die Pille sagt „Konflikt“ — mit Herkunft Server", async (_n, schmal) => {
     setzeBreite(schmal);
-    flaeche("/bibliothek?eintrag=k1");
+    await flaeche("/bibliothek?eintrag=k1");
     expect(da("bib-lesen")).not.toBeNull();
     // Schmal trägt der Bericht die Fläche allein (JOB 3121) — der Konflikt geht dabei nicht verloren.
     if (schmal) {
@@ -259,9 +263,9 @@ describe("R-0212 · der Konflikt aus der Schnittstelle steht auch schmal da", ()
     expect(pille()).toEqual({ wort: KONFLIKT(), herkunft: "server" });
   });
 
-  it("Gegenprobe schmal: ein Eintrag ohne Konflikt trägt ihn auch nicht", () => {
+  it("Gegenprobe schmal: ein Eintrag ohne Konflikt trägt ihn auch nicht", async () => {
     setzeBreite(true);
-    flaeche("/bibliothek?eintrag=k2");
+    await flaeche("/bibliothek?eintrag=k2");
     expect(pille().wort).not.toBe(KONFLIKT());
   });
 });

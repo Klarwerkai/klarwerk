@@ -136,6 +136,7 @@ async function mount(rolle: Role): Promise<void> {
     );
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
 }
 

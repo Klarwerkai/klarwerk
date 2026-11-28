@@ -135,7 +135,7 @@ import { listenZaehler } from "./support/bib-flaeche";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function flaeche(auffrischungScheitert: boolean): void {
+async function flaeche(auffrischungScheitert: boolean): Promise<void> {
   stand.auffrischungScheitert = auffrischungScheitert;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -150,6 +150,7 @@ function flaeche(auffrischungScheitert: boolean): void {
       ),
     );
   });
+  await act(() => vi.dynamicImportSettled());
 }
 
 afterEach(() => {
@@ -179,18 +180,18 @@ function zeilen(): number {
 }
 
 describe("JOB 3063 · H4 R6 · gescheiterte Auffrischung an der Liste", () => {
-  it("1 · die zuletzt geholten Zeilen bleiben stehen — der Bestand wird nicht geleert", () => {
-    flaeche(true);
+  it("1 · die zuletzt geholten Zeilen bleiben stehen — der Bestand wird nicht geleert", async () => {
+    await flaeche(true);
     expect(zeilen()).toBe(KOS.length);
   });
 
-  it(`2 · der Zähler zeigt „–" statt einer Zahl — ein alter Cache behauptet keine Aktualität`, () => {
-    flaeche(true);
+  it(`2 · der Zähler zeigt „–" statt einer Zahl — ein alter Cache behauptet keine Aktualität`, async () => {
+    await flaeche(true);
     expect(listenZaehler(container)).toBeNull();
   });
 
-  it("3 · EIN Satz sagt den Stand und dass die Auffrischung fehlschlug — mit der echten Zeit", () => {
-    flaeche(true);
+  it("3 · EIN Satz sagt den Stand und dass die Auffrischung fehlschlug — mit der echten Zeit", async () => {
+    await flaeche(true);
     const el = hinweisInDerListe();
     expect(el).not.toBeNull();
     const zeit = formatKoTimestamp(new Date(ZULETZT_ERFOLGREICH).toISOString(), "de");
@@ -199,8 +200,8 @@ describe("JOB 3063 · H4 R6 · gescheiterte Auffrischung an der Liste", () => {
     expect(el?.getAttribute("aria-live")).toBe("polite");
   });
 
-  it("5 · EINE Fläche, EIN Satz: obwohl Liste UND Lesefläche veraltet sind, steht er genau einmal", () => {
-    flaeche(true);
+  it("5 · EINE Fläche, EIN Satz: obwohl Liste UND Lesefläche veraltet sind, steht er genau einmal", async () => {
+    await flaeche(true);
     // Beide Abfragen sind nachweislich gescheitert (der Mock oben liefert beiden die Fehlerlage) —
     // ohne die Unterdrückung in `BibliothekLesen` stünden hier zwei gleichlautende Sätze.
     expect(
@@ -212,8 +213,8 @@ describe("JOB 3063 · H4 R6 · gescheiterte Auffrischung an der Liste", () => {
     expect(container.querySelector('[data-testid="bib-lesen"]')).not.toBeNull();
   });
 
-  it("4 · KALIBRIERUNG: bei gesunder Abfrage steht kein Satz da, und der Zähler trägt seine Zahl", () => {
-    flaeche(false);
+  it("4 · KALIBRIERUNG: bei gesunder Abfrage steht kein Satz da, und der Zähler trägt seine Zahl", async () => {
+    await flaeche(false);
     expect(hinweisInDerListe()).toBeNull();
     expect(listenZaehler(container)).toBe(KOS.length);
     expect(zeilen()).toBe(KOS.length);
