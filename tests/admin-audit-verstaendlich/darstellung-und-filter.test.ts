@@ -177,10 +177,13 @@ describe("K2 · Vorgänge in verständlicher Sprache", () => {
     expect([...geschrieben].filter((a) => !KONTO_AUDIT_AKTIONEN.includes(a))).toEqual([]);
     for (const sprache of ["de", "en", "nl"] as const) {
       await i18n.changeLanguage(sprache);
-      const ohneNamen = KONTO_AUDIT_AKTIONEN.filter(
-        (code) => auditActionLabel(code, i18n.t) === code.replace(/[._-]/g, " ").trim(),
-      );
-      expect(ohneNamen, `${sprache}: Kontovorgänge ohne Namen`).toEqual([]);
+      for (const code of KONTO_AUDIT_AKTIONEN) {
+        const key = `audit.action.${code.replace(/[.-]/g, "_")}`;
+        const name = auditActionLabel(code, i18n.t);
+        expect(i18n.getResource(sprache, "translation", key), `${sprache} ${code}`).toBe(name);
+        expect(name.trim(), `${sprache} ${code}`).not.toBe("");
+        expect(name, `${sprache} ${code}`).not.toBe(code.replace(/[._-]/g, " ").trim());
+      }
     }
     await i18n.changeLanguage("de");
   });

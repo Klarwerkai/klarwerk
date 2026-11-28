@@ -15,7 +15,11 @@ import { describe, expect, it } from "vitest";
 import { InMemoryModelRunRepo } from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
 import { cappedModelClient } from "../../services/reasoner/src/model-concurrency";
-import { type ModelClient, parseLueckenResponse } from "../../services/reasoner/src/provider-model";
+import {
+  type ModelClient,
+  keepInputLanguageRule,
+  parseLueckenResponse,
+} from "../../services/reasoner/src/provider-model";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import type { LueckenBereich } from "../../services/reasoner/src/types";
 
@@ -91,6 +95,28 @@ describe("R-1657 · Lückenerkennung über den Reasoner", () => {
     expect(laeufe[0]?.erzeugt).toEqual({ art: "urteil", anzahl: 2 });
     expect(JSON.stringify(laeufe[0])).not.toContain("Schweißtechnik");
   });
+
+  it.each(["de", "en", "nl"] as const)(
+    "der Modellauftrag erhält für %s die Anweisung, Bereichsnamen in der Eingabesprache zu belassen",
+    async (locale) => {
+      const systemtexte: string[] = [];
+      const urteil = {
+        bereich: SCHWEISSEN.bereich,
+        sprint: true,
+        tage: 2,
+        schwerpunkte: ["conflicts"],
+      };
+      const provider = new ModelProvider({
+        name: "test-modell",
+        complete: async (system) => {
+          systemtexte.push(system);
+          return JSON.stringify({ bereiche: [urteil] });
+        },
+      });
+      expect(await provider.judgeKnowledgeGaps([SCHWEISSEN], locale, false)).toEqual([urteil]);
+      expect(systemtexte).toEqual([expect.stringContaining(keepInputLanguageRule(locale))]);
+    },
+  );
 
   it("G2 · das Modell kann nichts erfinden: Bereich, Grund, Sprint ohne Grund, Doppel, Tage", () => {
     const roh = `Hier das Urteil: ${JSON.stringify({

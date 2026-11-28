@@ -1537,11 +1537,12 @@ export const LUECKEN_MAX_TAGE = 5;
 function lueckenSystem(locale: ReasonerLocale): string {
   const contract =
     '{"bereiche":[{"bereich":"...","sprint":true,"tage":1-5,"schwerpunkte":["conflicts","revalidation","lowTrust","thinKnowledge"]}]}';
-  return taskInstruction(
+  const base = taskInstruction(
     locale,
     `Du bewertest Wissensbereiche einer Organisation anhand von Kennzahlen und schlägst Wissens-Sprints vor. Je Bereich bekommst du: objekte (Zahl der Wissensobjekte), validiert, mittleresVertrauen (0–100), imKonflikt (Objekte in offenen Konflikten; null = unbekannt), revalidierung (Objekte zur Re-Validierung), geringesVertrauen (Objekte mit Vertrauen unter 50). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Nenne JEDEN Bereich genau einmal mit seinem Namen wie geliefert. "sprint" ist true, wenn sich in diesem Bereich ein gebündelter Arbeitseinsatz lohnt (wenig Wissen, geringes Vertrauen oder hohe Konfliktdichte), sonst false. "tage" ist die Sprintlänge von 1 bis 5 nach dem Arbeitsumfang. "schwerpunkte" nennt nur Gründe, die die Kennzahlen tragen: "conflicts" nur bei imKonflikt > 0, "revalidation" nur bei revalidierung > 0, "lowTrust" nur bei geringesVertrauen > 0, "thinKnowledge" bei wenig validiertem Wissen. Erfinde keine Bereiche und keine Zahlen.`,
     `You assess an organisation's knowledge areas from key figures and suggest knowledge sprints. Per area you get: objekte (number of knowledge objects), validiert, mittleresVertrauen (0–100), imKonflikt (objects in open conflicts; null = unknown), revalidierung (objects due for re-validation), geringesVertrauen (objects with trust below 50). Respond ONLY with JSON: ${contract}. Name EVERY area exactly once, with its name as given. "sprint" is true if a focused effort is worthwhile in this area (little knowledge, low trust or high conflict density), otherwise false. "tage" is the sprint length from 1 to 5 by workload. "schwerpunkte" lists only reasons the figures support: "conflicts" only if imKonflikt > 0, "revalidation" only if revalidierung > 0, "lowTrust" only if geringesVertrauen > 0, "thinKnowledge" for little validated knowledge. Invent no areas and no figures.`,
   );
+  return `${base} ${keepInputLanguageRule(locale)}`;
 }
 
 /** Die Nutzlast des Urteils: nur Namen und Zähler, als JSON. */
