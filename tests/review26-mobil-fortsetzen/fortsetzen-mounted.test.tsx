@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // Echter Mobile-/NavGuard-/Unload-/Queue-Weg; nur die Serverantworten sind kontrolliert.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mitOfflineLockPort } from "../support/offline-lock-port";
 
 // JOB 4249: Die Offline-Warteschlange gehört seit diesem Auftrag einem KONTO — ohne bestätigte
 // Sitzung nimmt sie nichts an (und sendet nichts). Im Betrieb kann dieser Fall gar nicht eintreten:
@@ -43,6 +44,8 @@ import i18n from "../../apps/web/src/i18n";
 import { Mobile } from "../../apps/web/src/pages/Mobile";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+mitOfflineLockPort();
 
 const TEXT = "Vor dem Start die Pumpe prüfen.";
 const DRAFT: Draft = {

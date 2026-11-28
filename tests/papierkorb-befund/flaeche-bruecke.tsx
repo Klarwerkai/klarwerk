@@ -108,6 +108,7 @@ export async function flaechenBruecke(): Promise<FlaechenBruecke> {
 /** Der Text, den ein Mensch auf der gemounteten Seite wirklich liest. */
 export interface Gemountet {
   text: string;
+  pruefliste: string;
   /**
    * Die BESCHRIFTUNGEN DER ABZEICHEN, einzeln. Warum nicht der Seitentext allein: die Zaehlzeile
    * darueber schreibt „Dubletten: 1" (`ext.queue.duplicates`, unveraendert) — eine Zusicherung
@@ -172,7 +173,9 @@ export async function mounteImportReview(): Promise<Gemountet> {
     Array.from(wurzel.querySelectorAll('span[class*="rounded-pill"]')).map((el) =>
       (el.textContent ?? "").replace(/\s+/g, " ").trim(),
     );
+  const liste = container.querySelector("#import-review-queue");
   return {
+    pruefliste: (liste?.textContent ?? "").replace(/\s+/g, " "),
     text: (container.textContent ?? "").replace(/\s+/g, " "),
     abzeichen: beschriftungen(container),
     karte(titel) {
