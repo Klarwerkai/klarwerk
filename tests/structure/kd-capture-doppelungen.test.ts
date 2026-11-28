@@ -128,6 +128,18 @@ const AUSNAHMEN: readonly Ausnahme[] = [
       '"mb-2 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-2.5"',
     ],
   },
+  {
+    // Gesamtcheck R-1329 (Nacharbeit 66): GEMESSEN im Lauf zu 637e45ec (G2, zweites Paar,
+    // 25 Knoten, `BibliothekLesen.tsx:4615 · Capture:5660`) und an beiden Stellen GELESEN.
+    name: "Zufallsgleichheit · zwei verschiedene Geisterknoepfe",
+    grund:
+      "Kein gemeinsamer Block: links „Behalten“ der Loeschrueckfrage (`bib-loeschen-rueckfrage`), " +
+      "rechts „Sichern und recherchieren“ der Interview-Recherche (`interview-recherche-sichern`). " +
+      "Beide sind ein Geisterknopf `Button` mit `disabled={…isPending}`, `onClick` und `t(…)` — " +
+      "dieselbe Bauform, verschiedene Aufgabe; nichts nachzuziehen.",
+    nurLinks: ['"ko.deleteKeep"'],
+    nurRechts: ['"interview.recherche.sichernUndRecherchieren"'],
+  },
 ];
 
 /**
@@ -207,6 +219,18 @@ const PAARE: readonly Blockpaar[] = [
   // Gemessen im Pruefbericht HISTORIE/nacharbeit-7 (G1, „GEMESSEN (6 Paare)"). Die Eintraege 27/25
   // (`captionRequest`) stehen unveraendert: ihr Wegfall ist NICHT aus diesem Auftrag — `Capture.tsx`
   // traegt seit „Lauf 5 (Bens Befund R3-1)" das Feld `koerper`, `BibliothekLesen.tsx` nicht.
+  //
+  // Gesamtcheck R-1329 (Nacharbeit 66) — NEU GEMESSEN, NICHT ANGEPASST: der Lauf zu 637e45ec meldet
+  // G1 mit „GEMESSEN (5 Paare)". Drei Eintraege fallen weg, jeder mit gelesenem Grund, keiner
+  // vergessen:
+  //   · 27/25 `captionRequest` (Zustand und Stellen der Bitte): `Capture.tsx:808/817` und
+  //     `erfassen/Blatt.tsx` tragen `koerper` — in welchem Koerper `index` zaehlt (Lauf 5 R3-1). Die
+  //     Lesefläche hat genau EINEN Koerper (`ko.bodyHtml`), das Feld ist optional; hier fehlt nichts.
+  //   · 29 Vertraulichkeitsstufen (MehrAbschnitte): die Erfassung sperrt seit R-2180 Stufen unter
+  //     der Mindeststufe eines Negativwissen-Falls (`stufeWaehlbar`, `Capture.tsx:5873`). Beim
+  //     Bearbeiten erzwingt der Dienst dieselbe Regel selbst (`unterschreitetNegativwissenStufe`,
+  //     `services/knowledge-object/src/service.ts`) — die Auswahlliste der Lesefläche ist damit kein
+  //     Loch, nur keine Zwillingsliste mehr.
   {
     quelle: "BibliothekLesen.tsx",
     knoten: 29,
@@ -226,28 +250,10 @@ const PAARE: readonly Blockpaar[] = [
     was: "Die Auswahlliste der Wissensarten (`KNOWLEDGE_TYPES` -> `ktype.*`).",
   },
   {
-    quelle: "BibliothekLesen.tsx",
-    knoten: 27,
-    art: "FirstStatement",
-    was: "Der Zustand der Bildbeschreibungs-Bitte aus der Galerie (`captionRequest`, JOB 2084 I50-3).",
-  },
-  {
-    quelle: "BibliothekLesen.tsx",
-    knoten: 25,
-    art: "ArrowFunction",
-    was: "Das Stellen der Bitte selbst: `setCaptionRequest` mit Kennung, Quelle, Index und Nonce.",
-  },
-  {
     quelle: "MehrAbschnitte.tsx",
     knoten: 35,
     art: "JsxElement",
     was: "Der Suchknopf der externen Recherche (`ext.search`), gesperrt bei leerem Feld oder laufender Suche.",
-  },
-  {
-    quelle: "MehrAbschnitte.tsx",
-    knoten: 29,
-    art: "ArrowFunction",
-    was: "Die Auswahlliste der Vertraulichkeitsstufen (`CONFIDENTIALITY_LEVELS` -> `conf.level.*`).",
   },
   {
     quelle: "MehrAbschnitte.tsx",

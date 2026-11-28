@@ -10,7 +10,7 @@
 //    WP-VIP2-GATE-2 zog den Guard nach; vorher galt dort nur Authentifizierung).
 import { pbkdf2Sync } from "node:crypto";
 import type { Pool } from "pg";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import {
   AuthService,
@@ -266,9 +266,11 @@ describe("WP-VIP2-GATE B3: Cookie-Härtung — Secure in Produktion erzwungen", 
   beforeEach(() => {
     process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/klarwerk_test";
     process.env.APP_BASE_URL = "https://test.invalid";
+    vi.stubEnv("KLARWERK_TRUST_PROXY", "none");
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     if (savedNodeEnv === undefined) {
       delete process.env.NODE_ENV;
     } else {

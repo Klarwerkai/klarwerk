@@ -52,6 +52,7 @@ const EINGABE = {
   type: "best_practice" as const,
   category: "Wartung",
   author: "anna",
+  confidentiality: "intern" as const,
 };
 
 async function stapel() {

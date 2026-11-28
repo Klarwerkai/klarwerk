@@ -53,9 +53,16 @@ const flush = async (): Promise<void> => {
   }
 };
 
+// JOB 3611 (`tests/adresse-ist-kein-pfad`): ZWEI Sondenknoten — Route und Abfrageteil getrennt,
+// damit „die Route stimmt" und „es gibt keinen Abfrageteil" zwei ausgeschriebene Zusagen bleiben.
 function Ort(): JSX.Element {
   const ort = useLocation();
-  return createElement("output", { "data-testid": "ort" }, `${ort.pathname}${ort.search}`);
+  return createElement(
+    "output",
+    null,
+    createElement("span", { key: "pfad", "data-testid": "ort-pfad" }, ort.pathname),
+    createElement("span", { key: "abfrage", "data-testid": "ort-abfrage" }, ort.search),
+  );
 }
 
 async function mounten(markiert: string[]): Promise<void> {
@@ -108,7 +115,22 @@ const punkt = (el: Element): string =>
   (el.closest("li")?.querySelector("span")?.className ?? "")
     .split(/\s+/)
     .find((k) => k.startsWith("bg-")) ?? "";
-const ort = (): string => container.querySelector('[data-testid="ort"]')?.textContent ?? "";
+/** Die Route allein — sie wirft, sobald ihr Knoten einen Abfrageteil trägt. */
+function routenPfad(): string {
+  const wert = container.querySelector('[data-testid="ort-pfad"]')?.textContent ?? "";
+  if (wert.includes("?")) {
+    throw new Error(`Der Pfadknoten trägt einen Abfrageteil: „${wert}"`);
+  }
+  return wert;
+}
+
+/** Die volle Adresse — beide Teile getrennt, keine zusammengesetzte Zeichenkette. */
+function adresse(): { pfad: string; abfrage: string } {
+  return {
+    pfad: routenPfad(),
+    abfrage: container.querySelector('[data-testid="ort-abfrage"]')?.textContent ?? "",
+  };
+}
 
 afterEach(() => {
   if (root) {
@@ -149,13 +171,15 @@ describe("R-0894 · Eskalation und Rückgabe in der Glocke", () => {
   it("Öffnen einer Rückgabe markiert sie als gelesen und springt in den Eintrag", async () => {
     const markiert: string[] = [];
     await mounten(markiert);
-    expect(ort()).toBe("/start");
+    expect(routenPfad()).toBe("/start");
+    expect(adresse().abfrage).toBe("");
     await act(async () => {
       eintrag("return").click();
       await flush();
     });
     expect(markiert).toEqual(["ret-ko-1-2026-06-02"]);
-    expect(ort()).toBe("/wissen/ko-1");
+    expect(routenPfad()).toBe("/wissen/ko-1");
+    expect(adresse().abfrage).toBe("");
   });
 
   it("Öffnen einer Eskalation markiert sie als gelesen und springt aufs Konfliktboard", async () => {
@@ -166,6 +190,7 @@ describe("R-0894 · Eskalation und Rückgabe in der Glocke", () => {
       await flush();
     });
     expect(markiert).toEqual(["esc-c1"]);
-    expect(ort()).toBe("/konflikte");
+    expect(routenPfad()).toBe("/konflikte");
+    expect(adresse().abfrage).toBe("");
   });
 });

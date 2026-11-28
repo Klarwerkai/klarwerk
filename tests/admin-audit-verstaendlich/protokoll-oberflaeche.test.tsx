@@ -119,10 +119,18 @@ function Beitrag(): JSX.Element {
   );
 }
 
-/** Wo der Router gerade steht — für die Messung des Rückwegs. */
+/**
+ * Wo der Router gerade steht — für die Messung des Rückwegs. JOB 3611
+ * (`tests/adresse-ist-kein-pfad`): ZWEI Sondenknoten, Route und Abfrageteil getrennt.
+ */
 function Ort(): JSX.Element {
   const ort = useLocation();
-  return createElement("output", { "data-testid": "ort" }, `${ort.pathname}${ort.search}`);
+  return createElement(
+    "output",
+    null,
+    createElement("span", { key: "pfad", "data-testid": "ort-pfad" }, ort.pathname),
+    createElement("span", { key: "abfrage", "data-testid": "ort-abfrage" }, ort.search),
+  );
 }
 
 let container: HTMLDivElement;
@@ -169,7 +177,17 @@ async function mount(url: string): Promise<void> {
 const text = (el: Element | null | undefined): string =>
   (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 
-const ort = (): string => text(container.querySelector('[data-testid="ort"]'));
+/** Die Route allein — sie wirft, sobald ihr Knoten einen Abfrageteil trägt. */
+function routenPfad(): string {
+  const wert = text(container.querySelector('[data-testid="ort-pfad"]'));
+  if (wert.includes("?")) {
+    throw new Error(`Der Pfadknoten trägt einen Abfrageteil: „${wert}"`);
+  }
+  return wert;
+}
+
+/** Der Abfrageteil allein (mit führendem `?`, leer ohne). */
+const abfrage = (): string => text(container.querySelector('[data-testid="ort-abfrage"]'));
 
 function eintragsZeile(seq: number): Element {
   const el = container.querySelector(`[data-audit-eintrag="${seq}"]`);
@@ -320,7 +338,7 @@ describe("K4 · Filter kombinieren, Rückweg aus dem Beitrag, lesbare Leere, ver
     };
     expect(seiteMock.mock.calls.at(-1)?.[0]).toEqual(erwartet);
     // Die Filter stehen in der Adresse — neben Bereich und Karte, ohne sie zu verdrängen.
-    const adresse = new URLSearchParams(ort().split("?")[1] ?? "");
+    const adresse = new URLSearchParams(abfrage());
     expect(adresse.get("detail")).toBe("protokoll");
     expect(adresse.get("a_person")).toBe("u-anna-1");
     expect(adresse.get("a_aktion")).toBe("ko.revised");
@@ -330,10 +348,11 @@ describe("K4 · Filter kombinieren, Rückweg aus dem Beitrag, lesbare Leere, ver
 
     // In den Beitrag springen …
     await klick(container.querySelector('a[data-audit-objektlink="ko-1"]'), "Rücklink");
-    expect(ort()).toBe("/wissen/ko-1");
+    expect(routenPfad()).toBe("/wissen/ko-1");
+    expect(abfrage()).toBe("");
     // … und zurück: dieselbe Adresse, dieselben Feldwerte, dieselbe Anfrage.
     await klick(container.querySelector('[data-testid="beitrag-zurueck"]'), "Zurück");
-    expect(new URLSearchParams(ort().split("?")[1] ?? "").get("a_person")).toBe("u-anna-1");
+    expect(new URLSearchParams(abfrage()).get("a_person")).toBe("u-anna-1");
     const person = container.querySelector("#pruefprotokoll-filter-person") as HTMLInputElement;
     expect(person.value).toBe("u-anna-1");
     const bis = container.querySelector("#pruefprotokoll-filter-bis") as HTMLInputElement;
@@ -349,7 +368,7 @@ describe("K4 · Filter kombinieren, Rückweg aus dem Beitrag, lesbare Leere, ver
     );
     const zuruecksetzen = [...container.querySelectorAll('[data-audit-leer="gefiltert"] button')];
     await klick(zuruecksetzen[0], "Filter zurücksetzen");
-    expect(ort()).not.toContain("a_person");
+    expect(abfrage()).not.toContain("a_person");
     expect(container.querySelectorAll("[data-audit-eintrag]").length).toBe(PROTOKOLL.length);
   });
 
@@ -365,7 +384,7 @@ describe("K4 · Filter kombinieren, Rückweg aus dem Beitrag, lesbare Leere, ver
     expect(bis?.getAttribute("aria-invalid")).toBe("true");
     expect(bis?.getAttribute("aria-describedby")).toBe(fehler?.id);
     expect(seiteMock.mock.calls.length).toBe(vorher);
-    expect(ort()).not.toContain("a_von");
+    expect(abfrage()).not.toContain("a_von");
   });
 
   it("jedes Filterfeld hat eine sichtbare Beschriftung (Tastatur und Bildschirmleser)", async () => {
@@ -409,7 +428,7 @@ describe("K4 · Filter kombinieren, Rückweg aus dem Beitrag, lesbare Leere, ver
       actor: "dienst:wiki-sync",
       action: "ko.revised",
     });
-    expect(new URLSearchParams(ort().split("?")[1] ?? "").get("a_person")).toBe("dienst:wiki-sync");
+    expect(new URLSearchParams(abfrage()).get("a_person")).toBe("dienst:wiki-sync");
     // Eine Kennung aus dem Verzeichnis nennt ihren Namen neben dem Feld.
     await setze("pruefprotokoll-filter-person", "u-ben");
     expect(text(container.querySelector("#pruefprotokoll-filter-person-hinweis"))).toBe(
