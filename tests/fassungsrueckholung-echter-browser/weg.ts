@@ -38,8 +38,7 @@
 //
 // KEINE AUSNAHME IN DIESEM ORDNER. Der eine benannte Sonderfall aus JOB 4223 (die Ziffern einer
 // nativen Datumseingabe) kommt hier nicht vor; die Auswahlfelder des Fassungsvergleichs sind native
-// `<select>` und werden mit der Pfeiltaste bedient — genau wie die Rollenauswahl dort
-// (`browserweg.ts:468-477`).
+// `<select>`. Nach dem Tab wählt die Tastatur die sichtbare Fassung aus.
 //
 // ================================================================================================
 // WAS AUS DEM NACHBARORDNER KOMMT — UND WARUM NICHTS DAVON ABGESCHRIEBEN WIRD.
@@ -327,27 +326,37 @@ export async function mitTaste(
   return schritte;
 }
 
-/**
- * Eine Auswahl an einem nativen `<select>` mit der PFEILTASTE treffen.
- *
- * Wie die Rollenauswahl in `browserweg.ts:468-477`. Der Wert wird danach AM FELD gelesen — ein
- * blindes Drücken bewiese nur, dass eine Taste ankam, nicht, was gewählt wurde.
- */
-export async function mitPfeilWaehlen(
+/** Die sichtbare Fassung per Tastatur wählen und den tatsächlich gesetzten Wert ablesen. */
+async function waehleFassung(
   seite: Seite,
   selektor: string,
   was: string,
-  anschlaege: number,
+  position: number,
   erwartet: string,
   tastatur: Record<string, number>,
 ): Promise<void> {
   tastatur[was] = await zuElement(seite, selektor, was);
-  for (let i = 0; i < anschlaege; i += 1) {
-    await seite.keyboard.press("ArrowDown");
+  expect(await seite.evaluate<string>(fn(WAHLWERT), selektor)).toBe("");
+  if (process.platform === "darwin") {
+    // Chromium öffnet unter macOS mit dem ersten Pfeil das native Auswahlmenü.
+    // Die Texteingabe im geschlossenen Feld wählt die beschriftete Option direkt.
+    const option = await seite.evaluate<{ name: string; wert: string } | null>(
+      fn(`([sel, index]) => {
+        const ziel = document.querySelector(sel).options[index];
+        return ziel ? { name: ziel.label, wert: ziel.value } : null;
+      }`),
+      [selektor, position],
+    );
+    expect(option?.wert, `${was}: Reihenfolge im Fassungsvergleich`).toBe(erwartet);
+    const name = option?.name.split(" · ")[0] ?? "";
+    expect(name).toBe(`v${erwartet}`);
+    await seite.keyboard.type(name);
+  } else {
+    for (let i = 0; i < position; i += 1) await seite.keyboard.press("ArrowDown");
   }
   expect(
     await seite.evaluate<string>(fn(WAHLWERT), selektor),
-    `${JOB}: „${was}" trägt nach ${anschlaege} Pfeilanschlägen nicht die gewählte Fassung`,
+    `${JOB}: „${was}" trägt nach der Tastaturauswahl nicht die gewählte Fassung`,
   ).toBe(erwartet);
 }
 
@@ -738,9 +747,9 @@ export async function fahreDieRueckholung(a: RueckholAufbau): Promise<RueckholBe
     //
     // Die Auswahlfelder führen die Fassungen NEUESTE ZUERST, davor den leeren Eintrag („noch nicht
     // gewählt" ist ein eigener Zustand, `MehrAbschnitte.tsx:2031-2033`). Vom leeren Eintrag aus ist
-    // die ÄLTESTE Fassung damit der letzte: so viele Pfeilanschläge, wie es Fassungen gibt.
+    // die ÄLTESTE Fassung damit der letzte Eintrag.
     await warte(seite, GIBT_ES, "die Vergleichsfläche", "[data-bib-fassung-vergleich-flaeche]");
-    await mitPfeilWaehlen(
+    await waehleFassung(
       seite,
       '[data-bib-fassung-vergleich="von"]',
       "vergleich_von",
@@ -748,7 +757,7 @@ export async function fahreDieRueckholung(a: RueckholAufbau): Promise<RueckholBe
       String(a.zielFassung),
       tastatur,
     );
-    await mitPfeilWaehlen(
+    await waehleFassung(
       seite,
       '[data-bib-fassung-vergleich="bis"]',
       "vergleich_bis",
