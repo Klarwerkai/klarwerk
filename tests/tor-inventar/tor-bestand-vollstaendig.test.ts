@@ -19,7 +19,8 @@
 //     B  REST      `KLARWERK_TESTGRUPPE=rest vitest list …`        (Lauf 2 von `tools/test`)
 //     C  BROWSER   `vitest list -c vitest.browser.config.ts …`     (Lauf 1 von `tools/test`)
 //
-// und beweist: B ∪ C = A, B ∩ C = ∅. Damit ist jede Datei genau einmal dran — keine Luecke, keine
+// Hinzu kommen auf Linux die im Mac-Job belegten nativen Fälle M desselben Commits.
+// Gemeinsam decken B, C und M den gesamten Bestand A disjunkt ab. Damit ist jede Datei genau einmal dran — keine Luecke, keine
 // Doppelpruefung. Die Zahl 1458 steht bewusst NIRGENDS als Erwartung: gemessen wird gegen den
 // eigenen Stand, damit neue Testdateien anderer Jobs den Test nicht faelschlich rot machen.
 import { execFileSync } from "node:child_process";
@@ -28,6 +29,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { WURZEL, ermittleBrowserbefund, sammleTestdateien, spezifizierer } from "./browser-gruppe";
+import { KLARA_MACOS_TESTS, aufMacGeprueft } from "./klara-macos";
 
 const arbeitsordner = mkdtempSync(join(tmpdir(), "klarwerk-tor-inventar-"));
 afterAll(() => {
@@ -87,18 +89,48 @@ function fehlend(a: readonly string[], b: readonly string[]): string[] {
 }
 
 describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", () => {
-  it("V1 · beide Laeufe zusammen sind genau der bisherige Bestand", () => {
+  it("V1 · Browser, Rest und die belegten nativen Tests decken genau den gesamten Bestand", () => {
     const alle = holeBestand();
-    const zusammen = [...holeBrowser(), ...holeRest()].sort();
+    const zusammen = [...holeBrowser(), ...holeRest(), ...aufMacGeprueft()].sort();
     expect(
       fehlend(alle, zusammen),
-      "Diese Dateien liefen vorher und laufen in KEINEM der beiden Aufrufe mehr",
+      "Diese Dateien sind in keinem der verantwortlichen Läufe belegt",
     ).toEqual([]);
     expect(
       fehlend(zusammen, alle),
       "Diese Dateien laufen jetzt, gehoerten aber nicht zum Bestand",
     ).toEqual([]);
     expect(zusammen).toEqual(alle);
+  });
+
+  it("übernimmt nur die zwei nativen Klara-Fälle vom erfolgreichen macOS-Lauf desselben Commits", () => {
+    const commit = "a".repeat(40);
+    const env = {
+      GITHUB_SHA: commit,
+      KLARWERK_CI_KLARA_MACOS_COMMIT: commit,
+      KLARWERK_CI_KLARA_MACOS_ERGEBNIS: "success",
+    };
+    expect(aufMacGeprueft("linux", env, () => commit)).toEqual(KLARA_MACOS_TESTS);
+    for (const ergebnis of ["failure", "cancelled", "skipped", ""]) {
+      expect(
+        aufMacGeprueft(
+          "linux",
+          { ...env, KLARWERK_CI_KLARA_MACOS_ERGEBNIS: ergebnis },
+          () => commit,
+        ),
+      ).toEqual([]);
+    }
+    expect(aufMacGeprueft("linux", { ...env, GITHUB_SHA: "b".repeat(40) }, () => commit)).toEqual(
+      [],
+    );
+    expect(aufMacGeprueft("linux", env, () => "b".repeat(40))).toEqual([]);
+    expect(aufMacGeprueft("linux", {}, () => commit)).toEqual([]);
+    expect(aufMacGeprueft("darwin", env, () => commit)).toEqual([]);
+    const rest = holeRest();
+    for (const datei of KLARA_MACOS_TESTS) {
+      expect(holeBestand()).toContain(datei);
+      expect(rest.includes(datei)).toBe(!aufMacGeprueft().includes(datei));
+    }
   });
 
   it("V2 · keine Datei laeuft doppelt", () => {

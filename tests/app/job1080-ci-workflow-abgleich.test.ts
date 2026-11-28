@@ -135,6 +135,7 @@ console.log("chromium=" + tests.includes(schmalansichtsTest));
     befehl: 'node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht',
     lage: "AUSSERHALB",
   },
+  { job: "check", befehl: "node tools/klara-macos.mjs --nachweis", lage: "AUSSERHALB" },
   { job: "check", befehl: "npm ci", lage: "VOR" },
   { job: "check", befehl: "npm ci --prefix apps/web", lage: "VOR" },
   {
@@ -158,6 +159,7 @@ console.log("chromium=" + tests.includes(schmalansichtsTest));
   { job: "integration", befehl: "npm run test:integration", lage: "AUSSERHALB" },
   { job: "integration-insel-macos", befehl: "npm ci", lage: "AUSSERHALB" },
   { job: "integration-insel-macos", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  { job: "integration-insel-macos", befehl: "node tools/klara-macos.mjs", lage: "AUSSERHALB" },
   { job: "integration-insel-macos", befehl: "npx playwright install chromium", lage: "AUSSERHALB" },
   {
     job: "integration-insel-macos",
@@ -296,6 +298,22 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
     );
     expect(pg).toContain(
       "KLARWERK_CI_KUNDENINSTALLATION_ERGEBNIS: ${{ needs.integration-kundeninstallation.result }}",
+    );
+  });
+
+  it("bindet den Linux-Gesamtcheck an den nach beiden nativen Fällen ausgegebenen macOS-Commit", () => {
+    const check = jobBlock("check");
+    const mac = jobBlock("integration-insel-macos");
+    expect(mac).toContain("klara_commit: ${{ steps.klara.outputs.commit }}");
+    expect(mac).toMatch(/id: klara\s+run: node tools\/klara-macos\.mjs/);
+    expect(check).toContain("needs: integration-insel-macos");
+    expect(check).toContain("if: ${{ always() }}");
+    expect(check).toContain("run: node tools/klara-macos.mjs --nachweis");
+    expect(check).toContain(
+      "KLARWERK_CI_KLARA_MACOS_COMMIT: ${{ needs.integration-insel-macos.outputs.klara_commit }}",
+    );
+    expect(check).toContain(
+      "KLARWERK_CI_KLARA_MACOS_ERGEBNIS: ${{ needs.integration-insel-macos.result }}",
     );
   });
 
