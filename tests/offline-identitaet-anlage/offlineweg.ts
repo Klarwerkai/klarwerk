@@ -609,14 +609,10 @@ async function ausblenden(seite: Seite, selektor: string): Promise<void> {
 }
 
 export interface Verstellung {
-  /** Alt-K1 ist seit der bewussten W4.6-Löschgrenze hier nicht mehr anwendbar. */
-  eigentuemerAufB?: boolean;
   /** Station (d) erwartet absichtlich eine falsche Zeilenzahl nach der belegten Anlage. */
   erwarteteZeilenNachAnlage?: number;
   /** Vor Station (a) ausgeblendet (CSS-Selektor) — prüft die Sichtbarkeitszusage selbst. */
   ausblendenVorA?: string;
-  /** Alt-K4 über eine nach Abmelden erhaltene Fremdzeile ist nicht mehr anwendbar. */
-  ausblendenVorC?: string;
   /** As manueller Retry wird verschluckt (K5); neue Rückmeldung bleibt Pflicht. */
   klickUnterdruecken?: boolean;
   /** As manueller Retry wirkt erst nach dieser Zeit (K6), weiterhin 20-s-Nachweisfrist. */
@@ -743,11 +739,6 @@ async function abnahmeNachAbmeldung(
 // ================================================================================================
 export async function fahreDenOfflineWeg(a: OfflineWegAufbau): Promise<OfflineWegBefund> {
   const verstellen = a.verstellen ?? {};
-  if (verstellen.eigentuemerAufB || verstellen.ausblendenVorC) {
-    throw new Error(
-      "Alt-K1/K4 sind seit W4.6 Punkt 2 nicht anwendbar: Abmelden löscht As Queue. Kein Kalibrierungsbefund.",
-    );
-  }
   const basis = a.strecke.basis;
   const { kontext: rohKontext, seite } = await profil(a.browser, SCHMAL, "de");
   const kontext = rohKontext as KontextMitNetz;
@@ -1016,6 +1007,8 @@ async function offlineFotos(seite: Seite): Promise<{ schluessel: string; bild: b
 export interface AbmeldeBefund {
   vorgangA: string;
   fotosVorAbmeldung: number;
+  queueNachAbmeldung: number;
+  fotosNachAbmeldung: number;
   anlageversuche: number;
   zeilenAmEnde: number;
 }
@@ -1084,8 +1077,10 @@ export async function fahreDenAbmeldeWeg(a: OfflineWegAufbau): Promise<AbmeldeBe
     expect(await warteschlange(seite)).toEqual(queue);
     expect(await zeilen(a.pool)).toBe(0);
     await abmelden(seite, basis, "A");
-    expect(await warteschlange(seite), "O2: Abmelden hat As Queue behalten").toEqual([]);
-    expect(await offlineFotos(seite), "O2: Abmelden hat As Foto behalten").toEqual([]);
+    const queueNachAbmeldung = await warteschlange(seite);
+    const fotosNachAbmeldung = await offlineFotos(seite);
+    expect(queueNachAbmeldung, "O2: Abmelden hat As Queue behalten").toEqual([]);
+    expect(fotosNachAbmeldung, "O2: Abmelden hat As Foto behalten").toEqual([]);
 
     await anmelden(seite, basis, a.bEmail, "B");
     await zurMobilflaeche(seite, basis, "B");
@@ -1100,7 +1095,14 @@ export async function fahreDenAbmeldeWeg(a: OfflineWegAufbau): Promise<AbmeldeBe
     process.stderr.write(
       `${JOB} O2 ABMELDEGRENZE · A-Foto vor Abmeldung1 · danach leer · B/erneut A leer · POST0 · SQL0\n`,
     );
-    return { vorgangA, fotosVorAbmeldung: fotos.length, anlageversuche, zeilenAmEnde };
+    return {
+      vorgangA,
+      fotosVorAbmeldung: fotos.length,
+      queueNachAbmeldung: queueNachAbmeldung.length,
+      fotosNachAbmeldung: fotosNachAbmeldung.length,
+      anlageversuche,
+      zeilenAmEnde,
+    };
   } finally {
     await kontext.unroute("**/api/drafts").catch(() => undefined);
     await kontext.close();

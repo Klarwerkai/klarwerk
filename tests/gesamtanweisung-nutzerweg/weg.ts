@@ -872,6 +872,7 @@ const BAUSTEINBEFUNDE = `() => {
     const breite = Math.max(0, Math.min(r.right, fensterB) - Math.max(r.left, 0));
     const hoehe = Math.max(0, Math.min(r.bottom, fensterH) - Math.max(r.top, 0));
     const befund = textVon(el);
+    const herkunft = el.querySelector('[data-testid="ga-lesestand-herkunft"]');
     const kann = typeof el.checkVisibility === "function";
     return {
       platz: i + 1,
@@ -883,7 +884,7 @@ const BAUSTEINBEFUNDE = `() => {
       imFenster: Math.round(breite * hoehe),
       text: befund.text,
       verborgen: befund.verborgen,
-      knoten: befund.knoten,
+      herkunftsknoten: herkunft ? knotenVon(herkunft) : [],
     };
   });
 }`;
@@ -903,7 +904,7 @@ export interface Bausteinbefund {
   /** Was an ihm steht, aber niemand liest — die Zeichen der unsichtbaren Knoten. */
   verborgen: string[];
   /** Jeder Textknoten einzeln — daran hängt die namentliche Meldung. */
-  knoten: Textknotenbefund[];
+  herkunftsknoten: Textknotenbefund[];
 }
 
 /** Die Befunde aller gezeichneten Bausteine, in gezeichneter Reihenfolge. */
@@ -956,7 +957,7 @@ export async function bausteineMuessenSichtbarSein(
     // scheitert auch BENs Verstellung aus Runde 3: steht der Name allein in einem
     // `<span style="opacity:0">` und bleibt der übrige Absatz sichtbar, ist der NAMENSKNOTEN
     // unsichtbar — und diese Zeile wird namentlich rot.
-    const traeger = b.knoten.find((k) => k.text.includes(soll));
+    const traeger = b.herkunftsknoten.find((k) => k.text.includes(soll));
     const warum = traeger
       ? `Knoten in <${traeger.marke}>: „${traeger.text}" · checkVisibility=${traeger.sichtbar}` +
         ` · opacity=${traeger.deckkraft}` +

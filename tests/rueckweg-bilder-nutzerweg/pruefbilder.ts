@@ -49,8 +49,11 @@
 // (dort :89-143) und keine stille Abschrift: die Zielpfade dieses Auftrags dürfen `d5-gesamtweg/**`
 // nicht anfassen (Auftrag §4), und jener Schreiber ist auf EIN Bild fester Grösse verdrahtet
 // (`BILD_BREITE`/`BILD_HOEHE` als Modulkonstanten). Hier braucht es zwei Bilder verschiedener Masse.
-import { createHash } from "node:crypto";
+import { createHash, webcrypto } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { deflateSync } from "node:zlib";
+import { repoPfad } from "../support/repoPfad";
 
 export const JOB = "[KLARWERK] JOB 4329";
 
@@ -279,36 +282,12 @@ export function bodyHtmlWieAusWord(
 }
 
 // ------------------------------------------------------------------------------------------------
-// DIE NUTZLAST — EINE BENANNTE NACHBILDUNG VON `rwLadung`.
-// ------------------------------------------------------------------------------------------------
-//
-// Wörtlich aus `apps/web/public/word-addin/rueckweg.js:600-614`:
-//
-//     function rwLadung(aktion, html, text, version) {
-//       var statement = text.trim();
-//       var bauen = function (koerper) {
-//         if (aktion === "propose") {
-//           // Fall 2/3: der Vorschlag traegt DIESELBEN vier Felder wie der Einreichweg der
-//           // Web-Flaeche (statement, bodyHtml, baseVersion, origin) — nicht mehr und nicht weniger.
-//           return JSON.stringify({
-//             action: "propose",
-//             proposal: {
-//               statement: statement,
-//               bodyHtml: koerper,
-//               baseVersion: version,
-//               origin: "word_addin"
-//             }
-//           });
-//
-// DIESE FUNKTION IST NICHT DAS ADD-IN und behauptet es nirgends. Sie ist die vom TEST erzeugte
-// Nutzlast IM FORMAT des Add-ins. Dass das Format noch dasselbe ist, misst `tor-zeuge.test.ts`
-// gegen die Produktdatei — ohne ihn veraltete diese Nachbildung eines Tages still.
-//
-// `statement` wird hier GETRIMMT, weil `rwLadung` es trimmt. Die Feldreihenfolge ist die des
-// Add-ins; `JSON.stringify` folgt der Einfügereihenfolge, damit ist auch die Zeichenkette gleich.
-
+// Die Nutzlast wird vom ausgelieferten Word-Add-in selbst erstellt. Für diesen Messweg braucht
+// das statische Skript den Browser-Zufallszahlengenerator und eine leere Oberfläche, da die
+// Messung direkt an der Funktion für die vom Benutzer gewählte Vorschlagsaktion einsetzt.
 export interface RwNutzlast {
   readonly action: "propose";
+  readonly operationId: string;
   readonly proposal: {
     readonly statement: string;
     readonly bodyHtml: string;
@@ -317,20 +296,23 @@ export interface RwNutzlast {
   };
 }
 
-export function nutzlastWieRwLadung(arg: {
+export function sendeplatzFuerWordVorschlag(): (arg: {
   statement: string;
   bodyHtml: string;
   baseVersion: number;
-}): RwNutzlast {
-  return {
-    action: "propose",
-    proposal: {
-      statement: arg.statement.trim(),
-      bodyHtml: arg.bodyHtml,
-      baseVersion: arg.baseVersion,
-      origin: "word_addin",
-    },
-  };
+}) => RwNutzlast {
+  const pane = readFileSync(repoPfad("apps/web/public/word-addin/taskpane.js"), "utf8");
+  const helfer =
+    /^ *\/\/ KW-WORDADDIN-HELPERS-START[^\n]*\n([\s\S]+?)^ *\/\/ KW-WORDADDIN-HELPERS-END/m.exec(
+      pane,
+    )?.[1];
+  if (!helfer) throw new Error("Der ausgelieferte Word-Helferblock fehlt.");
+  const rueckweg = readFileSync(repoPfad("apps/web/public/word-addin/rueckweg.js"), "utf8");
+  const sende = runInNewContext(
+    `${helfer}\n${rueckweg}\n(arg) => rwLadung("propose", arg.bodyHtml, arg.statement, arg.baseVersion).payload`,
+    { crypto: webcrypto, TextEncoder, document: { getElementById: () => null } },
+  ) as (arg: { statement: string; bodyHtml: string; baseVersion: number }) => string;
+  return (arg) => JSON.parse(sende(arg)) as RwNutzlast;
 }
 
 /** Der Vorschlagstext, den der Experte aus Word zurückgibt. */

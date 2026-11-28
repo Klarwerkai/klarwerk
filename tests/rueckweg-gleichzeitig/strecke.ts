@@ -257,8 +257,11 @@ export async function starteInstanz(name: string, url: string): Promise<Instanz>
     pool,
     protokoll,
     schliessen: async () => {
-      await app.close();
-      await pool.end();
+      try {
+        await app.close();
+      } finally {
+        await pool.end();
+      }
     },
   };
 }

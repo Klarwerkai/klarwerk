@@ -246,7 +246,7 @@ describe("JOB 4323 · der Zeuge über den Menüweg: kein Klick, kein stiller Ski
       ["K6 blendet den zweiten Baustein nicht aus", ":nth-of-type(2){display:none !important}"],
       [
         "K7 verbirgt sein texttragendes Kind nicht",
-        ":nth-of-type(2) p{visibility:hidden !important}",
+        ':nth-of-type(2) [data-testid="ga-lesestand-herkunft"]{visibility:hidden !important}',
       ],
       [
         "K8 fährt BENs Gegenprobe aus Runde 1 nicht",
@@ -371,7 +371,7 @@ describe("JOB 4323 · der Zeuge über den Menüweg: kein Klick, kein stiller Ski
     expect(
       WEG,
       `${STATIONEN} sucht den Namensträger nicht unter den Textknoten — dann trägt wieder ein Elternfeld den Nachweis`,
-    ).toContain("b.knoten.find((k) => k.text.includes(soll))");
+    ).toContain("b.herkunftsknoten.find((k) => k.text.includes(soll))");
     expect(WEG, `${STATIONEN} prüft den gefundenen Knoten nicht mit knotenIstSichtbar`).toContain(
       "knotenIstSichtbar(traeger)",
     );

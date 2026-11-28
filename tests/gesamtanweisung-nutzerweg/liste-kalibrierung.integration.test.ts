@@ -39,7 +39,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
   type Browser,
@@ -49,6 +49,7 @@ import {
   warte,
 } from "../gast-nutzerweg/browserweg";
 import { PASSWORT, Sitzung, mussGelingen, wissensobjektAnlegen } from "../gast-nutzerweg/strecke";
+import { pgKalibrierung } from "../pg-laufbeleg/kalibrierung";
 import { sprachbestand } from "../support/i18nBestand";
 import { type Laufzustand, befundsatz } from "../wiki-gesamtanweisung-abnahme/laufzustand";
 import {
@@ -87,7 +88,15 @@ const ANWEISUNGSTITEL = "Kalibrierung der Bestandsliste (JOB 4357)";
  * diesen Integrationslauf rot; das Tor sieht `*.integration.test.ts` ohnehin nicht.
  */
 const MARKENDATEI = join(import.meta.dirname, "KALIBRIERUNG_AN");
-const ANGESCHALTET = process.env.KLARWERK_KALIBRIERUNG === "1" || existsSync(MARKENDATEI);
+const { aktiv: ANGESCHALTET, it } = pgKalibrierung(
+  process.env.KLARWERK_KALIBRIERUNG === "1" || existsSync(MARKENDATEI),
+  {
+    L1: /L1 \(display:none\): der Titel der gespeicherten Anweisung steht nicht sichtbar in der Liste — \[data-testid="ga-liste-eintrag"\].+ hat keine Fläche auf dem Bildschirm/u,
+    L2: /L2 \(durchsichtige Schrift\): der Titel der gespeicherten Anweisung steht nicht sichtbar in der Liste — sichtbar steht dort .+erwartet war/u,
+    L3: /\[data-testid="ga-liste-oeffnen"\]\[data-anweisung="[a-f0-9-]+"\].+ war in \d+ Tab-Anschlägen nicht erreichbar/u,
+    L4: /L4 \(nach dem Prozessneustart\): die Zeile der Anweisung [a-f0-9-]+ in der Bestandsliste — nicht eingetreten/u,
+  },
+);
 
 /**
  * Ein Init-Skript, das GENAU diese eine CSS-Regel nachlegt — sonst bleibt die Fläche unverändert.

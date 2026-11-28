@@ -31,7 +31,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
 import { meldung } from "../../services/auth/src/meldungen";
 import type { Role } from "../../services/auth/src/types";
@@ -58,6 +58,7 @@ import {
   starteStrecke,
   wissensobjektAnlegen,
 } from "../gast-nutzerweg/strecke";
+import { pgKalibrierung } from "../pg-laufbeleg/kalibrierung";
 import {
   BREIT,
   type Knopf,
@@ -94,7 +95,10 @@ const PRUEF_TITEL = "Wartungsplan zur Rollenabnahme (JOB 4326)";
 const PAPIERKORB_TITEL = "Entsorgter Wartungsplan (JOB 4326)";
 const NEUE_ANSCHRIFT = "niemals-entstanden@sichtbar-4326.test";
 /** Der Schalter, hinter dem die beiden Kalibrierungen wohnen — sonst kein dauerhaft roter `it`. */
-const KALIBRIERUNG = process.env.KLARWERK_KALIBRIERUNG === "1";
+const { aktiv: KALIBRIERUNG, it } = pgKalibrierung(process.env.KLARWERK_KALIBRIERUNG === "1", {
+  K1: /^\[KLARWERK\] JOB 4326 K1 — KALIBRIERUNG GRIFF/u,
+  K2: /^\[KLARWERK\] JOB 4326 K2 — KALIBRIERUNG GRIFF/u,
+});
 
 /** Zusammengesetzt statt ausgeschrieben — s. `tests/neuinstallation/…` (Fall N3 dort). */
 const PG_SCHEMA = "postgresql:";

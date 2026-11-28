@@ -547,7 +547,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Datei, statt sie abzuschreiben. Kein `fixture`: es wird KEIN Aufgabenfenster geladen (weder
   // `createKlaraPanel` noch jsdom), und das ist die ausdrückliche Grenze des Auftrags. Kein `pfad`:
   // `taskpane.html` wird nur als das benannt, was hier NICHT läuft.
-  //   · `pruefbilder.ts`                       — die Nachbildung selbst.
+  //   · `pruefbilder.ts`                       — führt die ausgelieferten Word-Helfer und den echten Rückweg aus.
   //   · `pruefbilder.test.ts`                  — ihre Kalibrierung.
   //   · `tor-zeuge.test.ts`                    — der Pin gegen die Produktdatei; er wird rot, wenn
   //                                              das Add-in-Format sich ändert.
@@ -559,7 +559,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // meldete A2 `neu im Baum, aber nicht gepinnt — Verzeichnis nachfuehren` mit genau diesen vier
   // Pfaden; erst danach wurden diese Zeilen angefasst.
   "tests/rueckweg-bilder-nutzerweg/pruefbilder.test.ts": "rueckweg",
-  "tests/rueckweg-bilder-nutzerweg/pruefbilder.ts": "rueckweg",
+  "tests/rueckweg-bilder-nutzerweg/pruefbilder.ts": "rueckweg,marken",
   "tests/rueckweg-bilder-nutzerweg/rueckweg-bilder-pg-im-browser.integration.test.ts": "rueckweg",
   "tests/rueckweg-bilder-nutzerweg/tor-zeuge.test.ts": "rueckweg",
   // AUFNAHME 20260922 · DEPLOY-HEALTH-COMMIT (R-1028, 29.09.2026): der Nachweis „eine

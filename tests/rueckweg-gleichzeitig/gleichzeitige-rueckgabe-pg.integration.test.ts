@@ -206,11 +206,13 @@ describe("JOB 4325 · der Rückweg unter echter Gleichzeitigkeit", () => {
     await instanzB?.schliessen().catch(() => undefined);
     await lese?.end().catch(() => undefined);
     if (verwaltung) {
-      // WITH (FORCE): offene Verbindungen einer abgebrochenen Runde dürfen das Abräumen nicht halten.
-      await verwaltung
-        .query(`DROP DATABASE IF EXISTS ${datenbank} WITH (FORCE)`)
-        .catch(() => undefined);
-      await verwaltung.end().catch(() => undefined);
+      try {
+        // pg-pool kann end() bereits auflösen, während die Client-Sockets noch schließen.
+        // PostgreSQL wartet beim regulären DROP auf sie. Ein zurückgelassener Client ist ein Prüffehler.
+        await verwaltung.query(`DROP DATABASE IF EXISTS ${datenbank}`);
+      } finally {
+        await verwaltung.end();
+      }
     }
     if (protokoll.length > 0) {
       process.stderr.write(

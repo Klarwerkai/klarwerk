@@ -5,7 +5,7 @@
 // O2: ausdrückliches Abmelden löscht As lokale Arbeit samt Foto; B und erneut A bleiben leer.
 // Die frühere Erhaltung von As Queue ÜBER Abmelden widerspricht dem jüngeren W4.6-Punkt 2.
 // Ursprüngliche SQL-/Vorgangs-/Urheber-/Sichtbarkeits-/Zeitprüfungen gelten weiter, wo sie diese
-// Grenze nicht übergehen. Optionale Alt-Kalibrierung bleibt unverändert und wird nicht mitgefahren.
+// Grenze nicht übergehen. Die Gegenproben messen As und Bs getrennte lokale Arbeit nach dem Kontowechsel.
 // Ohne echte PostgreSQL bleibt die bestehende sichtbare Prüfgrenze bestehen.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fahreDenAbmeldeWeg, fahreDenOfflineWeg } from "./offlineweg";
