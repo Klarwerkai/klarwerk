@@ -61,9 +61,9 @@ export const KLARA_FASSUNG_PLATZHALTER = "__KW_FASSUNG__";
  * Sie ist bewusst NICHT der Bau-Stempel `__KLARA_STAND__`: der beantwortet „wann wurde gebaut",
  * diese Zahl „ist meine Seite noch die, die ausgeliefert wird". Zwei Fragen, zwei Mechaniken.
  */
-export const KLARA_TASKPANE_FASSUNG = "1.0.0.16";
+export const KLARA_TASKPANE_FASSUNG = "1.0.0.17";
 export const KLARA_BEGLEITUNG_PFAD = "/word-addin/begleitung.html";
-export const KLARA_BEGLEITUNG_FASSUNG = "1.0.0.5";
+export const KLARA_BEGLEITUNG_FASSUNG = "1.0.0.6";
 
 /** Ersetzt den Platzhalter im Körper. Rührt `__KLARA_STAND__` ausdrücklich nicht an. */
 export function stempleFassung(html: string, fassung: string): string {
@@ -206,4 +206,4 @@ export async function registerWebStatic(
 export const KLARA_OFFICE_TASKPANE_PFAD = "/office-addin/taskpane.html";
 
 /** Die ausgelieferte Fassung des Excel-/PowerPoint-Fensters — dieselbe Zahl wie `<Version>`. */
-export const KLARA_OFFICE_TASKPANE_FASSUNG = "1.0.0.3";
+export const KLARA_OFFICE_TASKPANE_FASSUNG = "1.0.0.4";
