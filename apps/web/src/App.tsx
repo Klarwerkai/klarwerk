@@ -103,6 +103,9 @@ function OfflineErfassungsTor({ anwendung }: { anwendung: JSX.Element }): JSX.El
 function BibliotheksEinstieg(): null {
   const client = useQueryClient();
   useEffect(() => {
+    // Bei einem Direkteinstieg auch das Seitenmodul parallel zur Hülle laden.
+    // Einen Ladefehler zeigt die Fehlergrenze der Route bei ihrem regulären Aufruf.
+    void import("./pages/Library").catch(() => undefined);
     const q = new URLSearchParams(window.location.search).get("q") ?? "";
     void client.prefetchQuery(
       librarySearchQuery(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q })),
