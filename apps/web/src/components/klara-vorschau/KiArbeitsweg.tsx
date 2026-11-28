@@ -36,7 +36,7 @@ const KNOPF_KI =
   "inline-flex h-8 items-center rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const FELD =
   "w-full rounded-btn border border-hairline bg-surface px-2 py-1 text-[12px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand";
-const KLEINTITEL = "font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2";
+const KLEINTITEL = "font-mono text-klein font-semibold uppercase tracking-wider text-muted-2";
 const FORMATE: readonly KiErgebnisformat[] = [
   "stichpunkte",
   "fliesstext",
@@ -313,7 +313,7 @@ function AuftragKarte({
           key={`${b.am}-${b.klasse}`}
           data-testid="ki-auftrag-beleg"
           data-klasse={b.klasse}
-          className="text-[10.5px] text-muted-2"
+          className="text-klein text-muted-2"
         >
           {t("kiarbeitsweg.beleg", { text: b.text })}
         </p>

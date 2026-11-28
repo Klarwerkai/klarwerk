@@ -141,19 +141,16 @@ function neuerBefund(svc: ConflictService): Promise<Conflict> {
   );
 }
 
-/**
- * Die Akte mit der DICHTESTEN menschlichen Spur, die ein Aufräumweg überhaupt zu Gesicht bekommen
- * kann: eskaliert, mit Zweitmeinung, mit Entscheider und Entscheidungstext. Erreichbar, weil
- * `escalate` (`service.ts:167`) über `require` (`:168`) prüft und nicht über `requireOpen` — ein
- * bereits entschiedener Wahrheitskonflikt lässt sich erneut eskalieren.
- */
-async function akteMitVollerMenschenspur(svc: ConflictService): Promise<Conflict> {
+/** Alte Bestände konnten nach einer Entscheidung wieder eskaliert vorliegen. */
+async function akteMitVollerMenschenspur({ svc, repo }: Aufbau): Promise<Conflict> {
   const c = await neuerBefund(svc);
   await svc.escalate(c.id, MENSCH);
   await svc.secondOpinion(c.id, ZWEITMEINUNG_TEXT, MENSCH);
-  await svc.resolve(c.id, MENSCH, ENTSCHEIDUNG_TEXT);
-  await svc.escalate(c.id, MENSCH);
-  return c;
+  const entschieden = await svc.resolve(c.id, MENSCH, ENTSCHEIDUNG_TEXT);
+  await expect(svc.escalate(c.id, MENSCH)).rejects.toMatchObject({ code: "ALREADY_RESOLVED" });
+  const altbestand: Conflict = { ...entschieden, status: "eskaliert" };
+  await repo.update(altbestand, entschieden);
+  return altbestand;
 }
 
 describe("JOB 3899 · was ein systemisch beendeter Befund nach jedem der drei Wege trägt", () => {
@@ -200,7 +197,7 @@ describe("JOB 3899 · was ein systemisch beendeter Befund nach jedem der drei We
     // Weg 1 · Lese-GC — läuft (der Befund ist sicher stale und offen genug für `unresolved()`),
     // verliert aber das CAS (`repo.ts:81`) und schreibt nichts.
     const eins = aufbau();
-    const a = await akteMitVollerMenschenspur(eins.svc);
+    const a = await akteMitVollerMenschenspur(eins);
     expect(vermerk(await eins.repo.findById(a.id))).toStrictEqual(AUSGANG);
     eins.versionen.set(KO_B, 2);
     expect(await eins.svc.unresolved()).toHaveLength(0);
@@ -209,12 +206,12 @@ describe("JOB 3899 · was ein systemisch beendeter Befund nach jedem der drei We
 
     // Weg 2 · onKoRevised — `:483` setzt genau drei Felder, der Rest überlebt den Spread.
     const zwei = aufbau();
-    const b = await akteMitVollerMenschenspur(zwei.svc);
+    const b = await akteMitVollerMenschenspur(zwei);
     expect(await zwei.svc.onKoRevised(KO_B, 2, "system")).toBe(1);
 
     // Weg 3 · onKoRemoved — `service.ts:221` mergt denselben Patch mit anderem Grund.
     const drei = aufbau();
-    const c = await akteMitVollerMenschenspur(drei.svc);
+    const c = await akteMitVollerMenschenspur(drei);
     expect(await drei.svc.onKoRemoved(KO_B, "system-loeschung")).toBe(1);
 
     // DIE TABELLE. Sie sagt für jeden Weg in einer Zeile, was aus der menschlichen Spur wird.

@@ -150,7 +150,7 @@ export function KlaraHinweis({
       <p data-testid="klara-hinweis-text" className="mt-0.5 text-[12px] leading-relaxed text-text">
         {t(`klarainitiative.hinweis.${hinweis.art}.text`, { seite: ort })}
       </p>
-      <p className="mt-0.5 text-[10.5px] text-muted-2">{t("klarainitiative.hinweis.nurAngebot")}</p>
+      <p className="mt-0.5 text-klein text-muted-2">{t("klarainitiative.hinweis.nurAngebot")}</p>
       <div className="mt-1.5 flex flex-wrap gap-1.5">
         <button
           type="button"
@@ -266,7 +266,7 @@ export function KlaraUebertrageneAufgaben({
           })}
         </ul>
       )}
-      <p className="mt-1 text-[10.5px] text-muted-2">{t("klarainitiative.aufgaben.rechte")}</p>
+      <p className="mt-1 text-klein text-muted-2">{t("klarainitiative.aufgaben.rechte")}</p>
     </section>
   );
 }

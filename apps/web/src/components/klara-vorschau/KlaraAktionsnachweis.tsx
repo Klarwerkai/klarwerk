@@ -25,7 +25,7 @@ import { HOME_ROUTE } from "../../app/navigation";
 import { internerPfad } from "../../lib/internerPfad";
 import type { RuecknahmeKonflikt } from "./auftrag";
 
-const KLEINTITEL = "font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2";
+const KLEINTITEL = "font-mono text-klein font-semibold uppercase tracking-wider text-muted-2";
 const VERWEIS = "font-semibold text-brand-text hover:underline";
 const KNOPF =
   "inline-flex h-7 items-center rounded-btn border border-hairline bg-surface px-2 text-[11px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -385,7 +385,7 @@ export function KlaraSchrittNachweis({
             {t("assistenzverlauf.protokoll.fehler")}
           </p>
         ) : null}
-        <p className="text-[10.5px] text-muted-2">{t("assistenzverlauf.protokoll.hinweis")}</p>
+        <p className="text-klein text-muted-2">{t("assistenzverlauf.protokoll.hinweis")}</p>
       </div>
     </details>
   );

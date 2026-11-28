@@ -137,7 +137,7 @@ function AntwortLauf({
             <span
               data-testid="bib-antwort-einstufung"
               data-bib-text
-              className="self-start rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+              className="self-start rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
             >
               {t(effective.evidence.labelKey)}
             </span>
@@ -180,7 +180,7 @@ function AntwortLauf({
               >
                 <span
                   data-bib-text
-                  className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2"
+                  className="font-mono text-klein uppercase tracking-wider text-muted-2"
                 >
                   {t("lib.antwort.quellen")}
                 </span>
@@ -243,7 +243,7 @@ export function BibliothekAntwort({
         <div className="flex items-center justify-between gap-2">
           <span
             data-bib-text
-            className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai"
+            className="font-mono text-klein font-semibold uppercase tracking-wider text-ai"
           >
             {t("lib.antwort.titel")}
           </span>
@@ -283,7 +283,7 @@ export function BibliothekAntwort({
       <span
         data-testid="bib-gefunden"
         data-bib-text
-        className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2"
+        className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2"
       >
         {t("lib.antwort.gefunden")}
       </span>

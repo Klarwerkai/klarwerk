@@ -297,7 +297,7 @@ export function Help(): JSX.Element {
         >
           <ExternalLink size={12} aria-hidden="true" className="self-center" />
           <span>{t("vorfuehrweg.hilfe.link")}</span>
-          <span className="font-mono text-[10px] font-normal text-muted-2">
+          <span className="font-mono text-klein font-normal text-muted-2">
             ({t("help.support.newTab")})
           </span>
         </a>
