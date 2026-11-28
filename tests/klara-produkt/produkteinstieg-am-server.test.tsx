@@ -212,7 +212,9 @@ describe("K1/K5 · ohne Vorschau-Aufruf sichtbar, verständlich und neutral besc
       const f = q<HTMLButtonElement>(document, "klara-figur");
       expect(f?.dataset.betriebsart).toBe("produkt");
       expect(f?.dataset.betrieb).toBe("echt");
-      expect(q(document, "klara-figur-name")?.textContent).toBe("Deine Assistenz");
+      const beschriftung = q(document, "klara-figur-name");
+      expect(beschriftung?.textContent).toBe("Deine Assistenz");
+      expect(beschriftung?.closest("button")).toBe(f);
       expect(f?.getAttribute("aria-label")).toBe(
         "Deine Assistenz – persönliches Gespräch öffnen oder schließen",
       );

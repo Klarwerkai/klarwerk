@@ -2471,41 +2471,45 @@ export function KlaraVorschau({
           onDragLeave={() => setAblage(false)}
           onDrop={beiAblegen}
           title={ablage ? t("klaravorschau.figur.ablegen") : figurLabel}
-          className={`klara-figur relative grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
+          className={`klara-figur relative flex flex-col items-center rounded-btn focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
             ziehPos ? "cursor-grabbing" : "cursor-grab"
           }`}
-          style={{ width: groesse, height: groesse }}
         >
-          <AvatarBild
-            motiv={assistenz.motiv}
-            alt=""
-            ersatzBeschriftung=""
-            width={groesse}
-            height={groesse}
-            testId="klara-avatar"
-            className="klara-motiv pointer-events-none h-full w-full"
-            // Die Mimik der Motive mit Gesicht (Lidschlag, Mund/Schnabel), deckungsgleich über dem
-            // unveränderten Bild; sachliche Objekte und die Ersatzgrafik bekommen keine.
-            ueberlagerung={
-              <AvatarMimik
-                motivId={assistenz.motiv?.id}
-                zustand={figurZustand}
-                bewegungReduziert={assistenz.bewegungReduziert}
-              />
-            }
-          />
-        </button>
-        {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen
-            zu finden. Die Beschriftung ist kein eigenes Ziel; bedient wird die Figur selbst. */}
-        {produkt ? (
           <span
-            data-testid="klara-figur-name"
-            aria-hidden="true"
-            className="pointer-events-none mt-1 whitespace-nowrap rounded-pill bg-ink px-2 py-0.5 text-[11px] font-semibold text-page shadow-tile"
+            className="relative grid shrink-0 place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover"
+            style={{ width: groesse, height: groesse }}
           >
-            {anzeigeName}
+            <AvatarBild
+              motiv={assistenz.motiv}
+              alt=""
+              ersatzBeschriftung=""
+              width={groesse}
+              height={groesse}
+              testId="klara-avatar"
+              className="klara-motiv pointer-events-none h-full w-full"
+              // Die Mimik der Motive mit Gesicht (Lidschlag, Mund/Schnabel), deckungsgleich über dem
+              // unveränderten Bild; sachliche Objekte und die Ersatzgrafik bekommen keine.
+              ueberlagerung={
+                <AvatarMimik
+                  motivId={assistenz.motiv?.id}
+                  zustand={figurZustand}
+                  bewegungReduziert={assistenz.bewegungReduziert}
+                />
+              }
+            />
           </span>
-        ) : null}
+          {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen
+            zu finden. Die Beschriftung ist kein eigenes Ziel; bedient wird die Figur selbst. */}
+          {produkt ? (
+            <span
+              data-testid="klara-figur-name"
+              aria-hidden="true"
+              className="pointer-events-none mt-1 whitespace-nowrap rounded-pill bg-ink px-2 py-0.5 text-[11px] font-semibold text-page shadow-tile"
+            >
+              {anzeigeName}
+            </span>
+          ) : null}
+        </button>
         {/* produkt:20261011:assistenz-minimalistische-oberflaeche: eingeklappt bleibt jeder laufende
             Vorgang an der Figur stoppbar. Eine Aufnahme endet beim Einklappen ohnehin (siehe
             `aufnahmeAbbrechen`) — es gibt kein Mikrofon ohne sichtbaren Stopp. */}
