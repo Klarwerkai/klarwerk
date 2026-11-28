@@ -1,10 +1,11 @@
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../../api/endpoints";
 import { useSession } from "../../app/AuthContext";
+import { useModalBoundary } from "../../app/ModalBoundaryContext";
 import { zitatFragment } from "../../lib/belegstelle";
 import { gespeicherteFassungHref } from "../../lib/objektbezug";
 import { useAuthorName } from "../../lib/useAuthorName";
@@ -80,10 +81,8 @@ export function Quellverweis({
           id={id}
           fassung={fassung}
           zitat={zitat}
-          beiRueckkehr={() => {
-            setOffen(false);
-            ausloeser.current?.focus();
-          }}
+          ausloeser={ausloeser}
+          beiRueckkehr={() => setOffen(false)}
         />
       )}
     </div>
@@ -94,29 +93,31 @@ function Quellfenster({
   id,
   fassung,
   zitat,
+  ausloeser,
   beiRueckkehr,
 }: {
   id: string;
   fassung: number | undefined;
   zitat: string;
+  ausloeser: RefObject<HTMLAnchorElement>;
   beiRueckkehr: () => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const [heute, setHeute] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const zurueck = useRef<HTMLButtonElement>(null);
+  const { enter, host } = useModalBoundary();
   useEffect(() => {
     const fenster = dialog.current;
-    fenster?.showModal();
+    if (!fenster) return;
+    fenster.showModal();
+    const verlassen = enter({ panel: () => fenster, trigger: () => ausloeser.current });
     zurueck.current?.focus();
     return () => {
-      fenster?.close();
+      fenster.close();
+      verlassen();
     };
-  }, []);
-  const schliessen = () => {
-    dialog.current?.close();
-    beiRueckkehr();
-  };
+  }, [enter, ausloeser]);
   // Ein normaler Quellenklick bleibt auch in der nativen Begleitapp im selben WebView.
   // Das Vergleichselement und der Entwurf im Fragefeld bleiben darunter montiert.
   return createPortal(
@@ -130,7 +131,7 @@ function Quellfenster({
       }}
       onCancel={(event) => {
         event.preventDefault();
-        schliessen();
+        beiRueckkehr();
       }}
     >
       <div className="flex max-h-[96dvh] flex-col">
@@ -140,7 +141,7 @@ function Quellfenster({
             type="button"
             data-testid="begleiter-quelle-zurueck"
             className="flex items-center gap-2 rounded-btn px-2 py-2 text-sm font-semibold text-brand-text focus-visible:outline focus-visible:outline-2"
-            onClick={schliessen}
+            onClick={beiRueckkehr}
           >
             <ArrowLeft aria-hidden="true" size={16} />
             {t("quellen.fokus.zumVergleich")}
@@ -161,7 +162,7 @@ function Quellfenster({
         </div>
       </div>
     </dialog>,
-    document.body,
+    host() ?? document.body,
   );
 }
 

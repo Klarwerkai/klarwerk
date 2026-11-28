@@ -3180,7 +3180,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Im Prüflauf zu Kandidat 6e1a7105 GEMESSEN („Received", HISTORIE/nacharbeit-20/PRUEFUNG/
     // integration-waechter.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
     // Messung unberührt.
-    const PIN = "7f0236681d9f18ea351d7267375563445e5afee2806f49fa0319822c945444aa";
+    // Stand 191b818aa: Word lädt die kompakte Oberfläche und den Dokumentvergleich. Das Manifest
+    // verwendet weiter /word-addin/taskpane.html und ReadWriteDocument. Seine Fassung stieg seit
+    // dem letzten Pin von 1.0.0.1 auf 1.0.0.16. Genau diese Fassung lieferten GET, HEAD und die
+    // 16 lokalen Skript-/Stilverweise im gebauten Paket. office.js kommt weiter von Microsoft.
+    // Die Lieferprüfungen in word-minimal/auslieferung und word-addin-csp decken diese Wege ab.
+    const PIN = "c0e28685072cdc15948c926f4fd743ba4ebe8553361c4e338333bb3b139a5ad8";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
@@ -3356,7 +3361,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
     // Nacharbeit 13: Bildfolge im selben Absatz korrigiert; 35 Strukturtests bestehen.
     // Nur Inhalts-Pin erneuert; Manifest, Rechte, Ursprung und Nutzlastvertrag unverändert.
-    const PIN = "d79846c004c5521a915f7063bc9152a2f2312cfe6ceb2a63c26613f4da68aee1";
+    // 227a06e09 ergänzt bei propose und revise-release eine operationId im bestehenden PUT:
+    // dieselbe Aktion mit gleichem Inhalt und Stand behält ihre Kennung bei einer Wiederholung.
+    // w45-integritaet/office-operationen prüft Antwortverlust und Inhaltswechsel im Word-Panel.
+    const PIN = "d81cf90f8e16b98113ad57bdc00a8e6608715bad1d3aebf036f77b8971832496";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,
@@ -3435,7 +3443,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // CSP und Manifest unverändert. Kein neues Sideload. Der SHA-256 ist 2a6b7083… .
     // Bestehende Dialog- und Zwei-Faktor-Proben: 40/40 bestanden. Keine Produktänderung durch
     // die Hilfe; Herkunft und Messung: QUELLEN-HILFE-525ff063-INTEGRATION.json im Auftragsordner.
-    const PIN = "2a6b70838c98b7beca7e1b823a7f99f269026f076cdbdaf492bfe5774ceb409e";
+    // c1261356a verwendet denselben Anmeldedialog auch für Excel und PowerPoint. Der Hostname
+    // im Text kommt aus host oder _host_Info, bei fehlender Angabe erscheint „Office“.
+    // office-addin/anmeldedialog-host und office-web-anmeldung/dialogseite prüfen Host und Übergabe.
+    const PIN = "6904ca160d40b84cf96b72666b299781fcff9a5c409f0ce4df8c7671cfff20e7";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,

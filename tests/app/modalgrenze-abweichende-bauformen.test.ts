@@ -196,6 +196,41 @@ describe("Register A17b · abweichend benannte Bauformen werden Kandidat statt s
     expect(rot[0]).toContain("„dialog“");
   });
 
+  it("beim GuardedLink kündigt aria-haspopup das Dialogziel an; eine Rolle bleibt ein Fund", () => {
+    const datei = "apps/web/src/pages/DialogLinks.tsx";
+    const e = synth(datei, [
+      'import { GuardedLink as Link } from "../app/NavGuardContext";',
+      'const ziel = <Link aria-haspopup="dialog" />;',
+      'const rolle = <Link aria-haspopup={"dialog"} role="dialog" />;',
+      'const anderer = <Huelle aria-haspopup="dialog" />;',
+      'function lokal(Link: Huelle) { return <Link aria-haspopup="dialog" />; }',
+    ]);
+    expect(e.kandidaten).toEqual([{ datei, zeile: 3, art: "role-dialog" }]);
+    expect(modalAbgleich(e).map((meldung) => meldung.split(" — ")[0])).toEqual([
+      `${datei}:4`,
+      `${datei}:5`,
+    ]);
+  });
+
+  it("Props über einen kurzen Alias bleiben sichtbar, wenn ein längerer Pfad die Tiefengrenze erreicht", () => {
+    const datei = "apps/web/src/components/PropsWege.tsx";
+    const wege = [
+      "const quelle = { role: liesRolle() };",
+      "const weg0 = quelle;",
+      ...Array.from({ length: 11 }, (_, i) => `const weg${i + 1} = weg${i};`),
+      "let stand = weg11;",
+      "stand = quelle;",
+      "stand = { ...stand };",
+      "const anzeige = stand;",
+    ];
+    const mitSpread = synth(datei, [...wege, "export const feld = <p {...anzeige} />;"]);
+    expect(modalAbgleich(mitSpread)).toContainEqual(
+      expect.stringContaining(`${datei}:1 — Rollenwert „liesRolle()“`),
+    );
+    const ohneSpread = synth(datei, [...wege, "export const feld = anzeige;"]);
+    expect(modalAbgleich(ohneSpread)).toEqual([]);
+  });
+
   it("bens Befund 2: Typdeklarationen und Vergleiche bauen nichts und sperren das Tor nicht", () => {
     const rein = synth("apps/web/src/lib/a17bTypen.ts", [
       'export type Rolle = "dialog" | "button";',

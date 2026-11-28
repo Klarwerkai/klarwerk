@@ -237,6 +237,7 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
       "kalender.js?v=__KW_FASSUNG__",
       "lernziel.js?v=__KW_FASSUNG__",
       "vormachen.js?v=__KW_FASSUNG__",
+      "dokumentvergleich.js?v=__KW_FASSUNG__",
       "rueckweg.js?v=__KW_FASSUNG__",
       "taskpane.js?v=__KW_FASSUNG__",
       "wortvergleich.js?v=__KW_FASSUNG__",

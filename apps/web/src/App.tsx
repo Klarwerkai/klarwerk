@@ -145,7 +145,9 @@ function Gate(): JSX.Element {
           {t("erholung.sitzung.anmeldung")}
         </button>
       </div>
-      <div {...(halten ? { inert: "" } : {})}>{anwendung}</div>
+      <div className="h-full" {...(halten ? { inert: "" } : {})}>
+        {anwendung}
+      </div>
     </>
   );
   if (window.location.pathname === "/kiosk") {
