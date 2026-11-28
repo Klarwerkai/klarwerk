@@ -40,6 +40,10 @@ import {
   schreibeBeschreibung,
 } from "./bildbeschreibung-naht";
 
+import { verwendeManuellesBildprofil } from "./manuelles-bildprofil";
+
+verwendeManuellesBildprofil();
+
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const PNG = "data:image/png;base64,AAAA";

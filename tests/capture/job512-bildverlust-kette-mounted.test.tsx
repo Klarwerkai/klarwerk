@@ -29,21 +29,6 @@ vi.mock("../../apps/web/src/api/auth", () => ({
   },
 }));
 
-// Die Galerie-Kachel führt zum Bildbeschreibungs-Formular und verlangt dafür `useImageDescribe`.
-// Der ECHTE Provider fragt dazu die KI-Verfügbarkeit über `endpoints` ab, die dieser Test bewusst
-// schmal hält — ohne diese Naht liefe ein Teil des Baums über einen Fehlerpfad, und ein Test, der
-// durch einen Fehler hindurch grün wird, belegt nichts. Dieselbe Naht benutzt bereits
-// tests/capture/draft-save-fullstate-mounted.test.tsx.
-vi.mock("../../apps/web/src/app/ImageDescribeContext", () => ({
-  ImageDescribeProvider: ({ children }: { children?: unknown }) => children as JSX.Element,
-  ImageDescribeValueProvider: ({ children }: { children?: unknown }) => children as JSX.Element,
-  useImageDescribe: () => ({
-    available: false,
-    billable: false,
-    describe: async () => ({ text: null, demo: true }),
-  }),
-}));
-
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     drafts: {
@@ -53,6 +38,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
       promote: vi.fn(async () => ({})),
     },
     reasoner: {
+      status: vi.fn(async () => ({ active: false, mode: "deterministic", reachable: "none" })),
       structure: vi.fn(async () => ({})),
       assist: vi.fn(async () => ({})),
     },

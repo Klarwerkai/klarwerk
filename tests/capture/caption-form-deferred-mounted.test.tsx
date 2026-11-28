@@ -27,6 +27,10 @@ import i18n from "../../apps/web/src/i18n";
 import { CAPTION_AI_TEXT } from "../../apps/web/src/lib/captionAiSuggest";
 import { beschreibungsText, mitBildbeschreibung } from "./bildbeschreibung-naht";
 
+import { verwendeManuellesBildprofil } from "./manuelles-bildprofil";
+
+verwendeManuellesBildprofil();
+
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const SRC_A = "data:image/png;base64,AAAA";
