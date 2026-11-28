@@ -58,14 +58,34 @@
   ],
   "ausserhalb": [
     {
+      "weg": "CI-Job pflicht-plan",
+      "befehl": "node tools/pflicht-pr.mjs plan \"$RELEASE_BASE\" .local/run/ci-pflicht-plan",
+      "grund": "Ermittelt die Pflichtdateien des Pull Requests und stellt das Web-Bündel für verteilte Prüfungen bereit."
+    },
+    {
+      "weg": "CI-Job pflicht-teil",
+      "befehl": "node tools/pflicht-pr.mjs teil \"$RELEASE_BASE\" .local/run/ci-pflicht-teil \"$TEIL\"",
+      "grund": "Führt bei großer PR-Auswahl die Vorstufen und alle ausgewählten Testdateien auf getrennten Runnern aus."
+    },
+    {
       "weg": "CI-Job pflicht",
       "befehl": "node tools/release.mjs check \"$RELEASE_BASE\" .local/run/ci-pflicht",
-      "grund": "Gemeinsamer schneller Release-Pflichtvertrag; das breite tools/check bleibt separate Diagnose."
+      "grund": "Führt den schnellen Einzelvertrag aus oder prüft bei großen Pull Requests alle Teilbelege. Ein verteilter PR-Bericht gilt ausschließlich für den Pull Request."
     },
     {
       "weg": "CI-Job integration",
       "befehl": "npm run test:integration",
       "grund": "braucht PostgreSQL über Testcontainers (Docker); das hermetische Tor hat keine Datenbank"
+    },
+    {
+      "weg": "CI-Job integration-insel-macos",
+      "befehl": "npm run test:integration -- tests/insel-auslieferung/release-update-rueckfall.integration.test.ts",
+      "grund": "Prüft Installation, Update und Rückfall unter macOS mit launchd."
+    },
+    {
+      "weg": "CI-Job integration-kundeninstallation",
+      "befehl": "npm run test:integration -- tests/neuinstallation/kundeninstallation-strecke.integration.test.ts",
+      "grund": "Prüft die Kundeninstallation in einer eigenen Docker-Umgebung."
     },
     {
       "weg": "CI-Job abbild",
