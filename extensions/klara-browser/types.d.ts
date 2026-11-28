@@ -47,7 +47,9 @@ export type Selection = {
   tabId: number;
 };
 export type Auth = { id: string; email: string; token: string };
+export type BildNachweis = { eingang: string; ausgabe: string };
 export type Work = {
+  bildNachweis?: BildNachweis | null;
   id: string;
   selection: Selection;
   variants: Variants;
@@ -516,6 +518,7 @@ export type Message = {
   text?: string;
   email?: string;
   password?: string;
+  code?: string;
   /** BPA-02: Erfassungsziel und Schutzklasse der technischen Daten (leer = unbekannt). */
   ziel?: { objekt?: string; variante?: string };
   schutzklasse?: string;
@@ -548,6 +551,7 @@ export type Payload = {
   confidentiality?: string;
 };
 export type Wire = {
+  bildNachweis?: BildNachweis;
   token?: string;
   user?: { id?: string; email?: string };
   id?: string;

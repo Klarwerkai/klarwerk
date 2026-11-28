@@ -424,7 +424,7 @@
     {
       "id": "W12",
       "art": "weg",
-      "name": "Klara in Word: Frage liest nur Text der Markierung",
+      "name": "Klara in Word: Frage liest Text aus Markierung oder Cursorbezug",
       "stand": "geliefert",
       "fundstellen": [
         {
@@ -433,7 +433,7 @@
         },
         {
           "pfad": "apps/web/public/word-addin/taskpane.js",
-          "anker": "function readAskSelection(done, wordZuerst, fehler) {"
+          "anker": "auswahl.load(\"text\");"
         }
       ]
     },
@@ -608,7 +608,7 @@
     },
     {
       "id": "L10",
-      "name": "Klara in Word fragt nur mit Text der Markierung; Bilder erreichen Klarwerk nur über den Entwurfsweg."
+      "name": "Klara in Word fragt mit Text aus der Markierung oder vom Cursor; Bilder erreichen Klarwerk nur über den Entwurfsweg."
     },
     {
       "id": "L11",

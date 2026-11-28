@@ -2868,6 +2868,10 @@ function createSemanticPrefilterFromEnv(
   };
 }
 
+class AddonRateLimitError extends Error {
+  override readonly name = "AddonRateLimitError";
+}
+
 // Gemeinsamer globaler Fehlerweg: bekannte Modellkapazität und Klara-Zustimmung behalten
 // ihren festen Vertrag; unerwartete Fehler gehen durch dieselbe Maskierung wie sendError.
 // Fastifys eigene Validierungs-4xx bleiben erhalten.
@@ -2876,6 +2880,12 @@ export function modelBusyErrorHandler(
   _request: FastifyRequest,
   reply: FastifyReply,
 ): void {
+  if (error instanceof AddonRateLimitError) {
+    reply
+      .code(429)
+      .send({ error: "RATE_LIMITED", message: "Zu viele Anfragen — bitte später erneut." });
+    return;
+  }
   if (error instanceof ModelCapacityError) {
     reply
       .code(503)
@@ -3094,6 +3104,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "EvalError",
   "URIError",
   // Haus (erhoben aus `class …Error extends` unter `services/`)
+  "AddonRateLimitError",
   "AskError",
   "AuthError",
   "BestandsresetGesperrtError",
@@ -3158,6 +3169,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // Klassenname, keine Profilwerte.
   "ManagementProfileError",
   "MediaAnalysisError",
+  "ModelBudgetError",
   "ModelCapacityError",
   "ModelEmptyResponseError",
   "ModelHttpError",
@@ -3231,6 +3243,13 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // geht (`http.ts` sendet ihn mit Grund) UND weil er im Betriebsprotokoll die eine Zeile ist, an
   // der ein Betreiber diese Lage erkennt — als `UNBEKANNT` sagte sie über den Vorfall nichts.
   "ANWEISUNG_ABLAGE_FLUECHTIG",
+  "EMAIL_FORM",
+  "EMAIL_ANHAENGE",
+  "EMAIL_ADRESSE",
+  "GRUNDLAGE_GEAENDERT",
+  "INVALID_LAGEBILD_WERTE",
+  "LAGEBILD_KONFLIKT",
+  "VORHERIGER_SCHRITT",
   "BAD_REQUEST",
   "BESTANDSRESET_GESPERRT",
   "BESTANDSRESET_LAEUFT",
@@ -4178,7 +4197,10 @@ export function buildApp(
     // `config.rateLimit` (POST /api/ask; Slice 5: /api/check-text), nicht app-weit. Die eigentliche
     // Enge (nur addon-Principal, gekeyt auf den Actor; Session-Requests exempt) steckt in
     // addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
-    app.register(rateLimit, { global: false });
+    app.register(rateLimit, {
+      global: false,
+      errorResponseBuilder: () => new AddonRateLimitError(),
+    });
     const addonOrigin = addonApiEnabled() ? resolveAddonOrigin() : null;
     if (addonOrigin !== null) {
       app.register(

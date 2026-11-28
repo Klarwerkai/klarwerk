@@ -69,7 +69,7 @@ import {
 import { bildInhaltskennung } from "../../apps/web/src/lib/bildAutomatik";
 import type { BildKorrekturDaten } from "../../apps/web/src/lib/bildKorrektur";
 import { verwerfeBildKorrekturen } from "../../apps/web/src/lib/bildKorrekturenStand";
-import { bildMit, bildMitMassen, dataUrl, markeAus } from "./deck";
+import { bildMit, bildMitMassen, dataUrl, leseKontextDaten, markeAus } from "./deck";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -566,7 +566,15 @@ describe("E4 · K5/K6/K7 — berichtigen, in Klara nutzen, behalten, zurücknehm
     expect(frage).toHaveBeenCalledTimes(2);
     const kennzeichen = i18n.t("bildfundstelle.kontext.textBerichtigt");
     for (const [kontext] of frage.mock.calls) {
-      expect(kontext).toContain(
+      const inhalt = leseKontextDaten(kontext);
+      expect(inhalt.bilder[0]).toMatchObject({
+        quelle: "diesem Text",
+        ort: "Bild 1",
+        fundstelle: { art: "rumpf", bild: 1 },
+        text: "Herr Müller zahlt 4.250 EUR\nam 12.10.2026",
+        berichtigt: true,
+      });
+      expect(inhalt.hinweise.join("\n")).toContain(
         `[diesem Text · Bild 1] ${kennzeichen}: Herr Müller zahlt 4.250 EUR`,
       );
       expect(kontext).not.toContain("Mül1er");

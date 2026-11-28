@@ -1,22 +1,3 @@
-// ================================================================================================
-// OCR-E04 · VOLLSTÄNDIG GESCANNTE, MEHRSEITIGE DOKUMENTE AUTOMATISCH LESEN — Verhalten des Kerns.
-// ================================================================================================
-//
-// Auftrag produkt:20261012:klara-ocr-mehrseitige-scans, Revision 1.
-//
-// Kontrollierte PDF mit bekanntem Inhalt (`scan-pdf.ts`), an der ECHTEN pdfjs-Engine gelesen (Text-
-// ebene je Seite, und ob eine Seite ein Bild zeichnet). Ersetzt sind nur das Zeichnen der Seite und
-// die Texterkennung — damit Inhalt, Fehler und Laufzeit je Seite steuerbar sind. Die echte Erkennung
-// im Browser misst `tests-smoke/klara-ocr-mehrseitige-scans-browser.spec.ts`.
-//
-//   S1  Seitenarten aus der echten Engine: Bildseite, Textseite, gemischte Seite.
-//   S2  Ein mehrseitiger Scan wird ohne separaten Auftrag Seite für Seite gelesen, in Reihenfolge,
-//       mit Zeilen/Absätzen; „vollständig“ erst, wenn jede Seite gelesen ist.
-//   S3  Fragen zur ersten und letzten Seite: Fundstelle mit der richtigen Seitenzahl.
-//   S4  Gemischte Datei: keine Bildseite still ausgelassen, keine Passage doppelt im Kontext.
-//   S5  Fehler auf einer Seite: Fehler sichtbar, die übrigen Seiten gelesen und im Kontext.
-//   S6  Laufend, aus, fehlende Seiten über der Grenze — jeweils im Status, nie „vollständig“.
-//   S7  Gleiche Seitenbilder werden nicht zweimal erkannt; ein Lauf, der abbricht, startet nichts.
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import {
@@ -41,6 +22,26 @@ import {
   pdfSeitenText,
   pdfSeitenTexte,
 } from "../../apps/web/src/lib/pdfScanSeiten";
+// ================================================================================================
+// OCR-E04 · VOLLSTÄNDIG GESCANNTE, MEHRSEITIGE DOKUMENTE AUTOMATISCH LESEN — Verhalten des Kerns.
+// ================================================================================================
+//
+// Auftrag produkt:20261012:klara-ocr-mehrseitige-scans, Revision 1.
+//
+// Kontrollierte PDF mit bekanntem Inhalt (`scan-pdf.ts`), an der ECHTEN pdfjs-Engine gelesen (Text-
+// ebene je Seite, und ob eine Seite ein Bild zeichnet). Ersetzt sind nur das Zeichnen der Seite und
+// die Texterkennung — damit Inhalt, Fehler und Laufzeit je Seite steuerbar sind. Die echte Erkennung
+// im Browser misst `tests-smoke/klara-ocr-mehrseitige-scans-browser.spec.ts`.
+//
+//   S1  Seitenarten aus der echten Engine: Bildseite, Textseite, gemischte Seite.
+//   S2  Ein mehrseitiger Scan wird ohne separaten Auftrag Seite für Seite gelesen, in Reihenfolge,
+//       mit Zeilen/Absätzen; „vollständig“ erst, wenn jede Seite gelesen ist.
+//   S3  Fragen zur ersten und letzten Seite: Fundstelle mit der richtigen Seitenzahl.
+//   S4  Gemischte Datei: keine Bildseite still ausgelassen, keine Passage doppelt im Kontext.
+//   S5  Fehler auf einer Seite: Fehler sichtbar, die übrigen Seiten gelesen und im Kontext.
+//   S6  Laufend, aus, fehlende Seiten über der Grenze — jeweils im Status, nie „vollständig“.
+//   S7  Gleiche Seitenbilder werden nicht zweimal erkannt; ein Lauf, der abbricht, startet nichts.
+import { leseKontextDaten } from "../klara-bildanalyse-ocr/deck";
 import { grauBild, scanPdf } from "./scan-pdf";
 
 const require = createRequire(import.meta.url);
@@ -241,8 +242,12 @@ describe("OCR-E04 · S2/S3 · mehrseitiger Scan, ohne separaten Auftrag", () => 
     const { befund } = await lies(await gescannt());
     const k = klaraBildKontext("", [befund], ue, ortVon);
     expect(k.vollstaendig).toBe(true);
-    expect(k.kontext).toContain(`[${NAME} · Seite 1, erkannt]`);
-    expect(k.kontext).toContain(`[${NAME} · Seite 4, erkannt]`);
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain(
+      `[${NAME} · Seite 1, erkannt]`,
+    );
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain(
+      `[${NAME} · Seite 4, erkannt]`,
+    );
 
     const erste = belegstellen("Welche Pruefkarte wurde abgezeichnet?", "", k);
     expect(erste[0]?.ort).toBe("Seite 1, erkannt");
@@ -279,11 +284,14 @@ describe("OCR-E04 · S4 · gemischte Text-/Bilddatei", () => {
     expect(s3Bild?.textGekennzeichnet).toBe("Ventil V3 wurde getauscht.");
 
     const k = klaraBildKontext("", [befund], ue, ortVon, [eingang]);
-    const vorkommen = (s: string): number => k.kontext.split(s).length - 1;
+    const vorkommen = (s: string): number =>
+      leseKontextDaten(k.kontext).hinweise.join("\n").split(s).length - 1;
     expect(vorkommen("Abschnitt Ventile")).toBe(1);
     expect(vorkommen("Abschnitt Druckpruefung")).toBe(1);
-    expect(k.kontext).toContain("Ventil V3 wurde getauscht.");
-    expect(k.kontext).toContain("[fiktiv-gemischt.pdf · Seite 2] klarabildkontext.kontext.text");
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain("Ventil V3 wurde getauscht.");
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain(
+      "[fiktiv-gemischt.pdf · Seite 2] klarabildkontext.kontext.text",
+    );
     // Der zusammengeführte Dateitext: jede Seite einmal, in Reihenfolge.
     const ganz = pdfSeitenText(befund);
     expect(ganz.split("Abschnitt Ventile").length - 1).toBe(1);
@@ -468,10 +476,14 @@ describe("OCR-E04 · S5 · ein Fehler auf einer Seite", () => {
     expect(k.vollstaendig).toBe(false);
     expect(k.gelesen).toBe(2);
     expect(k.offen).toBe(2);
-    expect(k.kontext).toContain("Pruefkarte 47");
-    expect(k.kontext).toContain("Lager 29");
-    expect(k.kontext).toContain(`[${NAME} · Seite 2, erkannt] klarabildkontext.kontext.offen`);
-    expect(k.kontext).toContain(`[${NAME} · Seite 3, erkannt] klarabildkontext.kontext.offen`);
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain("Pruefkarte 47");
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain("Lager 29");
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain(
+      `[${NAME} · Seite 2, erkannt] klarabildkontext.kontext.offen`,
+    );
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain(
+      `[${NAME} · Seite 3, erkannt] klarabildkontext.kontext.offen`,
+    );
     expect(klaraAnweisung("frage", "Was steht auf Seite 2?", k, ue)).toContain(
       'klarabildkontext.anweisung.unvollstaendig{"offen":2,"gesamt":4}',
     );
@@ -513,7 +525,7 @@ describe("OCR-E04 · S6 · Status: laufend, aus, unbekannt, fehlende Seiten", ()
     expect(gem.aufrufe).toEqual([]);
     expect(gem.befund.status).toBe("teilweise");
     const k = klaraBildKontext("", [gem.befund], ue, ortVon);
-    expect(k.kontext).toContain("laut Messprotokoll");
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain("laut Messprotokoll");
     expect(k.vollstaendig).toBe(false);
   });
 
@@ -564,7 +576,7 @@ describe("OCR-E04 · S6 · Status: laufend, aus, unbekannt, fehlende Seiten", ()
     );
     expect(k.offen).toBe(5);
     expect(k.vollstaendig).toBe(false);
-    expect(k.kontext).toContain(
+    expect(leseKontextDaten(k.kontext).hinweise.join("\n")).toContain(
       `pdfscan.hinweis.seitenFehlen{"max":40,"seiten":${MAX_PDF_PAGES},"fehlend":5}`,
     );
   });

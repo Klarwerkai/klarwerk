@@ -51,7 +51,7 @@ import {
   verwerfeAssistenzProfil,
 } from "../../apps/web/src/lib/assistenzProfil";
 import { speichereBildAutomatik } from "../../apps/web/src/lib/bildAutomatikEinstellung";
-import { TEXT_JE_MARKE, bildMit, dataUrl, markeAus } from "./deck";
+import { TEXT_JE_MARKE, bildMit, dataUrl, leseKontextDaten, markeAus } from "./deck";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -227,13 +227,23 @@ describe("M1 · K1/K2/K3/K5 — Klara nutzt den Bildtext neben dem Text, mit Fun
     await klick(q("klara-bild-kontext-fragen"));
     expect(frage).toHaveBeenCalledTimes(1);
     const [kontext, anweisung] = frage.mock.calls[0] ?? ["", ""];
-    expect(kontext).toContain("Einleitung zur Wartung der Anlage.");
-    expect(kontext).not.toMatch(/Einleitung[^\n]*PRUEFKARTE/);
-    expect(kontext).toContain(`[diesem Text · Bild 1] Bildtext: ${TEXT_JE_MARKE.A}`);
-    expect(kontext).toContain(`[diesem Text · Bild 2] Bildtext: ${TEXT_JE_MARKE.C}`);
-    expect(kontext).toContain("[diesem Text · Bild 1] Bildinhalt: Ein Schild");
+    const daten = leseKontextDaten(kontext);
+    expect(daten.dokument).toContain("Einleitung zur Wartung der Anlage.");
+    expect(daten.dokument).not.toContain("PRUEFKARTE");
+    expect(daten.bilder).toMatchObject([
+      { quelle: "diesem Text", ort: "Bild 1", text: TEXT_JE_MARKE.A, bildinhalt: "Ein Schild" },
+      { quelle: "diesem Text", ort: "Bild 2", text: TEXT_JE_MARKE.C },
+    ]);
+    const hinweise = daten.hinweise.join("\n");
+    expect(hinweise).toContain(`[diesem Text · Bild 1] Bildtext: ${TEXT_JE_MARKE.A}`);
+    expect(hinweise).toContain(`[diesem Text · Bild 2] Bildtext: ${TEXT_JE_MARKE.C}`);
+    expect(hinweise).toContain("[diesem Text · Bild 1] Bildinhalt: Ein Schild");
     expect(anweisung).toContain("Welche Nummer steht auf der PRUEFKARTE?");
-    expect(anweisung).toContain("[diesem Text · Bild 1]");
+    expect(anweisung).toContain(
+      i18n.t("klarabildkontext.anweisung.fundstellen", {
+        beispiel: i18n.t("klarabildkontext.anweisung.beispiel"),
+      }),
+    );
 
     const antwort = q("klara-bild-kontext-antwort");
     expect(antwort?.getAttribute("data-auftrag")).toBe("frage");
@@ -313,7 +323,9 @@ describe("M2 · während des Lesens — Stand sichtbar, nichts als vollständig 
     const laeuft = i18n.t("klarabildkontext.kontext.offen", {
       status: i18n.t("bildautomatik.status.laeuft"),
     });
-    expect(kontext).toContain(`[diesem Text · Bild 2] ${laeuft}`);
+    const daten = leseKontextDaten(kontext);
+    expect(daten.bilder[1]).toMatchObject({ ort: "Bild 2", laeuft: true, textGelesen: false });
+    expect(daten.hinweise.join("\n")).toContain(`[diesem Text · Bild 2] ${laeuft}`);
     expect(anweisung).toContain(i18n.t("klarabildkontext.anweisung.laeuft"));
     expect(anweisung).toContain(
       i18n.t("klarabildkontext.anweisung.unvollstaendig", { offen: 1, gesamt: 2 }),

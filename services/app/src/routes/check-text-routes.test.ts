@@ -577,7 +577,7 @@ function mkKo(id: string, statement: string, confidentiality?: string): Knowledg
     tags: [],
     category: "Wartung",
     asset: null,
-    ...(confidentiality ? { confidentiality } : {}),
+    confidentiality: confidentiality ?? "intern",
   } as unknown as KnowledgeObject;
 }
 
@@ -962,11 +962,12 @@ describe("SCRUM-491 Slice 5: Rate-Limit auf /api/check-text", () => {
         headers: { [ADDON_KEY_HEADER]: KEY },
         payload: { text: CHECK_STMT },
       });
-    expect((await send()).statusCode).not.toBe(429);
-    expect((await send()).statusCode).not.toBe(429);
+    expect((await send()).statusCode).toBe(200);
+    expect((await send()).statusCode).toBe(200);
     const limited = await send();
     expect(limited.statusCode).toBe(429);
-    expect(limited.headers["retry-after"]).toBeDefined();
+    expect(Number(limited.headers["retry-after"])).toBeGreaterThan(0);
+    expect(limited.json().error).toBe("RATE_LIMITED");
   });
 
   it("Session-Request auf /api/check-text wird NICHT gedrosselt (allowList exempt)", async () => {

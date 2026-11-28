@@ -1010,6 +1010,7 @@
   function vergessen(work) {
     work.draftId = null;
     work.receipt = null;
+    work.bildNachweis = null;
     work.updatedAt = null;
     work.savedLevel = "";
     work.operations = [];
@@ -1283,32 +1284,73 @@
    * @param {string | undefined} html
    */
   const anchorless = (html) => String(html ?? "").replace(/ data-image-id="[^"]*"/g, "");
-  /**
-   * JOB 3280: verglichen wird gegen das GESENDETE, nicht gegen die Quelle im Zustand. Beim
-   * eingefügten Text trägt die Quellenzeile bewusst KEINE Adresse (s. `payload`) — ein Vergleich
-   * gegen `work.selection.url` hätte dort auf einer Adresse bestanden, die gar nicht mitging.
-   * @param {import("./types").Wire | null} draft @param {import("./types").Payload} sent @param {string} owner @returns {draft is import("./types").ConfirmedDraft}
-   */
-  function matches(draft, sent, owner) {
-    return (
-      Boolean(draft) &&
-      draft !== null &&
-      DRAFT_ID.test(draft.id ?? "") &&
-      draft.originalAuthor === owner &&
-      anchorless(draft.payload?.bodyHtml) === anchorless(sent.bodyHtml) &&
-      draft.payload?.title === sent.title &&
-      draft.payload?.confidentiality === sent.confidentiality &&
-      draft.payload?.pendingSources?.[0]?.url === sent.pendingSources[0]?.url
+  /** @param {string} text */
+  async function sha256(text) {
+    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  /** Nur die Bytefolge eingebetteter Rasterbilder darf der Server in WebP umwandeln.
+   * Andere Elemente, Texte, Quellen, Reihenfolge und Bildattribute bleiben Teil des Vergleichs.
+   * @param {string} html */
+  function bildvergleich(html) {
+    /** @type {string[]} */
+    const quellen = [];
+    const geruest = anchorless(html).replace(
+      /(<img\b[^>]*?\ssrc=")(data:image\/(?:jpeg|png|gif|webp);base64,[a-zA-Z0-9+/=]+)"/g,
+      (_, beginn, quelle) => {
+        quellen.push(quelle);
+        return `${beginn}"`;
+      },
     );
+    return { geruest, quellen };
+  }
+
+  /** @param {import("./types").Wire | null} draft @param {import("./types").Payload} sent
+   * @param {string} owner @param {import("./types").Work} work
+   * @returns {Promise<import("./types").ConfirmedDraft>} */
+  async function bestaetigeEntwurf(draft, sent, owner, work) {
+    const id = draft?.id;
+    if (
+      !draft ||
+      !id ||
+      !DRAFT_ID.test(id) ||
+      draft.originalAuthor !== owner ||
+      draft.payload?.title !== sent.title ||
+      draft.payload?.confidentiality !== sent.confidentiality ||
+      draft.payload?.pendingSources?.[0]?.url !== sent.pendingSources[0]?.url ||
+      typeof draft.payload?.bodyHtml !== "string"
+    )
+      throw new Error("verify_failed");
+    const gespeichert = draft.payload.bodyHtml;
+    if (anchorless(gespeichert) !== anchorless(sent.bodyHtml)) {
+      const beleg = draft.bildNachweis ?? work.bildNachweis;
+      const vorher = bildvergleich(sent.bodyHtml);
+      const nachher = bildvergleich(gespeichert);
+      if (
+        !beleg ||
+        vorher.quellen.length === 0 ||
+        vorher.quellen.length !== nachher.quellen.length ||
+        vorher.geruest !== nachher.geruest ||
+        beleg.eingang !== (await sha256(JSON.stringify(vorher.quellen))) ||
+        beleg.ausgabe !== (await sha256(JSON.stringify(nachher.quellen)))
+      ) {
+        throw new Error("verify_failed");
+      }
+      work.bildNachweis = beleg;
+    }
+    return { ...draft, id };
   }
   async function stateView() {
     const state = await read();
     if (state.work?.receipt) {
       if (!state.auth) return view(state, "expired");
       try {
-        const draft = await api("read", state.auth, null, state.work.receipt);
-        if (!matches(draft, payload(state.work, state.work.form), state.auth.id))
-          throw new Error("verify_failed");
+        const draft = await bestaetigeEntwurf(
+          await api("read", state.auth, null, state.work.receipt),
+          payload(state.work, state.work.form),
+          state.auth.id,
+          state.work,
+        );
         // JOB 3280: das frisch Nachgelesene ist der Stand, auf dem die nächste Fassung aufsetzt.
         // Ohne diese Zeile liefe der Vorgangsschutz (`expectedUpdatedAt`) nach einem verlorenen
         // PUT auf einen veralteten Wert und meldete einen Konflikt, den es nicht gibt.
@@ -1483,19 +1525,24 @@
       }
       if (message.type === "login" || message.type === "browserLogin") {
         if (state.auth) return view(state, "logout_first");
-        if (
-          message.type === "browserLogin"
-            ? typeof message.code !== "string" || !message.code || message.code.length > 256
-            : typeof message.email !== "string" ||
-              typeof message.password !== "string" ||
-              message.email.length > 320 ||
-              message.password.length > 1024
-        )
-          return view(state, "invalid_form");
-        const result =
-          message.type === "browserLogin"
-            ? await api("redeem", null, { code: message.code })
-            : await api("login", null, { email: message.email.trim(), password: message.password });
+        let result;
+        if (message.type === "browserLogin") {
+          if (typeof message.code !== "string" || !message.code || message.code.length > 256)
+            return view(state, "invalid_form");
+          result = await api("redeem", null, { code: message.code });
+        } else {
+          if (
+            typeof message.email !== "string" ||
+            typeof message.password !== "string" ||
+            message.email.length > 320 ||
+            message.password.length > 1024
+          )
+            return view(state, "invalid_form");
+          result = await api("login", null, {
+            email: message.email.trim(),
+            password: message.password,
+          });
+        }
         if (
           typeof result?.token !== "string" ||
           !result.token ||
@@ -1666,8 +1713,12 @@
       // wiederholen; ein Schlüssel ohne seine Ladung ist nicht wiederholbar.
       state.work.pendingCreate = { id: operation.id, fingerprint, form: gewollt };
       await put(state.work);
-      const draft = await anlegen(state.work, state.auth, body, "erstversuch");
-      if (!matches(draft, sent, state.auth.id)) throw new Error("verify_failed");
+      const draft = await bestaetigeEntwurf(
+        await anlegen(state.work, state.auth, body, "erstversuch"),
+        sent,
+        state.auth.id,
+        state.work,
+      );
       state.work.receipt = draft.id;
       // JOB 3280: ab hier GEHÖRT dieser Übernahme ein Entwurf. Die Kennung überlebt jede weitere
       // Änderung — nur Verwerfen, Abmelden oder ein Kontowechsel nehmen sie wieder weg.
@@ -1688,13 +1739,7 @@
    * @param {import("./types").Payload} sent @returns {Promise<string>}
    */
   async function abdruck(sent) {
-    const hash = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(JSON.stringify(sent)),
-    );
-    return Array.from(new Uint8Array(hash))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+    return sha256(JSON.stringify(sent));
   }
   /**
    * Antworten, die eine Anlage AUSSCHLIESSEN: der Server hat abgewiesen, bevor etwas entstand
@@ -1760,8 +1805,12 @@
     work.status = "saving";
     work.receipt = null;
     await put(work);
-    const draft = await anlegen(work, auth, { ...wieder, operationId: offen.id }, "wiederholung");
-    if (!matches(draft, wieder, auth.id)) throw new Error("verify_failed");
+    const draft = await bestaetigeEntwurf(
+      await anlegen(work, auth, { ...wieder, operationId: offen.id }, "wiederholung"),
+      wieder,
+      auth.id,
+      work,
+    );
     work.draftId = draft.id;
     work.receipt = draft.id;
     work.updatedAt = typeof draft.updatedAt === "string" ? draft.updatedAt : null;
@@ -1824,9 +1873,9 @@
       }
       throw error;
     }
-    if (!matches(draft, sent, auth.id) || draft.id !== work.draftId)
-      throw new Error("verify_failed");
-    work.receipt = draft.id;
+    if (draft?.id !== work.draftId) throw new Error("verify_failed");
+    const bestaetigt = await bestaetigeEntwurf(draft, sent, auth.id, work);
+    work.receipt = bestaetigt.id;
     work.updatedAt = typeof draft.updatedAt === "string" ? draft.updatedAt : null;
     work.savedLevel = form.confidentiality;
     work.status = "saved";

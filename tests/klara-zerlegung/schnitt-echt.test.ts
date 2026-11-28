@@ -16,6 +16,7 @@
 // dadurch `3c755f63…` — Herleitung und Abgrenzung am Wert in `tests/support/panelquelle.ts`.
 //
 // Das Verhalten (vorher gegen nachher, je ein eigenes jsdom-Fenster) misst `probeschnitt.test.ts`.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   PANEL_CSS_VERWEIS,
@@ -31,6 +32,7 @@ import {
   panelTeile,
   wortvergleichAbschnitt,
 } from "../support/panelquelle";
+import { repoPfad } from "../support/repoPfad";
 import { bytes, tabelle, zeilen } from "./zerlegung";
 
 describe("R-1611 · E — das zusammengefügte Fenster ist die Datei des Basisstands", () => {
@@ -106,14 +108,33 @@ describe("R-1611 · E — das zusammengefügte Fenster ist die Datei des Basisst
     const wvVerweis = bytes(PANEL_WV_VERWEIS);
     const wvKopf = bytes(teile.wortvergleich) - bytes(wortvergleichAbschnitt(teile.wortvergleich));
     expect(wvKopf).toBeGreaterThan(0);
+    // Auch der Dokumentvergleich ist ausgelagert. Beim Zusammenfügen verlieren wir seine
+    // Verweiszeile und rücken jede linksbündige Codezeile um vier Leerzeichen ein.
+    const vergleich = readFileSync(
+      repoPfad("apps/web/public/word-addin/dokumentvergleich.js"),
+      "utf8",
+    );
+    const vergleichVerweis = bytes(
+      '  <script src="dokumentvergleich.js?v=__KW_FASSUNG__"></script>\n',
+    );
+    const vergleichEinrueckung = (vergleich.match(/^\S/gm)?.length ?? 0) * 4;
     const dateien =
+      bytes(vergleich) +
       bytes(teile.html) +
       bytes(teile.css) +
       bytes(teile.js) +
       bytes(teile.marke) +
       bytes(teile.wortvergleich);
     expect(dateien).toBe(
-      bytes(ganz) - tags + verweise + markeVerweis + markeKopf + wvVerweis + wvKopf,
+      bytes(ganz) -
+        tags +
+        verweise +
+        markeVerweis +
+        markeKopf +
+        wvVerweis +
+        wvKopf +
+        vergleichVerweis -
+        vergleichEinrueckung,
     );
   });
 });

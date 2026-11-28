@@ -2,11 +2,23 @@
 // tragen, und eine Erkennung, die genau diese Marke liest. So ist nachprüfbar, dass JEDES Bild SEINEN
 // Text bekommt — die Genauigkeit der echten Engine misst die Browserprobe
 // (`tests-smoke/klara-bildautomatik-browser.spec.ts`). Diese Datei ist kein Test.
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from "../../apps/web/node_modules/fflate";
 import { MAX_INLINE_BODY_HTML_BYTES } from "../../apps/web/src/lib/docx";
 import type { OcrResult } from "../../apps/web/src/lib/ocr";
 import { budgetedPptxUnzip, extractPptxRich } from "../../apps/web/src/lib/pptx";
+
+export function leseKontextDaten(kontext: string): {
+  dokument: string;
+  bilder: import("../../apps/web/src/lib/klaraBildKontext").BildKontextEintrag[];
+  hinweise: string[];
+} {
+  const zeilen = kontext.split("\n");
+  expect(zeilen).toHaveLength(3);
+  expect(zeilen[0]).toBe("UNTRUSTED_DOCUMENT_DATA_JSON");
+  expect(zeilen[2]).toBe("END_UNTRUSTED_DOCUMENT_DATA_JSON");
+  return JSON.parse(zeilen[1] ?? "");
+}
 
 const PNG_SIGNATUR = [137, 80, 78, 71, 13, 10, 26, 10];
 

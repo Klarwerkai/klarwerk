@@ -204,7 +204,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/mega45-word-textrueckfall.test.ts": "pfad,panelquelle",
   "tests/app/mega52-vertrauenswert-sammler.test.ts": "pfad,zusammengesetzt,panelquelle",
   "tests/app/mega69-klara-auslieferung.test.ts": "pfad,zusammengesetzt",
-  "tests/app/mega69-klara-merkmale.test.ts": "pfad,zusammengesetzt,rueckweg,panelquelle",
+  "tests/app/mega69-klara-merkmale.test.ts": "pfad,zusammengesetzt,rueckweg,marken,panelquelle",
   // Der Inhalts-Pin des Aufgabenfensters — er wird bei JEDER Änderung an der Datei rot und muss
   // vom Ändernden nachgeführt werden. Ein Schnitt trifft ihn als Ersten.
   // R-1611: seit dem Drei-Datei-Schnitt hasht er das zusammengefügte Fenster — der Pin blieb stehen.
@@ -619,6 +619,9 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/vormachen-routine/vormachen-mounted.test.tsx": "pfad",
   "tests/vormachen-routine/word-panel-anzeige.test.tsx": "pfad",
   "tests/w45-integritaet/office-operationen.test.ts": "fixture",
+  "tests/klara-kontext/frage-zur-word-markierung.test.ts": "pfad,marken,panelquelle",
+  "tests/klara-office/begleiter-adapter.test.tsx": "pfad",
+  "tests/security/route-guard-tupelschleife.test.ts": "pfad",
   // A5 · Ende der nachgeführten Treffer.
 };
 

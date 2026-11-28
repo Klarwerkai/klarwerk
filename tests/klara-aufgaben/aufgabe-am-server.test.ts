@@ -679,25 +679,25 @@ describe("A4 · K4 — Fehler und doppelte Wiederholung, tatsächlicher Status i
     expect(r.schritt.ergebnis?.id).toBe((await liste(erik.token))[0]?.id);
   });
 
-  it("Aktionsweg: die Ablage ist weg — der Schritt meldet „fehlgeschlagen“, keine Aufgabe", async () => {
+  it("Aktionsweg: Schreibfehler ohne bestätigtes Ergebnis bleibt ungeklärt, die Wiederholung legt genau eine Aufgabe an", async () => {
     const gid = await gespraech(erik.token);
     const auftrag = await aufgabenAuftrag(erik.token, gid, "Ablage weg");
     aufgabenRepo.stoerung = "immer";
     const r = await fuehreAus(erik.token, gid, auftrag.id, "schritt-weg-1");
-    expect(r.schritt.stand).toBe("fehlgeschlagen");
-    expect(r.schritt.fehlerCode).toBe("server");
+    expect(r.schritt.stand).toBe("begonnen");
+    expect(r.schritt.ausgangUnklar).toBe(true);
     expect(r.schritt.ergebnis).toBeNull();
-    expect(r.auftrag.stand).toBe("fehlgeschlagen");
     aufgabenRepo.stoerung = "keine";
     expect(await aufgabenRepo.anzahl(erik.id)).toBe(0);
-    // Der Vertrag sagt, warum Klara diese Anlage nicht zurücknimmt — und wo korrigiert wird.
-    const gut = await aufgabenAuftrag(erik.token, gid, "Nach der Störung");
-    const ok = await fuehreAus(erik.token, gid, gut.id, "schritt-gut-1");
-    expect(ok.schritt.vertrag).toBe("persoenliche_aufgabe_anlegen");
+    const wieder = await fuehreAus(erik.token, gid, auftrag.id, "schritt-weg-1");
+    expect(wieder.schritt.stand).toBe("gespeichert");
+    expect(await aufgabenRepo.anzahl(erik.id)).toBe(1);
+    // Auch die nach der Störung nachgewiesene Aufgabe wird am Aufgabenort korrigiert.
+    expect(wieder.schritt.vertrag).toBe("persoenliche_aufgabe_anlegen");
     const zurueck = await auf(
       erik.token,
       "POST",
-      `${KLARA}/gespraeche/${gid}/auftraege/${gut.id}/schritte/schritt-gut-1/ruecknahme`,
+      `${KLARA}/gespraeche/${gid}/auftraege/${auftrag.id}/schritte/schritt-weg-1/ruecknahme`,
     );
     expect(zurueck.statusCode, zurueck.body).toBe(409);
     expect(zurueck.body).toContain("persoenliche_aufgabe");
