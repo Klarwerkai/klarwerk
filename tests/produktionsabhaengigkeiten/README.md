@@ -774,3 +774,19 @@ sind an 23.16.8 gebunden. Ein neues Bündel oder ein nichtliteraler Wert macht
 die Prüfung rot und verlangt eine erneute Bewertung. Es wird kein Angriff
 gegen die laufende Anwendung ausgeführt und keine allgemeine Aussage zu
 anderen i18next-Meldungen getroffen.
+
+## 11. Nachtrag vom 28.11.2026
+
+Die Produktions-Lockdateien binden inzwischen find-my-way 9.10.0, fastify
+5.12.7, nodemailer 10.1.4 und react-router-dom 6.30.6. Für 23 frühere
+Meldungen liegt die gebundene Version außerhalb der von GitHub Advisory
+Database veröffentlichten betroffenen Bereiche. Das Register enthält je
+Meldung Paketknoten, Advisory, Versionsbereich und korrigierte Fassung.
+
+Das Webpaket enthält weiterhin i18next 23.16.8. Ein siebter
+`addResourceBundle`-Aufruf lädt deutsche Fachtexte mit `overwrite=false`.
+Der Test prüft auch das vom Vite-Plugin tatsächlich erzeugte Modul und führt
+dessen Wörterbuch mit den Produktoptionen aus. Die HTTP-Schemaprüfung
+erfasst die von Fastify registrierten Schemata einschließlich der optionalen
+Add-in-API. Die CORS-Preflight-Route führt ausschließlich die
+Dokumentationsmetadaten `hide: true`.

@@ -33,6 +33,7 @@ import { internerPfad } from "../../apps/web/src/lib/internerPfad";
 import { BILD_MAX_KANTE, bildVerkleinerung } from "../../services/app/src/import/bildverkleinerung";
 import { normalizeFragekontext } from "../../services/knowledge-object/src/geltung";
 import { sanitizeHtml } from "../../services/structure/src/sanitize";
+import { routenschemata } from "../produktionsabhaengigkeiten/routenschemata";
 
 const WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -112,7 +113,6 @@ const SERVICES = produktdateien("services");
 const WEB = produktdateien("apps/web/src");
 const WEB_STATIC = "services/app/src/web-static.ts";
 const ASK = "services/app/src/routes/ask-routes.ts";
-const CHECK = "services/app/src/routes/check-text-routes.ts";
 const SMTP = "services/notifications/src/smtp.ts";
 
 describe("fastify 5.12.1 — die Bedingungen der fünf Meldungen", () => {
@@ -128,20 +128,26 @@ describe("fastify 5.12.1 — die Bedingungen der fünf Meldungen", () => {
     expect(fundorte(SERVICES, muster)).toEqual([]);
   });
 
-  it("F3 · zwei Routenschemata, nur `body`; einziges false-Teilschema ist fragekontext", () => {
-    const routenschema = /schema:\s*\{\s*(body|headers|querystring|params)\b/;
-    expect(fundorte(SERVICES, routenschema)).toEqual([ASK, CHECK]);
-    const ask = lies(ASK);
-    const check = lies(CHECK);
-    expect(ask).toMatch(/schema:\s*\{\s*body:\s*askBodySchema\s*\}/);
-    expect(check).toMatch(/schema:\s*\{\s*body:\s*bodySchema\s*\}/);
-    const askSchema = ohneKommentare(block(ask, "const askBodySchema = {"));
-    const checkSchema = ohneKommentare(block(check, "const bodySchema = {"));
-    expect(checkSchema).not.toMatch(/\bfalse\b/);
-    expect(askSchema.match(/\bfalse\b/g) ?? []).toHaveLength(1);
-    const kontext = block(askSchema, "fragekontext: {");
-    expect(kontext).toMatch(/additionalProperties:\s*false/);
-    expect(`${askSchema}${checkSchema}`).not.toMatch(/\bheaders\b/);
+  it("F3 · alle false-Teilschemata des registrierten Bestands sind benannt", async () => {
+    const befunde: string[] = [];
+    function pruefen(wert: unknown, ort: string): void {
+      if (wert === false) befunde.push(ort);
+      if (wert && typeof wert === "object") {
+        for (const [feld, kind] of Object.entries(wert)) pruefen(kind, `${ort}.${feld}`);
+      }
+    }
+    const { "OPTIONS *": preflight, ...schemata } = await routenschemata();
+    // Das CORS-Plugin markiert seine Preflight-Antwort nur für die Dokumentation.
+    expect(preflight).toEqual({ hide: true });
+    for (const [route, schema] of Object.entries(schemata)) {
+      expect(Object.keys(schema), route).toEqual(["body"]);
+      pruefen(schema.body, route);
+    }
+    expect(befunde.sort()).toEqual([
+      "POST /api/ask.properties.fragekontext.additionalProperties",
+      "POST /api/ask.properties.seitenbezug.additionalProperties",
+      "POST /api/kiosk/fragen.additionalProperties",
+    ]);
   });
 
   it("F4 · zusätzliche Schlüssel in fragekontext bleiben wirkungslos (Folge von GHSA-hwr6)", () => {

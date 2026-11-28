@@ -12,42 +12,12 @@
 // `body: {type:"string"}` nimmt `42` an und reicht eine ZAHL. Der Validator prüft also eine
 // coercierte Kopie, der Handler bekommt das Rohe. Das ist die Advisory, am Draht.
 //
-// UND HIER IST DER PUNKT: Klarwerk hat GENAU ZWEI Routen mit Body-Schema — `POST /api/ask`
-// (`services/app/src/routes/ask-routes.ts:288`, `askBodySchema` ab `:23`) und `POST /api/check-text`
-// (`services/app/src/routes/check-text-routes.ts:556`, `bodySchema` ab `:57`). BEIDE haben
-// `type: "object"`. Eine primitive Body-Wurzel existiert nirgends; die Bedingung der Advisory ist
-// damit nicht erfüllt.
-//
-// URTEIL: nicht exponiert für GHSA-w2qp-rph6-63g4 — an DIESER Bedingung. (Die zweite
-// Fastify-Advisory, GHSA-3m5p-2c4r-xxw2 zum trustProxy-Hop-Count, hat eine ANDERE Bedingung und
-// ein anderes Urteil; sie steht im Bericht daneben und wird von diesem Test NICHT abgedeckt.)
-//
-// DER ERSTE FALL IST DER STOLPERDRAHT: Kommt eine dritte Schema-Route hinzu oder wird eine der
-// beiden Wurzeln primitiv, wird er rot — und die Einordnung gehört neu gemacht, nicht der Test
-// angepasst.
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+// Der Laufzeitnachweis erhebt jede registrierte Route mit Schema, auch Inline-Schemata.
+// Ein neuer Weg oder eine weitere Schemaart erfordert eine neue Einordnung.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { routenschemata } from "./routenschemata";
 import { abweisungsBefund } from "./waechter";
-
-const WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-function quelldateien(ordner: string, gesammelt: string[] = []): string[] {
-  for (const eintrag of readdirSync(ordner)) {
-    const pfad = join(ordner, eintrag);
-    if (eintrag === "node_modules" || eintrag === "dist") {
-      continue;
-    }
-    if (statSync(pfad).isDirectory()) {
-      quelldateien(pfad, gesammelt);
-    } else if (pfad.endsWith(".ts") && !pfad.endsWith(".test.ts")) {
-      gesammelt.push(pfad);
-    }
-  }
-  return gesammelt;
-}
 
 const ZUGANG = { name: "Admin", email: "job4272-http@x.de", password: "secret123" };
 
@@ -75,30 +45,20 @@ async function angemeldet() {
 }
 
 describe("JOB 4272 · die Bedingung der Fastify-Advisory ist nicht erfüllt", () => {
-  it("jedes Body-Schema des Produkts hat eine OBJEKT-Wurzel — keine primitive", () => {
-    const mitSchema: string[] = [];
-    for (const datei of quelldateien(join(WURZEL, "services"))) {
-      const text = readFileSync(datei, "utf8");
-      if (/schema:\s*\{\s*body:/.test(text)) {
-        mitSchema.push(datei.slice(WURZEL.length + 1));
-      }
-    }
-    expect(
-      [...mitSchema].sort(),
-      "Die Menge der Routen mit Body-Schema hat sich geändert. Die Einordnung von GHSA-w2qp-rph6-63g4 ruht darauf, dass JEDE Body-Wurzel ein Objekt ist — neu prüfen, Test NICHT anpassen.",
-    ).toEqual([
-      "services/app/src/routes/ask-routes.ts",
-      "services/app/src/routes/check-text-routes.ts",
+  it("jedes registrierte Body-Schema hat eine Objektwurzel", async () => {
+    const { "OPTIONS *": preflight, ...schemata } = await routenschemata();
+    // Das CORS-Plugin markiert seine Preflight-Antwort nur für die Dokumentation.
+    expect(preflight).toEqual({ hide: true });
+    expect(Object.keys(schemata).sort()).toEqual([
+      "POST /api/ask",
+      "POST /api/ask/vergleich",
+      "POST /api/check-text",
+      "POST /api/kiosk/fragen",
+      "POST /api/klara/sessions/:sessionId/execute",
     ]);
-
-    // Und die beiden Wurzeln selbst: `const <name>Schema = { type: "object"` — nichts Primitives.
-    for (const datei of mitSchema) {
-      const text = readFileSync(join(WURZEL, datei), "utf8");
-      for (const treffer of text.matchAll(/const \w*[Bb]odySchema = \{\s*\n\s*type: "(\w+)"/g)) {
-        expect(treffer[1], `${datei}: Body-Wurzel ist „${String(treffer[1])}" statt object`).toBe(
-          "object",
-        );
-      }
+    for (const [route, schema] of Object.entries(schemata)) {
+      expect(Object.keys(schema), route).toEqual(["body"]);
+      expect(schema.body, route).toMatchObject({ type: "object" });
     }
   });
 });

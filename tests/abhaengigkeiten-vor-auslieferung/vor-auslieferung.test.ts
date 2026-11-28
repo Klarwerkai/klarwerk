@@ -149,12 +149,15 @@ describe("R-1398 · das Register der bewerteten Meldungen", () => {
     expect(abweichend).toEqual([]);
   });
 
-  it("R3 · die Bewertungen vom 17.09. stimmen mit dem Expositionsbericht (README) überein", () => {
+  it("R3 · die heutigen Bewertungen der fünf September-Meldungen stimmen mit dem Expositionsbericht überein", () => {
     // Die Tabelle in README.md Abschnitt 1 urteilt JE PAKET über die Meldungen vom 17.09.2026.
     // Die Messung vom 08.10.2026 ist je ADVISORY bewertet (README Abschnitt 6) und hat für
     // dieselben Pakete weitere Meldungen gebracht — sie gehört deshalb nicht in diesen Abgleich.
     const tabelle = berichtstabelle(readFileSync(EXPOSITIONSBERICHT, "utf8"));
-    const alt = register().filter((e) => e.bestand === "wurzel" && e.bewertet_am === "2026-09-17");
+    const gemessen = liesAuditBericht(bericht(verbleibenderStand()));
+    if (gemessen.art !== "gelesen") throw new Error("September-Beispiel unlesbar");
+    const ids = new Set(gemessen.meldungen.map((m) => m.kennung));
+    const alt = register().filter((e) => e.bestand === "wurzel" && ids.has(e.kennung));
     expect(alt).toHaveLength(5);
     for (const b of alt) {
       const zeile = tabelle.find((z) => z.ort === b.ort);
@@ -182,9 +185,16 @@ describe("R-1398 · die Prüfung vor der Auslieferung", () => {
     const { code, text } = pruefeStand(bericht(verbleibenderStand()));
     expect(code, text).toBe(0);
     expect(text).toContain("5 Meldungen · 5 bewertet · 0 unbewertet · 0 veraltet");
-    expect(text).toContain("⚠ exponiert, bewusst offen: GHSA-2x7j-588g-ccc2 nodemailer@6.10.1");
-    expect(text).toContain("⚠ exponiert, bewusst offen: GHSA-cc9r-2j5m-2m83 nodemailer@6.10.1");
-    expect(text).toContain("· nicht exponiert: GHSA-c96f-x56v-gq3h find-my-way@9.6.0");
+    expect(text).toContain("· nicht exponiert: GHSA-2x7j-588g-ccc2 nodemailer@10.1.4");
+    expect(text).toContain("· nicht exponiert: GHSA-c96f-x56v-gq3h find-my-way@9.10.0");
+    const mitExposition = register().map((b) =>
+      b.kennung === "GHSA-2x7j-588g-ccc2" ? { ...b, urteil: "exponiert" } : b,
+    );
+    const vergleich = pruefeStand(bericht(verbleibenderStand()), LEER, { register: mitExposition });
+    expect(vergleich.code).toBe(0);
+    expect(vergleich.text).toContain(
+      "⚠ exponiert, bewusst offen: GHSA-2x7j-588g-ccc2 nodemailer@10.1.4",
+    );
   });
 
   it("P2 · Zeichenketten in `via` sind keine Advisory — fastify wird nicht doppelt gezählt", () => {
@@ -218,7 +228,7 @@ describe("R-1398 · die Prüfung vor der Auslieferung", () => {
     ]);
     const { code, text } = pruefeStand(bericht(stand));
     expect(code).toBe(1);
-    expect(text).toContain("✖ unbewertet: GHSA-dddd-eeee-ffff nodemailer@6.10.1");
+    expect(text).toContain("✖ unbewertet: GHSA-dddd-eeee-ffff nodemailer@10.1.4");
   });
 
   it("P5 · eine geänderte gebundene Version macht die Bewertung veraltet → Sperre", () => {
@@ -231,7 +241,7 @@ describe("R-1398 · die Prüfung vor der Auslieferung", () => {
     const { code, text } = pruefeStand(bericht(verbleibenderStand()), LEER, { wurzelLock });
     expect(code).toBe(1);
     expect(text).toContain("✖ Bewertung veraltet: GHSA-2x7j-588g-ccc2 nodemailer@6.10.2");
-    expect(text).toContain("bewertet war 6.10.1 am 2026-09-17");
+    expect(text).toContain("bewertet war 10.1.4 am 2026-11-28");
   });
 
   it("P6 · die gebündelte SPA ist ein eigener Bestand — ihre Meldungen werden geprüft", () => {

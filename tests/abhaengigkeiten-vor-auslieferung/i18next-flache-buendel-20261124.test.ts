@@ -3,11 +3,12 @@ import { createRequire } from "node:module";
 import { join, relative } from "node:path";
 import ts from "typescript";
 import { expect, it } from "vitest";
+import { sprachpaketeNachladen } from "../../apps/web/src/texte/intern/sprachpakete";
 
 const root = join(import.meta.dirname, "../..");
 const web = join(root, "apps/web");
 
-// GHSA-6jcc-5g8w-32mx: die sechs expliziten Deep-Merges erhalten ausschließlich
+// GHSA-6jcc-5g8w-32mx: die Deep-Merges erhalten ausschließlich
 // flache Quellkonstanten. Fremde Übersetzungspflege benutzt addResource einzeln.
 it("bindet alle Deep-Merge-Aufrufe an flache String-Konstanten und erhält die Built-ins", async () => {
   const require = createRequire(join(web, "package.json"));
@@ -20,6 +21,53 @@ it("bindet alle Deep-Merge-Aufrufe an flache String-Konstanten und erhält die B
   const builtinVorher = Object.getOwnPropertyDescriptors(Object.prototype.hasOwnProperty);
   const funde: string[] = [];
   const src = join(web, "src");
+  const plugin = sprachpaketeNachladen();
+  plugin.configResolved({ root: web });
+  function flacheTexte(objekt: ts.ObjectLiteralExpression): Record<string, string> {
+    const texte: Record<string, string> = Object.create(null);
+    for (const p of objekt.properties) {
+      if (
+        !ts.isPropertyAssignment(p) ||
+        !ts.isStringLiteral(p.name) ||
+        !ts.isStringLiteral(p.initializer)
+      )
+        throw new Error("Kein flaches Stringliteral");
+      expect(["constructor", "prototype", "__proto__"]).not.toContain(p.name.text);
+      texte[p.name.text] = p.initializer.text;
+    }
+    return texte;
+  }
+  function fachpaket(datei: string, quelltext: string): Record<string, string> {
+    const lader = plugin.transform(quelltext, datei)?.code;
+    expect(lader).toContain('laden: () => import("../i18n.fachtexte.de.js")');
+    expect(lader).toContain("fachtexteLader(FACHTEXTE_DE.laden, i18n)");
+    const id = plugin.resolveId("../i18n.fachtexte.de.js", datei);
+    expect(id).toBe(join(src, "i18n.fachtexte.de.js"));
+    const code = id && plugin.load(id);
+    if (!code) throw new Error("Fachtextpaket fehlt");
+    const [stmt, ...rest] = ts.createSourceFile(
+      "fachtexte.js",
+      code,
+      ts.ScriptTarget.Latest,
+      true,
+    ).statements;
+    if (
+      rest.length ||
+      !stmt ||
+      !ts.isExportAssignment(stmt) ||
+      !ts.isCallExpression(stmt.expression) ||
+      stmt.expression.expression.getText() !== "Object.assign"
+    )
+      throw new Error("Unerwarteter Paketaufbau");
+    const texte: Record<string, string> = Object.create(null);
+    for (const teil of stmt.expression.arguments) {
+      if (!ts.isObjectLiteralExpression(teil))
+        throw new Error("Dynamischer Textblock im Fachtextpaket");
+      Object.assign(texte, flacheTexte(teil));
+    }
+    expect(Object.keys(texte)).toContain("wkz.titel");
+    return texte;
+  }
   for (const name of readdirSync(src, { recursive: true })) {
     if (typeof name !== "string" || !/\.tsx?$/.test(name)) continue;
     const datei = join(src, name);
@@ -51,26 +99,18 @@ it("bindet alle Deep-Merge-Aufrufe an flache String-Konstanten und erhält die B
         expect(namespace?.getText(source)).toBe('"translation"');
         expect(deep?.kind).toBe(ts.SyntaxKind.TrueKeyword);
         expect([ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword]).toContain(overwrite?.kind);
-        expect(daten && ts.isIdentifier(daten)).toBe(true);
-        let objekt = daten && ts.isIdentifier(daten) ? konstanten.get(daten.text) : undefined;
-        if (objekt && ts.isAsExpression(objekt)) objekt = objekt.expression;
-        expect(objekt && ts.isObjectLiteralExpression(objekt)).toBe(true);
-        if (!objekt || !ts.isObjectLiteralExpression(objekt))
-          throw new Error("Kein festes Textbündel");
-        const texte: Record<string, string> = {};
-        for (const p of objekt.properties) {
-          expect(
-            ts.isPropertyAssignment(p) &&
-              ts.isStringLiteral(p.name) &&
-              ts.isStringLiteral(p.initializer),
-          ).toBe(true);
-          if (
-            !ts.isPropertyAssignment(p) ||
-            !ts.isStringLiteral(p.name) ||
-            !ts.isStringLiteral(p.initializer)
-          )
-            throw new Error("Kein flacher String");
-          texte[p.name.text] = p.initializer.text;
+        let texte: Record<string, string>;
+        if (relative(src, datei) === "lib/fachtexte.ts") {
+          expect(daten?.getText(source)).toBe("paket.default");
+          expect(sprache?.getText(source)).toBe('"de"');
+          expect(overwrite?.kind).toBe(ts.SyntaxKind.FalseKeyword);
+          texte = fachpaket(datei, source.text);
+        } else {
+          let objekt = daten && ts.isIdentifier(daten) ? konstanten.get(daten.text) : undefined;
+          if (objekt && ts.isAsExpression(objekt)) objekt = objekt.expression;
+          if (!objekt || !ts.isObjectLiteralExpression(objekt))
+            throw new Error("Kein festes Textbündel");
+          texte = flacheTexte(objekt);
         }
         instanz.addResourceBundle(
           sprache?.getText(source).slice(1, -1),
@@ -89,6 +129,7 @@ it("bindet alle Deep-Merge-Aufrufe an flache String-Konstanten und erhält die B
     "components/ImportSelect.tsx",
     "components/ImportSelect.tsx",
     "components/ImportSelect.tsx",
+    "lib/fachtexte.ts",
     "pages/AdminKiDetails.tsx",
     "pages/AdminKiDetails.tsx",
     "pages/AdminKiDetails.tsx",

@@ -109,11 +109,11 @@ describe("JOB 4272 · 6a — der Bildimport bleibt heil", () => {
 
     // Das gute Bild ist abgeleitet …
     expect(quellen[0]).toMatch(/^data:image\/webp;base64,/);
-    // … und das defekte steht UNVERÄNDERT in seiner Originalquelle da, statt zu fehlen.
-    expect(
-      rumpf(quellen[1] ?? "").equals(defekt),
-      "Das defekte Bild wurde nicht im Original belassen",
-    ).toBe(true);
+    // Bis zur Zuordnung des Hinweises trägt die Bildeinheit nur einen festen Platzhalter.
+    expect(quellen[1]).toBe(
+      "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+    );
+    expect(ergebnis.html).not.toContain(defekt.toString("base64"));
 
     // Der Grund ist benannt und hängt an der richtigen Bildnummer.
     expect(verkleinerung.bericht.ausfaelle).toEqual([
@@ -122,6 +122,7 @@ describe("JOB 4272 · 6a — der Bildimport bleibt heil", () => {
 
     // Und er steht AM BETROFFENEN BILD, nicht nur in einer Summe.
     const vermerkt = bildausfaelleVermerken(ergebnis.html, verkleinerung.bericht.ausfaelle);
+    expect(bildquellen(vermerkt)).toEqual([quellen[0]]);
     expect(vermerkt).toContain('<div class="panel panel-warning">');
     expect(vermerkt).toContain("konnte beim Import nicht gelesen werden");
     // Ohne Ausfall bleibt der Rumpf zeichengleich — ein heiler Import trägt keinen Hinweis.
