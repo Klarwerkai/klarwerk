@@ -79,20 +79,8 @@ import {
 
 const DATEI = DECK_DATEINAME;
 
-/**
- * Die Marke, an der dieser Weg den übernommenen INHALT wiedererkennt — und an der sich die
- * Ablesung kalibriert.
- *
- * SIE MUSS GENAU EINMAL AUF DER SEITE STEHEN, und das ist gemessen, nicht überlegt: mit
- * `MARKE.folientitel` war dieser Fall in allen drei Sprachen rot (Torlauf 270fdf52…,
- * „Kalibrierung GESCHEITERT: «Folientitel 4228» stand noch da, obwohl es auf der Zielseite
- * entfernt war"). Der Grund ist kein Fehler der Kalibrierung, sondern ihr Zweck: der erste
- * Folientitel wird zugleich der TITEL des Entwurfs, die Marke steht also zweimal da, und
- * `TEXT_AUSBLENDEN` leert nur den ERSTEN Textknoten. Eine Ablesung, die danach noch fündig wird,
- * ist damit nicht widerlegt — die Kalibrierung hätte nichts mehr zu sagen.
- *
- * Der Aufzählungspunkt steht nur im Rumpf der ersten Folie und sonst nirgends.
- */
+// Der Aufzählungspunkt stammt aus dem Rumpf der ersten Folie. Die Gegenprobe
+// entfernt auch seine zweite Darstellung, wenn die Kernaussage denselben Wortlaut enthält.
 const INHALTSMARKE = MARKE.listenpunkt;
 
 /**
