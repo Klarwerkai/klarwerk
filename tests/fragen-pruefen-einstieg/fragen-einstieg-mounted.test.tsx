@@ -237,34 +237,37 @@ describe("produkt:20261010:fragen-pruefen-einstieg · Fragen", () => {
   });
 
   it("M3 · ein Vorschlag aus dem validierten Bestand ist nicht als fiktiv gekennzeichnet", async () => {
+    const beitrag = {
+      id: "ko-ventil",
+      title: "Druck am Ventil prüfen",
+      statement: "Vor dem Anfahren den Druck am Ventil V7 prüfen.",
+      conditions: [],
+      measures: [],
+      type: "best_practice",
+      category: "Anlage",
+      tags: [],
+      confidence: 80,
+      trust: 90,
+      status: "validiert",
+      version: 1,
+      originalAuthor: "u9",
+      author: "u9",
+      neededValidations: 1,
+      assignments: [],
+      asset: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      history: [],
+    };
     koListMock.mockResolvedValue([
-      {
-        id: "ko-ventil",
-        title: "Druck am Ventil prüfen",
-        statement: "Vor dem Anfahren den Druck am Ventil V7 prüfen.",
-        conditions: [],
-        measures: [],
-        type: "best_practice",
-        category: "Anlage",
-        tags: [],
-        confidence: 80,
-        trust: 90,
-        status: "validiert",
-        version: 1,
-        originalAuthor: "u9",
-        author: "u9",
-        neededValidations: 1,
-        assignments: [],
-        asset: null,
-        createdAt: "2026-01-01T00:00:00.000Z",
-        history: [],
-      },
+      { ...beitrag, confidentiality: "intern" },
+      { ...beitrag, id: "ko-ohne-stufe", title: "Vorgang ohne Einstufung" },
     ]);
     const c = await montiere();
     await klicke(c, '[data-testid="ask-einstieg-beispiele"]');
     const chips = [...c.querySelectorAll<HTMLElement>('[data-testid="ask-beispiel"]')];
     const ausBestand = chips.filter((ch) => ch.textContent?.includes("Druck am Ventil prüfen"));
     expect(ausBestand).toHaveLength(1);
+    expect(chips.some((chip) => chip.textContent?.includes("Vorgang ohne Einstufung"))).toBe(false);
     expect(ausBestand[0]?.getAttribute("data-fiktiv")).toBe("0");
     expect(ausBestand[0]?.querySelector('[data-testid="ask-beispiel-fiktiv"]')).toBeNull();
     // Die bewusste Lücken-Frage bleibt ein festes, fiktives Beispiel.
