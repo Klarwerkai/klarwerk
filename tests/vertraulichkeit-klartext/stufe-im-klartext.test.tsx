@@ -194,6 +194,7 @@ async function mounte(baum: ReturnType<typeof createElement>): Promise<void> {
   await act(async () => {
     root?.render(createElement(QueryClientProvider, { client: qc }, baum));
   });
+  await act(() => vi.dynamicImportSettled());
   await ruhe();
 }
 

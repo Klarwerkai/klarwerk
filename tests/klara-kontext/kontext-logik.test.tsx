@@ -379,7 +379,7 @@ describe("K3 · Quellen mit Fassung und Prüfstatus; fehlende Grundlage in Worte
     } satisfies KlaraAskAntwort;
   }
 
-  it("Titel, Fassung (wie gelesen) und Prüfstatus je Quelle; ohne Titel keine Angabe", () => {
+  it("Titel, Fassung (wie gelesen) und Prüfstatus je Quelle; ohne Quelldetails nur die Kennung und kein behaupteter Prüfstand", () => {
     const a = antwort(
       {
         belastbarkeit: {
@@ -394,6 +394,7 @@ describe("K3 · Quellen mit Fassung und Prüfstatus; fehlende Grundlage in Worte
     expect(quellenAngabenAus(a, ["ko-1", "ko-2", "ko-3"])).toEqual([
       { koId: "ko-1", titel: "Dichtung", fassung: 2, geprueft: true },
       { koId: "ko-2", titel: "Ventil", fassung: 7, geprueft: false },
+      { koId: "ko-3", titel: "ko-3", fassung: null, geprueft: null },
     ]);
   });
 

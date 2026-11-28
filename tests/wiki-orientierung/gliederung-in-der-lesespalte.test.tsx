@@ -371,6 +371,7 @@ async function mountAn(adresse: string): Promise<void> {
     root.render(baum(adresse));
     await flush();
   });
+  await act(() => vi.dynamicImportSettled());
   await act(flush);
   await act(flush);
 }
@@ -846,7 +847,10 @@ describe("JOB 4145 R4 · wird der Baum ausgetauscht, treffen die Knoepfe weiter"
     box.variante = {
       originalLanguage: "en",
       title: "Uebersetzter Titel",
-      bodyHtml: GLEICHER_TEXT_BEIDE,
+      bodyHtml: GLEICHER_TEXT_BEIDE.replace(
+        "<p>Absatz zur Norm.</p>",
+        "<p><em>Absatz zur Norm.</em></p>",
+      ),
     };
     // Auf der BIBLIOTHEK: nur dort traegt die Lesespalte die uebersetzte Lesart selbst (s. `mountAn`).
     await mountAn("/bibliothek?eintrag=ko-1");
@@ -861,7 +865,7 @@ describe("JOB 4145 R4 · wird der Baum ausgetauscht, treffen die Knoepfe weiter"
     expect(sprungZiele[0]).toBe(uebersetzt[1]);
     expect(document.activeElement).toBe(uebersetzt[1]);
 
-    // (2) UMSCHALTEN auf das Original — derselbe HTML-String, ein NEUER Baum.
+    // (2) Der Wortlaut bleibt gleich. Die Übersetzung hebt einen Absatz hervor; das Original hat einen neuen Baum.
     await klick(el("lesevariante-umschalter"));
     expect(text(el("bib-titel"))).toBe("Reinigung Spritzzone Linie 3");
     const original = ueberschriften();
