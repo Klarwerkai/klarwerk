@@ -1,5 +1,6 @@
 // JOB 3150: echte Unterprozesse, aber markierte Lastsonden statt Chromium/Servern.
-// V0 misst die heutige Verdrahtung vor dem Bau; F6 kalibriert dieselben Fenster ohne Deckel.
+// V0 misst die ungeschützte Überschneidung an beiden normalen Einstiegspunkten im Prüfwerk.
+// F6 misst die Gegenprobe an den direkten Aufrufen des Deckels.
 // GRENZE DER MESSUNG am Diagnosezweig des Schlosses (tools/browserdeckel.sh:284-307): gemessen
 // sind ENOENT nach echtem Entfernen (F26/F26c), ENOENT trotz liegendem Eintrag (F31/F31c),
 // EACCES (F27/F28) und ELOOP (F30/F30b/F30c). NICHT gemessen ist EIO: ein Ein-/Ausgabefehler
@@ -64,6 +65,14 @@ async function messen() {
   reporter?.onInit();
   const von = Date.now();
   fs.writeFileSync(process.env.SONDENPFAD + '/' + art + '.start', String(von));
+  if (process.env.SONDENPAAR_ABWARTEN === '1' && art !== 'rest') {
+    const partner = art === 'browser' ? 'smoke' : 'browser';
+    const frist = Date.now() + 5000;
+    while (!fs.existsSync(process.env.SONDENPFAD + '/' + partner + '.start')) {
+      if (Date.now() >= frist) throw new Error('Zweite Lastsonde ist nicht gestartet: ' + partner);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
   await new Promise((r) => setTimeout(r, art === 'rest' ? Number(process.env.REST_MS || 0) : 800));
   fs.writeFileSync(process.env.SONDENPFAD + '/' + art + '.json',
     JSON.stringify({datei: art, von, bis: Date.now()}));
@@ -123,7 +132,11 @@ async function warteBis(bedingung: () => boolean) {
 
 async function paar(verdrahtet: boolean, aus = false) {
   const { ort, env } = werk();
-  const umgebung = { ...env, KLARWERK_BROWSERDECKEL: aus ? "0" : "1" };
+  const umgebung = {
+    ...env,
+    KLARWERK_BROWSERDECKEL: aus ? "0" : "1",
+    SONDENPAAR_ABWARTEN: aus ? "1" : "0",
+  };
   const browser = starte(
     ort,
     umgebung,
@@ -194,15 +207,11 @@ function fensterAusProtokoll(datei: string, mitMesslaeufen = false): Fenster[] {
 }
 
 describe("JOB 3150 · Browserdeckel", () => {
-  it.runIf(process.env.KLARWERK_VORHER_MESSUNG === "1")(
-    "V0 · Vorher-Beleg am unveränderten Aufrufweg",
-    async () => {
-      const lauf = await paar(true);
-      const paare = ueberlappendePaare(lauf.fenster);
-      console.log(`VORHER ${paare.join("\n")}`);
-      expect(paare).toHaveLength(1);
-    },
-  );
+  it("V0 · ohne Deckel überlappen die Lastsonden aus tools/test und npm-Smoke", async () => {
+    const lauf = await paar(true, true);
+    expect(lauf.ausgabe).toContain("⚠ Browserdeckel aus — nur für Messungen");
+    expect(ueberlappendePaare(lauf.fenster)).toHaveLength(1);
+  });
 
   it("F1 · zwei direkte Unterprozesse laufen seriell", async () => {
     const lauf = await paar(false);
