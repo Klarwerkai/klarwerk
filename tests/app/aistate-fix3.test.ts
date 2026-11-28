@@ -105,16 +105,20 @@ describe("V2 (Pedi D-V2=a): beide Schichten je Kandidat — Merge-Vertrag über 
     const run = runnerFor(services);
 
     await makeKo(services, {
+      confidentiality: "intern",
       title: "Pumpe P2 Druckverlust",
       statement: "Bei Pumpe P2 faellt der Druck an Ventil V4.",
     });
     const second = await makeKo(services, {
+      confidentiality: "intern",
       title: "Pumpe P2 Druckverlust",
       statement: "Bei Pumpe P2 faellt der Druck an Ventil V4.",
     });
     const out = await run(second.id);
 
-    expect(out.ok).toBe(true);
+    expect(out, "Modellversuch muss bei erlaubtem Inhalt erfolgreich sein").toMatchObject({
+      ok: true,
+    });
     // Der Duplikat-Judge lief ZUSÄTZLICH für das wortgleiche Paar (getrennte Zähler).
     expect(duplicateJudge).toBe(1);
     expect(conflictJudge).toBeGreaterThanOrEqual(1);
@@ -142,14 +146,19 @@ describe("V2 (Pedi D-V2=a): beide Schichten je Kandidat — Merge-Vertrag über 
     const run = runnerFor(services);
 
     await makeKo(services, {
+      confidentiality: "intern",
       title: "Pumpe entlueften",
       statement: "Gemeinsamer Kernsatz zur Pumpe.",
     });
     const second = await makeKo(services, {
+      confidentiality: "intern",
       title: "Anfahrprozedur komplett anders",
       statement: "Gemeinsamer Kernsatz zur Pumpe, aber mit voellig anderen weiteren Details.",
     });
-    await run(second.id);
+    const out = await run(second.id);
+    expect(out, "Modellversuch muss bei erlaubtem Inhalt erfolgreich sein").toMatchObject({
+      ok: true,
+    });
     const open = await services.overlaps.unresolved();
     expect(open).toHaveLength(1);
     expect(open[0]?.detector?.method).toBe("model");
