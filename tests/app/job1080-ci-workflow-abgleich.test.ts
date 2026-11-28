@@ -47,9 +47,24 @@ function jobBlock(name: string): string {
 }
 
 function runBefehle(block: string): string[] {
-  return Array.from(block.matchAll(/^\s*(?:- )?run:\s*(.+?)\s*$/gm))
-    .map((m) => m[1])
-    .filter((b): b is string => b !== undefined);
+  const zeilen = block.split("\n");
+  const befehle: string[] = [];
+  for (let i = 0; i < zeilen.length; i++) {
+    const treffer = /^( *)(?:- )?run: (.+)$/.exec(zeilen[i] ?? "");
+    if (!treffer) continue;
+    const wert = treffer[2]?.trim();
+    if (wert !== "|") {
+      if (wert) befehle.push(wert);
+      continue;
+    }
+    const einrueckung = (treffer[1]?.length ?? 0) + 1;
+    const rumpf = [];
+    while (zeilen[i + 1]?.startsWith(" ".repeat(einrueckung))) {
+      rumpf.push(zeilen[++i]?.trim());
+    }
+    befehle.push(rumpf.join("\n"));
+  }
+  return befehle;
 }
 
 /** Alle Jobnamen der Datei — damit kein Job unbemerkt dazukommt. */
@@ -89,6 +104,11 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
   { job: "pflicht-teil", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
   {
     job: "pflicht-teil",
+    befehl: "npx playwright install --with-deps chromium",
+    lage: "AUSSERHALB",
+  },
+  {
+    job: "pflicht-teil",
     befehl: 'node tools/pflicht-pr.mjs teil "$RELEASE_BASE" .local/run/ci-pflicht-teil "$TEIL"',
     lage: "AUSSERHALB",
   },
@@ -99,6 +119,17 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
     befehl: 'node tools/pflicht-pr.mjs abschluss "$RELEASE_BASE" .local/run/ci-pflicht',
     lage: "AUSSERHALB",
   },
+  {
+    job: "pflicht",
+    befehl: `node --input-type=module -e '
+import {releaseInputs, schmalansichtsTest} from "./tools/release.mjs";
+const {tests} = releaseInputs(process.cwd(), process.env.RELEASE_BASE);
+console.log("chromium=" + tests.includes(schmalansichtsTest));
+' >> "$GITHUB_OUTPUT"`,
+    lage: "AUSSERHALB",
+  },
+  { job: "pflicht", befehl: "npx playwright install --with-deps chromium", lage: "AUSSERHALB" },
+  { job: "pflicht", befehl: "npx vite build", lage: "AUSSERHALB" },
   {
     job: "pflicht",
     befehl: 'node tools/release.mjs check "$RELEASE_BASE" .local/run/ci-pflicht',
@@ -240,6 +271,19 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
   it("belegt den echten launchd-Weg auf macOS und die eigene Docker-Installationsstrecke", () => {
     expect(jobBlock("integration-insel-macos")).toContain("runs-on: macos-15");
     expect(jobBlock("integration-insel-macos")).toContain('KLARWERK_INSEL_LAUNCHD_PFLICHT: "1"');
+    const insel = jobBlock("integration-insel-macos");
+    expect(insel).toContain("id: insel_checkout");
+    expect(insel).toContain("commit: ${{ steps.insel_checkout.outputs.commit }}");
+    expect(insel).toContain(
+      "run: npm run test:integration -- tests/insel-auslieferung/release-update-rueckfall.integration.test.ts",
+    );
+    const pg = jobBlock("integration");
+    expect(pg).toContain("needs: integration-insel-macos");
+    expect(pg).toContain("if: ${{ !cancelled() }}");
+    expect(pg).toContain(
+      "KLARWERK_CI_INSEL_COMMIT: ${{ needs.integration-insel-macos.outputs.commit }}",
+    );
+    expect(pg).toContain("KLARWERK_CI_INSEL_ERGEBNIS: ${{ needs.integration-insel-macos.result }}");
     expect(jobBlock("integration-kundeninstallation")).toContain("runs-on: ubuntu-24.04");
   });
 

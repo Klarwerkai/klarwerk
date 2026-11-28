@@ -23,8 +23,12 @@ const kandidatPfad = join(
 const { FE003_DATEIEN, oberflaechenBindung, pruefeBauvorbereitung, saubererBaustand } =
   await import(pathToFileURL(kandidatPfad).href);
 
+// Der Inselvertrag verwendet ausschließlich den Journalspeicher. Der macOS-Job misst ihn
+// vollständig mit Eigenstart und launchd am selben Checkout wie die PG-Auswahl.
+const INSEL_JOURNALTEST = "tests/insel-auslieferung/release-update-rueckfall.integration.test.ts";
+
 export function pgSelection(paths) {
-  return integrationSelection(paths);
+  return integrationSelection(paths).filter((path) => path !== INSEL_JOURNALTEST);
 }
 function assertFehlgeschlageneTests(report, tests, root) {
   assert(report && typeof report === "object" && report.success === false);
@@ -184,18 +188,26 @@ export function runPgSelection(root, base, output) {
   );
   const commit = git(root, "rev-parse", "HEAD");
   const tree = git(root, "rev-parse", "HEAD^{tree}");
-  const files = pgSelection(
-    git(root, "diff", "--name-only", "--diff-filter=ACMR", base, commit)
-      .split("\n")
-      .filter(Boolean),
-  );
+  const changedPaths = git(root, "diff", "--name-only", "--diff-filter=ACMR", base, commit)
+    .split("\n")
+    .filter(Boolean);
+  const files = pgSelection(changedPaths);
+  const insel = changedPaths.includes(INSEL_JOURNALTEST)
+    ? {
+        file: INSEL_JOURNALTEST,
+        job: "integration-insel-macos",
+        commit: process.env.KLARWERK_CI_INSEL_COMMIT ?? null,
+        status: process.env.KLARWERK_CI_INSEL_ERGEBNIS ?? null,
+      }
+    : undefined;
   mkdirSync(output, { recursive: true });
   const result = {
     commit,
     tree,
     base,
     files,
-    applicable: files.length > 0,
+    ...(insel ? { insel } : {}),
+    applicable: files.length > 0 || Boolean(insel),
     success: false,
     startedAt: new Date().toISOString(),
     runs: [],
@@ -347,8 +359,22 @@ export function runPgSelection(root, base, output) {
           .join(", ")}`;
       }
     }
+    if (insel) {
+      assert.equal(insel.commit, commit, "Der Inselnachweis gehört nicht zum geprüften Commit");
+      assert.equal(
+        insel.status,
+        "success",
+        "Die obligatorische Inselprüfung war nicht erfolgreich",
+      );
+      if (files.length === 0) {
+        result.success = true;
+        result.exit = 0;
+      }
+    }
   } catch (error) {
-    result.error = error.message;
+    result.error = [result.error, error.message].filter(Boolean).join("\n");
+    result.success = false;
+    result.exit = 1;
   }
   if (logBegonnen) result.logSha256 = hash(readFileSync(logPath));
   result.endedAt = new Date().toISOString();

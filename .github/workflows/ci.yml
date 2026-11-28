@@ -201,6 +201,8 @@ jobs:
   # Der Integrationsjob bleibt getrennt. Beide Jobs benötigen Root- und Web-Abhängigkeiten:
   # Integrationstests importieren auch Webmodule und führen den gemeinsamen Typecheck aus.
   integration:
+    needs: integration-insel-macos
+    if: ${{ !cancelled() }}
     env:
       KLARWERK_PG_PFLICHT: "1"
     # Dump/Restore brauchen passende PostgreSQL-16-Werkzeuge; Ubuntu 26 bringt PostgreSQL 18.
@@ -231,6 +233,8 @@ jobs:
       - name: gezielte berührte PG-Verträge (vor der langen Diagnose)
         id: pg_gezielt
         env:
+          KLARWERK_CI_INSEL_COMMIT: ${{ needs.integration-insel-macos.outputs.commit }}
+          KLARWERK_CI_INSEL_ERGEBNIS: ${{ needs.integration-insel-macos.result }}
           RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           KLARWERK_PG_TEST_URL: "postgresql://klarwerk_ci:fiktiv-ci-postgres@localhost:5432/klarwerk_ci_test"
         run: node tools/pg-auswahl.mjs "$RELEASE_BASE" .local/run/ci-pg-gezielt
@@ -248,10 +252,13 @@ jobs:
 
   integration-insel-macos:
     runs-on: macos-15
+    outputs:
+      commit: ${{ steps.insel_checkout.outputs.commit }}
     env:
       KLARWERK_INSEL_LAUNCHD_PFLICHT: "1"
     steps:
       - uses: actions/checkout@v4
+        id: insel_checkout
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
