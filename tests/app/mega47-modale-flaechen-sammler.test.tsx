@@ -154,7 +154,6 @@ import i18n from "../../apps/web/src/i18n";
 // JOB 3063 (H4): `pages/Library` wird hier nicht mehr gemountet — die Bibliothek trägt seit dem
 // Umbau keine modale Fläche mehr (Begründung an `FAELLE` und an den Untergrenzen).
 import { Validation } from "../../apps/web/src/pages/Validation";
-import { AppShell } from "../../apps/web/src/shell/AppShell";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -1157,6 +1156,9 @@ function ToastZapfhahn(): null {
 
 // Die ECHTE Shell mit der echten Provider-Kette — dieselbe Reihenfolge wie in App.tsx.
 async function render(inhalt: unknown): Promise<void> {
+  // Die Shell beginnt sofort mit dem Laden der Hilfe. Erst nach der synchronen
+  // Quellerhebung importieren, damit der Vitest-Worker diese Anfragen bedienen kann.
+  const { AppShell } = await import("../../apps/web/src/shell/AppShell");
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
