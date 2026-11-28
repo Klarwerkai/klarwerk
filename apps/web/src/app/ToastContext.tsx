@@ -26,7 +26,7 @@ function reducer(state: ToastState, action: Action): ToastState {
 
 interface ToastApi {
   toasts: Toast[];
-  push: (kind: ToastKind, message: string) => void;
+  push: (kind: ToastKind, message: string, beiAnzeige?: (id: string) => void) => void;
   dismiss: (id: string) => void;
 }
 
@@ -118,13 +118,15 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
       dispatch({ type: "remove", id });
     }, AUTO_DISMISS_MS);
     timer.current.set(id, laufend);
+    return id;
   }, []);
 
   // `push` der Flächen vermerkt die laufende Aktion (s. `inAktion`) und zeigt in DIESEM Provider.
   const push = useCallback(
-    (kind: ToastKind, message: string) => {
+    (kind: ToastKind, message: string, beiAnzeige?: (id: string) => void) => {
       vermerken();
-      zeigen(kind, message);
+      const id = zeigen(kind, message);
+      beiAnzeige?.(id);
     },
     [zeigen],
   );

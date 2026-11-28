@@ -674,7 +674,7 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega70 BLOCK C: die betonte nächste Handlung nach dem Speichern richtet sich nach der
   // effektiven Rolle (RoleContext — auch die Admin-Ansicht-als zählt, nicht nur die Session).
   const { role } = useRole();
-  const { push } = useToast();
+  const { push, dismiss } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
   // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT. Der
   // Server gibt jeder Rolle, auch Administratoren, nur die EIGENEN Entwürfe (`canSeeDraft` in
@@ -1918,6 +1918,7 @@ export function CaptureArbeitsraum({
       push("success", meldung);
     }
   }, [push]);
+  const ganzdokumentFehlerToast = useRef<string | null>(null);
   const fileWholeDraft = useMutation({
     // WP-D1/WP-D4: bei DOCX reist das strukturerhaltende HTML mit (Server sanitisiert autoritativ);
     // sourceKind steuert den ehrlichen Format-Hinweis im Quelle-Blockquote.
@@ -2044,6 +2045,10 @@ export function CaptureArbeitsraum({
       };
     },
     onMutate: () => {
+      if (ganzdokumentFehlerToast.current) {
+        dismiss(ganzdokumentFehlerToast.current);
+        ganzdokumentFehlerToast.current = null;
+      }
       setBereitsGespeichert((b) => ({ ...b, datei: null }));
     },
     onSuccess: ({ draft, originalFailure, originalAttached }, input) => {
@@ -2135,7 +2140,11 @@ export function CaptureArbeitsraum({
         setFileImportMeldung(t(CAPTURE_FILE_TEXT.tooLargeForImport));
         return;
       }
-      fail(error);
+      const meldung = fehlersatz(error);
+      setErr(meldung);
+      push("error", meldung, (id) => {
+        ganzdokumentFehlerToast.current = id;
+      });
     },
   });
 
