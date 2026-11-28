@@ -447,6 +447,31 @@ const REGEL_AUSNAHMEN: RegelAusnahme[] = [
       "--surface #FFFFFF = 5,93:1, AA erfüllt — gemessen im Fall „B1b“ unten mit derselben " +
       "Rechenfunktion, nicht hier behauptet.",
   },
+  // Gesamtcheck R-1329 (Abschnitt E, mega43): der Quellen-Einschub (R-0329) entsteht ganz zur
+  // LAUFZEIT (`askEinschubOeffnen`, taskpane.js) — Überschrift, Standzeile und Hinweis „kein
+  // Original“ sind DIREKTE Kinder des Kastens `#ask-einschub`, der seine Fläche selbst setzt
+  // (`background: var(--surface)`, taskpane.css). Ohne Markup-Fundstelle rät der Sammler gegen jede
+  // deckende Fläche (u. a. --brand-deep, --pos-text) und fällt dort durch. Gemessen wird die
+  // wirkliche Fläche im Fall „B1c“ unten, mit derselben Rechenfunktion — nicht hier behauptet.
+  {
+    selektor: "#ask-einschub h3",
+    grund:
+      "Überschrift des Quellen-Einschubs, erst zur LAUFZEIT erzeugt (askEinschubOeffnen). Sie steht " +
+      "als direktes Kind auf der eigenen Fläche von #ask-einschub (--surface); --ink darauf ist in " +
+      "„B1c“ gemessen.",
+  },
+  {
+    selektor: "#ask-einschub .einschub-stand",
+    grund:
+      "Standzeile des Quellen-Einschubs (Prüfstand, Version, Datum), erst zur LAUFZEIT erzeugt. " +
+      "Direktes Kind von #ask-einschub auf --surface; --muted darauf ist in „B1c“ gemessen.",
+  },
+  {
+    selektor: "#ask-einschub-kein-original",
+    grund:
+      "Hinweis „kein Original hinterlegt“ im Quellen-Einschub, nur zur LAUFZEIT und nur ohne Original " +
+      "erzeugt. Direktes Kind von #ask-einschub auf --surface; --muted darauf ist in „B1c“ gemessen.",
+  },
   {
     selektor: "#capture-aktion #send-btn:disabled",
     grund:
@@ -1584,6 +1609,32 @@ describe("mega43 B3 / mega44 B1 · Kontrast der Klara-Paare (WCAG AA, ≥ 4,5:1)
     const wert = kontrast(rgbAusHex(warnText?.wert as string), rgbAusHex(surface?.wert as string));
     expect(wert, `--warn-text auf --surface = ${wert.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
   });
+
+  // Gesamtcheck R-1329 · DIE AUSNAHMEN FÜR DEN QUELLEN-EINSCHUB TRAGEN ZAHLEN, KEINE ZUSICHERUNG.
+  // Dieselbe Bauform wie „B1b“: die Fläche ist die eigene des Kastens `#ask-einschub`, und beide
+  // Textfarben seiner Laufzeit-Kinder werden mit DERSELBEN Rechenfunktion darauf gemessen. Wer die
+  // Fläche des Kastens oder eines der Token verschiebt, wird hier rot.
+  it.each([
+    ["#ask-einschub h3", "ink"],
+    ["#ask-einschub .einschub-stand", "muted"],
+    ["#ask-einschub-kein-original", "muted"],
+  ] as const)(
+    "B1c · %s erreicht auf der Fläche des geöffneten Quellen-Einschubs AA",
+    (selektor, token) => {
+      const kasten = MODELL.regeln.find((r) => r.selektor === "#ask-einschub");
+      const kind = MODELL.regeln.find((r) => r.selektor === selektor);
+      expect(kasten?.dekl.get("background")).toBe("var(--surface)");
+      expect(kind?.dekl.get("color")).toBe(`var(--${token})`);
+      expect(kind?.dekl.get("background")).toBeUndefined();
+      expect(kind?.dekl.get("background-color")).toBeUndefined();
+      const vorn = MODELL.variablen.get(token);
+      const surface = MODELL.variablen.get("surface");
+      expect(vorn).toBeDefined();
+      expect(surface).toBeDefined();
+      const wert = kontrast(rgbAusHex(vorn?.wert as string), rgbAusHex(surface?.wert as string));
+      expect(wert, `--${token} auf --surface = ${wert.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 
   it("B1 · keine Annahme greift heute still — der Markup-Weg trägt jede Regel", () => {
     const mitAnnahme = KONTRAST_MODELL.paare.filter((p) => p.annahmen.length > 0);
