@@ -105,6 +105,28 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
     lage: "AUSSERHALB",
   },
   { job: "integration", befehl: "npm run test:integration", lage: "AUSSERHALB" },
+  { job: "integration-insel-macos", befehl: "npm ci", lage: "AUSSERHALB" },
+  { job: "integration-insel-macos", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  { job: "integration-insel-macos", befehl: "npx playwright install chromium", lage: "AUSSERHALB" },
+  {
+    job: "integration-insel-macos",
+    befehl:
+      "npm run test:integration -- tests/insel-auslieferung/release-update-rueckfall.integration.test.ts",
+    lage: "AUSSERHALB",
+  },
+  { job: "integration-kundeninstallation", befehl: "npm ci", lage: "AUSSERHALB" },
+  { job: "integration-kundeninstallation", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  {
+    job: "integration-kundeninstallation",
+    befehl: "npx playwright install --with-deps chromium",
+    lage: "AUSSERHALB",
+  },
+  {
+    job: "integration-kundeninstallation",
+    befehl:
+      "npm run test:integration -- tests/neuinstallation/kundeninstallation-strecke.integration.test.ts",
+    lage: "AUSSERHALB",
+  },
   // R-1487 (aufnahme:20260922:gesamt-kundenbetrieb): der Abbildbau läuft NACH dem Tor (`needs:
   // check`) in einem eigenen Job; `./tools/check` fährt ihn nicht mit.
   {
@@ -116,11 +138,20 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
 
 describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeordnet", () => {
   it("kennt genau die Jobs, die eingeordnet sind — ein neuer Job macht diesen Test rot", () => {
-    expect(jobNamen()).toEqual(["pflicht", "check", "integration", "abbild"]);
+    expect(jobNamen()).toEqual([
+      "pflicht",
+      "check",
+      "integration",
+      "integration-insel-macos",
+      "integration-kundeninstallation",
+      "abbild",
+    ]);
     expect([...new Set(EINORDNUNG.map((e) => e.job))]).toEqual([
       "pflicht",
       "check",
       "integration",
+      "integration-insel-macos",
+      "integration-kundeninstallation",
       "abbild",
     ]);
   });
@@ -135,6 +166,12 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
     // Und die Gegenrichtung: keine Einordnung ohne Schritt.
     const alleSchritte = jobNamen().flatMap((j) => runBefehle(jobBlock(j)));
     expect(EINORDNUNG).toHaveLength(alleSchritte.length);
+  });
+
+  it("belegt den echten launchd-Weg auf macOS und die eigene Docker-Installationsstrecke", () => {
+    expect(jobBlock("integration-insel-macos")).toContain("runs-on: macos-15");
+    expect(jobBlock("integration-insel-macos")).toContain('KLARWERK_INSEL_LAUNCHD_PFLICHT: "1"');
+    expect(jobBlock("integration-kundeninstallation")).toContain("runs-on: ubuntu-24.04");
   });
 
   it("genau EIN Schritt ist das Tor — und er steht im `check`-Job", () => {
